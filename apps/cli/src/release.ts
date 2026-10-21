@@ -1,10 +1,12 @@
 import { releaseAsset } from "./platform.js";
-import { createHash } from "node:crypto";
+import { executableName } from "./paths.js";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmod,
   copyFile,
   mkdtemp,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile,
@@ -213,9 +215,25 @@ async function download(url: string): Promise<Uint8Array> {
 function currentExecutable(): string | null {
   const executable = process.execPath;
   const basename = path.basename(executable);
-  return basename === "overtchat" || /^overtchat-(?:linux|darwin)-(?:amd64|arm64)$/u.test(basename)
+  return basename === "overtchat" || basename === "overtchat.exe" || /^overtchat-(?:(?:linux|darwin)-(?:amd64|arm64)|windows-amd64\.exe)$/u.test(basename)
     ? executable
     : null;
+}
+
+export async function cleanupWindowsCliBackups(): Promise<void> {
+  if (process.platform !== "win32") return;
+  const executable = currentExecutable();
+  if (!executable) return;
+  const directory = path.dirname(executable);
+  const prefix = `${path.basename(executable)}.previous-`;
+  for (const file of await readdir(directory)) {
+    if (!file.startsWith(prefix) || !/^[0-9a-f-]{36}$/u.test(file.slice(prefix.length))) continue;
+    // An older CLI can still be waiting for this one. It stays protected by
+    // Windows' executable lock and will be collected on a later invocation.
+    await rm(path.join(directory, file)).catch((error: NodeJS.ErrnoException) => {
+      if (!["ENOENT", "EPERM", "EBUSY", "EACCES"].includes(error.code || "")) throw error;
+    });
+  }
 }
 
 export async function updateCliIfNeeded(
@@ -231,8 +249,12 @@ export async function updateCliIfNeeded(
   const temporaryDirectory = await mkdtemp(
     path.join(path.dirname(executable), ".overtchat-update-"),
   );
-  const replacement = path.join(temporaryDirectory, "overtchat");
-  const backup = `${executable}.previous`;
+  const replacement = path.join(temporaryDirectory, executableName("overtchat"));
+  const windows = process.platform === "win32";
+  // Windows permits renaming an executing image, but not overwriting/deleting
+  // it. Retain that image until the parent CLI exits after the new CLI finishes.
+  const backup = `${executable}.previous${windows ? `-${randomUUID()}` : ""}`;
+  let moved = false;
   try {
     const [binary, checksums] = await Promise.all([
       download(`${releaseBase}/${asset}`),
@@ -253,16 +275,23 @@ export async function updateCliIfNeeded(
       throw new Error("The downloaded OvertChat CLI failed its startup check.");
     }
     await rm(backup, { force: true });
-    await copyFile(executable, backup);
+    if (windows) {
+      await rename(executable, backup);
+      moved = true;
+    } else await copyFile(executable, backup);
     await rename(replacement, executable);
     return executable;
   } catch (error) {
-    if (await readFile(backup).catch(() => null)) {
+    if (windows && moved) {
+      await rename(backup, executable).catch((recoveryError) => {
+        throw new AggregateError([error, recoveryError], `CLI update failed. The previous executable is retained at ${backup}.`);
+      });
+    } else if (!windows && await readFile(backup).catch(() => null)) {
       await copyFile(backup, executable).catch(() => {});
     }
     throw error;
   } finally {
-    await rm(backup, { force: true });
+    if (!windows) await rm(backup, { force: true });
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 }

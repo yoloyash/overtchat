@@ -9,6 +9,8 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { requireSuccessful } from "./process.js";
+import { windowsLogTail } from "./windows.js";
+import { windowsConnectorLogDirectory } from "./connector.js";
 
 export async function logs(
   service: string | undefined,
@@ -16,11 +18,15 @@ export async function logs(
   tail: number,
 ): Promise<void> {
   if (service === "install") {
+    if (process.platform === "win32") return windowsLogTail([installationLogPath()], tail, follow);
     await requireSuccessful("tail", ["-n", String(tail), ...(follow ? ["-F"] : []), installationLogPath()], { inherit: true });
     return;
   }
   // Connector diagnostics must work even if setup never saved installation.json.
   if (service === "connector") {
+    if (process.platform === "win32") return windowsLogTail(
+      ["connector.log", "connector.error.log"].map((file) => path.join(windowsConnectorLogDirectory(), file)), tail, follow,
+    );
     const files = ["connector.log", "connector.error.log"].map((file) =>
           path.join(os.homedir(), "Library", "Logs", "OvertChat", file));
     if (process.platform === "linux") {

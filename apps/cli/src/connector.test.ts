@@ -152,3 +152,15 @@ it("uses noninteractive permission checks and sudo when no terminal is available
   expect(mocks.requireSuccessful).toHaveBeenCalledWith("sudo", ["-n", "loginctl", "enable-linger", "test"], { inherit: true, timeoutMs: 120_000 });
   expect(mocks.mkdtemp).not.toHaveBeenCalled();
 });
+
+it("re-enables the previous Windows connector if replacement cannot begin", async () => {
+  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  vi.stubEnv("OVERTCHAT_BIN_DIR", "/isolated/bin");
+  mocks.rename.mockRejectedValueOnce(Object.assign(new Error("binary is locked"), { code: "EPERM" }));
+  await expect(installManagedConnector(config, "fixture-secret")).rejects.toThrow("binary is locked");
+  const commands = mocks.requireSuccessful.mock.calls.map(([binary, args]) => [binary, args]);
+  expect(commands).toContainEqual(["/isolated/bin/overtchat-connector.exe", ["service-stop"]]);
+  expect(mocks.runCommand.mock.calls.map(([binary, args]) => [binary, args]))
+    .toContainEqual(["/isolated/bin/overtchat-connector.exe", ["service-install"]]);
+  expect(mocks.copyFile.mock.calls.some(([, destination]) => destination === "/isolated/bin/overtchat-connector.exe")).toBe(false);
+});

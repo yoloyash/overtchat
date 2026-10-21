@@ -1,4 +1,4 @@
-export const CLI_VERSION = "0.4.0";
+export const CLI_VERSION = "0.5.0";
 
 export const APP_IMAGE = "ghcr.io/yoloyash/overtchat-app";
 export const VOICE_IMAGE = "ghcr.io/yoloyash/overtchat-voice";

@@ -1282,3 +1282,13 @@ remapped UUIDs, and an empty reset across reopen and settings changes. Run the
 runtime and connector suites, typechecks, connector lint, and connector build
 alongside it. This prevents new broken rewind records; it does not migrate or
 repair sessions whose native transcript was already missing.
+
+## Windows backend development
+
+Production Windows deployment is documented in [Deploy](deploy.md#windows).
+Use Node 22 and npm 10.9.8 for source checks. `overtchat setup --development`
+requires Docker Desktop/WSL 2 and Bun when Agent Connections are selected; it
+compiles a native connector executable instead of installing a JavaScript file
+as an `.exe`. Use dedicated config/stack directories and a disposable Docker
+volume for deployment tests. See [Windows qualification](release.md#windows-backend-qualification)
+for the packaged installer, updater, journal, and interactive-service checks.

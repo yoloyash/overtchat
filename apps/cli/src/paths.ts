@@ -4,12 +4,15 @@ import type { RuntimePaths } from "./types.js";
 
 export function runtimePaths(environment = process.env): RuntimePaths {
   const home = environment.OVERTCHAT_HOME?.trim() || os.homedir();
+  const windowsRoot = process.platform === "win32"
+    ? path.join(environment.OVERTCHAT_HOME?.trim() || environment.LOCALAPPDATA || path.join(home, "AppData", "Local"), "OvertChat")
+    : undefined;
   const configDirectory =
     environment.OVERTCHAT_CONFIG_DIR?.trim() ||
-    path.join(home, ".config", "overtchat");
+    (windowsRoot ? path.join(windowsRoot, "config") : path.join(home, ".config", "overtchat"));
   const stackDirectory =
     environment.OVERTCHAT_STACK_DIR?.trim() ||
-    path.join(home, ".local", "share", "overtchat");
+    (windowsRoot ? path.join(windowsRoot, "stack") : path.join(home, ".local", "share", "overtchat"));
   const searxngDirectory = path.join(stackDirectory, "searxng");
   return {
     configDirectory,
@@ -21,4 +24,15 @@ export function runtimePaths(environment = process.env): RuntimePaths {
     searxngSettingsFile: path.join(searxngDirectory, "settings.yml"),
     cloudDirectory: path.join(stackDirectory, "cloud"),
   };
+}
+
+export function executableName(component: "overtchat" | "overtchat-connector"): string {
+  return `${component}${process.platform === "win32" ? ".exe" : ""}`;
+}
+
+export function installationBinDirectory(): string {
+  if (process.env.OVERTCHAT_BIN_DIR?.trim()) return process.env.OVERTCHAT_BIN_DIR.trim();
+  return process.platform === "win32"
+    ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Programs", "OvertChat", "bin")
+    : path.join(os.homedir(), ".local", "bin");
 }

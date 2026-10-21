@@ -100,7 +100,7 @@ function verifyConnector({ artifactMismatch = false, tagUnavailable = false, red
     writeFileSync(join(dir, "apps/site/public/_redirects"),
       `/install/connector/${selected} https://github.com/test/repo/releases/download/connector-v${selected}/install-connector.sh 302\n/install-connector.sh /install/connector/${selected} 302\n`);
     let checksums = "";
-    for (const platform of ["darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64"]) {
+    for (const platform of ["darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64.exe"]) {
       const asset = `overtchat-connector-${platform}`;
       const contents = `fixture ${platform}\n`;
       writeFileSync(join(dir, "release", asset), contents);
@@ -166,7 +166,7 @@ for (const [name, prefix, checksum] of [
       gh() {
         while [ "$1" != "--dir" ]; do shift; done
         local destination="$2"
-        for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+        for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 windows-amd64.exe; do
           echo corrupt > "$destination/${prefix}-$platform"
           echo "0000000000000000000000000000000000000000000000000000000000000000  ${prefix}-$platform" >> "$destination/${checksum}"
         done

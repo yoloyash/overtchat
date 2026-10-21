@@ -130,11 +130,11 @@ export class ConnectorProcessHost {
         const environment = await this.inspectEnvironment(target);
         if (!environment.node)
           throw new Error(
-            "Node.js is not available in the Windows SSH environment. Install Node.js 22 or set OVERTCHAT_SSH_NODE_PATHS on the connector to map this SSH alias to node.exe.",
+            "Node.js is not available on the Windows host. Install Node.js 22 or newer. For SSH hosts, OVERTCHAT_SSH_NODE_PATHS can map the alias to node.exe.",
           );
         if (Number(environment.nodeVersion?.match(/^v(\d+)\./u)?.[1] ?? 0) < 22)
           throw new Error(
-            "Windows SSH execution requires Node.js 22 or newer.",
+            "Windows agent execution requires Node.js 22 or newer.",
           );
         return this.spawnChild(target, launch, {
           command: windowsHelperCommand(
@@ -242,6 +242,7 @@ export class ConnectorProcessHost {
               : ["-c", buildSshRemoteCommand(launch)],
             {
               env: process.env,
+              windowsHide: true,
               detached: process.platform !== "win32",
               stdio: ["pipe", "pipe", "pipe"],
             },
@@ -253,6 +254,7 @@ export class ConnectorProcessHost {
               : sshSpawnArgs(connectorTarget.alias, launch),
             {
               detached: process.platform !== "win32",
+              windowsHide: true,
               stdio: ["pipe", "pipe", "pipe"],
             },
           );

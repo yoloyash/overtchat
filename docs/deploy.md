@@ -1,6 +1,6 @@
 # Deploy
 
-Supports x86-64/arm64 Linux and Intel/Apple Silicon Macs. The guided manager
+Supports x86-64/arm64 Linux, Intel/Apple Silicon Macs, and x64 Windows 11 PCs. The guided manager
 installs and updates OvertChat with Docker Compose.
 
 ## Install
@@ -35,7 +35,7 @@ overtchat reset-password # recover an account password
 
 Voice requires both STT and TTS. Bundled Parakeet and Kokoro support native
 Apple acceleration on Apple Silicon with macOS 14 or later, and CPU or NVIDIA
-GPU containers on Linux. CPU containers remain available on Macs, including
+GPU containers on Linux and Windows with Docker Desktop/WSL 2. CPU containers remain available on Macs, including
 Intel Macs. Setup can install NVIDIA Container
 Toolkit on supported systems. Kokoro needs roughly 3–4 GB VRAM, so choose CPU
 if GPU memory is limited.
@@ -64,6 +64,68 @@ connects to the authenticated loopback service on port 5093.
 `speech.log` live in the managed stack's `apple-speech/` directory and are not
 automatically pruned. Setup restores speech routing and the previous native
 service on failure; it does not downgrade the app or database.
+
+### Windows
+
+Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
+with the WSL 2 backend and Linux containers. Start it once and finish Docker’s
+first-run setup. You do not need to install OvertChat inside an Ubuntu terminal.
+For Agent Connections, install [Node.js 22 or newer](https://nodejs.org/en/download)
+and your provider CLI on Windows, and sign into the provider as your desktop user.
+
+Open 64-bit PowerShell as that normal user and run:
+
+```powershell
+irm https://overtchat.com/install.ps1 | iex
+```
+
+The installer verifies the pinned release’s SHA-256 checksum, installs
+`overtchat.exe` in `%LOCALAPPDATA%\Programs\OvertChat\bin`, and adds it to your
+user PATH. Reopen existing terminals to pick up the PATH change. Windows ARM64
+and Windows Server/service-account deployments are not supported.
+
+The manager controls the same Linux containers as other platforms. Configuration,
+secrets, and installation logs live in `%LOCALAPPDATA%\OvertChat\config`; managed
+Compose files live in `%LOCALAPPDATA%\OvertChat\stack`. Keep the database in the
+managed Docker volume. Do not run two copies of the installation against the same
+volume. Custom `OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_STACK_DIR` must be dedicated
+OvertChat directories; the manager restricts their credential files’ access.
+
+Enable Docker Desktop’s **Start Docker Desktop when you sign in** setting.
+The native Host Connector runs in Task Scheduler as your signed-in user, without
+administrator privileges or a stored password. It uses your Windows provider
+credentials and `%USERPROFILE%\.ssh\config`, so both native and SSH agents work.
+The PC must be awake and the user signed in; this is a desktop deployment, not a
+Windows system service. Restarting Docker does not erase the database, and the
+connector reconnects when the app returns.
+
+```powershell
+overtchat status
+overtchat update
+overtchat logs connector --tail 100
+overtchat logs install --tail 100
+```
+
+Connector logs rotate under the config directory’s `windows-service` folder.
+`overtchat-connector service-stop` gracefully stops and disables its task;
+`service-install` enables and starts it again; `service-uninstall` removes only
+the task, preserving credentials and session history. Use the same
+`OVERTCHAT_CONNECTOR_CONFIG` override for custom installations. Back up the Docker
+volume and the configuration directory before moving or resetting Docker Desktop.
+Uninstalling Docker/WSL or resetting Docker Desktop can remove the volume.
+
+NVIDIA speech acceleration uses Docker Desktop’s WSL GPU support. Install a
+current NVIDIA Windows driver; do not install Linux NVIDIA drivers or the Linux
+Container Toolkit on the Windows host. Setup verifies GPU access in a Linux
+container before selecting CUDA. CPU speech remains available without a GPU.
+
+Run setup and updates from the desktop session. Docker Desktop’s Windows
+credential helper may reject pulls from an SSH logon with “A specified logon
+session does not exist”; sign in locally and rerun the command. Do not remove
+Docker’s credential configuration to work around that error. If Docker is stopped
+or using Windows containers, the manager reports the prerequisite and can be
+rerun after Docker is ready. LAN access is subject to Windows Firewall; use a
+private network and allow the chosen app port only where you intend to serve it.
 
 ## Password recovery
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstallationConfig } from "./types.js";
 
 const mocks = vi.hoisted(() => ({
@@ -78,8 +78,10 @@ function inspectedContainer(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  vi.spyOn(process, "platform", "get").mockReturnValue("linux");
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("NVIDIA GPU discovery", () => {
   it("keeps stable UUIDs alongside the friendly index and memory", () => {
@@ -452,5 +454,45 @@ describe("macOS Docker discovery", () => {
     } finally {
       platform.mockRestore();
     }
+  });
+});
+
+describe("Windows Docker Desktop", () => {
+  beforeEach(() => vi.spyOn(process, "platform", "get").mockReturnValue("win32"));
+
+  it("rejects Windows containers before setup can change anything", async () => {
+    mocks.commandExists.mockResolvedValue(true);
+    mocks.runCommand.mockResolvedValueOnce({ exitCode: 0, stdout: "ready", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "windows\n", stderr: "" });
+    const { detectDockerCommand } = await import("./docker.js");
+    await expect(detectDockerCommand()).rejects.toThrow("Switch Docker Desktop to Linux containers");
+  });
+
+  it("uses a running Linux engine without sudo", async () => {
+    mocks.commandExists.mockResolvedValue(true);
+    mocks.runCommand.mockResolvedValue({ exitCode: 0, stdout: "linux\n", stderr: "" });
+    const { detectDockerCommand } = await import("./docker.js");
+    await expect(detectDockerCommand()).resolves.toEqual({ command: "docker", prefix: [] });
+    expect(mocks.commandExists).toHaveBeenCalledExactlyOnceWith("docker");
+  });
+
+  it("gives Windows prerequisites instead of running Linux installers", async () => {
+    const { installDockerEngine, installNvidiaContainerToolkit } = await import("./docker.js");
+    await expect(installDockerEngine()).rejects.toThrow("Docker Desktop for Windows");
+    await expect(installNvidiaContainerToolkit()).rejects.toThrow("Docker Desktop manages GPU support");
+    expect(mocks.runCommand).not.toHaveBeenCalled();
+    expect(mocks.requireSuccessful).not.toHaveBeenCalled();
+  });
+
+  it("requires an actual GPU result from the app container", async () => {
+    const { nvidiaContainerRuntimeAvailable } = await import("./docker.js");
+    mocks.runCommand.mockResolvedValueOnce({ exitCode: 0, stdout: "NVIDIA GeForce RTX 3090 Ti\n", stderr: "" });
+    const docker = { command: "docker", prefix: [] };
+    await expect(nvidiaContainerRuntimeAvailable(docker, "app:fixture")).resolves.toBe(true);
+    expect(mocks.runCommand).toHaveBeenCalledWith("docker", expect.arrayContaining([
+      "run", "--gpus", "all", "--entrypoint", "nvidia-smi", "app:fixture",
+    ]), expect.anything());
+    mocks.runCommand.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "GPU unavailable" });
+    await expect(nvidiaContainerRuntimeAvailable(docker, "app:fixture")).resolves.toBe(false);
   });
 });

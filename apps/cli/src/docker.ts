@@ -48,8 +48,16 @@ export async function detectDockerCommand(readOnly = false): Promise<DockerComma
   const direct = readOnly
     ? await runCommand("docker", ["info"], { timeoutMs: 10_000 })
     : await runCommand("docker", ["info"]);
-  if (direct.exitCode === 0) return { command: "docker", prefix: [] };
-  if (process.platform === "darwin") {
+  if (direct.exitCode === 0) {
+    if (process.platform === "win32") {
+      const engine = await runCommand("docker", ["info", "--format", "{{.OSType}}"], { timeoutMs: 10_000 });
+      if (engine.exitCode !== 0 || engine.stdout.trim() !== "linux") {
+        throw new Error("OvertChat requires Linux containers. Switch Docker Desktop to Linux containers and enable its WSL 2 engine, then retry.");
+      }
+    }
+    return { command: "docker", prefix: [] };
+  }
+  if (process.platform === "darwin" || process.platform === "win32") {
     throw new Error("Docker is installed but not ready. Start Docker Desktop, wait for its engine, then retry. Check docker context show if you use another Docker runtime.");
   }
   if (await commandExists("sudo")) {
@@ -66,6 +74,9 @@ export async function detectDockerCommand(readOnly = false): Promise<DockerComma
 }
 
 export async function installDockerEngine(): Promise<void> {
+  if (process.platform === "win32") {
+    throw new Error("Install Docker Desktop for Windows (https://docs.docker.com/desktop/setup/install/windows-install/), enable its WSL 2 engine and Linux containers, and start Docker Desktop. Then run overtchat setup again.");
+  }
   if (process.platform !== "linux") {
     throw new Error("Install and start Docker Desktop for Mac (https://docs.docker.com/desktop/setup/install/mac-install/), then run overtchat setup again.");
   }
@@ -146,6 +157,9 @@ function linuxDistribution(contents: string): "apt" | "dnf" | null {
 }
 
 export async function installNvidiaContainerToolkit(): Promise<void> {
+  if (process.platform === "win32") {
+    throw new Error("Docker Desktop manages GPU support. Update the Windows NVIDIA driver and WSL (wsl --update), enable Docker Desktop's WSL 2 engine, and restart Docker Desktop. Do not install the Linux NVIDIA Container Toolkit on Windows.");
+  }
   if (await commandExists("nvidia-ctk")) {
     await runElevated("nvidia-ctk", ["runtime", "configure", "--runtime=docker"], {
       inherit: true,
@@ -595,7 +609,7 @@ export async function detectExistingInstallation(
 }
 
 export async function detectNvidiaGpus(): Promise<Gpu[]> {
-  if (process.platform !== "linux") return [];
+  if (process.platform !== "linux" && process.platform !== "win32") return [];
   if (!(await commandExists("nvidia-smi"))) return [];
   let result = await runCommand("nvidia-smi", [
     "--query-gpu=index,uuid,name,memory.total,compute_cap",
@@ -644,7 +658,19 @@ export function parseNvidiaSmi(output: string): Gpu[] {
 
 export async function nvidiaContainerRuntimeAvailable(
   docker: DockerCommand,
+  probeImage?: string,
 ): Promise<boolean> {
+  if (process.platform === "win32") {
+    if (!probeImage) return false;
+    // Docker Desktop's GPU-PV integration is not reliably described by the
+    // Linux runtime names. Prove device access inside our actual app image.
+    const probe = await runDocker(docker, [
+      "run", "--rm", "--pull=missing", "--gpus", "all",
+      "--entrypoint", "nvidia-smi", probeImage,
+      "--query-gpu=name", "--format=csv,noheader",
+    ], { timeoutMs: 180_000 });
+    return probe.exitCode === 0 && probe.stdout.trim().length > 0;
+  }
   const result = await runDocker(docker, [
     "info",
     "--format",

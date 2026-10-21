@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { protectWindowsDirectory } from "./windows.js";
 import type {
   ExistingInstallation,
   InstallationConfig,
@@ -314,6 +315,7 @@ async function writeAtomic(
   mode: number,
 ): Promise<void> {
   await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+  await protectWindowsDirectory(path.dirname(destination));
   const temporary = `${destination}.new-${process.pid}`;
   await writeFile(temporary, contents, { encoding: "utf8", mode });
   await chmod(temporary, mode);

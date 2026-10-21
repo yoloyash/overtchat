@@ -7,7 +7,7 @@ import { createPageMetadata } from "@/lib/metadata";
 export const metadata: Metadata = createPageMetadata({
   title: "Set up a server",
   description:
-    "Set up your own OvertChat server on Linux or macOS. Install with the guided setup, connect your models, then sign in from the web, desktop, or mobile app.",
+    "Set up your own OvertChat server on Linux, macOS, or Windows. Install with the guided setup, connect your models, then sign in from the web, desktop, or mobile app.",
   path: "/setup/",
 });
 
@@ -35,13 +35,14 @@ export default function SetupPage() {
           <Server className="download-icon" aria-hidden="true" />
           <h2 id="requirements-title">Before you start</h2>
           <ul>
-            <li><Check aria-hidden="true" /><span>A Linux computer or Mac that stays on while you use OvertChat.</span></li>
+            <li><Check aria-hidden="true" /><span>A Linux computer, Mac, or Windows PC that stays on while you use OvertChat.</span></li>
             <li><Check aria-hidden="true" /><span>A local model server, such as Ollama or vLLM, or a hosted model provider.</span></li>
             <li><Check aria-hidden="true" /><span>Access to a terminal on the computer that will run your server.</span></li>
           </ul>
-          <p>Linux supports x64 and ARM64. Macs support Apple Silicon and Intel.</p>
+          <p>Linux supports x64 and ARM64. Macs support Apple Silicon and Intel. Windows requires an x64 PC with Windows 11.</p>
           <p>
             On macOS, install and start <a href="https://docs.docker.com/desktop/setup/install/mac-install/">Docker Desktop</a> first.
+            On Windows, install and start <a href="https://docs.docker.com/desktop/setup/install/windows-install/">Docker Desktop</a> with its WSL 2 backend and Linux containers.
             On Linux, setup can install Docker for you.
           </p>
         </aside>
@@ -55,7 +56,15 @@ export default function SetupPage() {
                 Open a terminal on your server computer and paste this command.
                 On a Mac, run it as your normal user while logged in to the desktop.
               </p>
+              <p>Linux and macOS:</p>
               <InstallCommand />
+              <p>Windows, in PowerShell as your normal desktop user:</p>
+              <InstallCommand platform="windows" />
+              <p>
+                On Windows, enable Docker Desktop’s start-at-sign-in setting.
+                The server needs an awake PC and a signed-in user. Native coding-agent
+                connections also require <a href="https://nodejs.org/en/download">Node.js 22 or newer</a>.
+              </p>
               <p className="setup-step-note">
                 The guided setup configures Docker, generates secrets, and manages updates.
                 You don’t need to edit an environment file.

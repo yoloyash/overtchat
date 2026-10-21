@@ -19,7 +19,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 | --- | --- | --- |
 | App | Manifest `appVersion`; `compose.yml` default | `vX.Y.Z` |
 | Realtime voice | Manifest `voiceVersion`; `compose.yml` default | `voice-vX.Y.Z` |
-| CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
+| CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; both site installers (`install`, `install.ps1`); manifest `cliVersion` | `cli-vX.Y.Z` |
 | Connector | Package and lockfile; bridge release version; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
 | Bundled images | Manifest Redis, SearXNG, Kokoro, or OvertChat Cloud tunnel and proxy image digest | None |
@@ -42,12 +42,12 @@ Do not change unrelated manifest fields.
   release, and dispatches promotion.
 - **Realtime voice:** The voice workflow publishes the amd64/arm64 image and
   dispatches promotion.
-- **CLI:** The CLI workflow verifies Linux/macOS binaries, publishes the GitHub
+- **CLI:** The CLI workflow verifies Linux/macOS/Windows binaries, publishes the GitHub
   release, and dispatches promotion.
 - **Apple speech:** Ships inside the CLI. Run [Apple speech validation](development.md#apple-speech)
   after changing it. The first release requires both app and CLI version bumps
   and coordinated promotion so the app supports native routing/authentication.
-- **Connector:** The connector workflow verifies Linux/macOS binaries, publishes
+- **Connector:** The connector workflow verifies Linux/macOS/Windows binaries, publishes
   the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases
   retain the current protocol. Protocol 6 adds byte-bounded batches, fragmented
@@ -86,6 +86,30 @@ until release preparation; they do not need to match the currently published
 installer. A mismatch with the tagged source or a failed tag lookup blocks
 promotion. Version bumps select the next candidate; tags publish its artifacts,
 and stable promotion waits until all selected artifacts are available.
+
+## Windows backend qualification
+
+CLI 0.5.0 and connector 0.15.0 add x64 Windows artifacts. Publish both tags before
+promotion; the promotion job requires their `.exe` assets and checksums before
+exposing the PowerShell installer and Windows setup instructions. Never add assets
+to old published tags to simulate a Windows release.
+
+The CLI workflow runs the PowerShell installer and running-executable updater
+smokes on Windows. The connector workflow runs native SQLite migration, forced
+crash recovery, restart, and large-journal checks. Task Scheduler requires an
+interactive desktop user; hosted CI service accounts do not qualify logon behavior.
+On a signed-in Windows 11 PC with Docker Desktop/WSL 2, also run:
+
+```powershell
+.github/scripts/smoke-cli-installer-windows.ps1 -Binary .\overtchat.exe -Installer apps/site/public/install.ps1
+.github/scripts/smoke-connector-service-windows.ps1 -Binary .\overtchat-connector.exe
+```
+
+Use a disposable managed installation for actual setup/update, browser login from
+another LAN device, native and SSH agent tool requests, connector restart and
+Docker restart/reconnect. Verify credential ACLs as a non-elevated user, paths
+with spaces, retained data, optional CPU/GPU speech, and sign-in startup after a
+reboot. Record the exact binary runtime/version and which hardware checks ran.
 
 ## Website downloads
 

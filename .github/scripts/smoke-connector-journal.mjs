@@ -28,7 +28,7 @@ try {
   };
   run("preflight");
   assert.equal(await readFile(file + ".legacy", "utf8"), original);
-  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal((await stat(file)).mode & 0o777, 0o600);
   run("preflight");
   run("journal-backup", "--destination", snapshot);
   const db = new DatabaseSync(snapshot, { readOnly: true });

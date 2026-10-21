@@ -16,6 +16,7 @@ import { CONNECTOR_VERSION } from "./version.js";
 import { configureServiceLogging } from "./service-logging.js";
 import { ConnectorInstanceLock } from "./lock.js";
 import { backupConnectorJournal } from "./journal-backup.js";
+import { stopWindowsService, uninstallWindowsService, watchWindowsServiceStop } from "./windows-service.js";
 
 type ParsedArgs = {
   command: string;
@@ -126,9 +127,10 @@ async function pair(values: Map<string, string>): Promise<void> {
   console.log(`Paired with ${serverUrl}`);
 }
 
-async function run(): Promise<void> {
+async function run(service = false): Promise<void> {
   const config = await readConnectorConfig();
   const client = await ConnectorClient.create(config);
+  let cleanupService: (() => Promise<void>) | undefined;
   const stop = () => {
     void client.stop().catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));
@@ -139,9 +141,11 @@ async function run(): Promise<void> {
   process.once("SIGTERM", stop);
   console.log(`Connecting to ${config.serverUrl}`);
   try {
+    cleanupService = service ? await watchWindowsServiceStop(() => client.stop()) : undefined;
     await client.run();
   } finally {
     await client.stop();
+    await cleanupService?.();
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
   }
@@ -155,8 +159,14 @@ async function preflight(): Promise<void> {
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
-  if (parsed.command === "run") configureServiceLogging();
+  if (parsed.command === "run" || parsed.command === "service-run") configureServiceLogging(parsed.command === "service-run");
   switch (parsed.command) {
+    case "service-stop":
+    case "service-uninstall":
+      if (process.platform !== "win32" || parsed.values.size > 0) throw new Error(`${parsed.command} is a Windows service command and takes no arguments.`);
+      if (parsed.command === "service-stop") await stopWindowsService();
+      else await uninstallWindowsService();
+      return;
     case "service-install":
       if (parsed.values.size > 0) throw new Error("service-install takes no arguments.");
       console.log(`Service installed at ${await installUserService()}`);
@@ -177,13 +187,15 @@ async function main(): Promise<void> {
       }
       await installManaged();
       return;
+    case "service-run":
     case "run":
       if (parsed.values.size > 0) {
         throw new Error(
           "The run command does not accept options; it uses the provisioned connector configuration.",
         );
       }
-      await run();
+      if (parsed.command === "service-run" && process.platform !== "win32") throw new Error("service-run is only used by the Windows scheduled task.");
+      await run(parsed.command === "service-run");
       return;
     case "preflight":
       if (parsed.values.size > 0) {

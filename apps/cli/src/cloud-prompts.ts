@@ -28,6 +28,10 @@ function chosen<T>(value: T | symbol): T {
 // Only open a browser where one can appear; on a headless server xdg-open may
 // start a terminal browser over the setup prompts.
 async function openBrowser(url: string): Promise<void> {
+  if (process.platform === "win32") {
+    await runCommand("rundll32.exe", ["url.dll,FileProtocolHandler", url], { timeoutMs: 5_000 }).catch(() => undefined);
+    return;
+  }
   const command =
     process.platform === "darwin"
       ? "open"

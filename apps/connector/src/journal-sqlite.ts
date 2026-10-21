@@ -100,6 +100,15 @@ export function createJournalSchema(db: JournalDatabase): void {
 }
 
 export async function syncJournalFile(file: string): Promise<void> {
-  const handle = await open(file, "r");
+  // FlushFileBuffers on Windows requires a writable handle. Keep the flush
+  // (and propagate failures); opening read-only produces EPERM on NTFS.
+  const handle = await open(file, process.platform === "win32" ? "r+" : "r");
   try { await handle.sync(); } finally { await handle.close(); }
+}
+
+export async function syncJournalDirectory(directory: string): Promise<void> {
+  // Node/Bun cannot flush Windows directory handles. Regular files must still
+  // be flushed before publication; SQLite's FULL WAL sync remains mandatory.
+  if (process.platform === "win32") return;
+  await syncJournalFile(directory);
 }

@@ -139,7 +139,8 @@ export class HostEnvironments {
       overrides = parsed as Record<string, string>;
     }
     const override =
-      target.transport === "ssh" ? overrides[target.alias] : process.execPath;
+      target.transport === "ssh" ? overrides[target.alias]
+        : process.versions.bun ? undefined : process.execPath;
     const script = `
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'

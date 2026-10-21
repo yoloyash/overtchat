@@ -1,4 +1,6 @@
 import { releaseAsset } from "./platform.js";
+import { executableName, installationBinDirectory, runtimePaths } from "./paths.js";
+import { runPowerShell } from "./windows.js";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -48,7 +50,7 @@ async function stageConnectorBinary(
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "overtchat-connector-"),
   );
-  const staged = path.join(temporaryDirectory, "overtchat-connector");
+  const staged = path.join(temporaryDirectory, executableName("overtchat-connector"));
   try {
     if (override) {
       await copyFile(override, staged);
@@ -166,6 +168,16 @@ async function ensureUserLinger(options: ConnectorInstallOptions): Promise<void>
 }
 
 export async function checkManagedConnectorPrerequisites(): Promise<void> {
+  if (process.platform === "win32") {
+    const check = await runPowerShell(`
+if ((Get-Service Schedule).Status -ne 'Running') { throw 'Windows Task Scheduler is not running.' }
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if ($sid -in @('S-1-5-18','S-1-5-19','S-1-5-20')) { throw 'Run setup as your desktop user.' }
+$node = Get-Command node.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
+if (!$node -or ((& $node --version) -notmatch '^v(2[2-9]|[3-9][0-9])\\.')) { throw 'Native Agent Connections require Node.js 22 or newer on Windows. Install the Node.js LTS Windows package, reopen your terminal, and retry.' }`);
+    if (check.exitCode !== 0) throw new Error("Agent Connections require Windows Task Scheduler and a signed-in desktop user. " + check.stderr.trim());
+    return;
+  }
   if (process.getuid?.() === 0 && (process.env.SUDO_USER || process.platform === "darwin")) {
     throw new Error(
       "Run overtchat setup as your normal user. It will request elevated permissions only when needed.",
@@ -181,6 +193,17 @@ export async function checkManagedConnectorPrerequisites(): Promise<void> {
         : "Agent Connections require a running systemd user session on this machine.",
     );
   }
+}
+
+export function managedConnectorEnvironment(): NodeJS.ProcessEnv {
+  return process.platform === "win32" ? {
+    ...process.env,
+    OVERTCHAT_CONNECTOR_CONFIG: process.env.OVERTCHAT_CONNECTOR_CONFIG || path.join(runtimePaths().configDirectory, "connector.json"),
+  } : process.env;
+}
+
+export function windowsConnectorLogDirectory(): string {
+  return path.join(path.dirname(managedConnectorEnvironment().OVERTCHAT_CONNECTOR_CONFIG!), "windows-service");
 }
 
 export async function installManagedConnector(
@@ -209,11 +232,13 @@ export async function installManagedConnector(
   } catch (error) {
     throw new Error(`${phase}: ${installationMessage(error)}`, { cause: error });
   }
-  const installDirectory = path.join(os.homedir(), ".local", "bin");
-  const installPath = path.join(installDirectory, "overtchat-connector");
+  const installDirectory = installationBinDirectory();
+  const installPath = path.join(installDirectory, executableName("overtchat-connector"));
+  const environment = managedConnectorEnvironment();
   const backupPath = `${installPath}.previous`;
   let hadPrevious = false;
   let installed = false;
+  let previousStopped = false;
   try {
     progress("Checking Agent Connector executable");
     const preflight = await requireSuccessful(staged.binary, ["version"], { timeoutMs: 10_000 });
@@ -225,9 +250,14 @@ export async function installManagedConnector(
     await mkdir(installDirectory, { recursive: true, mode: 0o700 });
     try {
       await readFile(installPath);
-      hadPrevious = true;
+      if (process.platform === "win32") {
+        progress("Stopping the previous Agent Connector");
+        await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
+        previousStopped = true;
+      }
       await rm(backupPath, { force: true });
       await rename(installPath, backupPath);
+      hadPrevious = true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
@@ -240,6 +270,7 @@ export async function installManagedConnector(
     progress("Starting Agent Connector service");
     await requireSuccessful(installPath, ["install-managed"], {
       timeoutMs: 120_000,
+      ...(process.platform === "win32" ? { environment } : {}),
       input: `${JSON.stringify({
         serverUrl: `http://127.0.0.1:${config.appPort}`,
         connectorId: provisioned.connectorId,
@@ -257,7 +288,11 @@ export async function installManagedConnector(
     if (installed || hadPrevious)
       progress(hadPrevious ? "Restoring previous Agent Connector binary" : "Stopping unsuccessful Agent Connector installation");
     if (installed) {
-      if (process.platform === "darwin") {
+      if (process.platform === "win32") {
+        // Never overwrite an executable until its task has stopped. Keep the
+        // backup available if graceful shutdown fails during recovery.
+        await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
+      } else if (process.platform === "darwin") {
         await runCommand("launchctl", ["bootout", `gui/${process.getuid!()}/com.overtchat.connector`], { timeoutMs: 20_000 }).catch(() => null);
       } else {
         await runCommand("systemctl", ["--user", "stop", "overtchat-connector.service"], { timeoutMs: 20_000 }).catch(() => null);
@@ -265,12 +300,19 @@ export async function installManagedConnector(
       await rm(installPath, { force: true });
     }
     if (hadPrevious) {
-      await rename(backupPath, installPath).catch(() => {});
-      if (process.platform === "darwin") {
-        await runCommand(installPath, ["service-install"], { timeoutMs: 120_000 }).catch(() => null);
+      await rename(backupPath, installPath).catch((recoveryError) => {
+        throw new AggregateError([error, recoveryError], `Agent Connector update failed. The previous binary is retained at ${backupPath}.`);
+      });
+      if (process.platform === "darwin" || process.platform === "win32") {
+        await runCommand(installPath, ["service-install"], { ...(process.platform === "win32" ? { environment } : {}), timeoutMs: 120_000 }).catch(() => null);
       } else {
         await runCommand("systemctl", ["--user", "restart", "overtchat-connector.service"], { timeoutMs: 120_000 }).catch(() => null);
       }
+    }
+    if (previousStopped && !hadPrevious && !installed) {
+      // A filesystem failure after graceful stop must not leave a healthy
+      // previous installation disabled when no replacement was committed.
+      await runCommand(installPath, ["service-install"], { environment, timeoutMs: 120_000 }).catch(() => null);
     }
     throw new Error(`${failedPhase}: ${installationMessage(error)}`, { cause: error });
   } finally {
@@ -280,7 +322,10 @@ export async function installManagedConnector(
 
 async function captureConnectorDiagnostics(): Promise<void> {
   try {
-    const result = process.platform === "darwin"
+    const result = process.platform === "win32"
+      ? { stdout: (await Promise.all(["connector.log", "connector.error.log"].map(async (file) =>
+          (await readFile(path.join(windowsConnectorLogDirectory(), file), "utf8").catch(() => "")).split(/\r?\n/u).slice(-20).join("\n")))).join("\n"), stderr: "" }
+      : process.platform === "darwin"
       ? await runCommand("tail", ["-n", "20", ...["connector.log", "connector.error.log"].map(file =>
           path.join(os.homedir(), "Library", "Logs", "OvertChat", file))], { timeoutMs: 5_000 })
       : await runCommand("journalctl", ["--user", "-u", "overtchat-connector.service", "--no-pager", "-n", "20"], { timeoutMs: 5_000 });

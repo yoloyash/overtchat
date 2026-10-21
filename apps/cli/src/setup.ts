@@ -37,7 +37,7 @@ import {
 } from "./docker.js";
 import { primaryLanAddress } from "./network.js";
 import { runtimePaths } from "./paths.js";
-import { requireSuccessful } from "./process.js";
+import { commandExists, requireSuccessful } from "./process.js";
 import {
   kokoroGpuVariant,
   promptInstallationConfig,
@@ -320,9 +320,10 @@ export async function setup(
   options: SetupOptions,
   productionManifest?: ReleaseManifest,
 ): Promise<void> {
-  if (process.platform !== "linux" && process.platform !== "darwin") {
-    throw new Error("The managed OvertChat installer supports Linux and macOS.");
+  if (process.platform !== "linux" && process.platform !== "darwin" && process.platform !== "win32") {
+    throw new Error("The managed OvertChat installer supports Linux, macOS, and Windows.");
   }
+  if (process.platform === "win32" && process.arch !== "x64") throw new Error("Managed OvertChat for Windows requires x64.");
   const sourceDirectory = path.resolve(
     process.env.OVERTCHAT_SOURCE_DIR || process.env.INIT_CWD || process.cwd(),
   );
@@ -334,7 +335,7 @@ export async function setup(
   }
   let docker = await detectDockerCommand();
   if (!docker) {
-    if (process.platform === "darwin") await installDockerEngine();
+    if (process.platform === "darwin" || process.platform === "win32") await installDockerEngine();
     if (options.defaults) {
       throw new Error("Docker Engine was not found.");
     }
@@ -443,8 +444,9 @@ export async function setup(
     config.stt.provider === "bundled" &&
     (config.stt.accelerator === "auto" || config.stt.accelerator === "gpu");
   if (
+    !options.dryRun &&
     (ttsUsesGpu || sttUsesGpu) &&
-    !(await nvidiaContainerRuntimeAvailable(docker))
+    !(await nvidiaContainerRuntimeAvailable(docker, config.appImage))
   ) {
     if (options.defaults) {
       if (ttsUsesGpu) {
@@ -458,6 +460,8 @@ export async function setup(
       if (sttUsesGpu) {
         config.stt = { ...config.stt, accelerator: "cpu", gpuUuid: undefined };
       }
+    } else if (process.platform === "win32") {
+      throw new Error("Docker Desktop could not access the NVIDIA GPU. Update the Windows NVIDIA driver and WSL (wsl --update), enable Docker Desktop's WSL 2 engine, and retry. You can also rerun setup and select CPU speech.");
     } else {
       const installToolkit = await confirm({
         message:
@@ -583,18 +587,20 @@ export async function setup(
     }
     if (config.agents.installed) {
       preparation.message("Building Agent Connections from this worktree");
+      const nativeWindows = process.platform === "win32";
+      const connectorBinary = path.join(sourceDirectory, "apps", "connector", "dist",
+        nativeWindows ? "overtchat-connector.exe" : "overtchat-connector.mjs");
+      if (nativeWindows && !(await commandExists("bun"))) {
+        throw new Error("Windows development setup requires Bun to compile the native Host Connector. Install Bun and retry.");
+      }
       await requireSuccessful(
-        "npm",
-        ["run", "build", "-w", "apps/connector", "--"],
+        nativeWindows ? "bun" : "npm",
+        nativeWindows
+          ? ["build", "apps/connector/src/cli.ts", "--compile", "--outfile", connectorBinary]
+          : ["run", "build", "-w", "apps/connector", "--"],
         { cwd: sourceDirectory, inherit: true },
       );
-      process.env.OVERTCHAT_CONNECTOR_BINARY = path.join(
-        sourceDirectory,
-        "apps",
-        "connector",
-        "dist",
-        "overtchat-connector.mjs",
-      );
+      process.env.OVERTCHAT_CONNECTOR_BINARY = connectorBinary;
     }
     preparation.message("Downloading the selected service images");
     await requireDocker(

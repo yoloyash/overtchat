@@ -7,6 +7,7 @@ import { installationReport } from "./management.js";
 import { runtimePaths } from "./paths.js";
 import { requireSuccessful } from "./process.js";
 import {
+  cleanupWindowsCliBackups,
   latestReleaseManifest,
   updateCliIfNeeded,
 } from "./release.js";
@@ -132,6 +133,7 @@ export function parseArgs(argv: string[]) {
   return { command, help, flags, tail, service };
 }
 export async function main(argv = process.argv.slice(2)): Promise<void> {
+  await cleanupWindowsCliBackups();
   const parsed = parseArgs(argv);
   const { command, flags, help } = parsed;
   if (help) {
