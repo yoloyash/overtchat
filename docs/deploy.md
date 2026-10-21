@@ -84,6 +84,11 @@ The installer verifies the pinned release’s SHA-256 checksum, installs
 user PATH. Reopen existing terminals to pick up the PATH change. Windows ARM64
 and Windows Server/service-account deployments are not supported.
 
+The initial Windows manager and connector binaries are unsigned. SHA-256
+verification checks the downloaded release bytes; it does not provide a Windows
+publisher signature. Smart App Control or organizational application policies
+may block these binaries. Do not disable those protections to install OvertChat.
+
 The manager controls the same Linux containers as other platforms. Configuration,
 secrets, and installation logs live in `%LOCALAPPDATA%\OvertChat\config`; managed
 Compose files live in `%LOCALAPPDATA%\OvertChat\stack`. Keep the database in the

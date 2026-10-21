@@ -74,8 +74,40 @@ previous binary. Recovery now skips replacement shutdown until service startup
 has been attempted. If a started replacement cannot stop, the error preserves
 both failures and identifies the retained backup. The CLI suite passes 265 tests,
 including simulated partial-copy failure and failed-shutdown recovery; CLI lint,
-typecheck, and build also pass. These regression checks use mocked Windows
-process/filesystem failures and do not add physical-machine qualification.
+typecheck, and build also pass.
+
+Follow-up physical qualification used the downloaded GitHub Actions artifacts
+from commit `c999de5`, with hashes checked again on the Windows PC:
+
+- CLI: `cd93201443079717753581f256b5f0499bdec4f11dae26e6e7337a3b38f4e523`.
+- Connector: `d64fb238f6646eff8074a87d2a32766c085cf0f56d4a982c033a4fd9d8eaaebd`.
+- The real PowerShell installer passed against the CI CLI artifact, and that
+  artifact completed managed update through a limited interactive task.
+- The checked-in rollback smoke used the CI connector, real NTFS operations,
+  and real scheduled tasks. Injected partial-copy and provisioning failures
+  restored the original executable and credentials and restarted the task. The
+  partial-copy check failed against the pre-fix source, confirming regression
+  coverage. Download/provisioning fault injection is not public-release testing.
+- The CI connector passed install/start/graceful-stop/journal-reopen/restart/
+  uninstall and oversized-log rotation under its expected executable name.
+- All 64 Windows connector tests passed with file parallelism disabled. Hosted
+  CI had timed out in journal migration and native PowerShell helper startup;
+  the workflow now serializes these integration suites without raising their
+  timeouts or removing assertions. Final hosted status is on the PR.
+- Managed GPU Parakeet STT and realtime voice images were provisioned on the
+  3090 Ti. Authenticated multipart transcription passed. The shared voice client
+  sent generated PCM over the app's WebSocket route: real GPU STT, the real LAN
+  vLLM model, and GPU Kokoro returned 89,088 PCM bytes and persisted both turns.
+  This validates backend transport and speech, not a physical microphone/speaker.
+  An initial test requested an unsupported reasoning setting; the model's default
+  setting passed. No product change was needed for that test error.
+- Authenticated access passed through the Windows Tailscale address and through
+  private Tailscale Serve HTTPS on port 443, including TLS certificate validation.
+  Managed route creation/removal preserved pre-existing Serve configuration. A
+  temporary port 18443 was unreachable on this tailnet; port 443 passed.
+- LAN browser login and both prior local/SSH agent conversations remained intact
+  after the managed update. The test installation retains the added speech
+  services; disposable tasks and the Tailscale qualification route were removed.
 
 This validates a signed-in Windows desktop deployment, not an unattended Windows
 system service. Sleep suspends availability. Windows ARM64 and Server are outside
@@ -84,11 +116,11 @@ Native agent helpers require Node.js 22 or newer; provider CLIs and authenticati
 remain the user's installation.
 
 Hosted PR checks are tracked on [PR #431](https://github.com/yoloyash/overtchat/pull/431).
-Public GitHub downloads, release promotion, and download-time Windows
-reputation/signing behavior have not been qualified: no release has been published. STT,
-realtime voice calls, Cloud/Tailscale access, and every individual provider were
-not requalified on this Windows host. CPU/GPU TTS, LAN access, and OMP local/SSH
-were exercised with real services. Existing model credentials were never printed.
+Public GitHub release downloads, release promotion, and download-time Windows
+reputation behavior have not been qualified: no release has been published.
+Authenticode inspection confirms the candidate binaries are unsigned. OvertChat
+Cloud enrollment, CPU STT, and providers other than OMP were not requalified on
+this Windows host. Existing model credentials were never printed.
 
 The test backend remains running on the PC in
 `%USERPROFILE%\overtchat-windows-test\data with spaces\OvertChat`.
