@@ -30,10 +30,14 @@ try {
   $env:OVERTCHAT_BIN_DIR=Join-Path $root 'bin with spaces'
   & $Installer -NoSetup
   $installed=Join-Path $env:OVERTCHAT_BIN_DIR 'overtchat.exe'
+  # Windows PowerShell expands short (8.3) directory names in GetFullPath.
+  # Hosted runners can supply TEMP using that short form; compare the
+  # canonical installation directory that the installer adds to PATH.
+  $expectedBin=[IO.Path]::GetFullPath($env:OVERTCHAT_BIN_DIR)
   if ((Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash -ne $fixtureHash) { throw 'Installed bytes differ' }
-  if (!(($env:PATH -split ';') -contains $env:OVERTCHAT_BIN_DIR)) { throw 'Current PATH was not updated' }
+  if (!(($env:PATH -split ';') -contains $expectedBin)) { throw 'Current PATH was not updated' }
   & $Installer -NoSetup
-  $entries=@([Environment]::GetEnvironmentVariable('Path','User') -split ';' | Where-Object { $_ -eq $env:OVERTCHAT_BIN_DIR })
+  $entries=@([Environment]::GetEnvironmentVariable('Path','User') -split ';' | Where-Object { $_ -eq $expectedBin })
   if ($entries.Count -ne 1) { throw 'Repeated installation duplicated PATH' }
   $corrupt=$true
   $rejected=$false

@@ -62,6 +62,9 @@ publishing an unreleased artifact.
 - Static Windows setup page checked at desktop and 390px mobile widths.
 - Apple speech bundle source matches; gzip OS header normalized so the existing
   generated artifact verifies on Mac and Windows as well as Linux.
+- Full root test suite passed after updating the web connector-version fixtures.
+  The installer smoke also passed with both long and Windows 8.3 temporary paths;
+  its PATH assertions compare the installer's canonical directory.
 
 ## Evidence boundaries
 
@@ -71,8 +74,9 @@ the supported target. Docker Desktop startup must be enabled for sign-in recover
 Native agent helpers require Node.js 22 or newer; provider CLIs and authentication
 remain the user's installation.
 
-Public GitHub downloads, release promotion, hosted CI, and download-time Windows
-reputation/signing behavior have not run: no release has been published. STT,
+Hosted PR checks are tracked on [PR #431](https://github.com/yoloyash/overtchat/pull/431).
+Public GitHub downloads, release promotion, and download-time Windows
+reputation/signing behavior have not been qualified: no release has been published. STT,
 realtime voice calls, Cloud/Tailscale access, and every individual provider were
 not requalified on this Windows host. CPU/GPU TTS, LAN access, and OMP local/SSH
 were exercised with real services. Existing model credentials were never printed.
