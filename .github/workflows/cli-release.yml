@@ -14,6 +14,7 @@ on:
       - "apps/site/public/install.ps1"
       - ".github/scripts/smoke-cli-installer-windows.ps1"
       - ".github/scripts/smoke-cli-logs-windows.ps1"
+      - ".github/scripts/smoke-connector-rollback-windows.mjs"
       - "apps/site/public/install-manifest.json"
       - "package.json"
       - "package-lock.json"

@@ -103,7 +103,16 @@ On a signed-in Windows 11 PC with Docker Desktop/WSL 2, also run:
 ```powershell
 .github/scripts/smoke-cli-installer-windows.ps1 -Binary .\overtchat.exe -Installer apps/site/public/install.ps1
 .github/scripts/smoke-connector-service-windows.ps1 -Binary .\overtchat-connector.exe
+node --import tsx .github/scripts/smoke-connector-rollback-windows.mjs .\overtchat-connector.exe
 ```
+
+The rollback check requires the repository's npm dependencies and Node 22. It
+uses an isolated installation, real NTFS files and a real interactive scheduled
+task, with injected copy/provisioning failures. It verifies restoration of the
+previous executable, unchanged credentials, and a restarted connector, then
+removes its task and temporary files. Use the downloaded CI/release candidate
+binary for these checks and record its SHA-256; local source tests alone do not
+qualify a release artifact.
 
 Use a disposable managed installation for actual setup/update, browser login from
 another LAN device, native and SSH agent tool requests, connector restart and
