@@ -1120,6 +1120,13 @@ output burst, and records 20 local input-to-render samples while synthetic agent
 responses are enqueued at about 1.3 MB/s. The broad 500 ms p95 assertion detects
 queueing regressions; retain the JSON attachment for actual timings.
 
+The UI checks also cover expand/restore without losing shell state, terminal
+search and keyboard focus, case-sensitive matching, context-menu selection,
+URL activation, and adding selected output to an existing unsent chat draft.
+Light/dark screenshots are retained with the test artifacts. Run the optional
+Windows SSH variant above as well as the Electron variant when changing
+terminal input, menus, fonts or sizing.
+
 The internal relay port is captured at build time alongside the Next.js rewrite.
 Set `OVERTCHAT_TERMINAL_RELAY_PORT` before both build and startup when running
 multiple local servers; changing it only after a build does not move the relay.

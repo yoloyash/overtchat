@@ -468,6 +468,21 @@ The native mobile terminal UI is not supported.
 Some Windows OpenSSH versions report exit code 0 for interactive sessions even
 when the shell fails; consult the terminal's error output in that case.
 
+The toolbar identifies the host and offers Find, Expand/Restore, and Close.
+Expand keeps the same shell and restores the previous panel height. Stop and
+Restart are in the terminal actions menu. Right-click the terminal for Copy,
+Paste, Select all, Find, or Add to chat. Add to chat appends selected output to
+the current draft for review; it never sends a message automatically.
+
+Use Command-F on macOS or Ctrl-Shift-F on Windows/Linux to search terminal
+output. Enter and Shift-Enter move between matches; Escape returns focus to the
+shell. Search covers the output retained in the current view, highlights up to
+1,000 matches, and supports case-sensitive matching. Command-C on macOS or
+Ctrl-Shift-C on Windows/Linux copies selected text; Ctrl-C retains its shell
+interrupt behavior. If the browser denies clipboard access, use the system
+copy/paste shortcuts. Web URLs open in the browser; remote `localhost` URLs
+are not automatically forwarded through SSH.
+
 Closing the panel, refreshing the page, or briefly losing the connection leaves
 the shell running. Stop terminates it; Restart creates a fresh shell. Stopping a
 workspace or connection also terminates its shells. Shells are not durable across

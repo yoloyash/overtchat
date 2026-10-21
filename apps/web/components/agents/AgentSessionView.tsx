@@ -62,6 +62,7 @@ import { motionClasses } from "@/lib/motion";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
+import { terminalOutputQuote } from "./terminal-presentation";
 import {
   AgentInteractionDialog,
   AgentSessionStatsDialog,
@@ -254,6 +255,7 @@ export function AgentSessionView({
   workspaceName,
   workspacePath,
   initialSessionName,
+  hostLabel,
 }: {
   sessionId: string;
   provider: AgentProviderId;
@@ -261,6 +263,7 @@ export function AgentSessionView({
   workspaceName: string;
   workspacePath: string;
   initialSessionName: string;
+  hostLabel: string;
 }) {
   const providerLabel = agentProviderMetadata(provider).label;
   const navigate = useNavigate();
@@ -288,6 +291,10 @@ export function AgentSessionView({
   const [sessionUsageOpen, setSessionUsageOpen] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
+  const [terminalExpanded, setTerminalExpanded] = useState(false);
+  const [terminalDraft, setTerminalDraft] = useState<{ sessionId: string; text: string; revision: number } | null>(null);
+  const consumeTerminalDraft = useCallback(() => setTerminalDraft(null), []);
+  const terminalDraftRevision = useRef(0);
   const [restoredDraft, setRestoredDraft] = useState<{
     revision: number;
     text: string;
@@ -776,6 +783,7 @@ export function AgentSessionView({
             }}
           />
 
+          <div className="flex min-h-0 flex-1 flex-col" inert={terminalOpen && terminalExpanded}>
           {readOnly && (
             <section
               aria-label={`Read-only ${providerLabel} session`}
@@ -883,6 +891,8 @@ export function AgentSessionView({
               />
               <AgentComposer
                 key={sessionId}
+                appendedDraft={terminalDraft?.sessionId === sessionId ? terminalDraft : null}
+                onAppendedDraftConsumed={consumeTerminalDraft}
                 providerLabel={providerLabel}
                 commands={snapshot.commands}
                 queuedMessages={snapshot.queuedMessages}
@@ -974,11 +984,12 @@ export function AgentSessionView({
             </div>
           </div>
 
+          </div>
           {(terminalOpen || openedTerminalSession === sessionId) && (
             <div
               data-testid="agent-terminal-pane"
-              style={{ height: `${terminalHeight}px` }}
-              className={cn("relative shrink-0 border-t bg-background", !terminalOpen && "hidden")}
+              style={terminalExpanded ? undefined : { height: `${terminalHeight}px` }}
+              className={cn("shrink-0 border-t bg-background", terminalExpanded ? "absolute inset-x-0 top-12 bottom-0 z-20" : "relative", !terminalOpen && "hidden")}
             >
               <div
                 role="separator"
@@ -1002,6 +1013,7 @@ export function AgentSessionView({
                 className={cn(
                   "group absolute inset-x-0 top-0 z-10 h-2 -translate-y-1/2 touch-none cursor-row-resize outline-none select-none",
                   resizingTerminal && "cursor-row-resize",
+                  terminalExpanded && "hidden",
                 )}
               >
                 <span
@@ -1013,7 +1025,16 @@ export function AgentSessionView({
               </div>
               <Suspense fallback={<div className="p-3 text-xs text-muted-foreground">Opening terminal…</div>}>
               <AgentTerminalPane
+                key={sessionId}
                 sessionId={sessionId}
+                hostLabel={hostLabel}
+                workspacePath={workspacePath}
+                expanded={terminalExpanded}
+                onToggleExpanded={() => setTerminalExpanded(!terminalExpanded)}
+                onAddToChat={composerDisabled ? undefined : (selection) => {
+                  setTerminalExpanded(false);
+                  setTerminalDraft({ sessionId, revision: ++terminalDraftRevision.current, text: terminalOutputQuote(selection) });
+                }}
                 active={terminalOpen}
                 onClose={() => { setOpenedTerminalSession(sessionId); setTerminalOpen(false); }}
               />

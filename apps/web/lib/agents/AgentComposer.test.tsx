@@ -82,6 +82,21 @@ function button(label: string) {
   return container.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
 }
 
+it("appends terminal output once without replacing the current draft or sending it", async () => {
+  await render();
+  await act(async () => mocks.onResult("Explain this error"));
+  const consumed = vi.fn();
+  const appendedDraft = { revision: 1, text: "Terminal output:\n> error\n\n" };
+  await render({ appendedDraft, onAppendedDraftConsumed: consumed });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Explain this error\n\nTerminal output:\n> error\n\n");
+  expect(consumed).toHaveBeenCalledOnce();
+  await render({ appendedDraft, onAppendedDraftConsumed: consumed });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  expect(consumed).toHaveBeenCalledOnce();
+  expect(mocks.onSubmit).not.toHaveBeenCalled();
+});
+
 it("stops playback before starting the microphone", async () => {
   await render();
   await act(async () => button("Dictate").click());
