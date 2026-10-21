@@ -1,3 +1,5 @@
+import { BinaryUpdate } from "./binary-update.js";
+import { ProcessLock } from "./process-lock.js";
 import { releaseAsset } from "./platform.js";
 import { executableName, installationBinDirectory, runtimePaths } from "./paths.js";
 import { runPowerShell } from "./windows.js";
@@ -8,7 +10,6 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -114,6 +115,7 @@ async function provisionConnector(
 async function waitForConnector(
   config: InstallationConfig,
   managementSecret: string,
+  expected: { connectorId: string; version: string },
 ): Promise<void> {
   const deadline = Date.now() + 45_000;
   while (Date.now() < deadline) {
@@ -126,9 +128,9 @@ async function waitForConnector(
     ).catch(() => null);
     if (response?.ok) {
       const body = (await response.json()) as {
-        connector?: { online?: boolean } | null;
+        connector?: { id?: string; version?: string; online?: boolean } | null;
       };
-      if (body.connector?.online) return;
+      if (body.connector?.online && body.connector.id === expected.connectorId && body.connector.version === expected.version) return;
     }
     await new Promise((resolve) => setTimeout(resolve, 1_500));
   }
@@ -206,10 +208,43 @@ export function windowsConnectorLogDirectory(): string {
   return path.join(path.dirname(managedConnectorEnvironment().OVERTCHAT_CONNECTOR_CONFIG!), "windows-service");
 }
 
+async function savedConnectorCredentials(): Promise<{ connectorId: string; token: string } | null> {
+  const file = managedConnectorEnvironment().OVERTCHAT_CONNECTOR_CONFIG ||
+    path.join(os.homedir(), ".config", "overtchat", "connector.json");
+  let raw: string;
+  try { raw = await readFile(file, "utf8"); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  // Never rotate a working server credential just to upgrade an executable.
+  // Refuse malformed existing state rather than silently replacing pairing.
+  let value: { connectorId?: string; token?: string };
+  try { value = JSON.parse(raw); }
+  catch { throw new Error(`Invalid connector configuration at ${file}. Restore its backup before retrying.`); }
+  if (!value || typeof value.connectorId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/u.test(value.connectorId) ||
+      typeof value.token !== "string" || !value.token.startsWith(`oct_${value.connectorId}.`))
+    throw new Error(`Invalid connector configuration at ${file}. Restore its backup before retrying.`);
+  protectInstallationSecrets(value.token);
+  return { connectorId: value.connectorId, token: value.token };
+}
+
 export async function installManagedConnector(
   config: InstallationConfig,
   managementSecret: string,
   options: ConnectorInstallOptions = {},
+): Promise<void> {
+  const installPath = path.join(installationBinDirectory(), executableName("overtchat-connector"));
+  const lock = await ProcessLock.acquire(`${installPath}.update.lock`);
+  try { await installConnectorLocked(installPath, config, managementSecret, options); }
+  finally { await lock.release(); }
+}
+
+async function installConnectorLocked(
+  installPath: string,
+  config: InstallationConfig,
+  managementSecret: string,
+  options: ConnectorInstallOptions,
 ): Promise<void> {
   protectInstallationSecrets(managementSecret);
   logInstallation(`Requested Agent Connector version: ${config.connectorVersion}`);
@@ -219,116 +254,86 @@ export async function installManagedConnector(
     logInstallation(message);
     options.onProgress?.(message);
   };
-  let staged: Awaited<ReturnType<typeof stageConnectorBinary>>;
+  const environment = managedConnectorEnvironment();
+  const transaction = new BinaryUpdate(installPath);
+  const restartPrevious = async () => {
+    if (process.platform === "linux") {
+      await requireSuccessful("systemctl", ["--user", "restart", "overtchat-connector.service"], { timeoutMs: 120_000 });
+    } else await requireSuccessful(installPath, ["service-install"], { environment, timeoutMs: 120_000 });
+    const credentials = await savedConnectorCredentials();
+    if (!credentials) throw new Error("The previous connector has no saved pairing to recover.");
+    const version = (await requireSuccessful(installPath, ["version"], { timeoutMs: 10_000 })).stdout.trim();
+    await waitForConnector(config, managementSecret, { connectorId: credentials.connectorId, version });
+  };
+  const recover = async () => {
+    if (transaction.committed) { await transaction.finish(); return; }
+    if (process.platform === "win32") {
+      // The target can be absent between the two Windows renames. The backup
+      // can still issue the normal graceful-stop protocol for this config.
+      const executable = await readFile(installPath).then(() => installPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return transaction.hadPrevious ? transaction.backup : null;
+        throw error;
+      });
+      if (executable) await requireSuccessful(executable, ["service-stop"], { environment, timeoutMs: 60_000 });
+    } else if (process.platform === "darwin") {
+      await runCommand("launchctl", ["bootout", `gui/${process.getuid!()}/com.overtchat.connector`], { timeoutMs: 20_000 });
+    } else await runCommand("systemctl", ["--user", "stop", "overtchat-connector.service"], { timeoutMs: 20_000 });
+    await transaction.restore();
+    if (transaction.hadPrevious) await restartPrevious();
+    await transaction.finish();
+  };
+  let staged: Awaited<ReturnType<typeof stageConnectorBinary>> | undefined;
   try {
     progress("Checking Agent Connector service support");
     await checkManagedConnectorPrerequisites();
+    if (await transaction.pending()) {
+      progress("Recovering interrupted Agent Connector update");
+      await recover();
+    }
     if (process.platform === "linux") {
       progress("Configuring Agent Connector background permissions");
       await ensureUserLinger(options);
     }
+    const saved = await savedConnectorCredentials();
     progress("Downloading Agent Connector");
     staged = await stageConnectorBinary(config.connectorVersion, progress);
-  } catch (error) {
-    throw new Error(`${phase}: ${installationMessage(error)}`, { cause: error });
-  }
-  const installDirectory = installationBinDirectory();
-  const installPath = path.join(installDirectory, executableName("overtchat-connector"));
-  const environment = managedConnectorEnvironment();
-  const backupPath = `${installPath}.previous`;
-  let hadPrevious = false;
-  let installed = false;
-  let previousStopped = false;
-  let replacementServiceAttempted = false;
-  try {
     progress("Checking Agent Connector executable");
     const preflight = await requireSuccessful(staged.binary, ["version"], { timeoutMs: 10_000 });
-    if (preflight.stdout.trim() !== config.connectorVersion) {
-      throw new Error(
-        "The downloaded Agent Connector failed its version check.",
-      );
+    if (preflight.stdout.trim() !== config.connectorVersion)
+      throw new Error("The downloaded Agent Connector failed its version check.");
+    await mkdir(path.dirname(installPath), { recursive: true, mode: 0o700 });
+    await transaction.prepare(staged.binary);
+    if (process.platform === "win32" && transaction.hadPrevious) {
+      progress("Stopping the previous Agent Connector");
+      await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
     }
-    await mkdir(installDirectory, { recursive: true, mode: 0o700 });
-    try {
-      await readFile(installPath);
-      if (process.platform === "win32") {
-        progress("Stopping the previous Agent Connector");
-        await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
-        previousStopped = true;
-      }
-      await rm(backupPath, { force: true });
-      await rename(installPath, backupPath);
-      hadPrevious = true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    installed = true;
-    await copyFile(staged.binary, installPath);
-    await chmod(installPath, 0o755);
+    await transaction.replace();
     progress("Configuring Agent Connector connection");
-    const provisioned = await provisionConnector(config, managementSecret);
+    const provisioned = saved ?? await provisionConnector(config, managementSecret);
     protectInstallationSecrets(provisioned.token);
     progress("Starting Agent Connector service");
-    replacementServiceAttempted = true;
     await requireSuccessful(installPath, ["install-managed"], {
-      timeoutMs: 120_000,
-      ...(process.platform === "win32" ? { environment } : {}),
-      input: `${JSON.stringify({
-        serverUrl: `http://127.0.0.1:${config.appPort}`,
-        connectorId: provisioned.connectorId,
-        token: provisioned.token,
-      })}\n`,
+      timeoutMs: 120_000, environment,
+      input: `${JSON.stringify({ serverUrl: `http://127.0.0.1:${config.appPort}`, ...provisioned })}\n`,
     });
     progress("Waiting for Agent Connector connection");
-    await waitForConnector(config, managementSecret);
+    await waitForConnector(config, managementSecret, { connectorId: provisioned.connectorId, version: config.connectorVersion });
+    await transaction.commit();
     logInstallation("Agent Connector connected");
-    await rm(backupPath, { force: true });
   } catch (error) {
     const failedPhase = phase;
-    // Capture diagnostics before stopping the failed service or restoring a binary.
-    if (installed) await captureConnectorDiagnostics();
-    if (installed || hadPrevious)
-      progress(hadPrevious ? "Restoring previous Agent Connector binary" : "Stopping unsuccessful Agent Connector installation");
-    if (installed) {
-      if (process.platform === "win32") {
-        // Never overwrite an executable until its task has stopped. Keep the
-        // backup available if graceful shutdown fails during recovery.
-        // A failed copy can leave an incomplete executable. The old service
-        // is already stopped, so only execute the replacement if startup was
-        // attempted; otherwise remove the partial file and restore directly.
-        if (replacementServiceAttempted) {
-          try {
-            await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
-          } catch (recoveryError) {
-            throw new AggregateError([error, recoveryError],
-              `${failedPhase}: ${installationMessage(error)}. Recovery could not stop the replacement: ${installationMessage(recoveryError)}. ${hadPrevious ? `The previous binary is retained at ${backupPath}. ` : ""}Inspect overtchat logs connector before retrying setup or update.`);
-          }
-        }
-      } else if (process.platform === "darwin") {
-        await runCommand("launchctl", ["bootout", `gui/${process.getuid!()}/com.overtchat.connector`], { timeoutMs: 20_000 }).catch(() => null);
-      } else {
-        await runCommand("systemctl", ["--user", "stop", "overtchat-connector.service"], { timeoutMs: 20_000 }).catch(() => null);
+    if (await transaction.pending()) {
+      await captureConnectorDiagnostics();
+      progress("Recovering Agent Connector installation");
+      try { await recover(); }
+      catch (recoveryError) {
+        throw new AggregateError([error, recoveryError],
+          `${failedPhase}: ${installationMessage(error)}. Recovery failed: ${installationMessage(recoveryError)}. Recovery state is retained at ${transaction.journal}; rerun overtchat setup or update to retry.`);
       }
-      await rm(installPath, { force: true });
-    }
-    if (hadPrevious) {
-      await rename(backupPath, installPath).catch((recoveryError) => {
-        throw new AggregateError([error, recoveryError], `Agent Connector update failed. The previous binary is retained at ${backupPath}.`);
-      });
-      if (process.platform === "darwin" || process.platform === "win32") {
-        await runCommand(installPath, ["service-install"], { ...(process.platform === "win32" ? { environment } : {}), timeoutMs: 120_000 }).catch(() => null);
-      } else {
-        await runCommand("systemctl", ["--user", "restart", "overtchat-connector.service"], { timeoutMs: 120_000 }).catch(() => null);
-      }
-    }
-    if (previousStopped && !hadPrevious && !installed) {
-      // A filesystem failure after graceful stop must not leave a healthy
-      // previous installation disabled when no replacement was committed.
-      await runCommand(installPath, ["service-install"], { environment, timeoutMs: 120_000 }).catch(() => null);
     }
     throw new Error(`${failedPhase}: ${installationMessage(error)}`, { cause: error });
   } finally {
-    await rm(staged.temporaryDirectory, { recursive: true, force: true });
+    if (staged) await rm(staged.temporaryDirectory, { recursive: true, force: true });
   }
 }
 

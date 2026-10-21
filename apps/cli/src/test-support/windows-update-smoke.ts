@@ -25,7 +25,7 @@ corrupt = false;
 assert.equal(await updateCliIfNeeded(manifest), process.execPath);
 assert.deepEqual(await readFile(process.execPath), candidate);
 const backups = (await readdir(path.dirname(process.execPath)))
-  .filter((name) => name.startsWith("overtchat.exe.previous-"));
+  .filter((name) => name === "overtchat.exe.previous");
 assert.equal(backups.length, 1);
 assert.deepEqual(await readFile(path.join(path.dirname(process.execPath), backups[0]!)), before);
 const next = await runCommand(process.execPath, ["version"]);

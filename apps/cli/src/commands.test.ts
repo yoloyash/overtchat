@@ -7,6 +7,7 @@ import { setup } from "./setup.js";
 import { status } from "./status.js";
 import { resetPassword } from "./reset-password.js";
 import { resetTwoFactor } from "./reset-two-factor.js";
+vi.mock("./installation-lock.js", () => ({ withInstallationLock: (run: () => Promise<unknown>) => run() }));
 vi.mock("./install-log.js", async (original) => ({
   ...(await original<typeof import("./install-log.js")>()),
   withInstallationLog: async (_operation: string, run: () => Promise<unknown>) => run(),

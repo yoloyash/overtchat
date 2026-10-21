@@ -211,7 +211,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $actual -ne $env:VERSION) { throw 'Windows executable version check failed' }
       # These suites perform real durable disk writes and compile native
       # PowerShell helpers. Avoid competing cold starts on hosted Windows.
-      - run: npm run test -w apps/connector -- --no-file-parallelism src/windows-service.test.ts src/host-environment.test.ts src/windows-helper.test.ts src/windows-input.test.ts src/service-logging.test.ts src/journal-sqlite.test.ts src/state.test.ts src/timeline.test.ts src/client.test.ts
+      - run: npm run test -w apps/connector -- --no-file-parallelism src/windows-service.test.ts src/host-environment.test.ts src/windows-helper.test.ts src/windows-input.test.ts src/service-logging.test.ts src/journal-sqlite.test.ts src/state.test.ts src/timeline.test.ts src/client.test.ts src/config-persistence.test.ts
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: host-connector-journal-smoke

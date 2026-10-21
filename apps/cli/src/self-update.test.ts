@@ -17,7 +17,7 @@ afterEach(async () => {
   );
 });
 
-it.each(["overtchat", "overtchat-darwin-arm64"])(
+it.runIf(process.platform !== "win32").each(["overtchat", "overtchat-darwin-arm64"])(
   "updates the Mac executable %s using a verified Darwin asset",
   async (name) => {
     const directory = await mkdtemp(
@@ -55,7 +55,7 @@ it.each(["overtchat", "overtchat-darwin-arm64"])(
   },
 );
 
-it("retains the renamed Windows image until a later launch and rejects bad updates", async () => {
+it("commits a verified Windows replacement and rejects bad updates", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-win-update-"));
   directories.push(directory);
   const executable = path.join(directory, "overtchat.exe");
@@ -74,12 +74,39 @@ it("retains the renamed Windows image until a later launch and rejects bad updat
   vi.mocked(runCommand).mockResolvedValue({ exitCode: 0, stdout: "99.0.0", stderr: "" });
   await expect(updateCliIfNeeded({ cliVersion: "99.0.0" } as ReleaseManifest)).resolves.toBe(executable);
   expect(await readFile(executable, "utf8")).toBe(binary);
-  const backup = (await readdir(directory)).find((name) => name.startsWith("overtchat.exe.previous-"));
-  expect(backup).toBeDefined();
-  expect(await readFile(path.join(directory, backup!), "utf8")).toBe("previous binary");
+  // In this file-level test the old executable is not mapped by Windows;
+  // native smoke coverage separately verifies deferred cleanup of a live image.
+  await expect(readFile(`${executable}.previous`)).rejects.toMatchObject({ code: "ENOENT" });
   const unrelated = path.join(directory, "overtchat.exe.previous-do-not-delete");
   await writeFile(unrelated, "unrelated");
   await cleanupWindowsCliBackups();
   expect(await readdir(directory)).toEqual(expect.arrayContaining(["overtchat.exe", path.basename(unrelated)]));
-  await expect(readFile(path.join(directory, backup!))).rejects.toMatchObject({ code: "ENOENT" });
+
+});
+
+it("bootstraps an interrupted Windows update whose CLI entry point is missing", async () => {
+  const { BinaryUpdate } = await import("./binary-update.js");
+  const { installDownloadedCli } = await import("./release.js");
+  const { rename } = await import("node:fs/promises");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-bootstrap-recovery-"));
+  directories.push(directory);
+  const executable = path.join(directory, "overtchat.exe");
+  const candidate = path.join(directory, "downloaded.exe");
+  await writeFile(executable, "old CLI");
+  await writeFile(candidate, "verified candidate");
+  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  vi.spyOn(process, "execPath", "get").mockReturnValue(candidate);
+  vi.stubEnv("OVERTCHAT_BIN_DIR", directory);
+  try {
+    const interrupted = new BinaryUpdate(executable);
+    await interrupted.prepare(candidate);
+    await rename(executable, interrupted.backup);
+    vi.mocked(runCommand).mockImplementation(async () => {
+      expect(await readFile(executable, "utf8")).toBe("old CLI");
+      return { exitCode: 0, stdout: "0.1.0", stderr: "" };
+    });
+    await installDownloadedCli();
+    expect(await readFile(executable, "utf8")).toBe("verified candidate");
+    await expect(readFile(interrupted.journal)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally { vi.unstubAllEnvs(); }
 });

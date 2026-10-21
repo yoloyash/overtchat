@@ -44,7 +44,23 @@ try {
   try { & $Installer -NoSetup } catch { $rejected=$_.Exception.Message -like '*checksum verification*' }
   if (!$rejected) { throw 'Installer accepted a checksum mismatch' }
   if ((Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash -ne $fixtureHash) { throw 'Failed download damaged the installed executable' }
-  Write-Output 'PASS: Windows installer verifies bytes, installs in paths with spaces, preserves PATH, reinstalls, and rejects tampering without replacing the previous binary.'
+  $corrupt=$false
+  # Reproduce termination between the two Windows executable renames. The
+  # bootstrap must recover without depending on a working installed command.
+  [IO.File]::WriteAllText($installed+'.update.json', '{"format":1,"previous":true,"committed":false}')
+  Move-Item -LiteralPath $installed -Destination ($installed+'.previous')
+  & $Installer -NoSetup
+  if ((Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash -ne $fixtureHash) { throw 'Installer did not recover the missing entry point' }
+  if (Test-Path -LiteralPath ($installed+'.update.json')) { throw 'Recovery did not finish its journal' }
+  $lock=Join-Path $env:OVERTCHAT_BIN_DIR '.management.lock'
+  [IO.File]::WriteAllText($lock, (@{pid=$PID;startedAt=[DateTime]::UtcNow.ToString('o');ownerId=[Guid]::NewGuid().ToString()}|ConvertTo-Json -Compress))
+  try {
+    $rejected=$false
+    try { & $Installer -NoSetup } catch { $rejected=$true }
+    if (!$rejected) { throw 'Installer ignored a concurrent management operation' }
+    if ((Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash -ne $fixtureHash) { throw 'Concurrent attempt changed the executable' }
+  } finally { Remove-Item -LiteralPath $lock -Force }
+  Write-Output 'PASS: Windows installer verifies bytes, preserves PATH, rejects tampering/concurrent updates, and recovers a missing CLI entry point.'
 } finally {
   [Environment]::SetEnvironmentVariable('Path',$oldUserPath,'User')
   $env:PATH=$oldPath

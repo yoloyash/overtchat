@@ -382,3 +382,15 @@ it("keeps a ready installation usable when setup-link retrieval fails", async ()
   expect(note).toHaveBeenCalledWith(expect.stringContaining("Run overtchat status"), "Account setup");
   expect(await readInstallationConfig(runtimePaths())).not.toBeNull();
 });
+
+it("returns an error after persisting pending agents when setup has no terminal", async () => {
+  // Defaults are supported without a TTY. A selected connector failure must
+  // remain discoverable in state while the command reports failure to scripts.
+  const saved = { ...local(defaultInstallationConfig(null, manifest)), agents: { installed: true } };
+  await writeInstallationConfig(runtimePaths(), saved);
+  for (const stream of [process.stdin, process.stdout])
+    Object.defineProperty(stream, "isTTY", { configurable: true, value: false });
+  vi.mocked(installManagedConnector).mockRejectedValue(new Error("connector startup failed"));
+  await expect(setup({ ...options, defaults: true }, manifest)).rejects.toThrow("Agent Connections failed");
+  expect(await readInstallationConfig(runtimePaths())).toMatchObject({ agents: { installed: true, pending: true } });
+});

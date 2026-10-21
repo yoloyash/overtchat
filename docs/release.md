@@ -95,7 +95,10 @@ exposing the PowerShell installer and Windows setup instructions. Never add asse
 to old published tags to simulate a Windows release.
 
 The CLI workflow runs the PowerShell installer and running-executable updater
-smokes on Windows. The connector workflow runs native SQLite migration, forced
+smokes on Windows, including recovery of a missing CLI entry point, concurrent
+installation rejection, and killed-updater recovery before/after replacement
+and commit. The connector workflow runs atomic configuration failure tests,
+native SQLite migration, forced
 crash recovery, restart, and large-journal checks. Task Scheduler requires an
 interactive desktop user; hosted CI service accounts do not qualify logon behavior.
 On a signed-in Windows 11 PC with Docker Desktop/WSL 2, also run:
@@ -108,11 +111,16 @@ node --import tsx .github/scripts/smoke-connector-rollback-windows.mjs .\overtch
 
 The rollback check requires the repository's npm dependencies and Node 22. It
 uses an isolated installation, real NTFS files and a real interactive scheduled
-task, with injected copy/provisioning failures. It verifies restoration of the
-previous executable, unchanged credentials, and a restarted connector, then
+task, with an injected staging-copy failure and an invalid startup URL. It
+checks that a staging failure leaves the old task running, and a startup failure
+restores the previous executable, unchanged credentials, and a restarted task.
+Management readiness is a fixture in this check; separately verify a real
+backend accepts the unchanged credential and reports the candidate version. It
 removes its task and temporary files. Use the downloaded CI/release candidate
 binary for these checks and record its SHA-256; local source tests alone do not
-qualify a release artifact.
+qualify a release artifact. The Windows installer delegates replacement to the
+verified candidate's internal `install-manager` entry point, which shares the
+normal updater's locks and recovery journal.
 
 Use a disposable managed installation for actual setup/update, browser login from
 another LAN device, native and SSH agent tool requests, connector restart and

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
+import { runUpdatedCli, withInstallationLock } from "./installation-lock.js";
 import { withInstallationLog } from "./install-log.js";
 import { CLI_VERSION } from "./constants.js";
 import { readInstallationConfig } from "./config.js";
 import { logs } from "./logs.js";
 import { installationReport } from "./management.js";
 import { runtimePaths } from "./paths.js";
-import { requireSuccessful } from "./process.js";
 import {
   cleanupWindowsCliBackups,
+  installDownloadedCli,
   latestReleaseManifest,
   updateCliIfNeeded,
 } from "./release.js";
@@ -133,9 +134,15 @@ export function parseArgs(argv: string[]) {
   return { command, help, flags, tail, service };
 }
 export async function main(argv = process.argv.slice(2)): Promise<void> {
-  await cleanupWindowsCliBackups();
+  // Bootstrap-only entry point; no server setup or credential access.
+  if (argv.length === 1 && argv[0] === "install-manager")
+    return withInstallationLock(installDownloadedCli);
   const parsed = parseArgs(argv);
   const { command, flags, help } = parsed;
+  if (!help && (command === "setup" || (command === "update" && !flags.has("--check")))) {
+    const recovered = await cleanupWindowsCliBackups();
+    if (recovered) return runUpdatedCli(recovered, argv);
+  }
   if (help) {
     console.log(usage(command));
     return;
@@ -153,7 +160,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "reset-two-factor":
       await resetTwoFactor();
       return;
-    case "setup": return withInstallationLog("setup", async () => {
+    case "setup": return withInstallationLock(() => withInstallationLog("setup", async () => {
       const options = {
         dryRun: flags.has("--dry-run"),
         defaults: flags.has("--defaults"),
@@ -166,18 +173,14 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       const manifest = await latestReleaseManifest();
       const updatedExecutable = await updateCliIfNeeded(manifest);
       if (updatedExecutable) {
-        await requireSuccessful(
-          updatedExecutable,
-          ["setup", ...argv.slice(1)],
-          { inherit: true },
-        );
+        await runUpdatedCli(updatedExecutable, ["setup", ...argv.slice(1)]);
         return;
       }
       await setup(options, manifest);
-    });
+    }));
     case "update":
       if (flags.has("--check")) await update({ check: true, json });
-      else await withInstallationLog("update", () => update());
+      else await withInstallationLock(() => withInstallationLog("update", () => update()));
       return;
     case "status":
       await status(json);

@@ -1,13 +1,12 @@
+import { BinaryUpdate } from "./binary-update.js";
+import { ProcessLock } from "./process-lock.js";
 import { releaseAsset } from "./platform.js";
-import { executableName } from "./paths.js";
-import { createHash, randomUUID } from "node:crypto";
+import { executableName, installationBinDirectory } from "./paths.js";
+import { createHash } from "node:crypto";
 import {
   chmod,
-  copyFile,
   mkdtemp,
-  readFile,
   readdir,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -220,20 +219,68 @@ function currentExecutable(): string | null {
     : null;
 }
 
-export async function cleanupWindowsCliBackups(): Promise<void> {
-  if (process.platform !== "win32") return;
+export async function cleanupWindowsCliBackups(): Promise<string | null> {
   const executable = currentExecutable();
-  if (!executable) return;
-  const directory = path.dirname(executable);
-  const prefix = `${path.basename(executable)}.previous-`;
-  for (const file of await readdir(directory)) {
-    if (!file.startsWith(prefix) || !/^[0-9a-f-]{36}$/u.test(file.slice(prefix.length))) continue;
-    // An older CLI can still be waiting for this one. It stays protected by
-    // Windows' executable lock and will be collected on a later invocation.
-    await rm(path.join(directory, file)).catch((error: NodeJS.ErrnoException) => {
-      if (!["ENOENT", "EPERM", "EBUSY", "EACCES"].includes(error.code || "")) throw error;
+  if (!executable) return null;
+  const lock = await ProcessLock.acquire(`${executable}.update.lock`);
+  try {
+    const transaction = new BinaryUpdate(executable);
+    if (await transaction.pending()) {
+      if (!transaction.committed) {
+        await transaction.restore();
+        await transaction.finish();
+        return executable;
+      }
+      await transaction.finish();
+    }
+    if (process.platform === "win32") {
+      const directory = path.dirname(executable);
+      const prefixes = [".previous-", ".abandoned-"].map(suffix => `${path.basename(executable)}${suffix}`);
+      for (const file of await readdir(directory)) {
+        const prefix = prefixes.find(prefix => file.startsWith(prefix));
+        if (!prefix || !/^[0-9a-f-]{36}$/u.test(file.slice(prefix.length))) continue;
+        await rm(path.join(directory, file)).catch((error: NodeJS.ErrnoException) => {
+          if (!["ENOENT", "EPERM", "EBUSY", "EACCES", "EFAULT"].includes(error.code || "")) throw error;
+        });
+      }
+    }
+    return null;
+  } finally { await lock.release(); }
+}
+
+// The bootstrap downloads and verifies this executable, then delegates the
+// installation to it. This also repairs a missing entry point after a killed
+// Windows self-update, using the same journal and locks as ordinary updates.
+export async function installDownloadedCli(): Promise<void> {
+  const executable = path.join(installationBinDirectory(), executableName("overtchat"));
+  if (path.resolve(executable) === path.resolve(process.execPath))
+    throw new Error("Run the installer to install the manager from a downloaded candidate.");
+  const lock = await ProcessLock.acquire(`${executable}.update.lock`);
+  const transaction = new BinaryUpdate(executable);
+  try {
+    if (await transaction.pending()) {
+      if (!transaction.committed) await transaction.restore();
+      await transaction.finish();
+      if (await transaction.pending()) throw new Error("The previous manager is still exiting. Retry the installer shortly.");
+    }
+    const installed = await runCommand(executable, ["version"]).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
     });
-  }
+    if (installed?.exitCode === 0 && /^\d+\.\d+\.\d+$/u.test(installed.stdout.trim()) &&
+        compareVersions(installed.stdout.trim(), CLI_VERSION) > 0) return;
+    await transaction.prepare(process.execPath);
+    await transaction.replace();
+    await transaction.commit();
+  } catch (error) {
+    if (await transaction.pending() && !transaction.committed) {
+      try { await transaction.restore(); await transaction.finish(); }
+      catch (recoveryError) {
+        throw new AggregateError([error, recoveryError], `Manager installation and recovery failed. Preserve ${transaction.backup} and rerun the installer.`);
+      }
+    }
+    throw error;
+  } finally { await lock.release(); }
 }
 
 export async function updateCliIfNeeded(
@@ -244,17 +291,25 @@ export async function updateCliIfNeeded(
   // Source/development runs use node, tsx, or bun. Never overwrite those.
   if (!executable) return null;
 
+  const lock = await ProcessLock.acquire(`${executable}.update.lock`);
+  try { return await updateCliLocked(manifest, executable); }
+  finally { await lock.release(); }
+}
+
+async function updateCliLocked(manifest: ReleaseManifest, executable: string): Promise<string> {
+  const transaction = new BinaryUpdate(executable);
+  if (await transaction.pending()) {
+    if (!transaction.committed) await transaction.restore();
+    await transaction.finish();
+    // A locked committed backup belongs to a still-running previous CLI.
+    if (await transaction.pending()) throw new Error("The previous manager is still exiting. Retry the update shortly.");
+  }
   const asset = releaseAsset("overtchat");
   const releaseBase = `https://github.com/${CONNECTOR_REPOSITORY}/releases/download/cli-v${manifest.cliVersion}`;
   const temporaryDirectory = await mkdtemp(
     path.join(path.dirname(executable), ".overtchat-update-"),
   );
   const replacement = path.join(temporaryDirectory, executableName("overtchat"));
-  const windows = process.platform === "win32";
-  // Windows permits renaming an executing image, but not overwriting/deleting
-  // it. Retain that image until the parent CLI exits after the new CLI finishes.
-  const backup = `${executable}.previous${windows ? `-${randomUUID()}` : ""}`;
-  let moved = false;
   try {
     const [binary, checksums] = await Promise.all([
       download(`${releaseBase}/${asset}`),
@@ -274,24 +329,19 @@ export async function updateCliIfNeeded(
     ) {
       throw new Error("The downloaded OvertChat CLI failed its startup check.");
     }
-    await rm(backup, { force: true });
-    if (windows) {
-      await rename(executable, backup);
-      moved = true;
-    } else await copyFile(executable, backup);
-    await rename(replacement, executable);
+    await transaction.prepare(replacement);
+    await transaction.replace();
+    await transaction.commit();
     return executable;
   } catch (error) {
-    if (windows && moved) {
-      await rename(backup, executable).catch((recoveryError) => {
-        throw new AggregateError([error, recoveryError], `CLI update failed. The previous executable is retained at ${backup}.`);
-      });
-    } else if (!windows && await readFile(backup).catch(() => null)) {
-      await copyFile(backup, executable).catch(() => {});
+    if (await transaction.pending() && !transaction.committed) {
+      try { await transaction.restore(); await transaction.finish(); }
+      catch (recoveryError) {
+        throw new AggregateError([error, recoveryError], `CLI update failed. Recovery state is retained at ${transaction.journal}. Rerun the installer to restore the CLI entry point, then retry.`);
+      }
     }
     throw error;
   } finally {
-    if (!windows) await rm(backup, { force: true });
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 }

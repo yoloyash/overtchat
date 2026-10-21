@@ -33,6 +33,26 @@ overtchat logs -f   # follow container logs
 overtchat reset-password # recover an account password
 ```
 
+Setup and updates serialize changes to the managed installation. If another
+operation is running, wait for it to finish and retry. Updates retain existing
+connector pairing credentials. A failed replacement restores the previous
+executable and checks that its authenticated connection returns; recovery
+failures are reported instead of being hidden.
+
+After an interrupted update, rerun the same command as the same user with the
+same directory overrides. The manager recovers its saved replacement state
+before continuing. If Windows reports that `overtchat` is missing, rerun the
+PowerShell installer; it can restore the entry point without the installed CLI.
+Preserve `.previous` binaries and `.update.json` files while recovery is pending.
+An older Windows manager can keep its backup locked until it exits; cleanup is
+retried on a later setup/update. These recover executable replacements, not
+database migrations or a full Compose deployment.
+
+Noninteractive setup/update exits with an error if selected Agent Connections
+remain pending, after saving that status and completing the working app setup.
+Inspect `overtchat status` and `overtchat logs install`, then retry setup/update.
+Interactive setup still allows explicitly finishing without Agent Connections.
+
 Voice requires both STT and TTS. Bundled Parakeet and Kokoro support native
 Apple acceleration on Apple Silicon with macOS 14 or later, and CPU or NVIDIA
 GPU containers on Linux and Windows with Docker Desktop/WSL 2. CPU containers remain available on Macs, including

@@ -12,7 +12,7 @@ import {
   writeInstallationConfig,
   writeSecretsFile,
 } from "./config.js";
-import { completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
+import { assertAgentConnectionsComplete, completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
 import { installationSpinner as spinner } from "./install-progress.js";
 import { protectInstallationSecrets } from "./install-log.js";
 import {
@@ -673,6 +673,7 @@ export async function setup(
       note("Could not retrieve the setup link. Run overtchat status to retry, or find the setup code with overtchat logs.", "Account setup");
     }
     note("overtchat status\novertchat logs --follow\novertchat update --check", "Manage OvertChat");
+    assertAgentConnectionsComplete(config, !options.defaults && !!process.stdin.isTTY && !!process.stdout.isTTY);
   } catch (error) {
     if (speechChange) {
       try {

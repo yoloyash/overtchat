@@ -1,4 +1,5 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { normalizeHostConnectorServerUrl } from "@overtchat/agent-bridge";
@@ -77,11 +78,19 @@ export async function writeConnectorConfig(
   const file = connectorConfigPath();
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   await protectWindowsDirectory(path.dirname(file));
-  await writeFile(file, `${JSON.stringify(config, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await chmod(file, 0o600);
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    const handle = await open(temporary, "wx", 0o600);
+    try {
+      await handle.writeFile(`${JSON.stringify(config, null, 2)}\n`, "utf8");
+      await handle.sync();
+    } finally { await handle.close(); }
+    await rename(temporary, file);
+    if (process.platform !== "win32") {
+      const directory = await open(path.dirname(file), "r");
+      try { await directory.sync(); } finally { await directory.close(); }
+    }
+  } finally { await rm(temporary, { force: true }); }
 }
 
 export function normalizeServerUrl(value: string): string {

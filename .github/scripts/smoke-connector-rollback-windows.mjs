@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 
 // Run with Node 22 --import tsx on a signed-in Windows desktop. The connector
 // executable, NTFS operations, and scheduled task are real. Only a partial-copy
-// error and the management HTTP response are injected, inside an isolated root.
+// error and management readiness are injected, inside an isolated root.
 assert.equal(process.platform, "win32");
 const binary = path.resolve(process.argv[2]);
 const exec = promisify(execFile);
@@ -54,29 +54,30 @@ try {
   const expectedBinary = await fs.readFile(binary);
   const expectedConfig = await fs.readFile(config);
   fs.copyFile = async (source, destination, ...args) => {
-    if (fault === "copy" && path.resolve(destination) === installed) {
+    if (fault === "copy" && path.resolve(destination) === `${installed}.next`) {
       await fs.writeFile(destination, "incomplete executable");
       throw Object.assign(new Error("Injected disk full during copy"), { code: "ENOSPC" });
     }
     return originalCopy(source, destination, ...args);
   };
   syncBuiltinESMExports();
-  globalThis.fetch = async () => {
-    assert.equal(fault, "provision", "Copy failure must happen before provisioning");
-    return new Response(JSON.stringify({ error: "Injected provisioning failure" }), { status: 503 });
+  globalThis.fetch = async (_url, options) => {
+    assert.notEqual(options?.method, "PUT", "An update must not rotate pairing credentials");
+    return Response.json({ connector: { id: "rollback_fixture", version, online: true } });
   };
   const { installManagedConnector } = await import("../../apps/cli/src/connector.ts");
-  for (fault of ["copy", "provision"]) {
+  for (fault of ["copy", "startup"]) {
     await assert.rejects(
-      installManagedConnector({ appPort: 49991, connectorVersion: version }, "fixture-management-secret"),
-      fault === "copy" ? /Injected disk full during copy/ : /Injected provisioning failure/,
+      installManagedConnector({ appPort: fault === "startup" ? 70000 : 49991, connectorVersion: version }, "fixture-management-secret"),
+      fault === "copy" ? /Injected disk full during copy/ : /Starting Agent Connector service/,
     );
     assert.deepEqual(await fs.readFile(installed), expectedBinary);
     assert.deepEqual(await fs.readFile(config), expectedConfig);
-    instance = await waitForInstance(instance.nonce);
+    if (fault === "copy") assert.equal((await waitForInstance()).nonce, instance.nonce, "Staging failure must not stop the old service");
+    else instance = await waitForInstance(instance.nonce);
     assert.equal((await invoke("version")).trim(), version);
     await assert.rejects(fs.stat(`${installed}.previous`), { code: "ENOENT" });
-    console.log(`PASS: ${fault} failure restored original executable, credentials, and running scheduled task`);
+    console.log(`PASS: ${fault} failure preserved/restored executable, credentials, and running scheduled task (readiness fixture)`);
   }
 } finally {
   fs.copyFile = originalCopy;

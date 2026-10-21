@@ -1,4 +1,4 @@
-# Windows backend qualification — 2026-10-20
+# Windows backend qualification — 2026-10-21
 
 Implementation is in the working checkout. Nothing has been published. The
 candidate manifest selects CLI **0.5.0** and connector **0.15.0**; promotion waits
@@ -66,12 +66,51 @@ publishing an unreleased artifact.
   The installer smoke also passed with both long and Windows 8.3 temporary paths;
   its PATH assertions compare the installer's canonical directory.
 
-## Evidence boundaries
+## Update recovery hardening — 2026-10-21
+
+The update audit found gaps beyond the earlier partial-copy fix. The manager now
+reuses saved pairing credentials, writes connector configuration atomically,
+serializes installation changes, and journals executable replacement before
+stopping/replacing services. Recovery checks restart exit status and authenticated
+readiness for the expected connector identity/version. Noninteractive partial
+setup/update failure persists pending state and exits nonzero.
+
+Local checks: CLI 277 tests and connector 187 tests passed, plus workspace
+lint/typecheck/build. Windows checks on `gaming-pc` used locally compiled candidate
+binaries with the release-pinned runtimes:
+
+- CLI SHA-256: `0821ef0953a8fbb31c58d44e8baea62bf9e1abdb3feff7630e694f0f659b06fd`.
+- Connector SHA-256: `9be72ffce8672f0d0fa7aef204e3d9258ce9dc1333bfd86571aeb8fc60958d16`.
+- Seven Windows updater/recovery tests passed, including four actual child-process
+  kills at prepared, backup, replacement, and committed boundaries. Two Darwin
+  filesystem tests run on Mac rather than pretending NTFS supports directory fsync.
+- Three real-file configuration tests preserved the old pairing on partial write,
+  fsync, and rename failures, then succeeded on retry.
+- The compiled CLI replaced its own running image. Bun 1.4.2 returns `EFAULT`
+  when deleting a mapped Windows executable; committed backup cleanup now defers
+  that case until a subsequent setup/update, keeping its journal.
+- The real PowerShell installer passed repeat install, spaces/PATH, tamper
+  rejection, competing-manager rejection, and recovery with `overtchat.exe`
+  missing between replacement renames.
+- The real scheduled-task rollback smoke preserved a running old connector when
+  staging failed and restored/restarted it after invalid startup configuration.
+  Its management readiness is a fixture; its executable, NTFS, and task are real.
+- Separately, a production connector update against the actual managed backend
+  preserved the pairing token and ID, matched the candidate bytes, and returned
+  authenticated online status at the expected version.
+
+These checks cover process termination and reported filesystem errors, not a
+physical power-cut durability guarantee or rollback of database migrations.
+The preceding day's artifact hashes below describe the earlier implementation;
+current-head CI artifact verification is tracked separately on the PR.
+
+## Earlier qualification — 2026-10-20
 
 Follow-up rollback audit: a failed Windows connector copy could leave a partial
 executable that the recovery path attempted to run, preventing restoration of the
-previous binary. Recovery now skips replacement shutdown until service startup
-has been attempted. If a started replacement cannot stop, the error preserves
+previous binary. The earlier fix skipped replacement shutdown until service startup
+had been attempted; the current implementation stages complete bytes before
+stopping the old service. If a started replacement cannot stop, the error preserves
 both failures and identifies the retained backup. The CLI suite passes 265 tests,
 including simulated partial-copy failure and failed-shutdown recovery; CLI lint,
 typecheck, and build also pass.
