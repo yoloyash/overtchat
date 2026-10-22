@@ -25,7 +25,6 @@ import {
   configureHostEnvironmentResolver,
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
-  inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
   probeAgentWorkspace,
   workspaceFilesService,
@@ -37,6 +36,7 @@ import { listSshHosts } from "./ssh.js";
 import { ConnectorProcessHost } from "./runtime.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
+import { WorkspaceGitStatusReader } from "./workspace-git.js";
 
 type Emit = (event: HostConnectorEventPayload) => void;
 type ResolveImages = (
@@ -132,6 +132,7 @@ export class ConnectorDaemon {
   readonly terminals: ConnectorTerminalManager;
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
   private readonly providerCatalogs = new AgentProviderCatalogManager();
+  private readonly workspaceGit = new WorkspaceGitStatusReader();
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
@@ -388,10 +389,7 @@ export class ConnectorDaemon {
       case "probe_workspace":
         return probeAgentWorkspace(hostTarget(request.target), request.path);
       case "git_status":
-        return inspectAgentWorkspaceGitStatus(
-          hostTarget(request.target),
-          request.path,
-        );
+        return this.workspaceGit.read(hostTarget(request.target), request.path);
       case "list_workspace_directory":
         return workspaceFilesService.listDirectory(
           hostTarget(request.target),
