@@ -152,10 +152,15 @@ test("long chats page history while keeping the mounted DOM bounded", async ({
 
   for (let pageNumber = 0; pageNumber < 3; pageNumber += 1) {
     const historyResponse = page.waitForResponse(
-      (response) =>
-        response.url().includes("/messages?cursor=") &&
-        response.request().method() === "GET" &&
-        response.ok(),
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === "/api/chat/long-chat/messages" &&
+          url.searchParams.has("cursor") &&
+          response.request().method() === "GET" &&
+          response.ok()
+        );
+      },
     );
     await transcript.evaluate((element) => {
       element.scrollTop = 0;
