@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import {
   isOpenUIToolPart,
   openUIActionOf,
+  openUIFallbackText,
   type OpenUIAction,
 } from "@overtchat/shared";
 import { ChatRequestError } from "@/lib/chat/request";
@@ -64,4 +65,38 @@ export function withOpenUIActionContext(messages: UIMessage[]): UIMessage[] {
       ],
     };
   });
+}
+
+/** Successful cards whose full program is replayed so the model can revise them. */
+export const OPENUI_REPLAYED_PROGRAMS = 2;
+
+/**
+ * Older programs replay as their readable text so long chats do not carry every
+ * interface into context. Failed attempts before the latest message are dropped.
+ */
+export function withRecentOpenUIPrograms(
+  messages: UIMessage[],
+  keep = OPENUI_REPLAYED_PROGRAMS,
+): UIMessage[] {
+  let remaining = keep;
+  const result = [...messages];
+  for (let index = result.length - 2; index >= 0; index -= 1) {
+    const message = result[index];
+    if (message.role !== "assistant" || !message.parts.some(isOpenUIToolPart))
+      continue;
+    const parts: UIMessage["parts"] = [];
+    for (const part of [...message.parts].reverse()) {
+      if (!isOpenUIToolPart(part)) parts.push(part);
+      else if (part.state !== "output-available") continue;
+      else if (remaining > 0) {
+        remaining -= 1;
+        parts.push(part);
+      } else {
+        const text = openUIFallbackText(part);
+        if (text) parts.push({ type: "text", text: `\n${text}\n` });
+      }
+    }
+    result[index] = { ...message, parts: parts.reverse() };
+  }
+  return result;
 }

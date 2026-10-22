@@ -58,7 +58,11 @@ import {
   OPENUI_TOOL_ORDER,
   OPENUI_TOOL_PROMPT,
 } from "@/lib/openui/tools";
-import { withSubmittedOpenUIAction, withOpenUIActionContext } from "@/lib/openui/actions";
+import {
+  withOpenUIActionContext,
+  withRecentOpenUIPrograms,
+  withSubmittedOpenUIAction,
+} from "@/lib/openui/actions";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   assertChatAttachments,
@@ -379,7 +383,7 @@ export async function runChat(
       : restoredContext.messages,
     userId,
   );
-  const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withResponseStyle(inlined)).map((message) =>
+  const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withRecentOpenUIPrograms(withResponseStyle(inlined))).map((message) =>
     message.role === "assistant"
       ? { ...message, parts: joinContinuationTextParts(message.parts) }
       : message,

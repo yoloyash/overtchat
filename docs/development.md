@@ -1257,7 +1257,9 @@ component/action prompt costs approximately 7,400 tokens, so small-context
 models may decline an explicit request or skip automatic generation.
 
 The tool stores a readable answer alongside its program for copy, speech,
-search, renderer failures, and older clients. Submitted actions live in the
+search, renderer failures, and older clients. Model history replays the two
+most recent successful programs; older cards replay as that readable answer,
+and earlier failed attempts are omitted. Submitted actions live in the
 subsequent user message's metadata, preserving source identity, structured
 context, and form state through reload and native export/import. Unsubmitted
 form edits stay in memory and are lost on reload. Query/Mutation data sources

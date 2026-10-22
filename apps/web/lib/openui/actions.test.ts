@@ -8,7 +8,11 @@ import {
   readableMessageText,
   withOpenUIFallback,
 } from "@overtchat/shared";
-import { withOpenUIActionContext, withSubmittedOpenUIAction } from "./actions";
+import {
+  withOpenUIActionContext,
+  withRecentOpenUIPrograms,
+  withSubmittedOpenUIAction,
+} from "./actions";
 import { extractSearchText } from "@/lib/search/extract";
 import { speakableText } from "@/lib/chat/message";
 const source: UIMessage = {
@@ -71,5 +75,49 @@ describe("OpenUI actions and message consumers", () => {
       { type: "text", text: "Revenue: 42" },
     ]);
     expect(source.parts[0].type).toBe("tool-present_openui");
+  });
+});
+
+describe("OpenUI model history", () => {
+  const card = (id: string, ui: string, text: string) => ({
+    type: "tool-present_openui" as const,
+    toolCallId: id,
+    state: "output-available" as const,
+    input: { ui, text },
+    output: { displayed: true as const, text },
+  });
+  const turn = (id: string, parts: UIMessage["parts"]): UIMessage => ({
+    id,
+    role: "assistant",
+    parts,
+  });
+  it("replays only recent programs and keeps older cards as readable text", () => {
+    const failed = {
+      type: "tool-present_openui" as const,
+      toolCallId: "bad",
+      state: "output-error" as const,
+      input: { ui: "root = Card([missing])", text: "Draft" },
+      errorText: "Invalid OpenUI program.",
+    };
+    const history = [
+      turn("a1", [{ type: "text", text: "Intro" }, card("c1", "P1", "One")]),
+      user,
+      turn("a2", [failed, card("c2", "P2", "Two")]),
+      user,
+      turn("a3", [card("c3", "P3", "Three")]),
+      user,
+    ];
+    const compacted = withRecentOpenUIPrograms(history);
+    expect(compacted[0].parts).toEqual([
+      { type: "text", text: "Intro" },
+      { type: "text", text: "\nOne\n" },
+    ]);
+    expect(compacted[2].parts).toEqual([card("c2", "P2", "Two")]);
+    expect(compacted[4].parts).toEqual([card("c3", "P3", "Three")]);
+    expect(history[0].parts[1]).toEqual(card("c1", "P1", "One"));
+  });
+  it("leaves the latest message intact for continuation", () => {
+    const last = turn("a", [card("c1", "P1", "One")]);
+    expect(withRecentOpenUIPrograms([last], 0)).toEqual([last]);
   });
 });
