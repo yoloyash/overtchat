@@ -113,6 +113,7 @@ describe("SSH process launching", () => {
       const multiplexing = ["-o", "ControlMaster=no", "-o", "ControlPath=none"];
       expect(sshTunnelArgs("macbook", 41234, 4096).slice(0, 4)).toEqual(multiplexing);
       expect(sshSpawnArgs("macbook", { command: "omp", shellMode: "interactive" }).slice(0, 4)).toEqual(multiplexing);
+      expect(sshTerminalArgs("macbook", "/tmp").slice(0, 4)).toEqual(multiplexing);
     } finally {
       Object.defineProperty(process, "platform", platform);
     }

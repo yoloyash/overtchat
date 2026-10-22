@@ -8,7 +8,7 @@ export type TerminalSpawnOptions = {
 const require = createRequire(import.meta.url);
 
 export function terminalProcessSupport(): void {
-  if (!["linux", "darwin"].includes(process.platform)) throw new Error("Workspace terminals require a Linux or macOS connector.");
+  if (!["linux", "darwin", "win32"].includes(process.platform)) throw new Error("Workspace terminals require a Linux, macOS, or Windows connector.");
   if (process.versions.bun) throw new Error("The Host Connector requires Node.js. Install the packaged connector runtime.");
   require("node-pty");
 }

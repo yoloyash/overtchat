@@ -169,10 +169,14 @@ jobs:
         run: |
           tar -xzf release/overtchat-connector-windows-amd64.tar.gz -C release
           if ($LASTEXITCODE -ne 0) { throw 'Windows package extraction failed' }
-          # Exclude the runner's Node so only the bundled runtime can satisfy this check.
+          $runtime = "$PWD/release/overtchat-connector/bin/node.exe"
+          $entry = "$PWD/release/overtchat-connector/app/connector.mjs"
+          # Exclude the runner's Node so only the bundled runtime can satisfy these checks.
           $env:Path = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
           $actual = & ./release/overtchat-connector/overtchat-connector.cmd version
           if ($LASTEXITCODE -ne 0 -or $actual -ne $env:VERSION) { throw 'Windows launcher version check failed' }
+          & $runtime $entry terminal-smoke --output-bytes 16777216
+          if ($LASTEXITCODE -ne 0) { throw 'Windows terminal smoke failed' }
       # These suites perform real durable disk writes and compile native
       # PowerShell helpers. Avoid competing cold starts on hosted Windows.
       - run: npm run test -w apps/connector -- --no-file-parallelism src/windows-service.test.ts src/host-environment.test.ts src/windows-helper.test.ts src/windows-input.test.ts src/service-logging.test.ts src/journal-sqlite.test.ts src/state.test.ts src/timeline.test.ts src/client.test.ts src/config-persistence.test.ts

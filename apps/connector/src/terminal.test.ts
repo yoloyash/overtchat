@@ -167,8 +167,12 @@ describe("connector terminal manager", () => {
       const originalWrite = terminal.emulator.write.bind(terminal.emulator);
       // A slow parser must apply pressure to the actual OS PTY, not buffer the
       // producer in JS or terminate the command when it exceeds a byte budget.
+      // Completions are serialized, as a parser that takes 2 ms per write is.
+      let parsed = Promise.resolve();
       vi.spyOn(terminal.emulator, "write").mockImplementation((data, callback) => {
-        originalWrite(data, () => setTimeout(() => callback?.(), 2));
+        originalWrite(data, () => {
+          parsed = parsed.then(() => new Promise((resolve) => setTimeout(resolve, 2))).then(() => callback?.());
+        });
       });
       const pause = vi.spyOn(terminal.pty, "pause");
       const resume = vi.spyOn(terminal.pty, "resume");

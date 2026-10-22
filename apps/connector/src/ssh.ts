@@ -81,6 +81,7 @@ export function sshTerminalArgs(alias: string, cwd: string, platform: HostEnviro
     'exec "${SHELL:-/bin/sh}" -il',
   ].join(" && ");
   return [
+    ...clientOptions(),
     "-tt",
     "-o",
     "BatchMode=yes",

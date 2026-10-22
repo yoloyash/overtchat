@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { spawnTerminal, terminalProcessSupport, type TerminalProcess } from "./terminal-process.js";
 import headlessRuntime from "@xterm/headless/lib-headless/xterm-headless.js";
 import type { Terminal as HeadlessTerminal } from "@xterm/headless";
@@ -75,6 +77,7 @@ type ManagedTerminal = {
   parseBytes: number;
   disposed: boolean;
   readsPaused: boolean;
+  killed: boolean;
   pendingOutput: string;
   outputTimer: NodeJS.Timeout | null;
   idleTimer: NodeJS.Timeout | null;
@@ -104,6 +107,15 @@ function sameTerminalOwner(
   );
 }
 
+// Prefer PowerShell 7 when installed, as Windows Terminal does.
+function windowsShell(): string {
+  for (const directory of (process.env.Path ?? process.env.PATH ?? "").split(";")) {
+    const candidate = path.join(directory.replace(/^"|"$/gu, ""), "pwsh.exe");
+    if (directory && existsSync(candidate)) return candidate;
+  }
+  return path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+}
+
 function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor, platform: HostEnvironment["platform"]): {
   command: string;
   args: string[];
@@ -116,6 +128,7 @@ function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor, platform: Ho
       cwd: process.cwd(),
     };
   }
+  if (process.platform === "win32") return { command: windowsShell(), args: ["-NoLogo"], cwd: descriptor.cwd };
   return {
     command: process.env.SHELL?.trim() || "/bin/sh",
     args: ["-il"],
@@ -123,29 +136,36 @@ function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor, platform: Ho
   };
 }
 
+// A second node-pty kill() on Windows can corrupt the native heap.
+function killTerminalProcess(terminal: ManagedTerminal): void {
+  if (terminal.killed) return;
+  terminal.killed = true;
+  terminal.pty.kill();
+}
+
 function writeToEmulator(
   terminal: ManagedTerminal,
   data: string,
 ): Promise<void> {
-  terminal.parseBytes += Buffer.byteLength(data);
+  const bytes = Buffer.byteLength(data);
+  terminal.parseBytes += bytes;
   if (!terminal.readsPaused && terminal.parseBytes >= 1024 * 1024) {
     terminal.pty.pause();
     terminal.readsPaused = true;
   }
-  terminal.parseTail = terminal.parseTail.then(
-    () =>
-      new Promise<void>((resolve) => {
-        if (terminal.disposed) { resolve(); return; }
-        terminal.emulator.write(data, () => {
-          terminal.parseBytes -= Buffer.byteLength(data);
-          if (terminal.readsPaused && !terminal.disposed && terminal.parseBytes < 256 * 1024) {
-            terminal.readsPaused = false;
-            terminal.pty.resume();
-          }
-          resolve();
-        });
-      }),
-  );
+  // The emulator parses writes in order, so the latest callback marks the tail.
+  // Waiting for each callback before the next write costs a timer tick per PTY
+  // chunk; ConPTY's small chunks and 15 ms Windows timers made that ~30 KB/s.
+  terminal.parseTail = new Promise<void>((resolve) => {
+    terminal.emulator.write(data, () => {
+      terminal.parseBytes -= bytes;
+      if (terminal.readsPaused && !terminal.disposed && terminal.parseBytes < 256 * 1024) {
+        terminal.readsPaused = false;
+        terminal.pty.resume();
+      }
+      resolve();
+    });
+  });
   return terminal.parseTail;
 }
 
@@ -232,7 +252,7 @@ export class ConnectorTerminalManager {
     if (pending) { this.disposeTerminal(workspaceId, true); return true; }
     const terminal = this.terminals.get(workspaceId);
     if (!terminal || terminal.exited) return false;
-    terminal.pty.kill();
+    killTerminalProcess(terminal);
     return true;
   }
 
@@ -288,7 +308,9 @@ export class ConnectorTerminalManager {
     if (existing) return existing;
     if (pending) return pending.ready;
     if (this.terminals.size + this.pending.size >= 32) throw new Error("Close an existing workspace terminal before opening another.");
-    if (descriptor.target.transport === "local") return this.create(descriptor, size, "posix");
+    if (descriptor.target.transport === "local") {
+      return this.create(descriptor, size, process.platform === "win32" ? "win32" : "posix");
+    }
     const abort = new AbortController();
     const ready = this.inspectEnvironment(descriptor.target, abort.signal).then((environment) => {
       abort.signal.throwIfAborted();
@@ -349,6 +371,7 @@ export class ConnectorTerminalManager {
       parseBytes: 0,
       disposed: false,
       readsPaused: false,
+      killed: false,
       pendingOutput: "",
       outputTimer: null,
       idleTimer: null,
@@ -486,9 +509,11 @@ export class ConnectorTerminalManager {
     for (const disposable of terminal.disposables) disposable.dispose();
     terminal.serializer.dispose();
     terminal.emulator.dispose();
-    if (kill && !terminal.exited) {
+    // node-pty releases its Windows output worker only in kill(), even after
+    // the shell has exited on its own.
+    if (kill && (!terminal.exited || process.platform === "win32")) {
       try {
-        terminal.pty.kill();
+        killTerminalProcess(terminal);
       } catch {
         // The PTY may have exited between the state check and cleanup.
       }
@@ -536,7 +561,16 @@ export async function runConnectorTerminalSmoke(outputBytes = 0): Promise<void> 
   let output = "";
   let received = 0;
   let sent = false;
+  // Windows PowerShell echoes input, so its markers are assembled at runtime and
+  // only executed output matches. ConPTY repaints the screen rather than
+  // forwarding the byte stream, so bulk output proves flow, not an exact count.
+  const windows = process.platform === "win32";
+  const readyCommand = windows ? "Write-Output ('REA' + 'DY')\r" : "stty -echo; printf '\\nREADY\\n'\r";
+  const finishCommand = windows
+    ? `${outputBytes ? `[Console]::Out.Write([string]::new([char]81, ${outputBytes})); ` : ""}Write-Output ('overtchat-terminal-smoke-' + ${process.pid}); exit\r`
+    : `${outputBytes ? `head -c ${outputBytes} /dev/zero | tr '\\0' '\\121'; ` : ""}printf '\\novertchat-%s-%s\\n' terminal-smoke ${process.pid}; exit\r`;
   let timeout: NodeJS.Timeout | undefined;
+  let retry: NodeJS.Timeout | undefined;
   try {
     const exited = new Promise<void>((resolve, reject) => {
       timeout = setTimeout(
@@ -559,29 +593,32 @@ export async function runConnectorTerminalSmoke(outputBytes = 0): Promise<void> 
             if (event.type === "output") {
               received += event.data.split("Q").length - 1;
               output = (output + event.data).slice(-4096);
-              if (!sent && output.includes("\r\nREADY\r\n")) {
+              if (!sent && output.includes(windows ? "READY" : "\r\nREADY\r\n")) {
                 sent = true;
+                clearInterval(retry);
                 output = "";
                 received = 0;
-                manager.write(workspaceId,
-                  `${outputBytes ? `head -c ${outputBytes} /dev/zero | tr '\\0' '\\121'; ` : ""}printf '\\novertchat-%s-%s\\n' terminal-smoke ${process.pid}; exit\r`);
+                manager.write(workspaceId, finishCommand);
               }
             }
             else resolve();
           },
         )
         .then(() => {
-          // Disable echo so only executed output can satisfy the smoke check.
-          manager.write(workspaceId, "stty -echo; printf '\\nREADY\\n'\r");
+          // POSIX disables echo so only executed output satisfies the check.
+          manager.write(workspaceId, readyCommand);
+          // PowerShell discards input that arrives before it is ready to read.
+          if (windows) retry = setInterval(() => manager.write(workspaceId, readyCommand), 1_000);
         }, reject);
     });
     await exited;
     if (!output.includes(marker)) {
       throw new Error("Terminal smoke test did not receive shell output.");
     }
-    if (received !== outputBytes) throw new Error(`Terminal smoke output mismatch: ${received}/${outputBytes} bytes.`);
+    if (windows ? outputBytes > 0 && received === 0 : received !== outputBytes) throw new Error(`Terminal smoke output mismatch: ${received}/${outputBytes} bytes.`);
   } finally {
     if (timeout) clearTimeout(timeout);
+    clearInterval(retry);
     manager.stopAll();
   }
 }

@@ -543,8 +543,9 @@ the Host Connector. Local shells run on the connector machine; SSH workspaces us
 the connector's existing OpenSSH alias. The connector detects the target OS:
 POSIX targets use their login shell, while Windows targets open an interactive
 Windows PowerShell in the workspace directory. Windows requires an OpenSSH
-server with ConPTY support (Windows 10 / Server 2019 or newer). The connector
-itself still runs on Linux or macOS; the desktop client can run on Windows.
+server with ConPTY support (Windows 10 / Server 2019 or newer). Local shells on a
+Windows connector use PowerShell 7 (`pwsh`) when it is on PATH, otherwise
+Windows PowerShell.
 The native mobile terminal UI is not supported.
 Some Windows OpenSSH versions report exit code 0 for interactive sessions even
 when the shell fails; consult the terminal's error output in that case.

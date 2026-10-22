@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { AgentDaemonWorkspaceDescriptor } from "@overtchat/agent-bridge";
 import type { ExecutionEnvironment, HostEnvironments } from "./host-environment.js";
@@ -77,4 +80,24 @@ it("reserves capacity during remote probes", async () => {
   f.resolve({ platform: "win32" });
   expect((await results).every((result) => result.status === "rejected")).toBe(true);
   expect(mocks.spawn).not.toHaveBeenCalled();
+});
+
+it("opens local Windows terminals in PowerShell 7 when installed, else Windows PowerShell", async () => {
+  const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "terminal-shell-"));
+  try {
+    vi.stubEnv("SystemRoot", "C:\\Windows");
+    vi.stubEnv("Path", directory);
+    const local = { ...workspace, workspaceId: "local", target: { transport: "local" as const } };
+    await fixture().subscribe("local", local);
+    expect(mocks.spawn).toHaveBeenLastCalledWith(
+      path.join("C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoLogo"], expect.objectContaining({ cwd: "C:\\project" }));
+    await writeFile(path.join(directory, "pwsh.exe"), "");
+    await fixture().subscribe("local", local);
+    expect(mocks.spawn).toHaveBeenLastCalledWith(path.join(directory, "pwsh.exe"), ["-NoLogo"], expect.anything());
+  } finally {
+    platform.mockRestore();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
