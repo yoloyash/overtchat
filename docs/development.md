@@ -1280,7 +1280,7 @@ renderer compatibility:
 ```sh
 npm run openui:generate -w apps/web
 npm run openui:check -w apps/web
-npm run test -w apps/web -- lib/openui lib/import lib/db/openuiMigration.test.ts app/api/chat/route.test.ts
+npm run test -w apps/web -- lib/openui lib/import app/api/chat/route.test.ts
 E2E_PORT=4897 npm run test:e2e -w apps/web -- openui.spec.ts
 npm run typecheck -w apps/web
 npm run typecheck -w apps/mobile

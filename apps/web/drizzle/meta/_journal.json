@@ -162,13 +162,6 @@
       "when": 1792233271119,
       "tag": "0022_two_factor",
       "breakpoints": true
-    },
-    {
-      "idx": 23,
-      "version": "6",
-      "when": 1792623281000,
-      "tag": "0023_openui_search",
-      "breakpoints": true
     }
   ]
 }

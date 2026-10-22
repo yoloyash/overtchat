@@ -154,19 +154,7 @@ export function openUIFallbackText(part: OpenUIToolPart): string {
     return part.output.text;
   if (typeof part.input?.text === "string" && part.input.text.trim())
     return part.input.text;
-  // Pre-release/imported programs may not have a saved text projection. Preserve
-  // their readable literals without exposing a DSL listing as the answer.
-  const code = normalizeOpenUILang(part.input?.ui ?? part.rawInput?.ui);
-  const literals: string[] = [];
-  for (const match of code.matchAll(/"(?:\\.|[^"\\])*"/g)) {
-    try {
-      const value: unknown = JSON.parse(match[0]);
-      if (typeof value === "string" && value.trim()) literals.push(value);
-    } catch {
-      /* Ignore incomplete streamed literals. */
-    }
-  }
-  return literals.join("\n");
+  return "";
 }
 
 /** Shared by native/browser copy and speech; the canonical parts remain intact. */
