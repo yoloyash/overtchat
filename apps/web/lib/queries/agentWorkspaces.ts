@@ -2,6 +2,7 @@
 
 import { apiError } from "@overtchat/shared";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useSyncExternalStore } from "react";
 import type {
   AgentWorkspaceDirectoryListing,
   AgentWorkspaceFilePreview,
@@ -9,6 +10,11 @@ import type {
 } from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
 import { apiUrl } from "@/lib/api-url";
+import {
+  isAgentWorkspaceGitLive,
+  subscribeAgentWorkspaceGitWatches,
+  watchAgentWorkspaceGit,
+} from "@/lib/queries/agentWorkspaceGitWatch";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -36,19 +42,31 @@ export function useAgentWorkspaceGitStatus(
     running = false,
   }: { enabled?: boolean; active?: boolean; running?: boolean } = {},
 ) {
+  const watching = Boolean(id) && enabled && (active || running);
+  useEffect(
+    () => (watching ? watchAgentWorkspaceGit(id) : undefined),
+    [id, watching],
+  );
+  // Live workspaces receive pushed statuses; the rest keep polling.
+  const live = useSyncExternalStore(
+    subscribeAgentWorkspaceGitWatches,
+    () => watching && isAgentWorkspaceGitLive(id),
+    () => false,
+  );
   return useQuery({
     queryKey: agentWorkspaceKeys.gitStatus(id),
     queryFn: () => fetchAgentWorkspaceGitStatus(id),
     enabled: Boolean(id) && enabled,
     retry: false,
-    staleTime: 4_000,
-    refetchInterval: enabled
-      ? running
-        ? 2_000
-        : active
-          ? 5_000
-          : false
-      : false,
+    staleTime: live ? Infinity : 4_000,
+    refetchInterval:
+      enabled && !live
+        ? running
+          ? 2_000
+          : active
+            ? 5_000
+            : false
+        : false,
   });
 }
 

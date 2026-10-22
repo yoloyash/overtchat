@@ -1,7 +1,7 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   queryOptions,
   useMutation,
@@ -23,8 +23,17 @@ import type {
   HostConnectorListItem,
   HostConnectorPairing,
 } from "@overtchat/agent-bridge";
-import { isAgentSessionDirectoryEntry } from "@overtchat/agent-bridge";
-import { agentConnectionKeys } from "@/lib/queries/keys";
+import {
+  isAgentSessionDirectoryEntry,
+  isAgentWorkspaceGitStatus,
+} from "@overtchat/agent-bridge";
+import { agentConnectionKeys, agentWorkspaceKeys } from "@/lib/queries/keys";
+import {
+  agentWorkspaceGitWatchKey,
+  clearAgentWorkspaceGitLive,
+  setAgentWorkspaceGitLive,
+  subscribeAgentWorkspaceGitWatches,
+} from "@/lib/queries/agentWorkspaceGitWatch";
 import {
   agentConnectionHasRunningSession,
   withAgentSessionDirectory,
@@ -75,9 +84,20 @@ export function useAgentConnectionSessionDirectory(
     )
     .sort()
     .join("\n");
+  const gitWorkspaces = useSyncExternalStore(
+    subscribeAgentWorkspaceGitWatches,
+    agentWorkspaceGitWatchKey,
+    () => "",
+  );
   useEffect(() => {
-    if (!sessionFingerprint) return;
-    const source = new EventSource(apiUrl("/api/agent-connections/events"));
+    if (!sessionFingerprint && !gitWorkspaces) return;
+    const source = new EventSource(
+      apiUrl(
+        gitWorkspaces
+          ? `/api/agent-connections/events?git=${encodeURIComponent(gitWorkspaces)}`
+          : "/api/agent-connections/events",
+      ),
+    );
     const parseEvent = (event: Event): unknown => {
       try {
         return JSON.parse((event as MessageEvent<string>).data);
@@ -109,14 +129,33 @@ export function useAgentConnectionSessionDirectory(
       if (!isAgentSessionDirectoryEntry(value)) return;
       applySessions([value]);
     };
+    const receiveGit = (event: Event) => {
+      const value = parseEvent(event);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      const workspaceId = Reflect.get(value, "workspaceId");
+      if (typeof workspaceId !== "string" || !workspaceId) return;
+      const live = Reflect.get(value, "live");
+      if (typeof live === "boolean") setAgentWorkspaceGitLive(workspaceId, live);
+      const status = Reflect.get(value, "status");
+      if (isAgentWorkspaceGitStatus(status)) {
+        queryClient.setQueryData(agentWorkspaceKeys.gitStatus(workspaceId), status);
+      }
+    };
+    // Pushes may be missed until the reconnected stream confirms them again.
+    const interrupted = () => clearAgentWorkspaceGitLive();
     source.addEventListener("snapshot", receiveSnapshot);
     source.addEventListener("update", receiveUpdate);
+    source.addEventListener("git", receiveGit);
+    source.addEventListener("error", interrupted);
     return () => {
       source.removeEventListener("snapshot", receiveSnapshot);
       source.removeEventListener("update", receiveUpdate);
+      source.removeEventListener("git", receiveGit);
+      source.removeEventListener("error", interrupted);
       source.close();
+      clearAgentWorkspaceGitLive();
     };
-  }, [queryClient, sessionFingerprint]);
+  }, [queryClient, sessionFingerprint, gitWorkspaces]);
 }
 
 export function useHostConnectors() {

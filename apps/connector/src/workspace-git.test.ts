@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentWorkspaceGitStatus } from "@overtchat/agent-bridge";
-import type { HostTarget } from "@overtchat/agent-runtime";
-import { WorkspaceGitStatusReader, workspaceGitKey } from "./workspace-git";
+import type {
+  AgentWorkspaceGitWatch,
+  AgentWorkspaceGitWatchHandlers,
+  HostTarget,
+} from "@overtchat/agent-runtime";
+import {
+  WorkspaceGitStatusReader,
+  WorkspaceGitWatches,
+  workspaceGitKey,
+} from "./workspace-git";
 
 const local: HostTarget = { transport: "local", shellMode: "login" };
 const remote: HostTarget = { transport: "ssh", alias: "box", shellMode: "login" };
@@ -105,5 +113,179 @@ describe("WorkspaceGitStatusReader", () => {
     expect(workspaceGitKey(local, "/workspace")).not.toBe(
       workspaceGitKey(remote, "/workspace"),
     );
+  });
+});
+
+type FakeWatcher = {
+  target: HostTarget;
+  path: string;
+  handlers: AgentWorkspaceGitWatchHandlers;
+  exit(): void;
+  stopped: boolean;
+};
+
+function fakeWatchers() {
+  const started: FakeWatcher[] = [];
+  const start = vi.fn(
+    (
+      target: HostTarget,
+      path: string,
+      handlers: AgentWorkspaceGitWatchHandlers,
+    ): AgentWorkspaceGitWatch => {
+      let exit!: () => void;
+      const exited = new Promise<void>((resolve) => {
+        exit = resolve;
+      });
+      const watcher: FakeWatcher = {
+        target,
+        path,
+        handlers,
+        exit,
+        stopped: false,
+      };
+      started.push(watcher);
+      return {
+        exited,
+        async stop() {
+          watcher.stopped = true;
+          exit();
+        },
+      };
+    },
+  );
+  return { started, start };
+}
+
+describe("WorkspaceGitWatches", () => {
+  it("shares one watcher per workspace and fans statuses out to every watch", async () => {
+    const { started, start } = fakeWatchers();
+    const watches = new WorkspaceGitWatches(
+      new WorkspaceGitStatusReader(vi.fn()),
+      start,
+    );
+    const first = vi.fn();
+    const second = vi.fn();
+
+    const initialFirst = watches.watch("a", local, "/workspace", first);
+    const initialSecond = watches.watch("b", local, "/workspace", second);
+    started[0]!.handlers.status(status("main"));
+
+    await expect(initialFirst).resolves.toEqual({
+      status: status("main"),
+      revision: 1,
+    });
+    await expect(initialSecond).resolves.toEqual({
+      status: status("main"),
+      revision: 1,
+    });
+    expect(start).toHaveBeenCalledTimes(1);
+
+    started[0]!.handlers.status(status("feature"));
+    expect(first).toHaveBeenLastCalledWith(status("feature"), 2);
+    expect(second).toHaveBeenLastCalledWith(status("feature"), 2);
+    expect(watches.current(local, "/workspace")).toEqual(status("feature"));
+    await watches.stop();
+  });
+
+  it("answers from a direct inspection when the watcher cannot report", async () => {
+    const { started, start } = fakeWatchers();
+    const inspect = vi.fn().mockResolvedValue(status("direct"));
+    const watches = new WorkspaceGitWatches(
+      new WorkspaceGitStatusReader(inspect),
+      start,
+    );
+
+    const initial = watches.watch("a", local, "/workspace", vi.fn());
+    started[0]!.handlers.error("Git is not installed on the selected machine.");
+
+    await expect(initial).resolves.toEqual({
+      status: status("direct"),
+      revision: 0,
+    });
+    expect(watches.current(local, "/workspace")).toBeNull();
+    await watches.stop();
+  });
+
+  it("keeps an unwatched process for the idle grace and then stops it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { started, start } = fakeWatchers();
+      const watches = new WorkspaceGitWatches(
+        new WorkspaceGitStatusReader(vi.fn()),
+        start,
+        { idleGraceMs: 1_000 },
+      );
+      const initial = watches.watch("a", local, "/workspace", vi.fn());
+      started[0]!.handlers.status(status("main"));
+      await initial;
+
+      watches.unwatchAll();
+      await vi.advanceTimersByTimeAsync(500);
+      const rewatch = watches.watch("b", local, "/workspace", vi.fn());
+      await expect(rewatch).resolves.toEqual({
+        status: status("main"),
+        revision: 1,
+      });
+      expect(start).toHaveBeenCalledTimes(1);
+
+      watches.unwatch("b");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(started[0]!.stopped).toBe(true);
+      expect(watches.current(local, "/workspace")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restarts a watcher that exits while still watched", async () => {
+    vi.useFakeTimers();
+    try {
+      const { started, start } = fakeWatchers();
+      const listener = vi.fn();
+      const watches = new WorkspaceGitWatches(
+        new WorkspaceGitStatusReader(vi.fn()),
+        start,
+        { restartBaseMs: 100 },
+      );
+      const initial = watches.watch("a", remote, "/workspace", listener);
+      started[0]!.handlers.status(status("main"));
+      await initial;
+
+      started[0]!.exit();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(watches.current(remote, "/workspace")).toBeNull();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(start).toHaveBeenCalledTimes(2);
+
+      started[1]!.handlers.status(status("feature"));
+      expect(listener).toHaveBeenLastCalledWith(status("feature"), 2);
+      await watches.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores reports from a replaced watcher", async () => {
+    vi.useFakeTimers();
+    try {
+      const { started, start } = fakeWatchers();
+      const listener = vi.fn();
+      const watches = new WorkspaceGitWatches(
+        new WorkspaceGitStatusReader(vi.fn()),
+        start,
+        { restartBaseMs: 10 },
+      );
+      const initial = watches.watch("a", local, "/workspace", listener);
+      started[0]!.handlers.status(status("main"));
+      await initial;
+      started[0]!.exit();
+      await vi.advanceTimersByTimeAsync(10);
+
+      started[0]!.handlers.status(status("stale"));
+      expect(listener).not.toHaveBeenCalledWith(status("stale"), expect.anything());
+      await watches.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

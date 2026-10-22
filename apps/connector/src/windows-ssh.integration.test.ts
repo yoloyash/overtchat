@@ -15,7 +15,9 @@ import {
   probeAgentWorkspace,
   workspaceFilesService,
   inspectAgentWorkspaceGitStatus,
+  watchAgentWorkspaceGitStatus,
 } from "@overtchat/agent-runtime";
+import type { AgentWorkspaceGitStatus } from "@overtchat/agent-bridge";
 import { probeOmpTarget } from "@overtchat/agent-runtime/omp/probe";
 import { startOmp } from "@overtchat/agent-runtime/omp/client";
 import { ConnectorProcessHost } from "./runtime.js";
@@ -298,6 +300,62 @@ process.stdout.write(directory);
       expect(status.files?.some((file) => file.path === "preview.txt")).toBe(
         true,
       );
+    },
+    60_000,
+  );
+
+  it.runIf(Boolean(process.env.WINDOWS_SSH_GIT_DIR))(
+    "pushes Git status changes from a native Windows watcher",
+    async () => {
+      await executeOnHost(target, {
+        command: "git",
+        args: ["init", "-q", directory],
+      });
+      await run(
+        "require('node:fs').writeFileSync(require('node:path').join(process.argv[1],'.gitignore'),'ignored/\\n')",
+        [directory],
+      );
+      await run(
+        "require('node:fs').mkdirSync(require('node:path').join(process.argv[1],'ignored'),{recursive:true})",
+        [directory],
+      );
+      const statuses: AgentWorkspaceGitStatus[] = [];
+      const watch = watchAgentWorkspaceGitStatus(target, directory, {
+        status: (status) => statuses.push(status),
+        error: () => {},
+      });
+      const hasFile = (name: string) =>
+        statuses.at(-1)?.files?.some((file) => file.path === name) ?? false;
+      try {
+        await expect.poll(() => statuses.length, { timeout: 20_000 }).toBeGreaterThan(0);
+        await run(
+          "require('node:fs').writeFileSync(require('node:path').join(process.argv[1],'watched.txt'),'x')",
+          [directory],
+        );
+        await expect.poll(() => hasFile("watched.txt"), { timeout: 20_000 }).toBe(true);
+        await executeOnHost(target, {
+          command: "git",
+          args: ["-C", directory, "add", "watched.txt"],
+        });
+        await expect
+          .poll(
+            () =>
+              statuses.at(-1)?.files?.find((file) => file.path === "watched.txt")
+                ?.indexStatus,
+            { timeout: 20_000 },
+          )
+          .toBe("A");
+        const settled = statuses.length;
+        await run(
+          "const fs=require('node:fs'),p=require('node:path');for(let i=0;i<20;i++)fs.writeFileSync(p.join(process.argv[1],'ignored','f'+i),String(i))",
+          [directory],
+        );
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        expect(statuses.length).toBe(settled);
+      } finally {
+        await watch.stop();
+      }
+      await watch.exited;
     },
     60_000,
   );

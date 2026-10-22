@@ -38,15 +38,20 @@ const RECONNECT_MAX_DELAY_MS = 30_000;
 const EVENT_BATCH_DELAY_MS = 25;
 const MAX_BUFFERED_LIVE_EVENTS = 2_048;
 
-type LiveEventPayload = Extract<
+type LiveSessionEventPayload = Extract<
   HostConnectorEventPayload,
   { type: "session_event" }
+>;
+
+type LiveEventPayload = Extract<
+  HostConnectorEventPayload,
+  { type: "session_event" | "workspace_git_status" }
 >;
 
 type LiveEventBatch = {
   payloads: LiveEventPayload[];
   hints: Array<[string, LiveEventPayload]>;
-  queued: LiveEventPayload[];
+  queued: LiveSessionEventPayload[];
 };
 
 function endpoint(serverUrl: string, path: string): string {
@@ -93,13 +98,14 @@ export class ConnectorClient {
   private terminalError: Error | undefined;
   private liveEventEpoch = crypto.randomUUID();
   private liveEventSequence = 0;
-  private readonly liveEvents: LiveEventPayload[] = [];
+  private readonly liveEvents: LiveSessionEventPayload[] = [];
   /**
    * The high-volume event queue is deliberately bounded, but dropping its
    * oldest entry outright could leave a quiet session stale forever. Keep the
    * newest displaced envelope for every subscription as a reconciliation
    * marker. Once delivered it either fills the next sequence or makes the
    * browser detect a gap and request the authoritative connector timeline.
+   * Workspace Git statuses use the same latest-wins map under `git:` keys.
    */
   private readonly liveOverflowHints = new Map<string, LiveEventPayload>();
 
@@ -290,7 +296,12 @@ export class ConnectorClient {
   }
 
   private enqueue(payload: HostConnectorEventPayload): void {
-    if (payload.type === "session_event") {
+    if (payload.type === "workspace_git_status") {
+      if (this.stopped) return;
+      // Watchers re-report on reconnect, and only the newest status matters,
+      // so an undelivered status is replaced rather than queued.
+      this.liveOverflowHints.set(`git:${payload.watchId}`, payload);
+    } else if (payload.type === "session_event") {
       if (this.stopped) return;
       // The per-session timeline is already synced to disk before the daemon
       // emits this live hint. Keeping a second durable copy here caused stale

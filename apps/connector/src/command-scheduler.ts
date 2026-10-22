@@ -37,6 +37,7 @@ export function connectorCommandLane(
     case "session_history":
       return "session";
     case "git_status":
+    case "watch_git_status":
       return "git";
     default:
       return "workspace";
