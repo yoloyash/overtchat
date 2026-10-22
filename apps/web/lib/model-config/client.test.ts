@@ -114,4 +114,12 @@ describe("model discovery client", () => {
       { id: "bad-pricing" },
     ]);
   });
+  it("preserves a request mapping and detection status when the default is unknown", async () => {
+    const controls = { toggle: false, efforts: ["high"], requestMapping: { effortParameter: "chat_template_kwargs.reasoning_effort" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ models: [{ id: "local", capabilities: { reasoningControls: controls }, reasoningDetection: "Detected with tokenize" }] })));
+    const [model] = await fetchModelsForProvider(connection);
+    expect(model.capabilities?.reasoningControls).toEqual(controls);
+    expect(model.reasoningDetection).toBe("Detected with tokenize");
+  });
+
 });

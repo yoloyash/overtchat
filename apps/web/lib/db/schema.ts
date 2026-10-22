@@ -14,6 +14,7 @@ import {
   type ChatGenerationStatus,
   type ChatKind,
   type ModelCapabilities,
+  type ModelReasoningControls,
 } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
@@ -793,6 +794,7 @@ export const modelConfigs = sqliteTable(
     discoveredCapabilities: text("discovered_capabilities", {
       mode: "json",
     }).$type<ModelCapabilities>(),
+    reasoningOverride: text("reasoning_override", { mode: "json" }).$type<ModelReasoningControls>(),
     systemPrompt: text("system_prompt"),
     providerOptions: text("provider_options", { mode: "json" }).$type<
       Record<string, unknown>

@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
+import { reasoningOptionsForControls } from "@overtchat/shared";
 import type {
   ChatReasoningLevel,
   ModelReasoningControls,
-  ModelReasoningLevel,
 } from "@overtchat/shared";
 import { Brain, Check, ChevronDown, Loader2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -29,20 +29,6 @@ interface Props {
   onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
 }
 
-function reasoningOptions(controls: ModelReasoningControls | undefined) {
-  if (!controls) return [];
-
-  const options: ModelReasoningLevel[] = [];
-  if (controls.efforts?.length) {
-    if (controls.toggle) options.push("off");
-    if (controls.defaultLevel === "on") options.push("on");
-    options.push(...controls.efforts);
-  } else if (controls.toggle) {
-    options.push("on", "off");
-  }
-  return [...new Set(options)];
-}
-
 export function ModelPicker({
   models,
   selectedId,
@@ -58,12 +44,8 @@ export function ModelPicker({
   const defaultModelId = preferences.data?.defaultModelId;
   const loading = models === null;
   const selected = models?.find((m) => m.id === selectedId) ?? null;
-  const effectiveReasoningLevel = reasoningControls
-    ? reasoningLevel === "default"
-      ? reasoningControls.defaultLevel
-      : reasoningLevel
-    : null;
-  const thinkingOptions = reasoningOptions(reasoningControls);
+  const thinkingOptions = reasoningOptionsForControls(reasoningControls);
+  const effectiveReasoningLevel = thinkingOptions.length ? reasoningLevel : null;
 
   const label = loading
     ? "Loading…"
@@ -151,10 +133,7 @@ export function ModelPicker({
                           "bg-accent text-accent-foreground",
                       )}
                     >
-                      {option}
-                      {option === reasoningControls?.defaultLevel
-                        ? " (default)"
-                        : ""}
+                      {option === "default" ? "Server default" : option}
                     </Menu.Item>
                   ))}
                 </div>

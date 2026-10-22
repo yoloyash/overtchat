@@ -1,5 +1,9 @@
 import type { UIMessage } from "ai";
-import type { ModelCapabilities, ModelReasoningLevel } from "./models";
+import type {
+  ModelCapabilities,
+  ModelReasoningLevel,
+  ModelReasoningControls,
+} from "./models";
 
 export const CHAT_KINDS = ["text", "voice"] as const;
 export type ChatKind = (typeof CHAT_KINDS)[number];
@@ -12,9 +16,23 @@ export type ChatRequestAction =
   | { type: "regenerate"; targetAssistantMessageId: string }
   | { type: "retry"; userMessageId: string };
 
-export type ChatReasoningLevel =
-  | "default"
-  | ModelReasoningLevel;
+export type ChatReasoningLevel = "default" | ModelReasoningLevel;
+
+/** Server default always omits the per-chat override, even if its value is known. */
+export function reasoningOptionsForControls(
+  controls: ModelReasoningControls | undefined,
+): ChatReasoningLevel[] {
+  if (!controls || (!controls.toggle && !controls.efforts?.length)) return [];
+  const options: ChatReasoningLevel[] = ["default"];
+  if (controls.toggle) {
+    // An effort-only mapping enables thinking by selecting a level.
+    if (!controls.requestMapping || controls.requestMapping.toggleParameter)
+      options.push("on");
+    options.push("off");
+  }
+  options.push(...(controls.efforts ?? []));
+  return [...new Set(options)];
+}
 
 export function modelSupportsChatReasoningLevel(
   capabilities: ModelCapabilities | null | undefined,
@@ -23,7 +41,13 @@ export function modelSupportsChatReasoningLevel(
   if (level === "default") return true;
   const controls = capabilities?.reasoningControls;
   if (!controls || !level) return false;
-  if (level === "off" || level === "on") return controls.toggle;
+  if (level === "off") return controls.toggle;
+  if (level === "on")
+    return (
+      controls.toggle &&
+      (!controls.requestMapping ||
+        Boolean(controls.requestMapping.toggleParameter))
+    );
   return controls.efforts?.includes(level) === true;
 }
 
@@ -56,8 +80,7 @@ export const CHAT_GENERATION_STATUSES = [
   "aborted",
 ] as const;
 
-export type ChatGenerationStatus =
-  (typeof CHAT_GENERATION_STATUSES)[number];
+export type ChatGenerationStatus = (typeof CHAT_GENERATION_STATUSES)[number];
 
 export interface ChatGenerationState {
   active: boolean;

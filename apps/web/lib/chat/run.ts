@@ -275,6 +275,7 @@ export async function runChat(
     modelConfig.discoveredCapabilities,
     modelConfig.providerId,
     modelConfig.model,
+    modelConfig.reasoningOverride,
   );
   if (
     reasoningLevel !== "default" &&
@@ -302,6 +303,7 @@ export async function runChat(
     toolCallingEnabled: modelConfig.toolCallingEnabled,
     supportsImageInput,
     reasoningLevel,
+    reasoningMapping: modelCapabilities?.reasoningControls?.requestMapping,
   });
   const provider = getProvider(modelConfig.providerId);
   const contextWindow = resolveModelContextWindow(

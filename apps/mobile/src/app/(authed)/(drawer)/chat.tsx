@@ -356,7 +356,7 @@ function ChatSurface({
       storedReasoningLevel,
     )
       ? storedReasoningLevel
-      : (reasoningControls?.defaultLevel ?? "default");
+      : "default";
   const thinkingLevelLabel =
     reasoningOptionsForControls(reasoningControls).length > 1
       ? reasoningLabel(reasoningLevel)

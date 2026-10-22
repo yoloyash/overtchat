@@ -2,9 +2,11 @@ import "server-only";
 import {
   REASONING_EFFORTS,
   type ModelCapabilities,
+  type LocalReasoningMapping,
   type ModelReasoningControls,
   type ReasoningEffort,
 } from "@overtchat/shared";
+import { applyLocalReasoningLevel } from "./adapters/local-reasoning";
 import type { DiscoveredModel } from "@/lib/providers/server/types";
 
 const MODEL_LIST_TIMEOUT_MS = 10_000;
@@ -93,21 +95,20 @@ export async function listVllmModels(
   const models = await listOpenAIModelsWithOptions(baseUrl, apiKey, false);
   return Promise.all(
     models.map(async (model) => {
-      const reasoningControls = await discoverReasoningControls(
-        (level) => renderVllmChatTemplate(baseUrl, apiKey, model.id, level),
-        true,
-        (prompt) =>
-          detokenizeVllmPrompt(baseUrl, apiKey, model.id, prompt.tokenIds),
-      );
-      return reasoningControls
-        ? {
-            ...model,
-            capabilities: mergeCapabilities(model.capabilities, {
-              reasoning: true,
-              reasoningControls,
-            }),
-          }
-        : model;
+      const { controls: reasoningControls, message: reasoningDetection } =
+        await discoverVllmReasoningControls(baseUrl, apiKey, model.id);
+      return {
+        ...model,
+        reasoningDetection,
+        ...(reasoningControls
+          ? {
+              capabilities: mergeCapabilities(model.capabilities, {
+                reasoning: true,
+                reasoningControls,
+              }),
+            }
+          : {}),
+      };
     }),
   );
 }
@@ -310,9 +311,7 @@ function normalizeDiscoveredModels(
 }
 
 function readPositiveInteger(value: unknown): number | undefined {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value > 0
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? value
     : undefined;
 }
@@ -359,11 +358,7 @@ function anthropicModelCapabilities(
   const pdfInput = readSupportedBoolean(capabilities?.pdf_input);
   const inputModalities =
     imageInput !== undefined || pdfInput !== undefined
-      ? [
-          "text",
-          ...(imageInput ? ["image"] : []),
-          ...(pdfInput ? ["pdf"] : []),
-        ]
+      ? ["text", ...(imageInput ? ["image"] : []), ...(pdfInput ? ["pdf"] : [])]
       : undefined;
 
   return compactCapabilities({
@@ -375,9 +370,7 @@ function anthropicModelCapabilities(
         ? undefined
         : imageInput === true || pdfInput === true,
     reasoning: readSupportedBoolean(capabilities?.thinking),
-    structuredOutput: readSupportedBoolean(
-      capabilities?.structured_outputs,
-    ),
+    structuredOutput: readSupportedBoolean(capabilities?.structured_outputs),
   });
 }
 
@@ -386,8 +379,7 @@ function googleModelCapabilities(
 ): ModelCapabilities | undefined {
   return compactCapabilities({
     maxOutputTokens: readPositiveInteger(model.outputTokenLimit),
-    reasoning:
-      typeof model.thinking === "boolean" ? model.thinking : undefined,
+    reasoning: typeof model.thinking === "boolean" ? model.thinking : undefined,
     temperature:
       typeof model.temperature === "number" ||
       typeof model.maxTemperature === "number"
@@ -429,9 +421,7 @@ function llamaCppCapabilities(
   const template = isRecord(props.chat_template_caps)
     ? props.chat_template_caps
     : undefined;
-  const modalities = isRecord(props.modalities)
-    ? props.modalities
-    : undefined;
+  const modalities = isRecord(props.modalities) ? props.modalities : undefined;
   const vision =
     typeof modalities?.vision === "boolean" ? modalities.vision : undefined;
   return compactCapabilities({
@@ -461,8 +451,7 @@ async function discoverLlamaCppReasoningControls(
   const supportsEffort =
     readSupportedBoolean(templateCaps?.supports_reasoning_effort) === true;
   return discoverReasoningControls(
-    (level) =>
-      renderLlamaCppChatTemplate(baseUrl, apiKey, model, level),
+    (level) => renderLlamaCppChatTemplate(baseUrl, apiKey, model, level),
     supportsEffort,
   );
 }
@@ -495,8 +484,11 @@ async function discoverReasoningControls(
         : undefined;
 
   if (!probeEfforts) {
-    return defaultToggleLevel
-      ? { toggle: true, defaultLevel: defaultToggleLevel }
+    return toggle
+      ? {
+          toggle: true,
+          ...(defaultToggleLevel ? { defaultLevel: defaultToggleLevel } : {}),
+        }
       : undefined;
   }
 
@@ -531,17 +523,21 @@ async function discoverReasoningControls(
   );
   const selectedByPrompt = new Map(
     projectedGroups.filter(
-      (group): group is readonly [string, ReasoningEffort] => group !== undefined,
+      (group): group is readonly [string, ReasoningEffort] =>
+        group !== undefined,
     ),
   );
   const defaultLevel =
     selectedByPrompt.get(defaultPrompt.key) ?? defaultToggleLevel;
-  if (!defaultLevel) return undefined;
   const selected = new Set(selectedByPrompt.values());
   const efforts = REASONING_EFFORTS.filter((effort) => selected.has(effort));
-  if (efforts.length > 0) return { toggle, defaultLevel, efforts };
-  return defaultToggleLevel
-    ? { toggle: true, defaultLevel: defaultToggleLevel }
+  if (efforts.length > 0)
+    return { toggle, ...(defaultLevel ? { defaultLevel } : {}), efforts };
+  return toggle
+    ? {
+        toggle: true,
+        ...(defaultToggleLevel ? { defaultLevel: defaultToggleLevel } : {}),
+      }
     : undefined;
 }
 
@@ -577,28 +573,117 @@ async function renderLlamaCppChatTemplate(
   return renderedPromptKey(json);
 }
 
-async function renderVllmChatTemplate(
+async function discoverVllmReasoningControls(
   baseUrl: string,
   apiKey: string | null | undefined,
   model: string,
-  level: ProbeLevel,
-): Promise<RenderProbeResult | undefined> {
-  const json = await tryFetchJson<Record<string, unknown>>(
-    appendPath(baseUrl, "chat/completions/render"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+): Promise<{ controls?: ModelReasoningControls; message: string }> {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+  };
+  const baseBody = {
+    model,
+    messages: [{ role: "user", content: "hi" }],
+    add_generation_prompt: true,
+  };
+  let tokenize = false;
+  async function render(body: Record<string, unknown>) {
+    const json = await tryFetchJson<Record<string, unknown>>(
+      tokenize
+        ? appendPath(openAIServiceRoot(baseUrl), "tokenize")
+        : appendPath(baseUrl, "chat/completions/render"),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(tokenize ? body : { ...body, max_tokens: 1 }),
       },
-      body: JSON.stringify({
-        ...reasoningProbeBody(model, level),
-        return_prompt_text: true,
-        max_tokens: 1,
-      }),
-    },
-  );
-  return renderedPromptKey(json);
+    );
+    // /tokenize has a different response contract from the renderer API.
+    return renderedPromptKey(
+      tokenize && json ? { ...json, token_ids: json.tokens } : json,
+    );
+  }
+  let baseline = await render(baseBody);
+  if (!baseline) {
+    tokenize = true;
+    baseline = await render(baseBody);
+  }
+  if (!baseline)
+    return {
+      message:
+        "Couldn't detect thinking controls: the server's render and tokenize endpoints were unavailable or returned an unsupported response. Use server defaults or configure controls manually.",
+    };
+
+  let best: ModelReasoningControls | undefined;
+  // TokenizeChatRequest does not implement top-level reasoning_effort. Probe
+  // template kwargs there and use exactly those kwargs for chat requests too.
+  const effortParameters: NonNullable<
+    LocalReasoningMapping["effortParameter"]
+  >[] = tokenize
+    ? ["chat_template_kwargs.reasoning_effort"]
+    : ["reasoning_effort", "chat_template_kwargs.reasoning_effort"];
+  for (const toggleParameter of ["enable_thinking", "thinking"] as const) {
+    for (const effortParameter of effortParameters) {
+      const mapping = { toggleParameter, effortParameter };
+      const controls = await discoverReasoningControls(
+        async (level) => {
+          if (level === "default") return baseline;
+          const body =
+            level === "invalid"
+              ? applyLocalReasoningLevel(baseBody, "high", mapping)
+              : applyLocalReasoningLevel(baseBody, level, mapping);
+          if (level === "invalid") {
+            if (effortParameter === "reasoning_effort")
+              body.reasoning_effort = "overtchat-invalid-effort";
+            else
+              (
+                body.chat_template_kwargs as Record<string, unknown>
+              ).reasoning_effort = "overtchat-invalid-effort";
+          }
+          return render(body);
+        },
+        true,
+        (prompt) =>
+          detokenizeVllmPrompt(baseUrl, apiKey, model, prompt.tokenIds),
+      );
+      if (!controls) continue;
+      if (!controls.efforts?.length && controls.toggle) {
+        // We omit effort from a toggle-only profile. Verify that the toggle
+        // itself changed the prompt, rather than the combined effort probe.
+        const [off, on] = await Promise.all([
+          render(
+            applyLocalReasoningLevel(baseBody, "off", { toggleParameter }),
+          ),
+          render(applyLocalReasoningLevel(baseBody, "on", { toggleParameter })),
+        ]);
+        if (!off || !on || off.key === on.key) continue;
+      }
+      const candidate = {
+        ...controls,
+        requestMapping: {
+          toggleParameter,
+          ...(controls.efforts?.length ? { effortParameter } : {}),
+        },
+      };
+      if (
+        !best ||
+        (candidate.efforts?.length ?? 0) > (best.efforts?.length ?? 0) ||
+        ((candidate.efforts?.length ?? 0) === (best.efforts?.length ?? 0) &&
+          candidate.toggle &&
+          !best.toggle)
+      )
+        best = candidate;
+      if (best.toggle && best.efforts?.length) break;
+    }
+    if (best?.toggle) break;
+  }
+  return {
+    controls: best,
+    message: best
+      ? `Thinking controls detected using the server's ${tokenize ? "tokenize" : "render"} endpoint.`
+      : "The server's template did not reveal distinct thinking controls. Use server defaults or configure controls manually.",
+  };
 }
 
 async function detokenizeVllmPrompt(

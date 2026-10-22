@@ -4,7 +4,7 @@
  * update; additive endpoints and fields do not change it when existing clients
  * accept them. Strict client parsers can make an added field incompatible.
  */
-export const CLIENT_API_LEVEL = 5;
+export const CLIENT_API_LEVEL = 6;
 
 export interface PingResponse {
   ok: true;

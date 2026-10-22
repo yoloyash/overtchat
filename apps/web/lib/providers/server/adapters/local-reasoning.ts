@@ -1,8 +1,12 @@
-import type { ChatReasoningLevel } from "@overtchat/shared";
+import type {
+  ChatReasoningLevel,
+  LocalReasoningMapping,
+} from "@overtchat/shared";
 
 export function applyLocalReasoningLevel(
   body: Record<string, unknown>,
   level: ChatReasoningLevel | undefined,
+  mapping?: LocalReasoningMapping,
 ): Record<string, unknown> {
   if (!level || level === "default") return body;
 
@@ -10,6 +14,26 @@ export function applyLocalReasoningLevel(
     ? body.chat_template_kwargs
     : {};
   const enabled = level !== "off";
+  if (mapping) {
+    const kwargs = { ...existingTemplateKwargs };
+    delete kwargs.enable_thinking;
+    delete kwargs.thinking;
+    delete kwargs.reasoning_effort;
+    const result: Record<string, unknown> = {
+      ...body,
+      chat_template_kwargs: kwargs,
+    };
+    delete result.reasoning_effort;
+    if (mapping.toggleParameter) kwargs[mapping.toggleParameter] = enabled;
+    const effort =
+      level === "off" ? "none" : level === "on" ? undefined : level;
+    if (effort !== undefined && mapping.effortParameter) {
+      if (mapping.effortParameter === "reasoning_effort")
+        result.reasoning_effort = effort;
+      else kwargs.reasoning_effort = effort;
+    }
+    return result;
+  }
   return {
     ...body,
     reasoning_effort:

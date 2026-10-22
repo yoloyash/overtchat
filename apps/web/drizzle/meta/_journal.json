@@ -169,6 +169,13 @@
       "when": 1792722686169,
       "tag": "0023_chat_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1792798073627,
+      "tag": "0024_model_reasoning_overrides",
+      "breakpoints": true
     }
   ]
 }

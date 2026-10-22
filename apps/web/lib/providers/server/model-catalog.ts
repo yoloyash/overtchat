@@ -100,9 +100,21 @@ export function resolveModelCapabilities(
   discovered: ModelCapabilities | null | undefined,
   providerId: ProviderId,
   model: string,
+  reasoningOverride?: ModelReasoningControls | null,
 ): ModelCapabilities | undefined {
   const fallback = catalogCapabilitiesFor(providerId, model);
-  return compactCapabilities({ ...fallback, ...discovered });
+  return compactCapabilities({
+    ...fallback,
+    ...discovered,
+    ...(reasoningOverride
+      ? {
+          reasoningControls: reasoningOverride,
+          ...(reasoningOverride.toggle || reasoningOverride.efforts?.length
+            ? { reasoning: true }
+            : {}),
+        }
+      : {}),
+  });
 }
 
 /**

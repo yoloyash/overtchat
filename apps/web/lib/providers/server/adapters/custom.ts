@@ -18,8 +18,22 @@ import type {
   DiscoveredModel,
 } from "@/lib/providers/server/types";
 
+import { applyLocalReasoningLevel } from "./local-reasoning";
+
 export const customAdapter: ProviderAdapter = {
   id: "custom",
+  acceptsReasoningLevel: true,
+  validateModelConfig(config) {
+    if (
+      config.reasoningLevel &&
+      config.reasoningLevel !== "default" &&
+      config.apiFormat !== "openai-chat"
+    ) {
+      throw new ProviderConfigurationError(
+        "Custom thinking controls require the Chat Completions API.",
+      );
+    }
+  },
   createLanguageModel: createCustomLanguageModel,
   listModels: listCustomModels,
 };
@@ -36,6 +50,12 @@ function createCustomLanguageModel(
           apiKey: config.apiKey,
           model: config.model,
           supportsImageInput: config.supportsImageInput,
+          transformRequestBody: (body) =>
+            applyLocalReasoningLevel(
+              body,
+              config.reasoningLevel,
+              config.reasoningMapping,
+            ),
         }),
         providerOptionsKey: "custom",
       };

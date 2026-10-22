@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/toast";
 import { DEFAULT_MODEL_SYSTEM_PROMPT } from "@/lib/model-config/defaults";
 import {
   ModelConfigSchema,
+  supportsLocalReasoningConfig,
   type AdminModelConfig,
   type CatalogModelPricing,
   type ModelConfigInput,
@@ -30,6 +31,7 @@ import {
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
 import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
+import { ThinkingFields } from "./ThinkingFields";
 import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { CustomImageFields } from "./CustomImageFields";
@@ -74,6 +76,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         contextWindow: existing.contextWindow,
         discoveredContextWindow: existing.discoveredContextWindow,
         discoveredCapabilities: existing.discoveredCapabilities,
+        reasoningOverride: existing.reasoningOverride ?? null,
         systemPrompt: existing.systemPrompt ?? "",
         providerOptions: existing.providerOptions,
         toolCallingEnabled: existing.toolCallingEnabled !== false,
@@ -92,6 +95,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       contextWindow: null,
       discoveredContextWindow: null,
       discoveredCapabilities: null,
+      reasoningOverride: null,
       systemPrompt: DEFAULT_MODEL_SYSTEM_PROMPT,
       providerOptions: null,
       toolCallingEnabled: true,
@@ -122,6 +126,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     string | null
   >(null);
   const [imageOptionsError, setImageOptionsError] = useState(false);
+  const discoveryRef = useRef<{ detect: () => void }>(null);
+  const [detecting, setDetecting] = useState(false);
+  const [reasoningDetection, setReasoningDetection] = useState<string>();
   const [saveError, setSaveError] = useState("");
   // undefined means discovery was not touched in this editor session; null
   // means the current connection did not report a limit.
@@ -166,6 +173,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const canSave =
     !saving &&
+    !detecting &&
     !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
     !!draft.model &&
@@ -338,6 +346,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 setDraft((current) => ({
                   ...current,
                   modelType: value,
+                  reasoningOverride: null,
                   providerOptions: null,
                   ...(current.providerId === "custom"
                     ? {
@@ -407,6 +416,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                         contextWindow: null,
                         discoveredContextWindow: null,
                         discoveredCapabilities: null,
+                        reasoningOverride: null,
                         pricing: null,
                       }
                     : {}),
@@ -430,6 +440,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 }));
               }
             }}
+            ref={discoveryRef}
+            onProbingChange={setDetecting}
+            onReasoningDetection={setReasoningDetection}
             autoFetchModels={!isEditing}
           />
 
@@ -540,34 +553,56 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         </SettingsSection>
 
         {!isImage && (
-          <AdvancedFields
-            contextWindow={draft.contextWindow}
-            onContextWindowChange={(next) =>
-              setDraft((d) => ({ ...d, contextWindow: next }))
-            }
-            contextWindowPlaceholder={contextWindowPlaceholder}
-            resolvedContextWindow={
-              stillEditingOriginalConnection &&
-              detectedContextWindow === undefined
-                ? existing.resolvedContextWindow
-                : undefined
-            }
-            pricing={draft.pricing}
-            catalogPricing={catalogPricingHint}
-            onPricingChange={(next) =>
-              setDraft((d) => ({ ...d, pricing: next }))
-            }
-            systemPrompt={draft.systemPrompt ?? ""}
-            onSystemPromptChange={(next) =>
-              setDraft((d) => ({ ...d, systemPrompt: next }))
-            }
-            providerOptionsText={providerOptionsText}
-            onProviderOptionsTextChange={(next, err) => {
-              setProviderOptionsText(next);
-              setProviderOptionsError(err);
-            }}
-            defaultOpen={advancedDefaultOpen}
-          />
+          <>
+            {supportsLocalReasoningConfig(
+              draft.providerId,
+              draft.apiFormat,
+            ) && (
+              <ThinkingFields
+                detected={
+                  (detectedCapabilities === undefined
+                    ? draft.discoveredCapabilities?.reasoningControls
+                    : detectedCapabilities?.reasoningControls) ??
+                  catalogCapabilities?.reasoningControls
+                }
+                value={draft.reasoningOverride}
+                onChange={(reasoningOverride) =>
+                  setDraft((current) => ({ ...current, reasoningOverride }))
+                }
+                detectionMessage={reasoningDetection}
+                detecting={detecting}
+                onDetect={() => discoveryRef.current?.detect()}
+              />
+            )}
+            <AdvancedFields
+              contextWindow={draft.contextWindow}
+              onContextWindowChange={(next) =>
+                setDraft((d) => ({ ...d, contextWindow: next }))
+              }
+              contextWindowPlaceholder={contextWindowPlaceholder}
+              resolvedContextWindow={
+                stillEditingOriginalConnection &&
+                detectedContextWindow === undefined
+                  ? existing.resolvedContextWindow
+                  : undefined
+              }
+              pricing={draft.pricing}
+              catalogPricing={catalogPricingHint}
+              onPricingChange={(next) =>
+                setDraft((d) => ({ ...d, pricing: next }))
+              }
+              systemPrompt={draft.systemPrompt ?? ""}
+              onSystemPromptChange={(next) =>
+                setDraft((d) => ({ ...d, systemPrompt: next }))
+              }
+              providerOptionsText={providerOptionsText}
+              onProviderOptionsTextChange={(next, err) => {
+                setProviderOptionsText(next);
+                setProviderOptionsError(err);
+              }}
+              defaultOpen={advancedDefaultOpen}
+            />
+          </>
         )}
 
         {saveError && <SettingsNotice tone="error">{saveError}</SettingsNotice>}

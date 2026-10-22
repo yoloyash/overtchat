@@ -252,10 +252,10 @@ describe("provider registry", () => {
       createConfiguredLanguageModel({
         ...baseConfig,
         providerId: "custom",
-        apiFormat: "openai-chat",
+        apiFormat: "openai-responses",
         reasoningLevel: "low",
       }),
-    ).toThrow("does not support per-chat reasoning levels");
+    ).toThrow("Custom thinking controls require the Chat Completions API");
   });
 
   it.each([

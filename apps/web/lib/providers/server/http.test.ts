@@ -294,7 +294,9 @@ describe("provider model discovery", () => {
         reasoning_effort?: string;
       };
       const effort = body.reasoning_effort;
-      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
+      if (
+        ["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")
+      ) {
         return new Response("unsupported effort", {
           status: 500,
           statusText: "Internal Server Error",
@@ -467,7 +469,9 @@ describe("provider model discovery", () => {
         reasoning_effort?: string;
       };
       const effort = body.reasoning_effort;
-      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
+      if (
+        ["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")
+      ) {
         return new Response("unsupported effort", { status: 400 });
       }
       const prompt =
@@ -522,7 +526,9 @@ describe("provider model discovery", () => {
         });
       }
       const effort = body.reasoning_effort;
-      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
+      if (
+        ["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")
+      ) {
         return new Response("unsupported effort", {
           status: 400,
           statusText: "Bad Request",
@@ -545,12 +551,18 @@ describe("provider model discovery", () => {
     ).resolves.toEqual([
       {
         id: "served-model",
+        reasoningDetection:
+          "Thinking controls detected using the server's render endpoint.",
         capabilities: {
           reasoning: true,
           reasoningControls: {
             toggle: true,
             defaultLevel: "xhigh",
             efforts: ["low", "medium", "xhigh"],
+            requestMapping: {
+              toggleParameter: "enable_thinking",
+              effortParameter: "reasoning_effort",
+            },
           },
         },
       },
@@ -569,6 +581,101 @@ describe("provider model discovery", () => {
       expect.objectContaining({
         body: JSON.stringify({ model: "served-model", tokens: [100, 3] }),
       }),
+    );
+  });
+  it.each(["enable_thinking", "thinking"] as const)(
+    "falls back to tokenize and discovers a %s toggle without inventing effort levels",
+    async (parameter) => {
+      const fetchMock = vi.fn(
+        async (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith("/v1/models"))
+            return Response.json({ data: [{ id: "mimo" }] });
+          if (url.endsWith("/v1/chat/completions/render"))
+            return new Response("Not Found", { status: 404 });
+          const body = JSON.parse(String(init?.body));
+          if (url.endsWith("/tokenize")) {
+            expect(body).not.toHaveProperty("reasoning_effort");
+            expect(body).not.toHaveProperty("max_tokens");
+            expect(body.add_generation_prompt).toBe(true);
+            expect(init?.headers).toMatchObject({
+              Authorization: "Bearer secret",
+            });
+            return Response.json({
+              tokens:
+                body.chat_template_kwargs?.[parameter] === false
+                  ? [1, 2, 3]
+                  : [1, 2],
+              count: 2,
+            });
+          }
+          if (url.endsWith("/detokenize"))
+            return Response.json({ prompt: "<assistant>" });
+          throw new Error(`Unexpected endpoint ${url}`);
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const models = await listVllmModels("http://local/proxy/v1", "secret");
+      expect(models[0].capabilities?.reasoningControls).toEqual({
+        toggle: true,
+        defaultLevel: "on",
+        requestMapping: { toggleParameter: parameter },
+      });
+      expect(models[0].reasoningDetection).toContain("tokenize");
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).includes("/render")),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("keeps distinct effort controls even when the server default cannot be identified", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/models"))
+          return Response.json({ data: [{ id: "custom-default" }] });
+        if (url.endsWith("/render"))
+          return new Response("Not Found", { status: 404 });
+        const body = JSON.parse(String(init?.body));
+        const effort = body.chat_template_kwargs?.reasoning_effort;
+        if (url.endsWith("/tokenize")) {
+          if (effort === "low") return Response.json({ tokens: [1] });
+          if (effort === "high") return Response.json({ tokens: [2] });
+          if (effort)
+            return new Response("Unsupported effort", { status: 400 });
+          return Response.json({ tokens: [3] });
+        }
+        return Response.json({ prompt: "auto" });
+      }),
+    );
+    const [model] = await listVllmModels("http://local/v1", null);
+    expect(model.capabilities?.reasoningControls).toMatchObject({
+      toggle: false,
+      efforts: ["low", "high"],
+      requestMapping: {
+        effortParameter: "chat_template_kwargs.reasoning_effort",
+      },
+    });
+    expect(model.capabilities?.reasoningControls).not.toHaveProperty(
+      "defaultLevel",
+    );
+  });
+
+  it("retains model discovery and explains when both probe endpoints are unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) =>
+        String(input).endsWith("/models")
+          ? Response.json({ data: [{ id: "still-usable" }] })
+          : new Response("Not Found", { status: 404 }),
+      ),
+    );
+    const [model] = await listVllmModels("http://local/v1", null);
+    expect(model.id).toBe("still-usable");
+    expect(model.capabilities?.reasoningControls).toBeUndefined();
+    expect(model.reasoningDetection).toContain(
+      "render and tokenize endpoints were unavailable",
     );
   });
 });

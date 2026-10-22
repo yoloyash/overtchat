@@ -31,6 +31,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     contextWindow: row.contextWindow,
     discoveredContextWindow: row.discoveredContextWindow,
     discoveredCapabilities: row.discoveredCapabilities,
+    reasoningOverride: row.reasoningOverride,
     resolvedContextWindow: resolveModelContextWindow(
       row.contextWindow,
       row.discoveredContextWindow,
@@ -41,6 +42,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
       row.discoveredCapabilities,
       row.providerId,
       row.model,
+      row.reasoningOverride,
     ),
     systemPrompt: row.systemPrompt,
     providerOptions: row.providerOptions,

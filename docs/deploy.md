@@ -724,6 +724,32 @@ retains previous runtime directories so an older launcher remains usable. Do
 not remove a directory referenced by the current launcher or an upgrade rollback
 file.
 
+### Local model thinking controls
+
+In **Settings → Models**, choose the matching server provider (for example,
+**vLLM**) and select a discovered model. The **Thinking** section prefills
+controls when the loaded template can be inspected. **Detect again** refreshes
+that information after a server or template change; save to apply the result.
+vLLM discovery tries the render endpoint, then `/tokenize`, without generating
+an answer. Missing inspection endpoints do not prevent ordinary chat.
+
+If detection is unavailable or incomplete, select **Custom** in Thinking.
+Choose On/Off and the effort levels the model actually supports, then select
+its request parameters. Toggle templates commonly use
+`chat_template_kwargs.enable_thinking` or `chat_template_kwargs.thinking`;
+effort may use `reasoning_effort` or `chat_template_kwargs.reasoning_effort`.
+Custom choices persist separately from detection. Select **Automatic** to use
+detection again, or leave every custom control unchecked to hide the selector.
+These settings also support llama.cpp, SGLang, and custom Chat Completions
+connections. Controls belong to the configured model, not just its server type.
+
+In chat, **Server default** omits the per-chat thinking override and retains
+any saved Provider options. Explicit choices override conflicting thinking
+parameters while preserving unrelated options. On/Off, effort levels, and
+thinking token budgets are different controls: a template with only an on/off
+switch does not gain effort levels by accepting an API parameter. Backend token
+budgets can still be configured separately through Advanced Provider options.
+
 ## Share with your family
 
 Add accounts under **Settings → Users → Add user**, then share their login

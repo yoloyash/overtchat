@@ -335,6 +335,38 @@ tests exercise the actual generated catalog, including pricing compatibility for
 every priced model. A legitimate upstream price change should produce a catalog
 diff for review without failing a test that expects yesterday's prices.
 
+## Local thinking controls validation
+
+The model editor stores manual thinking controls separately from discovered
+capabilities. The resolved profile is used by both the public model list and
+chat request validation. OpenAI-compatible adapters apply the same request
+mapping used by discovery. Server default omits the per-chat override.
+
+```sh
+npm run test -w apps/web -- lib/providers/server/http.test.ts lib/providers/server/adapters/local-reasoning.test.ts lib/providers/server/registry.test.ts lib/model-config lib/db/modelConfigs.test.ts
+E2E_PORT=4857 npm run test:e2e -w apps/web -- model-thinking.spec.ts composer-model-picker.spec.ts
+npm run typecheck -w apps/mobile
+npm run typecheck -w packages/shared
+```
+
+The browser tests exercise real model configuration persistence, tokenizer
+fallback, unavailable discovery, manual mapping, re-detection, and composer
+requests against a local HTTP fixture. For a running vLLM model that supports
+a thinking toggle and emits parsed reasoning, opt in to two small generations:
+
+```sh
+VLLM_LIVE_URL=http://localhost:8000/v1 \
+VLLM_LIVE_MODEL=mimo-v2.6-flash \
+VLLM_LIVE_REPORT=/tmp/overtchat-thinking-live.json \
+npm run test -w apps/web -- lib/providers/server/vllm-reasoning.live.test.ts
+```
+
+Set `VLLM_LIVE_API_KEY` if required. Omit `VLLM_LIVE_MODEL` to use the first
+listed model. This test discovers controls, sends On/Off through the production
+adapter, checks both answers and reasoning presence, and optionally writes a
+small report without credentials or prompt/response transcripts. It does not
+modify saved models or chats. Ordinary unit runs skip it.
+
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,

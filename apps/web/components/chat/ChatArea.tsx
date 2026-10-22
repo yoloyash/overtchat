@@ -144,7 +144,7 @@ export function ChatArea({
       storedReasoningLevel,
     )
       ? storedReasoningLevel
-      : (reasoningControls?.defaultLevel ?? "default");
+      : "default";
   const modelSupportsSearch = modelSupportsToolCalling(selectedModel);
   const [webSearchEnabled] = useLocalStorage<boolean>(
     WEB_SEARCH_ENABLED_STORAGE_KEY,

@@ -5,6 +5,8 @@ import {
   useEffect,
   useEffectEvent,
   useRef,
+  useImperativeHandle,
+  type Ref,
   useState,
 } from "react";
 import type { ModelCapabilities } from "@overtchat/shared";
@@ -57,6 +59,9 @@ export interface ConnectionFieldsProps {
   onCatalogPricing?: (next: CatalogModelPricing | undefined) => void;
   onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
+  ref?: Ref<{ detect: () => void }>;
+  onProbingChange?: (probing: boolean) => void;
+  onReasoningDetection?: (message: string | undefined) => void;
   imageModel?: boolean;
 }
 
@@ -71,6 +76,9 @@ export function ConnectionFields({
   onCatalogPricing,
   onCapabilitySuggestion,
   autoFetchModels = false,
+  ref,
+  onProbingChange,
+  onReasoningDetection,
   imageModel = false,
 }: ConnectionFieldsProps) {
   const provider = getProvider(draft.providerId);
@@ -98,6 +106,7 @@ export function ConnectionFields({
     onDiscoveredContextWindow?.(undefined);
     onCatalogContextWindow?.(undefined);
     onDiscoveredCapabilities?.(undefined);
+    onReasoningDetection?.(undefined);
     onCatalogCapabilities?.(undefined);
     onCatalogPricing?.(undefined);
     onCapabilitySuggestion?.(undefined);
@@ -109,6 +118,7 @@ export function ConnectionFields({
       onDiscoveredContextWindow?.(model.contextWindow);
       onCatalogContextWindow?.(model.catalogContextWindow);
       onDiscoveredCapabilities?.(model.capabilities);
+      onReasoningDetection?.(model.reasoningDetection);
       onCatalogCapabilities?.(model.catalogCapabilities);
       onCatalogPricing?.(model.catalogPricing);
       onCapabilitySuggestion?.({
@@ -123,6 +133,7 @@ export function ConnectionFields({
       onCatalogPricing,
       onChange,
       onDiscoveredCapabilities,
+      onReasoningDetection,
       onDiscoveredContextWindow,
     ],
   );
@@ -131,6 +142,7 @@ export function ConnectionFields({
     async (connection: ConnectionDraft) => {
       if (!connection.baseUrl) return;
       setProbing(true);
+      onProbingChange?.(true);
       setProbeError("");
       try {
         const allModels = await fetchModelsForProvider({
@@ -156,6 +168,7 @@ export function ConnectionFields({
           onDiscoveredContextWindow?.(undefined);
           onCatalogContextWindow?.(undefined);
           onDiscoveredCapabilities?.(undefined);
+          onReasoningDetection?.(undefined);
           onCatalogCapabilities?.(undefined);
           onCatalogPricing?.(undefined);
           onCapabilitySuggestion?.(undefined);
@@ -167,6 +180,7 @@ export function ConnectionFields({
           onDiscoveredContextWindow?.(current.contextWindow);
           onCatalogContextWindow?.(current.catalogContextWindow);
           onDiscoveredCapabilities?.(current.capabilities);
+          onReasoningDetection?.(current.reasoningDetection);
           onCatalogCapabilities?.(current.catalogCapabilities);
           onCatalogPricing?.(current.catalogPricing);
           onCapabilitySuggestion?.({
@@ -178,6 +192,7 @@ export function ConnectionFields({
           onDiscoveredContextWindow?.(undefined);
           onCatalogContextWindow?.(undefined);
           onDiscoveredCapabilities?.(undefined);
+          onReasoningDetection?.(undefined);
           onCatalogCapabilities?.(undefined);
           onCatalogPricing?.(undefined);
           onCapabilitySuggestion?.(undefined);
@@ -191,22 +206,34 @@ export function ConnectionFields({
         setProbeError(e instanceof Error ? e.message : String(e));
       } finally {
         setProbing(false);
+        onProbingChange?.(false);
       }
     },
     [
       draft.model,
+      onProbingChange,
       imageModel,
       onCapabilitySuggestion,
       onCatalogCapabilities,
       onCatalogContextWindow,
       onCatalogPricing,
       onDiscoveredCapabilities,
+      onReasoningDetection,
       onDiscoveredContextWindow,
       selectDiscoveredModel,
     ],
   );
 
   const runAutoProbe = useEffectEvent(() => probe(draft));
+  useImperativeHandle(
+    ref,
+    () => ({
+      detect: () => {
+        void probe(draft);
+      },
+    }),
+    [probe, draft],
+  );
 
   useEffect(() => {
     if (
@@ -453,6 +480,7 @@ export function ConnectionFields({
                   onDiscoveredContextWindow?.(undefined);
                   onCatalogContextWindow?.(undefined);
                   onDiscoveredCapabilities?.(undefined);
+                  onReasoningDetection?.(undefined);
                   onCatalogCapabilities?.(undefined);
                   onCatalogPricing?.(undefined);
                   onCapabilitySuggestion?.(undefined);

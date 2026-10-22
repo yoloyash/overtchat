@@ -36,6 +36,7 @@ function toPublic(row: ModelConfigRow): PublicModelConfig {
       row.discoveredCapabilities,
       row.providerId,
       row.model,
+      row.reasoningOverride,
     ),
     hasProviderOptions:
       !!row.providerOptions && Object.keys(row.providerOptions).length > 0,

@@ -37,6 +37,7 @@ raw.exec(`
     context_window INTEGER,
     discovered_context_window INTEGER,
     discovered_capabilities TEXT,
+    reasoning_override TEXT,
     system_prompt TEXT,
     provider_options TEXT,
     tool_calling_enabled INTEGER DEFAULT true NOT NULL,
@@ -238,4 +239,42 @@ describe("image model selection", () => {
     expect(modelConfigDb.getTaskModelConfig()).toBeNull();
     expect(modelConfigDb.getImageModelConfig()?.id).toBe("chat-model");
   });
+});
+
+it("persists manual thinking separately from refreshed detection, resolves it, and resets to automatic", async () => {
+  const profile = {
+    toggle: true,
+    requestMapping: { toggleParameter: "thinking" as const },
+  };
+  const input = ModelConfigSchema.parse({
+    label: "Local",
+    providerId: "vllm",
+    apiFormat: "auto",
+    baseUrl: "http://local/v1",
+    model: "test",
+    reasoningOverride: profile,
+  });
+  const created = await modelConfigDb.createModelConfig(input);
+  const updated = await modelConfigDb.updateModelConfig(created.id, {
+    ...input,
+    discoveredCapabilities: {
+      reasoningControls: { toggle: false, efforts: ["high"] },
+    },
+  });
+  expect(updated?.reasoningOverride).toEqual(profile);
+  expect(
+    modelConfigDb.toAdminModelConfig(updated!).resolvedCapabilities
+      ?.reasoningControls,
+  ).toEqual(profile);
+  const automatic = await modelConfigDb.updateModelConfig(created.id, {
+    ...input,
+    reasoningOverride: null,
+    discoveredCapabilities: {
+      reasoningControls: { toggle: false, efforts: ["high"] },
+    },
+  });
+  expect(
+    modelConfigDb.toAdminModelConfig(automatic!).resolvedCapabilities
+      ?.reasoningControls,
+  ).toEqual({ toggle: false, efforts: ["high"] });
 });
