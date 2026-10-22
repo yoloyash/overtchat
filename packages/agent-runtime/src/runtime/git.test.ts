@@ -1,9 +1,12 @@
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   symlinkSync,
+  watch as watchFiles,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +29,7 @@ import {
   AGENT_WORKSPACE_GIT_PROBE_SCRIPT,
   AGENT_WORKSPACE_GIT_WATCH_SCRIPT,
   inspectAgentWorkspaceGitStatus,
-  watchAgentWorkspaceGitStatus,
+  startAgentWorkspaceGitHostWatcher,
 } from "./git";
 
 const connectorId = "11111111-1111-4111-8111-111111111111";
@@ -217,13 +220,13 @@ describe("agent workspace Git status", () => {
   });
 });
 
-// Runs the real watcher in a repository through the connector-facing wrapper,
-// with the host spawner replaced by a direct local Node process.
-function startLocalWatch(directory: string) {
+// Runs the real host watcher through the connector-facing wrapper, with the
+// host spawner replaced by a direct local Node process.
+function startLocalWatcher(env: NodeJS.ProcessEnv = process.env) {
   mocks.spawnOnHost.mockImplementation(
-    (_target: unknown, launch: { args: string[]; cwd: string }) => {
+    (_target: unknown, launch: { args: string[] }) => {
       const child = spawn(process.execPath, launch.args, {
-        cwd: launch.cwd,
+        env,
         stdio: ["pipe", "pipe", "pipe"],
       });
       return {
@@ -237,17 +240,17 @@ function startLocalWatch(directory: string) {
       };
     },
   );
-  const statuses: AgentWorkspaceGitStatus[] = [];
-  const errors: string[] = [];
-  const watch = watchAgentWorkspaceGitStatus(
+  const statuses = new Map<string, AgentWorkspaceGitStatus[]>();
+  const errors = new Map<string, string[]>();
+  const watcher = startAgentWorkspaceGitHostWatcher(
     { transport: "local" },
-    directory,
     {
-      status: (status) => statuses.push(status),
-      error: (message) => errors.push(message),
+      status: (id, status) => statuses.set(id, [...(statuses.get(id) ?? []), status]),
+      error: (id, message) => errors.set(id, [...(errors.get(id) ?? []), message]),
     },
   );
-  return { watch, statuses, errors };
+  const of = (id: string) => statuses.get(id) ?? [];
+  return { watcher, statuses: of, errors: (id: string) => errors.get(id) ?? [] };
 }
 
 describe("agent workspace Git watcher", () => {
@@ -257,49 +260,170 @@ describe("agent workspace Git watcher", () => {
 
   it("pushes the initial status and each later working tree change", async () => {
     const directory = createRepository();
-    const { watch, statuses, errors } = startLocalWatch(directory);
+    const { watcher, statuses, errors } = startLocalWatcher();
     try {
-      await vi.waitFor(() => expect(statuses).toHaveLength(1), { timeout: 10_000 });
-      expect(statuses[0]).toMatchObject({ branch: "main", changedFiles: 0 });
+      watcher.watch("workspace", directory);
+      await vi.waitFor(() => expect(statuses("workspace")).toHaveLength(1), { timeout: 10_000 });
+      expect(statuses("workspace")[0]).toMatchObject({ branch: "main", changedFiles: 0 });
+      expect(mocks.spawnOnHost).toHaveBeenCalledTimes(1);
       expect(mocks.spawnOnHost).toHaveBeenCalledWith(
         { transport: "local" },
-        {
-          command: "node",
-          args: ["-e", AGENT_WORKSPACE_GIT_WATCH_SCRIPT],
-          cwd: directory,
-        },
+        { command: "node", args: ["-e", AGENT_WORKSPACE_GIT_WATCH_SCRIPT] },
       );
 
       writeFileSync(path.join(directory, "tracked.txt"), "one\ntwo\nthree\n");
       await vi.waitFor(
-        () => expect(statuses.at(-1)).toMatchObject({ changedFiles: 1, additions: 1 }),
+        () => expect(statuses("workspace").at(-1)).toMatchObject({ changedFiles: 1, additions: 1 }),
         { timeout: 10_000 },
       );
 
       mkdirSync(path.join(directory, "nested", "deeper"), { recursive: true });
       writeFileSync(path.join(directory, "nested", "deeper", "new.txt"), "x\n");
       await vi.waitFor(
-        () => expect(statuses.at(-1)).toMatchObject({ changedFiles: 2 }),
+        () => expect(statuses("workspace").at(-1)).toMatchObject({ changedFiles: 2 }),
         { timeout: 10_000 },
       );
 
       git(directory, "add", ".");
       git(directory, "commit", "--quiet", "-m", "change");
       await vi.waitFor(
-        () => expect(statuses.at(-1)).toMatchObject({ changedFiles: 0, dirty: false }),
+        () => expect(statuses("workspace").at(-1)).toMatchObject({ changedFiles: 0, dirty: false }),
         { timeout: 10_000 },
       );
 
       git(directory, "checkout", "--quiet", "-b", "feature/watched");
       await vi.waitFor(
-        () => expect(statuses.at(-1)).toMatchObject({ branch: "feature/watched" }),
+        () => expect(statuses("workspace").at(-1)).toMatchObject({ branch: "feature/watched" }),
         { timeout: 10_000 },
       );
-      expect(errors).toEqual([]);
+      expect(errors("workspace")).toEqual([]);
     } finally {
-      await watch.stop();
+      await watcher.stop();
     }
   }, 60_000);
+
+  it("serves several workspaces from one process and stops watching removed ones", async () => {
+    const first = createRepository();
+    const second = createRepository();
+    const missing = path.join(first, "..", `${path.basename(first)}-missing`);
+    const { watcher, statuses, errors } = startLocalWatcher();
+    try {
+      watcher.watch("first", first);
+      watcher.watch("second", second);
+      watcher.watch("missing", missing);
+      await vi.waitFor(() => {
+        expect(statuses("first")).toHaveLength(1);
+        expect(statuses("second")).toHaveLength(1);
+        expect(errors("missing")).toEqual([
+          "The workspace directory is not available on the selected machine.",
+        ]);
+      }, { timeout: 10_000 });
+
+      writeFileSync(path.join(second, "second.txt"), "x\n");
+      await vi.waitFor(
+        () => expect(statuses("second").at(-1)).toMatchObject({ changedFiles: 1 }),
+        { timeout: 10_000 },
+      );
+      expect(statuses("first")).toHaveLength(1);
+
+      watcher.unwatch("first");
+      writeFileSync(path.join(first, "first.txt"), "x\n");
+      writeFileSync(path.join(second, "again.txt"), "x\n");
+      await vi.waitFor(
+        () => expect(statuses("second").at(-1)).toMatchObject({ changedFiles: 2 }),
+        { timeout: 10_000 },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      expect(statuses("first")).toHaveLength(1);
+      expect(mocks.spawnOnHost).toHaveBeenCalledTimes(1);
+    } finally {
+      await watcher.stop();
+    }
+  }, 40_000);
+
+  it.skipIf(process.platform === "win32")(
+    "keeps other workspaces live while one repository is slow to inspect",
+    async () => {
+      const slow = createRepository();
+      const fast = createRepository();
+      const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+      const bin = mkdtempSync(path.join(tmpdir(), "overtchat-slow-git-"));
+      writeFileSync(
+        path.join(bin, "git"),
+        `#!/bin/sh\ncase "$PWD" in ${slow}*) sleep 6 ;; esac\nexec "${realGit}" "$@"\n`,
+        { mode: 0o755 },
+      );
+      const { watcher, statuses } = startLocalWatcher({
+        ...process.env,
+        PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
+      });
+      try {
+        watcher.watch("slow", slow);
+        watcher.watch("fast", fast);
+        await vi.waitFor(() => expect(statuses("fast")).toHaveLength(1), { timeout: 5_000 });
+        writeFileSync(path.join(fast, "fast.txt"), "x\n");
+        await vi.waitFor(
+          () => expect(statuses("fast").at(-1)).toMatchObject({ changedFiles: 1 }),
+          { timeout: 5_000 },
+        );
+        expect(statuses("slow")).toHaveLength(0);
+      } finally {
+        await watcher.stop();
+      }
+    },
+    30_000,
+  );
+
+  it("proves the watch with a canary in the Git directory and removes it", async () => {
+    const directory = createRepository();
+    const gitDirectory = path.join(directory, ".git");
+    const canaries = new Set<string>();
+    const observer = watchFiles(gitDirectory, (_event, filename) => {
+      if (filename && String(filename).startsWith(".overtchat-watcher-canary-")) {
+        canaries.add(String(filename));
+      }
+    });
+    const { watcher, statuses } = startLocalWatcher();
+    try {
+      watcher.watch("workspace", directory);
+      await vi.waitFor(() => expect(canaries.size).toBe(1), { timeout: 10_000 });
+      await vi.waitFor(
+        () =>
+          expect(
+            readdirSync(gitDirectory).filter((name) => name.startsWith(".overtchat-watcher-canary-")),
+          ).toEqual([]),
+        { timeout: 10_000 },
+      );
+      expect(git(directory, "status", "--porcelain")).toBe("");
+      expect(statuses("workspace")).toHaveLength(1);
+    } finally {
+      observer.close();
+      await watcher.stop();
+    }
+  }, 30_000);
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "falls back to polling when the canary cannot be written",
+    async () => {
+      const directory = createRepository();
+      const gitDirectory = path.join(directory, ".git");
+      chmodSync(gitDirectory, 0o555);
+      const { watcher, statuses } = startLocalWatcher();
+      try {
+        watcher.watch("workspace", directory);
+        await vi.waitFor(() => expect(statuses("workspace")).toHaveLength(1), { timeout: 10_000 });
+        writeFileSync(path.join(directory, "polled.txt"), "x\n");
+        await vi.waitFor(
+          () => expect(statuses("workspace").at(-1)).toMatchObject({ changedFiles: 1 }),
+          { timeout: 15_000 },
+        );
+      } finally {
+        await watcher.stop();
+        chmodSync(gitDirectory, 0o755);
+      }
+    },
+    30_000,
+  );
 
   it("ignores Git-ignored churn and never rewrites the index", async () => {
     const directory = createRepository();
@@ -307,49 +431,53 @@ describe("agent workspace Git watcher", () => {
     git(directory, "add", ".gitignore");
     git(directory, "commit", "--quiet", "-m", "ignore build");
     mkdirSync(path.join(directory, "build"));
-    const { watch, statuses } = startLocalWatch(directory);
+    const { watcher, statuses } = startLocalWatcher();
     try {
-      await vi.waitFor(() => expect(statuses).toHaveLength(1), { timeout: 10_000 });
+      watcher.watch("workspace", directory);
+      await vi.waitFor(() => expect(statuses("workspace")).toHaveLength(1), { timeout: 10_000 });
+      // Let the post-setup recheck settle before measuring.
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
       const index = readFileSync(path.join(directory, ".git", "index"));
       for (let file = 0; file < 20; file += 1) {
         writeFileSync(path.join(directory, "build", `${file}.js`), "x");
       }
       await new Promise((resolve) => setTimeout(resolve, 4_000));
 
-      expect(statuses).toHaveLength(1);
+      expect(statuses("workspace")).toHaveLength(1);
       expect(readFileSync(path.join(directory, ".git", "index"))).toEqual(index);
     } finally {
-      await watch.stop();
+      await watcher.stop();
     }
   }, 30_000);
 
   it("reports a directory that becomes a repository", async () => {
     const directory = realpathSync(mkdtempSync(path.join(tmpdir(), "overtchat-plain-")));
-    const { watch, statuses } = startLocalWatch(directory);
+    const { watcher, statuses } = startLocalWatcher();
     try {
-      await vi.waitFor(() => expect(statuses).toHaveLength(1), { timeout: 10_000 });
-      expect(statuses[0]).toMatchObject({ isGit: false });
+      watcher.watch("workspace", directory);
+      await vi.waitFor(() => expect(statuses("workspace")).toHaveLength(1), { timeout: 10_000 });
+      expect(statuses("workspace")[0]).toMatchObject({ isGit: false });
 
       git(directory, "init", "--quiet", "--initial-branch=main");
       writeFileSync(path.join(directory, "file.txt"), "x\n");
       await vi.waitFor(
-        () => expect(statuses.at(-1)).toMatchObject({ isGit: true, changedFiles: 1 }),
+        () => expect(statuses("workspace").at(-1)).toMatchObject({ isGit: true, changedFiles: 1 }),
         { timeout: 20_000 },
       );
     } finally {
-      await watch.stop();
+      await watcher.stop();
     }
   }, 40_000);
 
   it("exits when its input closes", async () => {
     const directory = createRepository();
     const child = spawn(process.execPath, ["-e", AGENT_WORKSPACE_GIT_WATCH_SCRIPT], {
-      cwd: directory,
       stdio: ["pipe", "pipe", "pipe"],
     });
     const closed = new Promise<number | null>((resolve) =>
       child.once("close", (code) => resolve(code)),
     );
+    child.stdin.write(`${JSON.stringify({ type: "watch", id: "workspace", path: directory })}\n`);
     await new Promise<void>((resolve) => child.stdout.once("data", () => resolve()));
 
     child.stdin.end();

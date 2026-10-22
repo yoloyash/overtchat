@@ -1,9 +1,9 @@
 import type { AgentWorkspaceGitStatus } from "@overtchat/agent-bridge";
 import {
   inspectAgentWorkspaceGitStatus,
-  watchAgentWorkspaceGitStatus,
-  type AgentWorkspaceGitWatch,
-  type AgentWorkspaceGitWatchHandlers,
+  startAgentWorkspaceGitHostWatcher,
+  type AgentWorkspaceGitHostWatcher,
+  type AgentWorkspaceGitHostWatcherHandlers,
   type HostTarget,
 } from "@overtchat/agent-runtime";
 
@@ -64,11 +64,10 @@ export class WorkspaceGitStatusReader {
   }
 }
 
-type StartWatch = (
+type StartHostWatcher = (
   target: HostTarget,
-  path: string,
-  handlers: AgentWorkspaceGitWatchHandlers,
-) => AgentWorkspaceGitWatch;
+  handlers: AgentWorkspaceGitHostWatcherHandlers,
+) => AgentWorkspaceGitHostWatcher;
 
 type WatchListener = (status: AgentWorkspaceGitStatus, revision: number) => void;
 
@@ -78,46 +77,67 @@ export type WatchedGitStatus = {
   revision: number;
 };
 
+type WatchedHost = {
+  key: string;
+  target: HostTarget;
+  /** Workspaces by their id inside the host process. */
+  workspaces: Map<string, WatchedWorkspace>;
+  process: AgentWorkspaceGitHostWatcher | null;
+  restartAttempt: number;
+  restartTimer?: NodeJS.Timeout;
+  closed: boolean;
+};
+
 type WatchedWorkspace = {
   key: string;
+  id: string;
+  host: WatchedHost;
   target: HostTarget;
   path: string;
   listeners: Map<string, WatchListener>;
   status: AgentWorkspaceGitStatus | null;
   revision: number;
   firstStatus: Array<(status: AgentWorkspaceGitStatus | null) => void>;
-  process: AgentWorkspaceGitWatch | null;
-  restartAttempt: number;
-  restartTimer?: NodeJS.Timeout;
   idleTimer?: NodeJS.Timeout;
   closed: boolean;
 };
 
 export type WorkspaceGitWatchOptions = {
-  /** Keeps an unwatched workspace's process briefly for reconnects and navigation. */
+  /** Keeps an unwatched workspace briefly for reconnects and navigation. */
   idleGraceMs?: number;
   firstStatusTimeoutMs?: number;
   restartBaseMs?: number;
   restartMaxMs?: number;
 };
 
+function hostKey(target: HostTarget): string {
+  return JSON.stringify([
+    target.transport,
+    target.transport === "ssh" ? target.alias : null,
+    target.shellMode ?? null,
+  ]);
+}
+
 /**
- * One host-side watcher process per workspace, shared by every watch on it.
- * The process pushes a status only when it changes; between pushes the latest
- * status also answers plain `git_status` reads without spawning anything.
+ * One host-side watcher process per host, shared by every watched workspace
+ * on it. The process pushes a workspace's status only when it changes; between
+ * pushes the latest status also answers plain `git_status` reads without
+ * spawning anything.
  */
 export class WorkspaceGitWatches {
+  private readonly hosts = new Map<string, WatchedHost>();
   private readonly workspaces = new Map<string, WatchedWorkspace>();
   private readonly watches = new Map<string, WatchedWorkspace>();
   private readonly idleGraceMs: number;
   private readonly firstStatusTimeoutMs: number;
   private readonly restartBaseMs: number;
   private readonly restartMaxMs: number;
+  private nextWorkspaceId = 0;
   private stopped = false;
 
   constructor(
     private readonly reader: WorkspaceGitStatusReader,
-    private readonly startWatch: StartWatch = watchAgentWorkspaceGitStatus,
+    private readonly startHostWatcher: StartHostWatcher = startAgentWorkspaceGitHostWatcher,
     options: WorkspaceGitWatchOptions = {},
   ) {
     this.idleGraceMs = options.idleGraceMs ?? 30_000;
@@ -128,7 +148,7 @@ export class WorkspaceGitWatches {
 
   current(target: HostTarget, path: string): AgentWorkspaceGitStatus | null {
     const workspace = this.workspaces.get(workspaceGitKey(target, path));
-    return workspace?.process ? workspace.status : null;
+    return workspace?.host.process ? workspace.status : null;
   }
 
   async watch(
@@ -141,28 +161,29 @@ export class WorkspaceGitWatches {
     this.unwatch(watchId);
     const key = workspaceGitKey(target, path);
     let workspace = this.workspaces.get(key);
-    const created = !workspace;
     if (!workspace) {
+      const host = this.host(target);
       workspace = {
         key,
+        id: `w${++this.nextWorkspaceId}`,
+        host,
         target,
         path,
         listeners: new Map(),
         status: null,
         revision: 0,
         firstStatus: [],
-        process: null,
-        restartAttempt: 0,
         closed: false,
       };
       this.workspaces.set(key, workspace);
+      host.workspaces.set(workspace.id, workspace);
+      host.process?.watch(workspace.id, path);
     }
     if (workspace.idleTimer) clearTimeout(workspace.idleTimer);
     workspace.idleTimer = undefined;
     workspace.listeners.set(watchId, listener);
     this.watches.set(watchId, workspace);
-    if (created) this.start(workspace);
-    const status = workspace.process
+    const status = workspace.host.process
       ? (workspace.status ?? (await this.firstStatus(workspace)))
       : null;
     if (status && workspace.status === status) {
@@ -181,12 +202,12 @@ export class WorkspaceGitWatches {
     if (workspace.listeners.size > 0 || workspace.idleTimer) return;
     workspace.idleTimer = setTimeout(() => {
       workspace.idleTimer = undefined;
-      if (workspace.listeners.size === 0) void this.close(workspace);
+      if (workspace.listeners.size === 0) this.closeWorkspace(workspace);
     }, this.idleGraceMs);
     workspace.idleTimer.unref();
   }
 
-  /** Drops every watch; processes stay for the idle grace so re-watches reuse them. */
+  /** Drops every watch; workspaces stay for the idle grace so re-watches reuse them. */
   unwatchAll(): void {
     for (const watchId of [...this.watches.keys()]) this.unwatch(watchId);
   }
@@ -194,7 +215,31 @@ export class WorkspaceGitWatches {
   async stop(): Promise<void> {
     this.stopped = true;
     this.watches.clear();
-    await Promise.all([...this.workspaces.values()].map((workspace) => this.close(workspace)));
+    for (const workspace of [...this.workspaces.values()]) {
+      if (workspace.idleTimer) clearTimeout(workspace.idleTimer);
+      workspace.closed = true;
+      this.settleFirstStatus(workspace, null);
+    }
+    this.workspaces.clear();
+    await Promise.all([...this.hosts.values()].map((host) => this.closeHost(host)));
+  }
+
+  private host(target: HostTarget): WatchedHost {
+    const key = hostKey(target);
+    let host = this.hosts.get(key);
+    if (!host) {
+      host = {
+        key,
+        target,
+        workspaces: new Map(),
+        process: null,
+        restartAttempt: 0,
+        closed: false,
+      };
+      this.hosts.set(key, host);
+      this.start(host);
+    }
+    return host;
   }
 
   private firstStatus(
@@ -219,14 +264,15 @@ export class WorkspaceGitWatches {
     for (const settle of [...workspace.firstStatus]) settle(status);
   }
 
-  private start(workspace: WatchedWorkspace): void {
-    if (workspace.closed || this.stopped) return;
-    let watcher: AgentWorkspaceGitWatch;
+  private start(host: WatchedHost): void {
+    if (host.closed || this.stopped) return;
+    let watcher: AgentWorkspaceGitHostWatcher;
     try {
-      watcher = this.startWatch(workspace.target, workspace.path, {
-        status: (status) => {
-          if (workspace.process !== watcher) return;
-          workspace.restartAttempt = 0;
+      watcher = this.startHostWatcher(host.target, {
+        status: (id, status) => {
+          const workspace = host.workspaces.get(id);
+          if (host.process !== watcher || !workspace) return;
+          host.restartAttempt = 0;
           workspace.status = status;
           workspace.revision += 1;
           this.settleFirstStatus(workspace, status);
@@ -234,8 +280,9 @@ export class WorkspaceGitWatches {
             listener(status, workspace.revision);
           }
         },
-        error: () => {
-          if (workspace.process !== watcher) return;
+        error: (id) => {
+          const workspace = host.workspaces.get(id);
+          if (host.process !== watcher || !workspace) return;
           // Plain reads fall through to a direct inspection, which reports
           // the failure to the caller exactly as before watching existed.
           workspace.status = null;
@@ -243,49 +290,64 @@ export class WorkspaceGitWatches {
         },
       });
     } catch {
-      this.scheduleRestart(workspace);
+      this.scheduleRestart(host);
       return;
     }
-    workspace.process = watcher;
+    host.process = watcher;
+    for (const workspace of host.workspaces.values()) {
+      watcher.watch(workspace.id, workspace.path);
+    }
     void watcher.exited.then(() => {
-      if (workspace.process !== watcher) return;
-      workspace.process = null;
-      workspace.status = null;
-      this.settleFirstStatus(workspace, null);
-      this.scheduleRestart(workspace);
+      if (host.process !== watcher) return;
+      host.process = null;
+      for (const workspace of host.workspaces.values()) {
+        workspace.status = null;
+        this.settleFirstStatus(workspace, null);
+      }
+      this.scheduleRestart(host);
     });
   }
 
-  private scheduleRestart(workspace: WatchedWorkspace): void {
-    if (workspace.closed || this.stopped || workspace.listeners.size === 0) {
-      if (!workspace.closed) void this.close(workspace);
+  private scheduleRestart(host: WatchedHost): void {
+    if (host.closed || this.stopped || host.workspaces.size === 0) {
+      void this.closeHost(host);
       return;
     }
     const delay = Math.min(
-      this.restartBaseMs * 2 ** workspace.restartAttempt,
+      this.restartBaseMs * 2 ** host.restartAttempt,
       this.restartMaxMs,
     );
-    workspace.restartAttempt += 1;
-    workspace.restartTimer = setTimeout(() => {
-      workspace.restartTimer = undefined;
-      this.start(workspace);
+    host.restartAttempt += 1;
+    host.restartTimer = setTimeout(() => {
+      host.restartTimer = undefined;
+      this.start(host);
     }, delay);
-    workspace.restartTimer.unref();
+    host.restartTimer.unref();
   }
 
-  private async close(workspace: WatchedWorkspace): Promise<void> {
+  private closeWorkspace(workspace: WatchedWorkspace): void {
     if (workspace.closed) return;
     workspace.closed = true;
     if (this.workspaces.get(workspace.key) === workspace) {
       this.workspaces.delete(workspace.key);
     }
     if (workspace.idleTimer) clearTimeout(workspace.idleTimer);
-    if (workspace.restartTimer) clearTimeout(workspace.restartTimer);
     for (const watchId of workspace.listeners.keys()) this.watches.delete(watchId);
     workspace.listeners.clear();
     this.settleFirstStatus(workspace, null);
-    const watcher = workspace.process;
-    workspace.process = null;
+    const host = workspace.host;
+    host.workspaces.delete(workspace.id);
+    if (host.workspaces.size === 0) void this.closeHost(host);
+    else host.process?.unwatch(workspace.id);
+  }
+
+  private async closeHost(host: WatchedHost): Promise<void> {
+    if (host.closed) return;
+    host.closed = true;
+    if (this.hosts.get(host.key) === host) this.hosts.delete(host.key);
+    if (host.restartTimer) clearTimeout(host.restartTimer);
+    const watcher = host.process;
+    host.process = null;
     await watcher?.stop().catch(() => {});
   }
 }

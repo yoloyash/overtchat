@@ -15,7 +15,7 @@ import {
   probeAgentWorkspace,
   workspaceFilesService,
   inspectAgentWorkspaceGitStatus,
-  watchAgentWorkspaceGitStatus,
+  startAgentWorkspaceGitHostWatcher,
 } from "@overtchat/agent-runtime";
 import type { AgentWorkspaceGitStatus } from "@overtchat/agent-bridge";
 import { probeOmpTarget } from "@overtchat/agent-runtime/omp/probe";
@@ -305,12 +305,15 @@ process.stdout.write(directory);
   );
 
   it.runIf(Boolean(process.env.WINDOWS_SSH_GIT_DIR))(
-    "pushes Git status changes from a native Windows watcher",
+    "pushes Git status changes for several workspaces from one native Windows watcher",
     async () => {
-      await executeOnHost(target, {
-        command: "git",
-        args: ["init", "-q", directory],
-      });
+      const second = path.win32.join(path.win32.dirname(directory), "second repo");
+      for (const workspace of [directory, second]) {
+        await executeOnHost(target, {
+          command: "git",
+          args: ["init", "-q", workspace],
+        });
+      }
       await run(
         "require('node:fs').writeFileSync(require('node:path').join(process.argv[1],'.gitignore'),'ignored/\\n')",
         [directory],
@@ -319,45 +322,58 @@ process.stdout.write(directory);
         "require('node:fs').mkdirSync(require('node:path').join(process.argv[1],'ignored'),{recursive:true})",
         [directory],
       );
-      const statuses: AgentWorkspaceGitStatus[] = [];
-      const watch = watchAgentWorkspaceGitStatus(target, directory, {
-        status: (status) => statuses.push(status),
+      const statuses = new Map<string, AgentWorkspaceGitStatus[]>();
+      const latest = (id: string) => statuses.get(id)?.at(-1);
+      const watcher = startAgentWorkspaceGitHostWatcher(target, {
+        status: (id, status) => statuses.set(id, [...(statuses.get(id) ?? []), status]),
         error: () => {},
       });
-      const hasFile = (name: string) =>
-        statuses.at(-1)?.files?.some((file) => file.path === name) ?? false;
+      const hasFile = (id: string, name: string) =>
+        latest(id)?.files?.some((file) => file.path === name) ?? false;
       try {
-        await expect.poll(() => statuses.length, { timeout: 20_000 }).toBeGreaterThan(0);
+        watcher.watch("first", directory);
+        watcher.watch("second", second);
+        await expect
+          .poll(() => [statuses.has("first"), statuses.has("second")], { timeout: 20_000 })
+          .toEqual([true, true]);
         await run(
           "require('node:fs').writeFileSync(require('node:path').join(process.argv[1],'watched.txt'),'x')",
           [directory],
         );
-        await expect.poll(() => hasFile("watched.txt"), { timeout: 20_000 }).toBe(true);
+        await expect.poll(() => hasFile("first", "watched.txt"), { timeout: 20_000 }).toBe(true);
+        await run(
+          "require('node:fs').writeFileSync(require('node:path').join(process.argv[1],'other.txt'),'x')",
+          [second],
+        );
+        await expect.poll(() => hasFile("second", "other.txt"), { timeout: 20_000 }).toBe(true);
         await executeOnHost(target, {
           command: "git",
           args: ["-C", directory, "add", "watched.txt"],
         });
         await expect
           .poll(
-            () =>
-              statuses.at(-1)?.files?.find((file) => file.path === "watched.txt")
-                ?.indexStatus,
+            () => latest("first")?.files?.find((file) => file.path === "watched.txt")?.indexStatus,
             { timeout: 20_000 },
           )
           .toBe("A");
-        const settled = statuses.length;
+        const settled = statuses.get("first")!.length;
         await run(
           "const fs=require('node:fs'),p=require('node:path');for(let i=0;i<20;i++)fs.writeFileSync(p.join(process.argv[1],'ignored','f'+i),String(i))",
           [directory],
         );
         await new Promise((resolve) => setTimeout(resolve, 5_000));
-        expect(statuses.length).toBe(settled);
+        expect(statuses.get("first")!.length).toBe(settled);
+        const leftovers = await run(
+          "process.stdout.write(JSON.stringify(require('node:fs').readdirSync(require('node:path').join(process.argv[1],'.git')).filter((name)=>name.startsWith('.overtchat-watcher-canary-'))))",
+          [directory],
+        );
+        expect(JSON.parse(leftovers.stdout)).toEqual([]);
       } finally {
-        await watch.stop();
+        await watcher.stop();
       }
-      await watch.exited;
+      await watcher.exited;
     },
-    60_000,
+    90_000,
   );
 
   it("opens and cancels a real Oh My Pi RPC session", async () => {

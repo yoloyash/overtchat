@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentWorkspaceGitStatus } from "@overtchat/agent-bridge";
 import type {
-  AgentWorkspaceGitWatch,
-  AgentWorkspaceGitWatchHandlers,
+  AgentWorkspaceGitHostWatcher,
+  AgentWorkspaceGitHostWatcherHandlers,
   HostTarget,
 } from "@overtchat/agent-runtime";
 import {
@@ -116,36 +116,44 @@ describe("WorkspaceGitStatusReader", () => {
   });
 });
 
-type FakeWatcher = {
+type FakeHostWatcher = {
   target: HostTarget;
-  path: string;
-  handlers: AgentWorkspaceGitWatchHandlers;
+  handlers: AgentWorkspaceGitHostWatcherHandlers;
+  /** Workspace ids by path that the process is currently watching. */
+  watched: Map<string, string>;
   exit(): void;
   stopped: boolean;
 };
 
 function fakeWatchers() {
-  const started: FakeWatcher[] = [];
+  const started: FakeHostWatcher[] = [];
   const start = vi.fn(
     (
       target: HostTarget,
-      path: string,
-      handlers: AgentWorkspaceGitWatchHandlers,
-    ): AgentWorkspaceGitWatch => {
+      handlers: AgentWorkspaceGitHostWatcherHandlers,
+    ): AgentWorkspaceGitHostWatcher => {
       let exit!: () => void;
       const exited = new Promise<void>((resolve) => {
         exit = resolve;
       });
-      const watcher: FakeWatcher = {
+      const watcher: FakeHostWatcher = {
         target,
-        path,
         handlers,
+        watched: new Map(),
         exit,
         stopped: false,
       };
       started.push(watcher);
       return {
         exited,
+        watch(id, path) {
+          watcher.watched.set(path, id);
+        },
+        unwatch(id) {
+          for (const [path, watchedId] of watcher.watched) {
+            if (watchedId === id) watcher.watched.delete(path);
+          }
+        },
         async stop() {
           watcher.stopped = true;
           exit();
@@ -153,12 +161,17 @@ function fakeWatchers() {
       };
     },
   );
-  return { started, start };
+  /** Reports a status for the workspace at `path` from the given process. */
+  const report = (index: number, path: string, value: AgentWorkspaceGitStatus) => {
+    const watcher = started[index]!;
+    watcher.handlers.status(watcher.watched.get(path)!, value);
+  };
+  return { started, start, report };
 }
 
 describe("WorkspaceGitWatches", () => {
   it("shares one watcher per workspace and fans statuses out to every watch", async () => {
-    const { started, start } = fakeWatchers();
+    const { start, report } = fakeWatchers();
     const watches = new WorkspaceGitWatches(
       new WorkspaceGitStatusReader(vi.fn()),
       start,
@@ -168,7 +181,7 @@ describe("WorkspaceGitWatches", () => {
 
     const initialFirst = watches.watch("a", local, "/workspace", first);
     const initialSecond = watches.watch("b", local, "/workspace", second);
-    started[0]!.handlers.status(status("main"));
+    report(0, "/workspace", status("main"));
 
     await expect(initialFirst).resolves.toEqual({
       status: status("main"),
@@ -180,10 +193,41 @@ describe("WorkspaceGitWatches", () => {
     });
     expect(start).toHaveBeenCalledTimes(1);
 
-    started[0]!.handlers.status(status("feature"));
+    report(0, "/workspace", status("feature"));
     expect(first).toHaveBeenLastCalledWith(status("feature"), 2);
     expect(second).toHaveBeenLastCalledWith(status("feature"), 2);
     expect(watches.current(local, "/workspace")).toEqual(status("feature"));
+    await watches.stop();
+  });
+
+  it("serves every workspace on a host from one process and separates hosts", async () => {
+    const { started, start, report } = fakeWatchers();
+    const watches = new WorkspaceGitWatches(
+      new WorkspaceGitStatusReader(vi.fn()),
+      start,
+    );
+    const alpha = vi.fn();
+    const beta = vi.fn();
+
+    const initialAlpha = watches.watch("a", local, "/alpha", alpha);
+    const initialBeta = watches.watch("b", local, "/beta", beta);
+    const initialRemote = watches.watch("c", remote, "/alpha", vi.fn());
+    report(0, "/alpha", status("alpha"));
+    report(0, "/beta", status("beta"));
+    report(1, "/alpha", status("remote"));
+
+    await expect(initialAlpha).resolves.toMatchObject({ status: status("alpha") });
+    await expect(initialBeta).resolves.toMatchObject({ status: status("beta") });
+    await expect(initialRemote).resolves.toMatchObject({ status: status("remote") });
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(started[0]!.target).toEqual(local);
+    expect(started[1]!.target).toEqual(remote);
+    expect([...started[0]!.watched.keys()]).toEqual(["/alpha", "/beta"]);
+
+    report(0, "/beta", status("beta-2"));
+    expect(beta).toHaveBeenLastCalledWith(status("beta-2"), 2);
+    expect(alpha).toHaveBeenCalledTimes(1);
+    expect(alpha).toHaveBeenLastCalledWith(status("alpha"), 1);
     await watches.stop();
   });
 
@@ -196,7 +240,10 @@ describe("WorkspaceGitWatches", () => {
     );
 
     const initial = watches.watch("a", local, "/workspace", vi.fn());
-    started[0]!.handlers.error("Git is not installed on the selected machine.");
+    started[0]!.handlers.error(
+      started[0]!.watched.get("/workspace")!,
+      "Git is not installed on the selected machine.",
+    );
 
     await expect(initial).resolves.toEqual({
       status: status("direct"),
@@ -206,58 +253,66 @@ describe("WorkspaceGitWatches", () => {
     await watches.stop();
   });
 
-  it("keeps an unwatched process for the idle grace and then stops it", async () => {
+  it("keeps an unwatched workspace for the idle grace, then drops it and finally the process", async () => {
     vi.useFakeTimers();
     try {
-      const { started, start } = fakeWatchers();
+      const { started, start, report } = fakeWatchers();
       const watches = new WorkspaceGitWatches(
         new WorkspaceGitStatusReader(vi.fn()),
         start,
         { idleGraceMs: 1_000 },
       );
-      const initial = watches.watch("a", local, "/workspace", vi.fn());
-      started[0]!.handlers.status(status("main"));
-      await initial;
+      const first = watches.watch("a", local, "/first", vi.fn());
+      const second = watches.watch("b", local, "/second", vi.fn());
+      report(0, "/first", status("first"));
+      report(0, "/second", status("second"));
+      await Promise.all([first, second]);
 
       watches.unwatchAll();
       await vi.advanceTimersByTimeAsync(500);
-      const rewatch = watches.watch("b", local, "/workspace", vi.fn());
+      const rewatch = watches.watch("c", local, "/first", vi.fn());
       await expect(rewatch).resolves.toEqual({
-        status: status("main"),
+        status: status("first"),
         revision: 1,
       });
-      expect(start).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(500);
+      expect([...started[0]!.watched.keys()]).toEqual(["/first"]);
+      expect(started[0]!.stopped).toBe(false);
 
-      watches.unwatch("b");
+      watches.unwatch("c");
       await vi.advanceTimersByTimeAsync(1_000);
       expect(started[0]!.stopped).toBe(true);
-      expect(watches.current(local, "/workspace")).toBeNull();
+      expect(watches.current(local, "/first")).toBeNull();
+      expect(start).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("restarts a watcher that exits while still watched", async () => {
+  it("restarts a host watcher that exits and re-adds every watched workspace", async () => {
     vi.useFakeTimers();
     try {
-      const { started, start } = fakeWatchers();
+      const { started, start, report } = fakeWatchers();
       const listener = vi.fn();
       const watches = new WorkspaceGitWatches(
         new WorkspaceGitStatusReader(vi.fn()),
         start,
         { restartBaseMs: 100 },
       );
-      const initial = watches.watch("a", remote, "/workspace", listener);
-      started[0]!.handlers.status(status("main"));
-      await initial;
+      const first = watches.watch("a", remote, "/first", listener);
+      const second = watches.watch("b", remote, "/second", vi.fn());
+      report(0, "/first", status("main"));
+      report(0, "/second", status("main"));
+      await Promise.all([first, second]);
 
       started[0]!.exit();
       await vi.advanceTimersByTimeAsync(0);
-      expect(watches.current(remote, "/workspace")).toBeNull();
+      expect(watches.current(remote, "/first")).toBeNull();
       await vi.advanceTimersByTimeAsync(100);
       expect(start).toHaveBeenCalledTimes(2);
+      expect([...started[1]!.watched.keys()]).toEqual(["/first", "/second"]);
 
-      started[1]!.handlers.status(status("feature"));
+      report(1, "/first", status("feature"));
       expect(listener).toHaveBeenLastCalledWith(status("feature"), 2);
       await watches.stop();
     } finally {
@@ -268,7 +323,7 @@ describe("WorkspaceGitWatches", () => {
   it("ignores reports from a replaced watcher", async () => {
     vi.useFakeTimers();
     try {
-      const { started, start } = fakeWatchers();
+      const { started, start, report } = fakeWatchers();
       const listener = vi.fn();
       const watches = new WorkspaceGitWatches(
         new WorkspaceGitStatusReader(vi.fn()),
@@ -276,12 +331,12 @@ describe("WorkspaceGitWatches", () => {
         { restartBaseMs: 10 },
       );
       const initial = watches.watch("a", local, "/workspace", listener);
-      started[0]!.handlers.status(status("main"));
+      report(0, "/workspace", status("main"));
       await initial;
       started[0]!.exit();
       await vi.advanceTimersByTimeAsync(10);
 
-      started[0]!.handlers.status(status("stale"));
+      report(0, "/workspace", status("stale"));
       expect(listener).not.toHaveBeenCalledWith(status("stale"), expect.anything());
       await watches.stop();
     } finally {
