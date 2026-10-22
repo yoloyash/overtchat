@@ -40,6 +40,7 @@
     "@openuidev/react-ui": "^0.18.1",
     "@overtchat/agent-bridge": "*",
     "@overtchat/shared": "*",
+    "@overtchat/voice-client": "*",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",

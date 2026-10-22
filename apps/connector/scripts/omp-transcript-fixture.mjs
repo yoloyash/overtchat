@@ -55,11 +55,12 @@ configureProcessSpawner((_target, launch) => {
     const control = await readFile(path.join(config.directory, "background-control"), "utf8").catch(() => "");
     if (!control || control === lastControl) return;
     lastControl = control;
-    if (control === "wake") {
+    // A suffix such as "wake-2" repeats a control.
+    if (control.startsWith("wake")) {
       streaming = true;
       emit({ type: "agent_start" });
       backgroundAnswer("Background result received; continuing.");
-    } else if (control === "wait") backgroundWait();
+    } else if (control.startsWith("wait")) backgroundWait();
     else if (control.startsWith("settle")) backgroundSettle();
   }, 50) : undefined;
   let input = "";

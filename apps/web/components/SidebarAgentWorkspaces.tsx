@@ -10,7 +10,6 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Clock,
   FileDiff,
   GitBranch,
   GripVertical,
@@ -393,10 +392,7 @@ function WorkspaceNode({
     ? group.sessions.filter(({ provider }) => provider === providerFilter)
     : group.sessions;
   const runningCount = filteredSessions.filter(({ session }) =>
-    agentSessionIsRunning(session) && session.responsePhase !== "waiting",
-  ).length;
-  const waitingCount = filteredSessions.filter(({ session }) =>
-    agentSessionIsRunning(session) && session.responsePhase === "waiting",
+    agentSessionIsRunning(session),
   ).length;
   const visibleSessionItems = visibleAgentSessions(
     filteredSessions.map(({ session }) => session),
@@ -483,17 +479,6 @@ function WorkspaceNode({
                     className={cn("size-3", motionClasses.spinner)}
                   />
                   <span className="tabular-nums">{runningCount}</span>
-                </span>
-              )}
-              {waitingCount > 0 && (
-                <span
-                  role="status"
-                  aria-label={`${waitingCount} ${waitingCount === 1 ? "chat" : "chats"} waiting for background work in ${group.name}`}
-                  title="Waiting for background work"
-                  className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground"
-                >
-                  <Clock aria-hidden="true" className="size-3" />
-                  <span className="tabular-nums">{waitingCount}</span>
                 </span>
               )}
             </span>
@@ -691,7 +676,6 @@ function SessionLink({
   const { closeMobile } = useSidebar();
   const { session, provider } = item;
   const title = agentSessionDisplayTitle(session) || "New session";
-  const waiting = session.responsePhase === "waiting";
   return (
     <li>
       <Link
@@ -728,8 +712,7 @@ function SessionLink({
         </span>
         <RuntimeActivityIndicator
           active={agentSessionIsRunning(session)}
-          waiting={waiting}
-          label={`${title} is ${waiting ? "waiting for background work" : "working"}`}
+          label={`${title} is working`}
         />
       </Link>
     </li>
@@ -754,11 +737,9 @@ function ProviderLogo({ provider }: { provider: AgentProviderId }) {
 
 function RuntimeActivityIndicator({
   active,
-  waiting,
   label,
 }: {
   active: boolean;
-  waiting: boolean;
   label: string;
 }) {
   return (
@@ -771,14 +752,10 @@ function RuntimeActivityIndicator({
           title={label}
           className="flex size-4 items-center justify-center text-muted-foreground"
         >
-          {waiting ? (
-            <Clock aria-hidden="true" className="size-3.5" />
-          ) : (
-            <Loader2
-              aria-hidden="true"
-              className={cn("size-3.5", motionClasses.spinner)}
-            />
-          )}
+          <Loader2
+            aria-hidden="true"
+            className={cn("size-3.5", motionClasses.spinner)}
+          />
         </span>
       )}
     </span>

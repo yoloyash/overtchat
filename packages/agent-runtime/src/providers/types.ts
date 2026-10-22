@@ -1,6 +1,5 @@
 import type {
   AgentRewindMode,
-  AgentResponsePhase,
   AgentCollaborationMode,
   AgentConnectionDraft,
   AgentGoal,
@@ -118,7 +117,6 @@ export interface AgentRuntimeClient {
 export type AgentRuntimeEventClassification = {
   started: boolean;
   terminal: boolean;
-  waiting?: boolean;
 };
 
 export interface AgentRuntimeEventClassifier {
@@ -132,8 +130,9 @@ export interface AgentProviderAdapter {
   readonly steering?: "restart";
   /** Providers without usage notifications need stats polling while active. */
   readonly pollUsage?: boolean;
-  /** Null means settled; waiting remains operationally busy. */
-  responsePhaseFromState?(state: Record<string, unknown>): AgentResponsePhase | null;
+  /** Whether provider state shows the turn still running. Background work
+   * alone does not: it keeps running between turns and a wake starts a new one. */
+  busyFromState?(state: Record<string, unknown>): boolean;
   startSession(
     target: HostTarget,
     launch: AgentSessionLaunch,

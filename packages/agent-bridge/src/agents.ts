@@ -15,9 +15,6 @@ export const AGENT_PROVIDER_IDS = [
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
 
-/** A running session can wait for work that will wake the model again. */
-export type AgentResponsePhase = "responding" | "waiting";
-
 export const AGENT_THINKING_LEVELS = [
   "off",
   "minimal",
@@ -148,7 +145,6 @@ export type AgentSessionListItem = {
   createdAt: number | null;
   modifiedAt: number | null;
   runtimeStatus: AgentRuntimeStatus;
-  responsePhase?: AgentResponsePhase;
 };
 
 export type AgentProviderSessionMetadata = {
@@ -699,11 +695,7 @@ export type AgentRuntimeSnapshot = {
   provider: AgentProviderId;
   capabilities: AgentRuntimeCapabilities;
   status: AgentRuntimeStatus;
-  activeTurn: {
-    startedAt: number;
-    /** Absent in older checkpoints; defaults to responding. */
-    phase?: AgentResponsePhase;
-  } | null;
+  activeTurn: { startedAt: number } | null;
   state: Record<string, unknown>;
   messages: unknown[];
   models: AgentModel[];

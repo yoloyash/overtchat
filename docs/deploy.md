@@ -470,10 +470,9 @@ manager above, then choose your platform on the
 [downloads page](https://overtchat.com/downloads/). The
 [release log](https://overtchat.com/releases/) also lists archives, checksums,
 and previous versions. Drafts and prereleases are not listed there.
-Desktop 0.1.0 requires the API-level-1 server contract introduced
-in server 0.23.0; older released servers cannot run it. The app checks API
-compatibility before loading your chats and explains when the server or app
-needs updating.
+The desktop app requires a server that reports the current API contract; older
+servers cannot run it. The app checks API compatibility before loading your
+chats and explains when the server or app needs updating.
 
 The connection screen looks for OvertChat on this computer at ports 4718
 (managed installations) and 4717 (source installations), plus a custom port
@@ -515,9 +514,9 @@ Linux downloads support **x64**. Use the `.deb` on Debian/Ubuntu, including
 Ubuntu 24.04, or the `.rpm` on Fedora:
 
 ```sh
-sudo apt install ./overtchat-0.1.0-linux-x64.deb
+sudo apt install ./overtchat-X.Y.Z-linux-x64.deb
 # Fedora instead:
-sudo dnf install ./overtchat-0.1.0-linux-x64.rpm
+sudo dnf install ./overtchat-X.Y.Z-linux-x64.rpm
 ```
 
 Replace the version in these filenames with your downloaded release. Launch

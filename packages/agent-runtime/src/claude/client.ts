@@ -113,6 +113,8 @@ type AssistantProjection = {
   overtchatProviderMessageId?: string;
 };
 
+const INTERRUPT_SETTLE_MS = 5_000;
+
 const EMPTY_STATS: AgentSessionStats = {
   sessionFile: null,
   sessionId: null,
@@ -267,6 +269,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private modeId: PermissionMode;
   private active = false;
   private backgroundTasks = new Set<string>();
+  private readonly turnEndWaiters = new Set<() => void>();
   private activeTurnHasAssistantText = false;
   private compacting = false;
   private stopped = false;
@@ -386,7 +389,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       await this.readyPromise;
       this.cancelInteractions(new Error("Claude interaction was cancelled."));
       const result = await this.sdkQuery.interrupt();
-      await this.restartQuery();
+      // The interrupt ends the main turn with a result and spares background
+      // tasks. Restart only when Claude does not end the turn.
+      if (!(await this.waitForTurnEnd(INTERRUPT_SETTLE_MS))) await this.restartQuery();
       return result;
     });
   }
@@ -653,6 +658,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         ...(this.selectedModel ? { model: this.selectedModel } : {}),
         ...thinkingOptions(this.thinkingOptionId),
         includePartialMessages: true,
+        // Stop ends only the main turn, as in Claude Code. Claude stops its own
+        // tasks with TaskStop, and /reload ends them all.
+        perTaskStopAffordance: true,
         settingSources: ["user", "project", "local"],
         systemPrompt: { type: "preset", preset: "claude_code" },
         permissionMode: this.modeId,
@@ -916,14 +924,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     if (subtype === "background_tasks_changed" && Array.isArray(message.tasks)) {
       // The SDK defines REPLACE semantics. Do not pair task_started and
       // task_notification edges: the empty roster may precede the notification.
-      const wasPending = this.backgroundTasks.size > 0;
       this.backgroundTasks = new Set(message.tasks.flatMap((task) => {
         const id = record(task)?.task_id;
         return typeof id === "string" ? [id] : [];
       }));
-      if (!this.active && wasPending !== (this.backgroundTasks.size > 0)) {
-        this.emitIdleActivity();
-      }
       return;
     }
     if (subtype === "status") {
@@ -1328,8 +1332,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     }
     this.activeTurnHasAssistantText = false;
     if (!this.active) return;
-    this.active = false;
-    this.emitIdleActivity();
+    this.endActivity();
+    this.emit({ type: "turn_end" });
   }
 
   private startTurn(): void {
@@ -1341,12 +1345,27 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.emit({ type: "turn_start" });
   }
 
-  private emitIdleActivity(): void {
-    this.emit({ type: this.backgroundTasks.size > 0 ? "turn_waiting" : "turn_end" });
+  private endActivity(): void {
+    this.active = false;
+    for (const notify of [...this.turnEndWaiters]) notify();
+  }
+
+  private waitForTurnEnd(timeoutMs: number): Promise<boolean> {
+    if (!this.active) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const finish = (ended: boolean) => {
+        clearTimeout(timer);
+        this.turnEndWaiters.delete(onEnd);
+        resolve(ended);
+      };
+      const onEnd = () => finish(true);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      this.turnEndWaiters.add(onEnd);
+    });
   }
 
   private resetActivity(): void {
-    this.active = false;
+    this.endActivity();
     this.backgroundTasks.clear();
     this.compacting = false;
     this.activeTurnHasAssistantText = false;

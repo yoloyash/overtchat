@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     "/*": ["./data/**/*"],
   },
-  transpilePackages: ["@overtchat/agent-bridge", "@overtchat/shared"],
+  transpilePackages: ["@overtchat/agent-bridge", "@overtchat/shared", "@overtchat/voice-client"],
   // Hosts allowed to load `next dev` assets cross-origin. Only used in dev
   // (Next.js ignores this at build time). Phone-on-LAN testing needs the
   // host's LAN IP listed here.

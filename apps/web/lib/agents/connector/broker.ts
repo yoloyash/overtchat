@@ -123,13 +123,6 @@ export class HostConnectorBroker {
     );
   }
 
-  responsePhaseForSession(
-    sessionId: string,
-  ): AgentSessionDirectoryEntry["responsePhase"] {
-    const session = this.sessionDirectory.get(sessionId)?.session;
-    return session?.runtimeStatus === "running" ? session.responsePhase : undefined;
-  }
-
   subscribeSessionDirectory(
     sessionIds: Iterable<string>,
     subscriber: (event: AgentSessionDirectoryEvent) => void,
@@ -144,7 +137,6 @@ export class HostConnectorBroker {
       sessions: [...subscription.sessionIds].map((sessionId) => ({
         sessionId,
         runtimeStatus: this.runtimeStatusForSession(sessionId),
-        responsePhase: this.responsePhaseForSession(sessionId),
       })),
     });
     return () => {
@@ -617,8 +609,7 @@ export class HostConnectorBroker {
     const current = this.sessionDirectory.get(session.sessionId);
     if (
       current?.connectorId === connectorId &&
-      current.session.runtimeStatus === session.runtimeStatus &&
-      current.session.responsePhase === session.responsePhase
+      current.session.runtimeStatus === session.runtimeStatus
     ) {
       return;
     }

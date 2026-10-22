@@ -10,7 +10,6 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentRuntimeStatus,
-  AgentResponsePhase,
   AgentSlashCommand,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
@@ -46,6 +45,7 @@ const MODEL_DISCOVERY_TIMEOUT_MS = 120_000;
 const IDLE_RUNTIME_TTL_MS = 5 * 60_000;
 const PROVIDER_IDLE_POLL_MS = 100;
 const PROVIDER_IDLE_TIMEOUT_MS = 30_000;
+const PROVIDER_BUSY_POLL_MS = 5_000;
 
 type Subscriber = (envelope: AgentRuntimeEnvelope) => void;
 
@@ -278,7 +278,6 @@ export class AgentSessionRuntime {
   private sequence = 0;
   private status: AgentRuntimeSnapshot["status"] = "idle";
   private activeTurnStartedAt: number | null = null;
-  private responsePhase: AgentResponsePhase = "responding";
   private activityRevision = 0;
   private state: Record<string, unknown>;
   private messages: unknown[];
@@ -347,15 +346,13 @@ export class AgentSessionRuntime {
     this.models = initial.models;
     this.commands = initial.commands;
     this.stats = initial.stats;
-    const initialPhase = this.providerResponsePhase(initial.state);
-    this.status = initialPhase === null ? "idle" : "running";
-    this.responsePhase = initialPhase ?? "responding";
+    this.status = this.providerBusy(initial.state) ? "running" : "idle";
     if (adapter.pollUsage) {
       this.usagePoller = new AgentUsagePoller(
         () => client.getSessionStats(),
         (usage) => this.publishUsage(usage),
       );
-      if (initialPhase === "responding") this.usagePoller.start();
+      if (this.status === "running") this.usagePoller.start();
     }
     const restoredQueue = reconcileRestoredQueuedMessages(
       initialQueuedMessages,
@@ -413,13 +410,13 @@ export class AgentSessionRuntime {
         });
       }
       if (event.type === "compaction_end") {
-        if (this.status === "running" && this.responsePhase === "responding") this.usagePoller?.start();
+        if (this.status === "running") this.usagePoller?.start();
         this.usagePoller?.refresh();
       }
       let settleRejectedPrompt = false;
       const classification = this.eventClassifier.classify(event);
       if (
-        classification.started || classification.waiting || classification.terminal ||
+        classification.started || classification.terminal ||
         event.type === "process_exit" || event.type === "compaction_start" || event.type === "compaction_end"
       ) {
         this.activityRevision += 1;
@@ -463,25 +460,12 @@ export class AgentSessionRuntime {
         // A wake supersedes any state read settling the previous provider run.
         this.turnGeneration += 1;
         this.settlePromise = null;
-        this.responsePhase = "responding";
         this.usagePoller?.start();
         this.promptAwaitingStart = false;
         this.status = "running";
         this.activeTurnStartedAt ??= Date.now();
         this.state = { ...this.state, isStreaming: true };
         this.error = undefined;
-      }
-      if (classification.waiting) {
-        this.terminalDuringAbort = false;
-        this.turnGeneration += 1;
-        this.settlePromise = null;
-        this.promptAwaitingStart = false;
-        this.status = "running";
-        this.responsePhase = "waiting";
-        this.activeTurnStartedAt ??= Date.now();
-        this.state = { ...this.state, isStreaming: false };
-        this.usagePoller?.stop();
-        this.usagePoller?.refresh();
       }
       if (
         event.type === "interaction_request" &&
@@ -543,7 +527,6 @@ export class AgentSessionRuntime {
         }
       }
       this.publish({ type: "runtime_event", data: event });
-      if (classification.waiting) this.publishStatus();
       if (settleRejectedPrompt) {
         void this.settleAfterProviderTerminal();
       }
@@ -627,7 +610,7 @@ export class AgentSessionRuntime {
       activeTurn:
         this.activeTurnStartedAt === null
           ? null
-          : { startedAt: this.activeTurnStartedAt, phase: this.responsePhase },
+          : { startedAt: this.activeTurnStartedAt },
       state: this.state,
       messages: this.messages,
       models: this.models,
@@ -1120,11 +1103,9 @@ export class AgentSessionRuntime {
       };
       this.commands = runtimeCommands(this.adapter, commands);
       if (activityIsCurrent && !this.stopped) {
-        const phase = this.providerResponsePhase(state);
-        this.status = phase === null ? "idle" : "running";
-        this.responsePhase = phase ?? "responding";
+        this.status = this.providerBusy(state) ? "running" : "idle";
       }
-      if (this.status === "running" && this.responsePhase === "responding") {
+      if (this.status === "running") {
         this.usagePoller?.start();
       } else {
         this.usagePoller?.stop();
@@ -1204,6 +1185,13 @@ export class AgentSessionRuntime {
       if (this.subscribers.size > 0 || this.leaseCount > 0) return;
       if (this.status === "running") {
         this.scheduleIdleStop();
+        return;
+      }
+      // Stopping the process would cancel background work still running.
+      if (this.state.hasPendingAsyncWork === true) {
+        void this.refreshState().catch(() => {}).finally(() => {
+          if (!this.stopped) this.scheduleIdleStop();
+        });
         return;
       }
       void this.stop();
@@ -1288,7 +1276,6 @@ export class AgentSessionRuntime {
         : [];
     this.turnGeneration += 1;
     this.activityRevision += 1;
-    this.responsePhase = "responding";
     this.eventClassifier.reset();
     this.status = "running";
     this.activeTurnStartedAt = Date.now();
@@ -1463,21 +1450,21 @@ export class AgentSessionRuntime {
       return Promise.resolve();
     }
     const operation = this.client.abort().then(async (result) => {
-      // Some providers interrupt the foreground without cancelling async jobs.
-      // Their acknowledgement alone cannot release the queue or idle lifetime.
-      let phase: AgentResponsePhase | null = null;
-      if (this.adapter.responsePhaseFromState) {
+      // Abort is foreground-only: background work keeps running and a later
+      // wake starts a new turn.
+      let busy = false;
+      if (this.adapter.busyFromState) {
         const revision = this.activityRevision;
         const state = await this.client.getState();
         if (revision === this.activityRevision) {
           this.state = state;
-          phase = this.providerResponsePhase(state);
+          busy = this.providerBusy(state);
         } else {
-          phase = this.status === "running" ? this.responsePhase : null;
+          busy = this.status === "running";
         }
       }
       if (this.stopped || this.status === "exited") return result;
-      this.completeAcknowledgedAbort(phase);
+      this.completeAcknowledgedAbort(busy);
       return result;
     });
     const settled = operation
@@ -1509,7 +1496,7 @@ export class AgentSessionRuntime {
     return settled;
   }
 
-  private completeAcknowledgedAbort(phase: AgentResponsePhase | null = null): void {
+  private completeAcknowledgedAbort(busy = false): void {
     this.activityRevision += 1;
     this.usagePoller?.stop();
     // An acknowledged abort supersedes settlement work for the canceled turn.
@@ -1518,17 +1505,18 @@ export class AgentSessionRuntime {
     this.promptAwaitingStart = false;
     this.promptSubmissionId = undefined;
     this.pendingSubmissions.clear();
-    if (phase !== "responding") this.clearPendingInteraction();
-    if (phase === null) this.eventClassifier.reset();
-    this.status = phase === null ? "idle" : "running";
-    this.responsePhase = phase ?? "responding";
-    this.activeTurnStartedAt = phase === null ? null : (this.activeTurnStartedAt ?? Date.now());
+    if (!busy) {
+      this.clearPendingInteraction();
+      this.eventClassifier.reset();
+    }
+    this.status = busy ? "running" : "idle";
+    this.activeTurnStartedAt = busy ? (this.activeTurnStartedAt ?? Date.now()) : null;
     this.state = {
       ...this.state,
-      isStreaming: phase === "responding",
-      isCompacting: phase !== null && this.state.isCompacting === true,
+      isStreaming: busy,
+      isCompacting: busy && this.state.isCompacting === true,
     };
-    if (phase === "responding") this.usagePoller?.start();
+    if (busy) this.usagePoller?.start();
     this.error = undefined;
     this.publishStatus();
   }
@@ -1565,11 +1553,18 @@ export class AgentSessionRuntime {
     timeoutMs: number,
     turnGeneration: number,
   ): Promise<void> {
-    const providerIdle = await this.waitForProviderIdle(
+    const settled = await this.waitForProviderIdle(
       timeoutMs,
       turnGeneration,
     );
-    if (!providerIdle) return;
+    if (!settled) return;
+    if (settled.error) {
+      this.error = errorMessage(settled.error);
+      this.publish({
+        type: "runtime_event",
+        data: { type: "rpc_error", command: "get_state", error: this.error },
+      });
+    }
     this.usagePoller?.stop();
     this.status = "idle";
     this.activeTurnStartedAt = null;
@@ -1595,37 +1590,46 @@ export class AgentSessionRuntime {
     }
   }
 
+  /** Resolves when the provider reports idle, or with an error once its state
+   * is unreadable past the timeout. Reported work keeps the turn open, so the
+   * provider's state rather than elapsed time decides when a turn ends. */
   private async waitForProviderIdle(
     timeoutMs: number,
     turnGeneration: number,
-  ): Promise<boolean> {
+  ): Promise<{ error?: Error } | null> {
     const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
     while (this.isProviderIdleWaitCurrent(turnGeneration)) {
       const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) break;
       try {
-        const state = await this.client.getState(remainingMs);
-        if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-          return false;
-        }
+        const state = await this.client.getState(
+          remainingMs > 0 ? remainingMs : undefined,
+        );
+        if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
         this.state = state;
-        if (this.providerResponsePhase(state) === null && state.isCompacting !== true) {
-          return true;
+        if (state.isCompacting !== true && !this.providerBusy(state)) return {};
+        if (remainingMs <= 0 && this.status !== "running") {
+          this.status = "running";
+          this.activeTurnStartedAt ??= Date.now();
+          this.state = { ...this.state, isStreaming: true };
+          this.usagePoller?.start();
+          this.publishStatus();
         }
       } catch (error) {
         lastError = error;
+        if (Date.now() >= deadline) break;
       }
-      if (Date.now() >= deadline) break;
-      await wait(PROVIDER_IDLE_POLL_MS);
+      await wait(
+        Date.now() < deadline ? PROVIDER_IDLE_POLL_MS : PROVIDER_BUSY_POLL_MS,
+      );
     }
-    if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-      return false;
-    }
-    const detail = lastError ? ` ${errorMessage(lastError)}` : "";
-    throw new Error(
-      `${agentProviderMetadata(this.provider).label} still reports that it is working after ${Math.round(timeoutMs / 1_000)} seconds.${detail}`,
-    );
+    if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
+    const label = agentProviderMetadata(this.provider).label;
+    return {
+      error: new Error(
+        `${label} stopped reporting its state, so the turn was ended.${lastError ? ` ${errorMessage(lastError)}` : ""}`,
+      ),
+    };
   }
 
   private isProviderIdleWaitCurrent(turnGeneration: number): boolean {
@@ -1643,15 +1647,14 @@ export class AgentSessionRuntime {
         type: "overtchat_status",
         status: this.status,
         startedAt: this.activeTurnStartedAt,
-        phase: this.responsePhase,
       },
     });
   }
 
-  private providerResponsePhase(state: Record<string, unknown>): AgentResponsePhase | null {
-    return this.adapter.responsePhaseFromState
-      ? this.adapter.responsePhaseFromState(state)
-      : state.isStreaming === true ? "responding" : null;
+  private providerBusy(state: Record<string, unknown>): boolean {
+    return this.adapter.busyFromState
+      ? this.adapter.busyFromState(state)
+      : state.isStreaming === true;
   }
 
   private imageInputError(images: AgentPromptImage[]): Error | null {

@@ -90,13 +90,12 @@ export function AgentSessionRow({
   const { colors, fonts } = useTheme();
   const { session, provider, workspaceId } = item;
   const running = session.runtimeStatus === "running";
-  const waiting = running && session.responsePhase === "waiting";
   const title = sessionTitle(session);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${title}, ${agentProviderMetadata(provider).label}${contextLabel ? `, ${contextLabel}` : ""}${waiting ? ", waiting for background work" : running ? ", working" : ""}`}
+      accessibilityLabel={`${title}, ${agentProviderMetadata(provider).label}${contextLabel ? `, ${contextLabel}` : ""}${running ? ", working" : ""}`}
       onPress={
         onPress ??
         (() =>
@@ -149,9 +148,7 @@ export function AgentSessionRow({
           </Text>
         )}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          {waiting ? (
-            <Ionicons name="time-outline" size={14} color={colors.mutedForeground} />
-          ) : running ? <AgentWorkingIndicator /> : null}
+          {running && <AgentWorkingIndicator />}
           <Text
             numberOfLines={1}
             style={{
@@ -163,7 +160,7 @@ export function AgentSessionRow({
             {compact
               ? (contextLabel ?? agentProviderMetadata(provider).label)
               : running
-                ? (waiting ? "Waiting for background work" : "Working")
+                ? "Working"
                 : agentProviderMetadata(provider).label}
             {!compact && session.modifiedAt
               ? ` · ${new Date(session.modifiedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
