@@ -49,7 +49,7 @@ async function setup(
     }
     return route.fulfill({ json: { connections: items } });
   });
-  await page.context().route("**/api/agent-connections/events", (route) =>
+  await page.context().route("**/api/agent-connections/events*", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
       body: 'event: snapshot\ndata: {"sessions":[]}\n\n',

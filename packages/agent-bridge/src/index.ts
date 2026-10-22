@@ -9,6 +9,7 @@ import type {
   AgentSessionSync,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
+  AgentWorkspaceGitStatus,
   ConnectorShellMode,
 } from "./agents";
 import {
@@ -36,6 +37,7 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "command-wal-v1",
   "workspace-files-v1",
   "workspace-terminal-v1",
+  "workspace-git-watch-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -111,6 +113,14 @@ export type AgentDaemonRequest =
   | { type: "list_directories"; target: AgentDaemonTarget; path?: string }
   | { type: "probe_workspace"; target: AgentDaemonTarget; path: string }
   | { type: "git_status"; target: AgentDaemonTarget; path: string }
+  /** Starts pushed status updates; responds with `{ status, revision }`. */
+  | {
+      type: "watch_git_status";
+      watchId: string;
+      target: AgentDaemonTarget;
+      path: string;
+    }
+  | { type: "unwatch_git_status"; watchId: string }
   | {
       type: "list_workspace_directory";
       target: AgentDaemonTarget;
@@ -198,7 +208,17 @@ export type HostConnectorEventPayload =
       };
     }
   | { type: "session_directory"; sessions: AgentSessionDirectoryEntry[] }
-  | { type: "session_update"; session: AgentSessionDirectoryEntry };
+  | { type: "session_update"; session: AgentSessionDirectoryEntry }
+  /**
+   * Live and coalesced: only the latest status per watch is delivered.
+   * Revisions order pushes against the watch response, which may arrive later.
+   */
+  | {
+      type: "workspace_git_status";
+      watchId: string;
+      revision: number;
+      status: AgentWorkspaceGitStatus;
+    };
 
 export type HostConnectorEvent = {
   sequence: number;
@@ -363,6 +383,14 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
       return isAgentDaemonTarget(value.target) && typeof value.path === "string";
     case "git_status":
       return isAgentDaemonTarget(value.target) && typeof value.path === "string";
+    case "watch_git_status":
+      return (
+        isNonEmptyString(value.watchId) &&
+        isAgentDaemonTarget(value.target) &&
+        typeof value.path === "string"
+      );
+    case "unwatch_git_status":
+      return isNonEmptyString(value.watchId);
     case "list_workspace_directory":
     case "read_workspace_file":
       return (
@@ -602,7 +630,52 @@ export function isHostConnectorEvent(
   if (payload.type === "session_update") {
     return isAgentSessionDirectoryEntry(payload.session);
   }
+  if (payload.type === "workspace_git_status") {
+    return (
+      isNonEmptyString(payload.watchId) &&
+      Number.isSafeInteger(payload.revision) &&
+      Number(payload.revision) >= 0 &&
+      isAgentWorkspaceGitStatus(payload.status)
+    );
+  }
   return false;
+}
+
+function isNullableGitString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isGitCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+export function isAgentWorkspaceGitStatus(
+  value: unknown,
+): value is AgentWorkspaceGitStatus {
+  return (
+    isRecord(value) &&
+    typeof value.isGit === "boolean" &&
+    isNullableGitString(value.repositoryRoot) &&
+    isNullableGitString(value.branch) &&
+    isNullableGitString(value.upstream) &&
+    (value.ahead === null || isGitCount(value.ahead)) &&
+    (value.behind === null || isGitCount(value.behind)) &&
+    typeof value.dirty === "boolean" &&
+    isGitCount(value.changedFiles) &&
+    isGitCount(value.additions) &&
+    isGitCount(value.deletions) &&
+    typeof value.lineStatsComplete === "boolean" &&
+    (value.files === undefined ||
+      (Array.isArray(value.files) &&
+        value.files.every(
+          (file) =>
+            isRecord(file) &&
+            typeof file.path === "string" &&
+            isNullableGitString(file.originalPath) &&
+            isNullableGitString(file.indexStatus) &&
+            isNullableGitString(file.worktreeStatus),
+        )))
+  );
 }
 
 export * from "./terminal";
