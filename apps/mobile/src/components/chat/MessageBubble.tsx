@@ -34,6 +34,7 @@ export function MessageBubble({
   onImageReference,
   onOpenUIAction,
   openuiStates,
+  liveOpenUI,
   readOnly = false,
 }: {
   message: UIMessage;
@@ -48,6 +49,7 @@ export function MessageBubble({
   onImageReference?: (file: FileUIPart) => void;
   onOpenUIAction?: (action: OpenUIAction) => void;
   openuiStates?: Map<string, OpenUIFormState>;
+  liveOpenUI?: ReadonlySet<string>;
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -213,6 +215,10 @@ export function MessageBubble({
                 key={seg.part.toolCallId}
                 part={seg.part}
                 streaming={streaming}
+                deferred={
+                  liveOpenUI !== undefined &&
+                  !liveOpenUI.has(openUIStateKey(message.id, seg.part.toolCallId))
+                }
               />
             );
           }

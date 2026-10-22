@@ -1267,7 +1267,9 @@ are unsupported; models obtain data through ordinary chat tools first.
 
 The browser and desktop share the React renderer. Mobile uses the same renderer
 in a WebView served from `/openui/index.html`, without authentication cookies or
-remote script dependencies. `predev` and `prebuild` generate these static assets;
+remote script dependencies. Only the two most recent cards mount a WebView;
+older cards show their readable answer with a Show interactive view button.
+`predev` and `prebuild` generate these static assets;
 standalone/Docker packaging must include `public/`. After renderer changes,
 rebuild those assets and reload the mobile card. Changes to `react-native-webview`
 require rebuilding the native development client.
@@ -1291,6 +1293,7 @@ The browser suite exercises the actual mobile bundle and bridge, malformed
 program fallback, structured form submission, duplicate-click suppression, and
 state restoration. Also smoke-test an installed Android and iOS client against
 the updated server: submit a form, reload the chat, open links, change theme,
+open an older card from its Show interactive view button,
 scroll a tall card, and verify readable fallback when the renderer cannot load.
 Browser coverage does not validate native WebView loading or gesture behavior.
 On Android, include a card taller than the WebView height cap (60% of the window,

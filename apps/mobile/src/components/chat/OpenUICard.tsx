@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Pressable,
   Text,
   useWindowDimensions,
   View,
@@ -25,14 +26,17 @@ export function OpenUICard({
   streaming,
   initialState,
   onAction,
+  deferred = false,
 }: {
   messageId: string;
   part: OpenUIToolPart;
   streaming: boolean;
   initialState?: OpenUIFormState;
   onAction?: (action: OpenUIAction) => void;
+  /** Older cards show their readable answer until opened; each live card is a WebView. */
+  deferred?: boolean;
 }) {
-  const { colors, scheme } = useTheme();
+  const { colors, fonts, scheme } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
   // Keep an internally scrolling card inside the visible chat area, including
   // when the keyboard reduces the window. Otherwise its bottom can be offscreen
@@ -43,6 +47,9 @@ export function OpenUICard({
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [height, setHeight] = useState(160);
+  // Once live, a card stays live until its cell is recycled.
+  const [activated, setActivated] = useState(!deferred);
+  const live = activated || !deferred;
   const uri = `${server?.replace(/\/$/, "")}/openui/index.html`;
   const source = useMemo(() => ({ uri }), [uri]);
   const pending =
@@ -69,10 +76,10 @@ export function OpenUICard({
   }, [ready, payload]);
 
   useEffect(() => {
-    if (ready || failed || !code.trim()) return;
+    if (!live || ready || failed || !code.trim()) return;
     const timer = setTimeout(() => setFailed(true), 15_000);
     return () => clearTimeout(timer);
-  }, [ready, failed, code]);
+  }, [live, ready, failed, code]);
 
   const interrupted = !streaming && pending;
   if (failed || part.state === "output-error" || interrupted || !server) {
@@ -93,6 +100,25 @@ export function OpenUICard({
       <ActivityIndicator color={colors.mutedForeground} />
     ) : (
       <MarkdownBody text={text || "Interactive UI is unavailable."} />
+    );
+  if (!live)
+    return (
+      <View style={{ marginVertical: 8, gap: 8 }}>
+        {text ? <MarkdownBody text={text} /> : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setActivated(true)}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            alignSelf: "flex-start",
+            opacity: pressed ? 0.65 : 1,
+          })}
+        >
+          <Text style={{ color: colors.primary, fontFamily: fonts.sansMedium }}>
+            Show interactive view
+          </Text>
+        </Pressable>
+      </View>
     );
   return (
     <View style={{ marginVertical: 8, width: "100%" }}>
