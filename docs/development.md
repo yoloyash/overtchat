@@ -1270,8 +1270,10 @@ standalone/Docker packaging must include `public/`. After renderer changes,
 rebuild those assets and reload the mobile card. Changes to `react-native-webview`
 require rebuilding the native development client.
 
-When upgrading OpenUI, regenerate and commit the component spec, then check
-parser and renderer compatibility:
+The `@openuidev/*` packages are pinned exactly because their spec, parser, and
+generated prompt change between releases. When upgrading OpenUI, bump the pins
+together, regenerate and commit the component spec, then check parser and
+renderer compatibility:
 
 ```sh
 npm run openui:generate -w apps/web
