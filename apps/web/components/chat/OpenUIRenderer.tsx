@@ -21,6 +21,8 @@ import {
   type OpenUIFormState,
 } from "@overtchat/shared";
 import { useState } from "react";
+// Loaded with this lazy chunk so chats without interactive UI skip ~360 KB of CSS.
+import "@openuidev/react-ui/styles/index.css";
 
 const theme = createTheme({
   fontBody: "var(--font-sans, sans-serif)",
