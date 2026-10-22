@@ -103,7 +103,10 @@ exec "$connector_root/bin/node" "$connector_root/app/connector.mjs" "$@"
   }
   await mkdir(output, { recursive: true });
   const archive = path.join(output, `overtchat-connector-${assetTarget}.tar.gz`);
-  execFileSync(tar, ["-czf", archive, "-C", staging, "overtchat-connector"]);
+  // macOS tar otherwise adds AppleDouble ._ members, which installers reject.
+  execFileSync(tar, ["-czf", archive, "-C", staging, "overtchat-connector"], {
+    env: { ...process.env, COPYFILE_DISABLE: "1" },
+  });
   const digest = createHash("sha256").update(await readFile(archive)).digest("hex");
   await writeFile(`${archive}.sha256`, `${digest}  ${path.basename(archive)}\n`);
   console.log(`Packaged ${path.basename(archive)} with Node ${runtime.version} and node-pty ${metadata.dependencies["node-pty"]}`);
