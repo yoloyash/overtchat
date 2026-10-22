@@ -89,19 +89,17 @@ and stable promotion waits until all selected artifacts are available.
 
 ## Windows backend qualification
 
-CLI 0.5.0 and connector 0.15.0 add x64 Windows artifacts. Publish both tags before
-promotion; the promotion job requires their `.exe` assets and checksums before
-exposing the PowerShell installer and Windows setup instructions. Never add assets
-to old published tags to simulate a Windows release.
+Windows x64 CLI and connector artifacts ship in the same `cli-v*` and
+`connector-v*` releases as Linux/macOS. Promotion requires their `.exe` assets,
+checksums, and the matching `install.ps1` version before it exposes Windows setup.
+Never add assets to an already published tag.
 
-The CLI workflow runs the PowerShell installer and running-executable updater
-smokes on Windows, including recovery of a missing CLI entry point, concurrent
-installation rejection, and killed-updater recovery before/after replacement
-and commit. The connector workflow runs atomic configuration failure tests,
-native SQLite migration, forced
-crash recovery, restart, and large-journal checks. Task Scheduler requires an
-interactive desktop user; hosted CI service accounts do not qualify logon behavior.
-On a signed-in Windows 11 PC with Docker Desktop/WSL 2, also run:
+Hosted CI runs the PowerShell installer, running-executable updater recovery,
+atomic configuration, and NTFS journal migration/crash checks. Task Scheduler
+logon behavior needs a signed-in desktop user, which hosted runners lack. Before
+promoting a release that changes the CLI or connector, download the candidate
+artifacts and run these on a signed-in Windows 11 x64 PC, using Node 22 and the
+repository's npm dependencies:
 
 ```powershell
 .github/scripts/smoke-cli-installer-windows.ps1 -Binary .\overtchat.exe -Installer apps/site/public/install.ps1
@@ -109,24 +107,17 @@ On a signed-in Windows 11 PC with Docker Desktop/WSL 2, also run:
 node --import tsx .github/scripts/smoke-connector-rollback-windows.mjs .\overtchat-connector.exe
 ```
 
-The rollback check requires the repository's npm dependencies and Node 22. It
-uses an isolated installation, real NTFS files and a real interactive scheduled
-task, with an injected staging-copy failure and an invalid startup URL. It
-checks that a staging failure leaves the old task running, and a startup failure
-restores the previous executable, unchanged credentials, and a restarted task.
-Management readiness is a fixture in this check; separately verify a real
-backend accepts the unchanged credential and reports the candidate version. It
-removes its task and temporary files. Use the downloaded CI/release candidate
-binary for these checks and record its SHA-256; local source tests alone do not
-qualify a release artifact. The Windows installer delegates replacement to the
-verified candidate's internal `install-manager` entry point, which shares the
-normal updater's locks and recovery journal.
+The service smoke covers install, crash restart, graceful stop, journal reopen,
+restart, and uninstall under a non-elevated interactive token. The rollback smoke
+injects staging and startup failures against a real task and NTFS files; its
+management readiness is a fixture. All three use isolated paths with spaces and
+remove their tasks and temporary files.
 
-Use a disposable managed installation for actual setup/update, browser login from
-another LAN device, native and SSH agent tool requests, connector restart and
-Docker restart/reconnect. Verify credential ACLs as a non-elevated user, paths
-with spaces, retained data, optional CPU/GPU speech, and sign-in startup after a
-reboot. Record the exact binary runtime/version and which hardware checks ran.
+Then update a disposable managed installation with the candidates and check:
+browser login from another LAN device, a native and an SSH agent request,
+retained credentials and history, Docker Desktop restart, and connector startup
+after reboot and sign-in. Record the artifact SHA-256 values and the checks run
+in the release PR.
 
 ## Website downloads
 

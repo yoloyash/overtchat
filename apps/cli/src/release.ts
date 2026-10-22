@@ -219,7 +219,7 @@ function currentExecutable(): string | null {
     : null;
 }
 
-export async function cleanupWindowsCliBackups(): Promise<string | null> {
+export async function recoverInterruptedCliUpdate(): Promise<string | null> {
   const executable = currentExecutable();
   if (!executable) return null;
   const lock = await ProcessLock.acquire(`${executable}.update.lock`);
@@ -235,10 +235,10 @@ export async function cleanupWindowsCliBackups(): Promise<string | null> {
     }
     if (process.platform === "win32") {
       const directory = path.dirname(executable);
-      const prefixes = [".previous-", ".abandoned-"].map(suffix => `${path.basename(executable)}${suffix}`);
+      // Images that BinaryUpdate.restore renamed aside while they were running.
+      const prefix = `${path.basename(executable)}.abandoned-`;
       for (const file of await readdir(directory)) {
-        const prefix = prefixes.find(prefix => file.startsWith(prefix));
-        if (!prefix || !/^[0-9a-f-]{36}$/u.test(file.slice(prefix.length))) continue;
+        if (!file.startsWith(prefix) || !/^[0-9a-f-]{36}$/u.test(file.slice(prefix.length))) continue;
         await rm(path.join(directory, file)).catch((error: NodeJS.ErrnoException) => {
           if (!["ENOENT", "EPERM", "EBUSY", "EACCES", "EFAULT"].includes(error.code || "")) throw error;
         });

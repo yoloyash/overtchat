@@ -1,14 +1,10 @@
-import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
-import { connectorConfigPath } from "./config.js";
-import { protectWindowsDirectory } from "./windows-security.js";
-
-const exec = promisify(execFile);
-const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+import { connectorConfigPath, renameWithRetry } from "./config.js";
+import { powershellLiteral as literal } from "./host-environment.js";
+import { powershell, protectWindowsDirectory } from "./windows-security.js";
 
 export function windowsServiceDirectory(): string {
   return path.join(path.dirname(connectorConfigPath()), "windows-service");
@@ -17,14 +13,6 @@ export function windowsServiceDirectory(): string {
 export function windowsTaskName(): string {
   const identity = path.resolve(connectorConfigPath()).toLowerCase();
   return `OvertChat Connector ${createHash("sha256").update(identity).digest("hex").slice(0, 16)}`;
-}
-
-async function powershell(script: string): Promise<string> {
-  const result = await exec("powershell.exe", [
-    "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
-    Buffer.from(`$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue';\n${script}`, "utf16le").toString("base64"),
-  ], { windowsHide: true, timeout: 45_000, maxBuffer: 1024 * 1024 });
-  return result.stdout.trim();
 }
 
 const scheduler = `$scheduler = New-Object -ComObject 'Schedule.Service'
@@ -38,7 +26,7 @@ $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 if ($sid -in @('S-1-5-18','S-1-5-19','S-1-5-20')) { throw 'Run setup as your desktop user, not a system service account.' }`);
 }
 
-export function windowsServiceLauncher(invocation: string[], environment: NodeJS.ProcessEnv): string {
+export function windowsServiceLauncher(invocation: string[], environment: NodeJS.ProcessEnv, taskName = windowsTaskName()): string {
   const variables = [
     "OVERTCHAT_CONNECTOR_CONFIG", "OVERTCHAT_CONNECTOR_STATE",
     "OVERTCHAT_CONNECTOR_TIMELINES", "OVERTCHAT_CONNECTOR_LOCK",
@@ -49,8 +37,26 @@ ${variables.join("\n")}
 # Read current user/machine paths at every login; retain custom launch paths too.
 $env:PATH = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User') + ';' + ${literal(environment.PATH || environment.Path || "")}
 Set-Location -LiteralPath ${literal(os.homedir())}
-& ${invocation.map(literal).join(" ")}
-exit $LASTEXITCODE
+# Task Scheduler restarts only failed launches, not an action that exits with an
+# error. Restart on failure like systemd/launchd. A graceful stop exits 0, and
+# service-stop disables the task before requesting it, so neither restarts.
+${scheduler}
+$delay = 2
+while ($true) {
+  $started = [DateTime]::UtcNow
+  & ${invocation.map(literal).join(" ")}
+  $code = $LASTEXITCODE
+  if ($code -eq 0) { exit 0 }
+  if (([DateTime]::UtcNow - $started).TotalSeconds -ge 60) { $delay = 2 }
+  # Poll during backoff so service-stop never waits for a long delay.
+  $resume = [DateTime]::UtcNow.AddSeconds($delay)
+  do {
+    if (!$folder.GetTask(${literal(taskName)}).Enabled) { exit $code }
+    Start-Sleep -Seconds 1
+  } while ([DateTime]::UtcNow -lt $resume)
+  if (!$folder.GetTask(${literal(taskName)}).Enabled) { exit $code }
+  $delay = [Math]::Min($delay * 2, 60)
+}
 `;
 }
 
@@ -117,8 +123,10 @@ $definition.Settings.MultipleInstances = 2
 $definition.Settings.RestartInterval = 'PT1M'
 $definition.Settings.RestartCount = 999
 $action = $definition.Actions.Create(0)
-$action.Path = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
-$action.Arguments = '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + ${literal(launcher)} + '"'
+# A headless console host keeps sign-in from flashing a window, including when
+# Windows Terminal is the default terminal application.
+$action.Path = Join-Path $env:SystemRoot 'System32\\conhost.exe'
+$action.Arguments = '--headless "' + (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') + '" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + ${literal(launcher)} + '"'
 $action.WorkingDirectory = ${literal(os.homedir())}
 $task = $folder.RegisterTaskDefinition(${literal(windowsTaskName())}, $definition, 6, $sid, $null, 3)
 $null = $task.Run($null)`);
@@ -140,7 +148,7 @@ export async function watchWindowsServiceStop(stop: () => Promise<void>): Promis
   const nonce = randomUUID();
   const temporary = `${running}.${nonce}`;
   await writeFile(temporary, JSON.stringify({ pid: process.pid, nonce }), { mode: 0o600 });
-  await rename(temporary, running);
+  await renameWithRetry(temporary, running);
   let pending = false;
   const timer = setInterval(() => {
     if (pending) return;

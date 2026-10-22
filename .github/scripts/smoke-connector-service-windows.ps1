@@ -50,7 +50,16 @@ try {
       }
     }
   }
-  $first = Get-Content -LiteralPath $running -Raw | ConvertFrom-Json
+  $crashed = Get-Content -LiteralPath $running -Raw | ConvertFrom-Json
+  # Task Scheduler does not restart an action that exits with an error; the
+  # launcher must. A forced kill leaves the stale marker until the restart.
+  Stop-Process -Id $crashed.pid -Force
+  $deadline = (Get-Date).AddSeconds(30)
+  do {
+    Start-Sleep -Milliseconds 500
+    $first = Get-Content -LiteralPath $running -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+  } while ((!$first -or $first.nonce -eq $crashed.nonce) -and (Get-Date) -lt $deadline)
+  if (!$first -or $first.nonce -eq $crashed.nonce) { throw 'Connector did not restart after a crash' }
   $task = Get-ScheduledTask | Where-Object { $_.Actions.Arguments -like ('*' + $root + '*') }
   if (@($task).Count -ne 1) { throw 'Expected exactly one task for the isolated connector' }
   if ($task.Principal.RunLevel -ne 0 -or $task.Principal.LogonType -ne 3) { throw 'Task must use a non-elevated interactive user token' }
@@ -65,7 +74,7 @@ try {
   Invoke-Connector 'service-uninstall'
   if (Get-ScheduledTask -TaskName $task.TaskName -ErrorAction SilentlyContinue) { throw 'Uninstall left the scheduled task' }
   if (!(Test-Path -LiteralPath $env:OVERTCHAT_CONNECTOR_CONFIG)) { throw 'Service uninstall removed credentials' }
-  Write-Output 'PASS: Windows connector install/start/graceful-stop/journal-reopen/restart/uninstall; limited interactive identity; paths with spaces.'
+  Write-Output 'PASS: Windows connector install/start/crash-restart/graceful-stop/journal-reopen/restart/uninstall; limited interactive identity; paths with spaces.'
 } finally {
   if (Test-Path -LiteralPath (Join-Path $root 'windows-service')) {
     & $Binary service-uninstall

@@ -306,6 +306,7 @@ export class ConnectorProcessHost {
       sshTunnelArgs(target.alias, localPort, remotePort),
       {
         detached: process.platform !== "win32",
+        windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
       },
     );

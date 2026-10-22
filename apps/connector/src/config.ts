@@ -85,12 +85,25 @@ export async function writeConnectorConfig(
       await handle.writeFile(`${JSON.stringify(config, null, 2)}\n`, "utf8");
       await handle.sync();
     } finally { await handle.close(); }
-    await rename(temporary, file);
+    await renameWithRetry(temporary, file);
     if (process.platform !== "win32") {
       const directory = await open(path.dirname(file), "r");
       try { await directory.sync(); } finally { await directory.close(); }
     }
   } finally { await rm(temporary, { force: true }); }
+}
+
+// Antivirus scanners and the search indexer briefly hold newly written files
+// open on Windows, which makes replacing them fail with a sharing violation.
+export async function renameWithRetry(source: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await rename(source, destination); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (process.platform !== "win32" || !["EBUSY", "EPERM", "EACCES"].includes(code) || attempt >= 20) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
 }
 
 export function normalizeServerUrl(value: string): string {

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanupWindowsCliBackups, updateCliIfNeeded, type ReleaseManifest } from "./release.js";
+import { recoverInterruptedCliUpdate, updateCliIfNeeded, type ReleaseManifest } from "./release.js";
 import { runCommand } from "./process.js";
 vi.mock("./process.js", () => ({ runCommand: vi.fn() }));
 const directories: string[] = [];
@@ -79,7 +79,7 @@ it("commits a verified Windows replacement and rejects bad updates", async () =>
   await expect(readFile(`${executable}.previous`)).rejects.toMatchObject({ code: "ENOENT" });
   const unrelated = path.join(directory, "overtchat.exe.previous-do-not-delete");
   await writeFile(unrelated, "unrelated");
-  await cleanupWindowsCliBackups();
+  await recoverInterruptedCliUpdate();
   expect(await readdir(directory)).toEqual(expect.arrayContaining(["overtchat.exe", path.basename(unrelated)]));
 
 });

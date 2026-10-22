@@ -18,6 +18,14 @@ it("quotes executable and config paths without persisting unrelated secrets", ()
   expect(script).not.toContain("do-not-persist");
 });
 
+it("restarts a failed connector until a graceful stop or disabled task", () => {
+  const script = windowsServiceLauncher(["C:\\connector.exe", "service-run"], {}, "OvertChat Connector test's");
+  expect(script).toContain("while ($true) {");
+  expect(script).toContain("& 'C:\\connector.exe' 'service-run'\n  $code = $LASTEXITCODE\n  if ($code -eq 0) { exit 0 }");
+  expect(script).toContain("if (!$folder.GetTask('OvertChat Connector test''s').Enabled) { exit $code }");
+  expect(script).toContain("$delay = [Math]::Min($delay * 2, 60)");
+});
+
 it("separates scheduled tasks for isolated connector configurations", () => {
   vi.stubEnv("OVERTCHAT_CONNECTOR_CONFIG", path.join(os.tmpdir(), "first", "connector.json"));
   const first = windowsTaskName();

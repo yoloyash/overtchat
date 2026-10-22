@@ -1285,10 +1285,9 @@ repair sessions whose native transcript was already missing.
 
 ## Windows backend development
 
-Production Windows deployment is documented in [Deploy](deploy.md#windows).
-Use Node 22 and npm 10.9.8 for source checks. `overtchat setup --development`
-requires Docker Desktop/WSL 2 and Bun when Agent Connections are selected; it
-compiles a native connector executable instead of installing a JavaScript file
-as an `.exe`. Use dedicated config/stack directories and a disposable Docker
-volume for deployment tests. See [Windows qualification](release.md#windows-backend-qualification)
-for the packaged installer, updater, journal, and interactive-service checks.
+Production Windows deployment is in [Deploy](deploy.md#windows). On Windows,
+`overtchat setup --development` requires Docker Desktop/WSL 2, plus Bun when
+Agent Connections are selected: it compiles a native connector executable from
+the worktree. Use dedicated config/stack directories and a disposable Docker
+volume for deployment tests. Release-candidate checks are in
+[Windows backend qualification](release.md#windows-backend-qualification).

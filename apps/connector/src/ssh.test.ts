@@ -104,6 +104,18 @@ describe("SSH process launching", () => {
       "Invalid SSH tunnel port",
     );
   });
+
+  it("disables connection multiplexing for Windows OpenSSH", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      const multiplexing = ["-o", "ControlMaster=no", "-o", "ControlPath=none"];
+      expect(sshTunnelArgs("macbook", 41234, 4096).slice(0, 4)).toEqual(multiplexing);
+      expect(sshSpawnArgs("macbook", { command: "omp", shellMode: "interactive" }).slice(0, 4)).toEqual(multiplexing);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+  });
 });
 
 describe("SSH host discovery", () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { chmod, copyFile, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { chmod, copyFile, open, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { atomicWrite, syncDirectory } from "./atomic-file.js";
+import { atomicWrite, renameWithRetry, syncDirectory } from "./atomic-file.js";
 
 type Record = { format: 1; previous: boolean; committed: boolean };
 
@@ -60,17 +60,17 @@ export class BinaryUpdate {
   async replace(): Promise<void> {
     if (!this.record) throw new Error("Update was not prepared.");
     if (this.hadPrevious) {
-      if (process.platform === "win32") await rename(this.target, this.backup);
+      if (process.platform === "win32") await renameWithRetry(this.target, this.backup);
       else {
         const stagedBackup = `${this.backup}.next`;
         await copyFile(this.target, stagedBackup);
         const handle = await open(stagedBackup, "r+");
         try { await handle.sync(); } finally { await handle.close(); }
-        await rename(stagedBackup, this.backup);
+        await renameWithRetry(stagedBackup, this.backup);
       }
       await syncDirectory(path.dirname(this.target));
     }
-    await rename(this.staged, this.target);
+    await renameWithRetry(this.staged, this.target);
     await syncDirectory(path.dirname(this.target));
   }
 
@@ -80,10 +80,10 @@ export class BinaryUpdate {
       if (process.platform === "win32" && await exists(this.target)) {
         // Also works when recovery is running from the replacement CLI image.
         const abandoned = `${this.target}.abandoned-${randomUUID()}`;
-        await rename(this.target, abandoned);
+        await renameWithRetry(this.target, abandoned);
         await rm(abandoned, { force: true }).catch(() => {});
       }
-      await rename(this.backup, this.target);
+      await renameWithRetry(this.backup, this.target);
     } else if (!this.hadPrevious) await rm(this.target, { force: true });
     else if (!await exists(this.target)) throw new Error(`Neither the installed executable nor its backup exists: ${this.target}`);
     await syncDirectory(path.dirname(this.target));

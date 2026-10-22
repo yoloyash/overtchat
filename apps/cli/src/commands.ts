@@ -7,7 +7,7 @@ import { logs } from "./logs.js";
 import { installationReport } from "./management.js";
 import { runtimePaths } from "./paths.js";
 import {
-  cleanupWindowsCliBackups,
+  recoverInterruptedCliUpdate,
   installDownloadedCli,
   latestReleaseManifest,
   updateCliIfNeeded,
@@ -140,7 +140,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const parsed = parseArgs(argv);
   const { command, flags, help } = parsed;
   if (!help && (command === "setup" || (command === "update" && !flags.has("--check")))) {
-    const recovered = await cleanupWindowsCliBackups();
+    const recovered = await recoverInterruptedCliUpdate();
     if (recovered) return runUpdatedCli(recovered, argv);
   }
   if (help) {

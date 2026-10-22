@@ -1,7 +1,7 @@
 # Deploy
 
-Supports x86-64/arm64 Linux, Intel/Apple Silicon Macs, and x64 Windows 11 PCs. The guided manager
-installs and updates OvertChat with Docker Compose.
+Supports x86-64/arm64 Linux, Intel/Apple Silicon Macs, and x64 Windows 11 PCs.
+The guided manager installs and updates OvertChat with Docker Compose.
 
 ## Install
 
@@ -10,6 +10,8 @@ For a guided overview, start with [Set up a server](https://overtchat.com/setup/
 ```sh
 curl -fsSL https://overtchat.com/install | sh
 ```
+
+On Windows, use the PowerShell command in [Windows](#windows) instead.
 
 Choose where to access OvertChat, local search, speech, and voice services,
 and whether to check for updates. The wizard generates the configuration and
@@ -33,31 +35,25 @@ overtchat logs -f   # follow container logs
 overtchat reset-password # recover an account password
 ```
 
-Setup and updates serialize changes to the managed installation. If another
-operation is running, wait for it to finish and retry. Updates retain existing
-connector pairing credentials. A failed replacement restores the previous
-executable and checks that its authenticated connection returns; recovery
-failures are reported instead of being hidden.
+Only one setup or update runs at a time; if another is running, wait and retry.
+Updates keep the existing connector pairing. If replacing the CLI or connector
+fails or is interrupted, rerun the same command as the same user with the same
+directory overrides. It restores the previous executable, or finishes the
+replacement, before continuing. Keep `.previous` and `.update.json` files beside
+the executables until then. On Windows, if `overtchat` is missing after an
+interrupted update, rerun the PowerShell installer. Recovery covers executables,
+not database migrations.
 
-After an interrupted update, rerun the same command as the same user with the
-same directory overrides. The manager recovers its saved replacement state
-before continuing. If Windows reports that `overtchat` is missing, rerun the
-PowerShell installer; it can restore the entry point without the installed CLI.
-Preserve `.previous` binaries and `.update.json` files while recovery is pending.
-An older Windows manager can keep its backup locked until it exits; cleanup is
-retried on a later setup/update. These recover executable replacements, not
-database migrations or a full Compose deployment.
-
-Noninteractive setup/update exits with an error if selected Agent Connections
-remain pending, after saving that status and completing the working app setup.
-Inspect `overtchat status` and `overtchat logs install`, then retry setup/update.
-Interactive setup still allows explicitly finishing without Agent Connections.
+Without a terminal, or with `setup --defaults`, setup and update exit with an
+error if selected Agent Connections could not be set up. The app itself is still
+running; check `overtchat logs install` and rerun. Interactive setup lets you
+finish without them.
 
 Voice requires both STT and TTS. Bundled Parakeet and Kokoro support native
 Apple acceleration on Apple Silicon with macOS 14 or later, and CPU or NVIDIA
-GPU containers on Linux and Windows with Docker Desktop/WSL 2. CPU containers remain available on Macs, including
-Intel Macs. Setup can install NVIDIA Container
-Toolkit on supported systems. Kokoro needs roughly 3–4 GB VRAM, so choose CPU
+GPU containers on Linux and on Windows with Docker Desktop/WSL 2. CPU containers
+remain available on Macs, including Intel Macs. Setup can install NVIDIA Container
+Toolkit on supported Linux systems. Kokoro needs roughly 3–4 GB VRAM, so choose CPU
 if GPU memory is limited.
 
 ### macOS
@@ -87,42 +83,44 @@ service on failure; it does not downgrade the app or database.
 
 ### Windows
 
-Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
-with the WSL 2 backend and Linux containers. Start it once and finish Docker’s
-first-run setup. You do not need to install OvertChat inside an Ubuntu terminal.
-For Agent Connections, install [Node.js 22 or newer](https://nodejs.org/en/download)
-and your provider CLI on Windows, and sign into the provider as your desktop user.
+Windows needs an x64 PC with Windows 11 and
+[Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+using the WSL 2 backend and Linux containers. Start Docker Desktop once to finish
+its first-run setup, and enable **Start Docker Desktop when you sign in**. For
+Agent Connections, also install [Node.js 22 or newer](https://nodejs.org/en/download)
+and your provider CLIs, signed in as your desktop user.
 
-Open 64-bit PowerShell as that normal user and run:
+In 64-bit PowerShell, as your normal desktop user (not administrator), run:
 
 ```powershell
 irm https://overtchat.com/install.ps1 | iex
 ```
 
-The installer verifies the pinned release’s SHA-256 checksum, installs
-`overtchat.exe` in `%LOCALAPPDATA%\Programs\OvertChat\bin`, and adds it to your
-user PATH. Reopen existing terminals to pick up the PATH change. Windows ARM64
-and Windows Server/service-account deployments are not supported.
+The installer verifies the release checksum, installs `overtchat.exe` in
+`%LOCALAPPDATA%\Programs\OvertChat\bin`, adds it to your user PATH (reopen other
+terminals to use it), then starts setup. Run setup and updates from the desktop
+session rather than over SSH: Docker Desktop's credential helper can fail image
+pulls from an SSH logon with "A specified logon session does not exist".
 
-The initial Windows manager and connector binaries are unsigned. SHA-256
-verification checks the downloaded release bytes; it does not provide a Windows
-publisher signature. Smart App Control or organizational application policies
-may block these binaries. Do not disable those protections to install OvertChat.
+The Windows binaries are not code-signed yet. Smart App Control or organization
+policies may block them; do not disable those protections to install OvertChat.
 
-The manager controls the same Linux containers as other platforms. Configuration,
-secrets, and installation logs live in `%LOCALAPPDATA%\OvertChat\config`; managed
-Compose files live in `%LOCALAPPDATA%\OvertChat\stack`. Keep the database in the
-managed Docker volume. Do not run two copies of the installation against the same
-volume. Custom `OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_STACK_DIR` must be dedicated
-OvertChat directories; the manager restricts their credential files’ access.
+| Data | Location |
+| --- | --- |
+| Configuration, secrets, install log | `%LOCALAPPDATA%\OvertChat\config`, accessible only to your user and SYSTEM |
+| Compose files | `%LOCALAPPDATA%\OvertChat\stack` |
+| Database | The managed Docker volume |
 
-Enable Docker Desktop’s **Start Docker Desktop when you sign in** setting.
-The native Host Connector runs in Task Scheduler as your signed-in user, without
-administrator privileges or a stored password. It uses your Windows provider
-credentials and `%USERPROFILE%\.ssh\config`, so both native and SSH agents work.
-The PC must be awake and the user signed in; this is a desktop deployment, not a
-Windows system service. Restarting Docker does not erase the database, and the
-connector reconnects when the app returns.
+Resetting or uninstalling Docker Desktop or WSL can delete the volume; back up the
+volume and the configuration directory first. Custom `OVERTCHAT_CONFIG_DIR` and
+`OVERTCHAT_STACK_DIR` values must be dedicated directories, because the manager
+replaces the configuration directory's permissions.
+
+The Host Connector runs as a Task Scheduler task for your signed-in user, without
+administrator rights or a stored password, and restarts if it exits with an
+error. It uses your Windows provider credentials and `%USERPROFILE%\.ssh\config`,
+so native and SSH agents both work. OvertChat is only available while the PC is
+awake and you are signed in; it is not a Windows system service.
 
 ```powershell
 overtchat status
@@ -131,26 +129,20 @@ overtchat logs connector --tail 100
 overtchat logs install --tail 100
 ```
 
-Connector logs rotate under the config directory’s `windows-service` folder.
-`overtchat-connector service-stop` gracefully stops and disables its task;
-`service-install` enables and starts it again; `service-uninstall` removes only
-the task, preserving credentials and session history. Use the same
-`OVERTCHAT_CONNECTOR_CONFIG` override for custom installations. Back up the Docker
-volume and the configuration directory before moving or resetting Docker Desktop.
-Uninstalling Docker/WSL or resetting Docker Desktop can remove the volume.
+Connector logs rotate in the configuration directory's `windows-service` folder.
+`overtchat-connector service-stop` stops and disables the task, `service-install`
+enables and starts it again, and `service-uninstall` removes only the task,
+keeping credentials and session history. Custom installations must set the same
+`OVERTCHAT_CONNECTOR_CONFIG` for these commands.
 
-NVIDIA speech acceleration uses Docker Desktop’s WSL GPU support. Install a
-current NVIDIA Windows driver; do not install Linux NVIDIA drivers or the Linux
-Container Toolkit on the Windows host. Setup verifies GPU access in a Linux
-container before selecting CUDA. CPU speech remains available without a GPU.
+NVIDIA speech acceleration uses Docker Desktop's WSL GPU support. Install a
+current NVIDIA Windows driver, not Linux drivers or the NVIDIA Container Toolkit.
+Setup checks GPU access inside a container before selecting CUDA; CPU speech
+works without a GPU.
 
-Run setup and updates from the desktop session. Docker Desktop’s Windows
-credential helper may reject pulls from an SSH logon with “A specified logon
-session does not exist”; sign in locally and rerun the command. Do not remove
-Docker’s credential configuration to work around that error. If Docker is stopped
-or using Windows containers, the manager reports the prerequisite and can be
-rerun after Docker is ready. LAN access is subject to Windows Firewall; use a
-private network and allow the chosen app port only where you intend to serve it.
+LAN access is subject to Windows Firewall; allow the app port only on private
+networks you intend to serve. Windows ARM64, Windows Server, and service-account
+deployments are not supported.
 
 ## Password recovery
 
@@ -457,8 +449,9 @@ Workspace paths may use drive-qualified paths such as `C:\Users\me\project`
 or UNC paths such as `\\server\share\project`. Network shares still require
 access from the SSH account. WSL reached through its own Linux SSH endpoint
 remains a separate POSIX environment with Linux paths and provider installations.
-Windows SSH support does not add a Windows connector service installer; managed
-connector installation remains Linux/macOS.
+A Windows server's own connector is installed by `overtchat setup`. Pairing a
+standalone connector to another server supports Linux and macOS only; reach
+other Windows PCs as SSH hosts.
 
 ### Coding-agent providers and connector operation
 
