@@ -10,7 +10,8 @@ const windows = it.runIf(process.platform === "win32");
 const directories: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+  // Windows releases a just-exited executable's image asynchronously.
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true, maxRetries: 10 });
 });
 
 async function fixture() {
@@ -96,4 +97,4 @@ windows("stages a Windows runtime whose batch launcher survives cmd.exe path syn
     expect(result.stdout.trim()).toBe("service-stop|run");
     expect(result.status).toBe(7);
   } finally { vi.unstubAllEnvs(); }
-});
+}, 60_000);

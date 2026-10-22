@@ -561,14 +561,15 @@ export async function runConnectorTerminalSmoke(outputBytes = 0): Promise<void> 
   let output = "";
   let received = 0;
   let sent = false;
+  let exiting = false;
   // Windows PowerShell echoes input, so its markers are assembled at runtime and
   // only executed output matches. ConPTY repaints the screen rather than
   // forwarding the byte stream, so bulk output proves flow, not an exact count.
   const windows = process.platform === "win32";
   const readyCommand = windows ? "Write-Output ('REA' + 'DY')\r" : "stty -echo; printf '\\nREADY\\n'\r";
   const finishCommand = windows
-    ? `${outputBytes ? `[Console]::Out.Write([string]::new([char]81, ${outputBytes})); ` : ""}Write-Output ('overtchat-terminal-smoke-' + ${process.pid}); exit\r`
-    : `${outputBytes ? `head -c ${outputBytes} /dev/zero | tr '\\0' '\\121'; ` : ""}printf '\\novertchat-%s-%s\\n' terminal-smoke ${process.pid}; exit\r`;
+    ? `${outputBytes ? `[Console]::Out.Write([string]::new([char]81, ${outputBytes})); ` : ""}Write-Output ('overtchat-terminal-smoke-' + ${process.pid})\r`
+    : `${outputBytes ? `head -c ${outputBytes} /dev/zero | tr '\\0' '\\121'; ` : ""}printf '\\novertchat-%s-%s\\n' terminal-smoke ${process.pid}\r`;
   let timeout: NodeJS.Timeout | undefined;
   let retry: NodeJS.Timeout | undefined;
   try {
@@ -599,6 +600,12 @@ export async function runConnectorTerminalSmoke(outputBytes = 0): Promise<void> 
                 output = "";
                 received = 0;
                 manager.write(workspaceId, finishCommand);
+              }
+              // A PTY can drop output written just before the shell exits, so
+              // exit only after the marker arrives.
+              if (sent && !exiting && output.includes(marker)) {
+                exiting = true;
+                manager.write(workspaceId, "exit\r");
               }
             }
             else resolve();
