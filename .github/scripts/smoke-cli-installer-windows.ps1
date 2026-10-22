@@ -22,7 +22,10 @@ function Invoke-WebRequest {
     Copy-Item -LiteralPath $Binary -Destination $OutFile
   } elseif ($Uri.EndsWith('/overtchat-checksums.txt')) {
     $hash=if ($corrupt) { '0'*64 } else { $fixtureHash }
-    [pscustomobject]@{Content="$hash  overtchat-windows-amd64.exe`n"}
+    $bytes=[Text.Encoding]::UTF8.GetBytes("$hash  overtchat-windows-amd64.exe`n")
+    # GitHub serves application/octet-stream, which Windows PowerShell 5.1
+    # returns as a byte array; mirror that so text-only parsing fails here.
+    if ($OutFile) { [IO.File]::WriteAllBytes($OutFile, $bytes) } else { [pscustomobject]@{Content=$bytes} }
   } else { throw "Unexpected asset: $Uri" }
 }
 

@@ -23,9 +23,13 @@ param([switch]$NoSetup)
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Write-Host "Downloading OvertChat $cliVersion..."
     Invoke-WebRequest -UseBasicParsing -Uri "$releaseUrl/$asset" -OutFile $candidate
-    $checksums = (Invoke-WebRequest -UseBasicParsing -Uri "$releaseUrl/overtchat-checksums.txt").Content
+    # GitHub serves release assets as application/octet-stream, which Windows
+    # PowerShell 5.1 returns as bytes rather than text; read a saved copy instead.
+    $checksumFile = Join-Path $temporary 'overtchat-checksums.txt'
+    Invoke-WebRequest -UseBasicParsing -Uri "$releaseUrl/overtchat-checksums.txt" -OutFile $checksumFile
+    $checksums = [IO.File]::ReadAllText($checksumFile)
     $pattern = '(?m)^([a-fA-F0-9]{64})\s+\*?' + [regex]::Escape($asset) + '\s*$'
-    $match = [regex]::Match([string]$checksums, $pattern)
+    $match = [regex]::Match($checksums, $pattern)
     if (!$match.Success) { throw "The release checksum for $asset is missing." }
     $actual = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash
     if ($actual -ne $match.Groups[1].Value) { throw 'The downloaded OvertChat binary failed checksum verification.' }
