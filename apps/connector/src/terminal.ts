@@ -107,13 +107,27 @@ function sameTerminalOwner(
   );
 }
 
-// Prefer PowerShell 7 when installed, as Windows Terminal does.
-function windowsShell(): string {
+// ConPTY's CreateProcess does not apply PATHEXT, so node-pty cannot launch a
+// bare "ssh"; resolve the full executable path as child_process would.
+function windowsExecutable(name: string): string | undefined {
   for (const directory of (process.env.Path ?? process.env.PATH ?? "").split(";")) {
-    const candidate = path.join(directory.replace(/^"|"$/gu, ""), "pwsh.exe");
+    const candidate = path.join(directory.replace(/^"|"$/gu, ""), name);
     if (directory && existsSync(candidate)) return candidate;
   }
-  return path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  return undefined;
+}
+
+// Prefer PowerShell 7 when installed, as Windows Terminal does.
+function windowsShell(): string {
+  return windowsExecutable("pwsh.exe") ??
+    path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+}
+
+function sshCommand(): string {
+  if (process.platform !== "win32") return "ssh";
+  const command = windowsExecutable("ssh.exe");
+  if (!command) throw new Error("SSH workspace terminals require the Windows OpenSSH client (ssh.exe) on PATH.");
+  return command;
 }
 
 function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor, platform: HostEnvironment["platform"]): {
@@ -123,7 +137,7 @@ function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor, platform: Ho
 } {
   if (descriptor.target.transport === "ssh") {
     return {
-      command: "ssh",
+      command: sshCommand(),
       args: sshTerminalArgs(descriptor.target.alias, descriptor.cwd, platform),
       cwd: process.cwd(),
     };

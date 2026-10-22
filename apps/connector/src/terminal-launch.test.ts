@@ -101,3 +101,27 @@ it("opens local Windows terminals in PowerShell 7 when installed, else Windows P
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("launches SSH terminals from a Windows connector through the resolved ssh.exe", async () => {
+  const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "terminal-ssh-"));
+  try {
+    vi.stubEnv("Path", directory);
+    // ConPTY does not apply PATHEXT, so a bare "ssh" fails with "File not found".
+    const missing = fixture();
+    const rejected = expect(missing.subscribe()).rejects.toThrow("Windows OpenSSH client (ssh.exe)");
+    missing.resolve({ platform: "posix" });
+    await rejected;
+    expect(mocks.spawn).not.toHaveBeenCalled();
+    await writeFile(path.join(directory, "ssh.exe"), "");
+    const found = fixture();
+    const opened = found.subscribe();
+    found.resolve({ platform: "posix" });
+    await opened;
+    expect(mocks.spawn.mock.calls[0][0]).toBe(path.join(directory, "ssh.exe"));
+  } finally {
+    platform.mockRestore();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
