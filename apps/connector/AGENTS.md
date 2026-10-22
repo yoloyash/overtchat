@@ -22,7 +22,11 @@ back using contracts from `@overtchat/agent-bridge`.
   runtime package. SSH targets remain OpenSSH aliases; the connector does not
   manage private keys.
 
-The connector is outbound-only and does not expose a shell or listening server.
+The connector is outbound-only and does not run a listening server. It does
+provide shell access: workspace terminals run an interactive shell on the
+workspace host and stream it through the server's terminal relay over an
+outbound connection, so terminal input is remote shell access for whoever the
+server authorizes.
 Changes to command handling or event delivery must preserve journal-before-ack
 ordering, command deduplication, and timeline recovery across restarts.
 
