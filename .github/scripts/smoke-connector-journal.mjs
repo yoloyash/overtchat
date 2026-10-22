@@ -8,6 +8,8 @@ import path from "node:path";
 
 const binary = path.resolve(process.argv[2] ?? "");
 assert(process.argv[2], "Provide the packaged connector executable");
+// Windows cannot spawn its batch launcher directly; run the packaged entry point.
+const connector = (args) => binary.endsWith(".mjs") ? [process.argv[4] ?? process.execPath, [binary, ...args]] : [binary, args];
 const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-packaged-journal-"));
 try {
   const file = path.join(directory, "state.json");
@@ -23,7 +25,7 @@ try {
   const env = { ...process.env, OVERTCHAT_CONNECTOR_CONFIG: config, OVERTCHAT_CONNECTOR_STATE: file,
     OVERTCHAT_CONNECTOR_LOCK: path.join(directory, "connector.lock"), OVERTCHAT_CONNECTOR_TIMELINES: path.join(directory, "timelines") };
   const run = (...args) => {
-    const result = spawnSync(binary, args, { encoding: "utf8", env, timeout: 30_000 });
+    const result = spawnSync(...connector(args), { encoding: "utf8", env, timeout: 30_000 });
     assert.equal(result.status, 0, `${args[0]} failed: ${result.error ?? result.stderr}`);
   };
   run("preflight");
@@ -45,7 +47,8 @@ try {
   if (process.argv[3]) {
     const crashWorker = path.resolve(process.argv[3]);
     const killAt = async (stateFile, action, boundary) => {
-      const child = spawn(crashWorker, [stateFile, action, boundary], { stdio: ["ignore", "pipe", "pipe"] });
+      const runtime = process.argv[4];
+      const child = spawn(runtime ?? crashWorker, [...(runtime ? [crashWorker] : []), stateFile, action, boundary], { stdio: ["ignore", "pipe", "pipe"] });
       const exited = once(child, "exit");
       let errors = "";
       child.stderr.on("data", (chunk) => { errors += String(chunk); });
@@ -83,7 +86,7 @@ try {
       await writeFile(crashFile, originalCrashState, { mode: 0o600 });
       await killAt(crashFile, "migrate", boundary);
       assert.equal(await readFile(crashFile, "utf8"), originalCrashState);
-      const recovered = spawnSync(binary, ["preflight"], { encoding: "utf8", timeout: 30_000, env: { ...env, OVERTCHAT_CONNECTOR_STATE: crashFile } });
+      const recovered = spawnSync(...connector(["preflight"]), { encoding: "utf8", timeout: 30_000, env: { ...env, OVERTCHAT_CONNECTOR_STATE: crashFile } });
       assert.equal(recovered.status, 0, recovered.stderr);
       const state = new DatabaseSync(crashFile, { readOnly: true });
       try { assert.equal(state.prepare("SELECT count(*) AS count FROM events").get().count, 1); }

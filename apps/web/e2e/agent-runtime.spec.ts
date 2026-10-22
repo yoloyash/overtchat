@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { expect, test, type Locator } from "@playwright/test";
+import { _electron, expect, test, type ElectronApplication, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
@@ -2997,4 +2999,278 @@ test("agent context meter stays visible while unknown and renders a 1M reading a
   await expect(unknown).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(unknown).toBeVisible();
+});
+
+test("workspace terminal streams a real shell, retains state, and reconnects under output load", async ({ page: browserPage }, testInfo) => {
+  test.setTimeout(120_000);
+  const windowsAlias = process.env.OVERTCHAT_TERMINAL_WINDOWS_SSH_ALIAS;
+  const windowsCwd = process.env.OVERTCHAT_TERMINAL_WINDOWS_CWD;
+  if (windowsAlias && !windowsCwd) throw new Error("OVERTCHAT_TERMINAL_WINDOWS_CWD is required for Windows terminal E2E");
+  let page = browserPage;
+  let desktop: ElectronApplication | undefined;
+  let savedClipboard: string | undefined;
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Terminal E2E Admin");
+  await page.locator("#email").fill("terminal-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-terminal-e2e-"));
+  const secret = "terminal-fixture-secret";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_workspaces SET path = ? WHERE id = 'workspace'").run(windowsAlias ? windowsCwd : directory);
+    if (windowsAlias) db.prepare("UPDATE agent_hosts SET transport = 'ssh', ssh_alias = ? WHERE id = 'host'").run(windowsAlias);
+  } finally { db.close(); }
+  const canonical = runtimeSnapshot(Date.now());
+  canonical.status = "idle";
+  canonical.activeTurn = null;
+  canonical.state = { ...canonical.state, isStreaming: false };
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({ snapshot: canonical, directory, connectorId: "connector", token: `oct_connector.${secret}`, serverUrl: String(testInfo.project.use.baseURL), eventBatches: {}, terminalTraffic: true }));
+  const connectorPackage = process.env.OVERTCHAT_TERMINAL_CONNECTOR_PACKAGE;
+  const child = spawn(connectorPackage ? path.join(connectorPackage, "bin/node") : process.execPath,
+    connectorPackage ? [path.join(connectorPackage, "test/transport-fixture.mjs"), configFile] : ["--import", "tsx", path.resolve(__dirname, "../../connector/scripts/transport-fixture.mjs"), configFile], {
+    stdio: ["ignore", "pipe", "pipe", "ipc"], env: { ...process.env, SHELL: "/bin/sh" },
+  });
+  let logs = "";
+  child.stdout!.on("data", (chunk) => { logs += chunk.toString(); });
+  child.stderr!.on("data", (chunk) => { logs += chunk.toString(); });
+  try {
+    await expect.poll(() => { if (child.exitCode !== null) throw new Error(`Terminal fixture exited: ${logs}`); return logs.includes("transport-fixture-ready"); }).toBe(true);
+    if (process.env.OVERTCHAT_TERMINAL_DESKTOP_E2E === "1") {
+      const appData = path.join(directory, "desktop-profile");
+      await mkdir(path.join(appData, "overtchat-dev"), { recursive: true });
+      await writeFile(path.join(appData, "overtchat-dev/settings.json"), JSON.stringify({ serverOrigin: testInfo.project.use.baseURL }));
+      const wrapper = path.join(directory, "desktop-main.mjs");
+      const main = pathToFileURL(path.resolve(__dirname, "../../desktop/out/main/index.js")).href;
+      await writeFile(wrapper, `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\nawait import(${JSON.stringify(main)});\n`);
+      const requireDesktop = createRequire(path.resolve(__dirname, "../../desktop/package.json"));
+      desktop = await _electron.launch({ executablePath: requireDesktop("electron"), args: [wrapper], chromiumSandbox: true });
+      savedClipboard = await desktop.evaluate(({ clipboard }) => clipboard.readText());
+      page = await desktop.firstWindow();
+      await page.context().addInitScript(() => localStorage.setItem("overtchat_two_factor_prompted", "e2e"));
+      await page.goto("overtchat://app/#/login");
+      await page.reload();
+      await page.locator("#email").fill("terminal-admin@overtchat-test.local");
+      await page.locator("#password").fill("test-password-123");
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await expect(page.locator("#password")).toBeHidden();
+    }
+    page.setDefaultTimeout(10_000);
+    await page.goto(desktop ? `overtchat://app/#/agents/${SESSION_ID}` : `/agents/${SESSION_ID}`);
+    await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+    const pane = page.getByRole("region", { name: "Workspace terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 20_000 });
+    const input = pane.locator(".xterm-helper-textarea");
+    const output = () => pane.locator(".xterm-rows").innerText();
+    const command = async (text: string) => {
+      await input.focus();
+      await page.keyboard.insertText(text);
+      await page.keyboard.press("Enter");
+    };
+    if (windowsAlias) await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+    await expect(pane.getByText(windowsAlias || "This machine", { exact: true })).toBeVisible();
+    const originalHeight = (await pane.boundingBox())!.height;
+    await pane.getByRole("button", { name: "Expand terminal", exact: true }).click();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBeGreaterThan(originalHeight);
+    await pane.getByRole("button", { name: "Restore terminal size", exact: true }).click();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBe(originalHeight);
+    await command(windowsAlias
+      ? "Write-Output ('polish-'+'needle one'); Write-Output ('polish-'+'needle two'); Write-Output 'https://example.com/overtchat-terminal'"
+      : "printf 'polish-%s one\\npolish-%s two\\nhttps://example.com/overtchat-terminal\\n' needle needle");
+    await expect.poll(output).toContain("polish-needle two");
+    await command(windowsAlias ? "Write-Host ('COLOR_'+'CHECK') -ForegroundColor Red" : "printf '\\033[31mCOLOR_%s\\033[0m\\n' CHECK");
+    await expect.poll(output).toContain("COLOR_CHECK");
+    const composer = page.getByPlaceholder("Message Codex or type / for commands");
+    await composer.fill("Please explain this:");
+    await pane.getByRole("button", { name: "Find in terminal", exact: true }).click();
+    const search = pane.getByRole("textbox", { name: "Find terminal output" });
+    await expect(search).toBeFocused();
+    await search.fill("polish-needle");
+    await expect(pane.getByText("1 / 2", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal-search.png"), animations: "disabled" });
+    await search.press("Enter");
+    await expect(pane.getByText("2 / 2", { exact: true })).toBeVisible();
+    await search.press("Shift+Enter");
+    await expect(pane.getByText("1 / 2", { exact: true })).toBeVisible();
+    await search.fill("POLISH-NEEDLE");
+    await pane.getByRole("button", { name: "Match case", exact: true }).click();
+    await expect(pane.getByText("No matches", { exact: true })).toBeVisible();
+    await pane.getByRole("button", { name: "Match case", exact: true }).click();
+    await search.press("Escape");
+    await expect(search).toBeHidden();
+    await expect(input).toBeFocused();
+    const findShortcut = await page.evaluate(() => /Mac|iPhone|iPad/.test(navigator.platform) ? "Meta+f" : "Control+Shift+f");
+    await page.keyboard.press(findShortcut);
+    await expect(search).toBeFocused();
+    await search.fill("polish-needle");
+    // Search selects the actual terminal text; the menu must preserve that selection.
+    await expect(pane.getByText("1 / 2", { exact: true })).toBeVisible();
+    await pane.getByRole("button", { name: "Terminal actions", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Add to chat", exact: true })).toBeEnabled();
+    await page.getByRole("menuitem", { name: "Add to chat", exact: true }).click();
+    await expect(composer).toHaveValue("Please explain this:\n\nTerminal output:\n> polish-needle\n\n");
+    await expect(composer).toBeFocused();
+    await pane.getByRole("button", { name: "Close terminal search" }).click();
+    await pane.locator(".xterm-screen").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Select all", exact: true }).click();
+    await pane.locator(".xterm-screen").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Copy selection", exact: true })).toBeEnabled();
+    if (!desktop) await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByRole("menuitem", { name: "Copy selection", exact: true }).click();
+    await expect.poll(() => desktop ? desktop.evaluate(({ clipboard }) => clipboard.readText()) : page.evaluate(() => navigator.clipboard.readText())).toContain("polish-needle");
+    const pasteCommand = windowsAlias ? "Write-Output ('__'+'MENU_PASTE__')" : "printf '__%s__\\n' MENU_PASTE";
+    if (desktop) await desktop.evaluate(({ clipboard }, text) => clipboard.writeText(text), pasteCommand);
+    else await page.evaluate((text) => navigator.clipboard.writeText(text), pasteCommand);
+    await pane.locator(".xterm-screen").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Paste", exact: true }).click();
+    await expect(input).toBeFocused();
+    await expect.poll(output).toContain("MENU_PASTE");
+    await page.keyboard.press("Enter");
+    await expect.poll(output).toContain("__MENU_PASTE__");
+    // Inspect link activation without opening an external page in the test.
+    await page.evaluate(() => { window.open = ((url: string) => { (window as unknown as { terminalOpenedUrl: string }).terminalOpenedUrl = url; return null; }) as typeof window.open; });
+    const urlRow = pane.locator(".xterm-rows > div").filter({ hasText: "https://example.com/overtchat-terminal" }).last();
+    const urlBounds = (await urlRow.boundingBox())!;
+    await page.mouse.move(urlBounds.x + 40, urlBounds.y + urlBounds.height / 2);
+    await expect(pane.locator(".xterm-screen")).toHaveClass(/xterm-cursor-pointer/);
+    await page.mouse.click(urlBounds.x + 40, urlBounds.y + urlBounds.height / 2);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { terminalOpenedUrl?: string }).terminalOpenedUrl)).toBe("https://example.com/overtchat-terminal");
+    const colorText = pane.locator(".xterm-rows span").filter({ hasText: /^COLOR_CHECK$/ }).last();
+    const lightColor = await colorText.evaluate((element) => getComputedStyle(element).color);
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal-polish-light.png"), animations: "disabled" });
+    await page.evaluate(() => { document.documentElement.classList.remove("light"); document.documentElement.classList.add("dark"); });
+    await expect.poll(() => colorText.evaluate((element) => getComputedStyle(element).color)).not.toBe(lightColor);
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal-polish-dark.png"), animations: "disabled" });
+    await page.evaluate(() => { document.documentElement.classList.remove("dark"); document.documentElement.classList.add("light"); });
+    await composer.fill("");
+    if (windowsAlias) {
+      await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+      await command("$env:TERMINAL_SAVED='retained'; Write-Output ('__'+'READY__')");
+      await expect.poll(output).toContain("__READY__");
+      await command("Write-Output ('__'+'café 日本語 雪__')");
+      await expect.poll(output).toContain("__café 日本語 雪__");
+      await page.getByRole("button", { name: "Close terminal panel", exact: true }).click();
+      await expect(pane).toBeHidden();
+      await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toHaveText("Connected");
+      await command("Write-Output ('__'+$env:TERMINAL_SAVED+'__')");
+      await expect.poll(output).toContain("__retained__");
+      const separator = page.getByRole("separator", { name: "Resize workspace terminal" });
+      await separator.focus();
+      await page.keyboard.press("ArrowUp");
+      await command("Write-Output ('__'+'RESIZED_'+$Host.UI.RawUI.WindowSize.Height+'__')");
+      await expect.poll(output).toMatch(/__RESIZED_\d+__/);
+      await command("Write-Output ('__'+'SLEEPING__'); Start-Sleep -Seconds 30");
+      await expect.poll(output).toContain("__SLEEPING__");
+      await page.keyboard.press("Control+c");
+      await expect.poll(async () => (await output()).trimEnd()).toMatch(/PS .+>$/);
+      await command("Write-Output ('x'*65536); Write-Output ('__'+'BURST_DONE__')");
+      await expect.poll(output, { timeout: 20_000 }).toContain("__BURST_DONE__");
+      child.send({ type: "disconnect-terminal" });
+      await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+      await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+      await page.reload();
+      await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+      await command("Write-Output ('__'+$env:TERMINAL_SAVED+'_AFTER_RELOAD__')");
+      await expect.poll(output).toContain("__retained_AFTER_RELOAD__");
+      await page.screenshot({ path: testInfo.outputPath("workspace-terminal-windows.png") });
+      await pane.getByRole("button", { name: "Terminal actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Stop terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toContainText("Exited");
+      await page.getByRole("button", { name: "Restart terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toHaveText("Connected");
+      await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+      await command("if (!$env:TERMINAL_SAVED) { Write-Output ('__'+'RESTARTED__') }");
+      await expect.poll(output).toContain("__RESTARTED__");
+      return;
+    }
+    await command("export TERMINAL_SAVED=retained; printf '__%s__\\n' READY");
+    await expect.poll(output).toContain("__READY__");
+    await page.getByRole("button", { name: "Close terminal panel", exact: true }).click();
+    await expect(pane).toBeHidden();
+    await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await command("stty -icanon -echo; printf '__%s__\\n' LATENCY_READY; cat");
+    await expect.poll(output).toContain("__LATENCY_READY__");
+    const latency: number[] = [];
+    for (const character of "abcdefghijklmnopqrst") {
+      const marker = `~${character}`;
+      await page.evaluate((marker) => {
+        const rows = document.querySelector(".xterm-rows")!;
+        const start = performance.now();
+        const state = window as typeof window & { terminalLatency?: Promise<number> };
+        state.terminalLatency = new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            if (!rows.textContent?.includes(marker)) return;
+            observer.disconnect();
+            resolve(performance.now() - start);
+          });
+          observer.observe(rows, { childList: true, characterData: true, subtree: true });
+        });
+      }, marker);
+      await page.keyboard.type(marker);
+      latency.push(await page.evaluate(() => (window as typeof window & { terminalLatency: Promise<number> }).terminalLatency));
+    }
+    latency.sort((a, b) => a - b);
+    await testInfo.attach("terminal-local-input-to-render-latency.json", {
+      body: JSON.stringify({ client: desktop ? "electron" : "chromium", samples: latency, medianMs: latency[10], p95Ms: latency[18], agentTrafficBytesPerSecond: 1_310_720 }),
+      contentType: "application/json",
+    });
+    expect(latency[18]).toBeLessThan(500);
+    await page.keyboard.press("Control+c");
+    await command("stty sane");
+    await command("head -c 1048576 /dev/zero | tr '\\0' x; printf '\\n__%s__\\n' BURST_DONE");
+    await expect.poll(output, { timeout: 20_000 }).toContain("__BURST_DONE__");
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    const separator = page.getByRole("separator", { name: "Resize workspace terminal" });
+    await separator.focus();
+    await page.keyboard.press("ArrowUp");
+    await command("stty size; printf '__%s__\\n' RESIZED");
+    await expect.poll(output).toContain("__RESIZED__");
+    child.send({ type: "disconnect-terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await page.reload();
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal.png") });
+    await pane.getByRole("button", { name: "Terminal actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Stop terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toContainText("Exited");
+    await page.getByRole("button", { name: "Restart terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    await command("printf '__%s__\\n' RESTARTED");
+    await expect.poll(output).toContain("__RESTARTED__");
+    await command("vi -u NONE -n terminal-edit.txt");
+    await expect.poll(output).toContain("terminal-edit.txt");
+    await page.keyboard.press("i");
+    await page.keyboard.insertText("terminal café 日本語");
+    await expect.poll(output).toContain("terminal café 日本語");
+    child.send({ type: "disconnect-terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await expect.poll(output).toContain("terminal café 日本語");
+    await page.keyboard.press("Escape");
+    await page.keyboard.type(":wq");
+    await page.keyboard.press("Enter");
+    await command("cat terminal-edit.txt; printf '__%s__\\n' EDITOR_DONE");
+    await expect.poll(output).toContain("__EDITOR_DONE__");
+    expect(await readFile(path.join(directory, "terminal-edit.txt"), "utf8")).toBe("terminal café 日本語\n");
+  } finally {
+    if (desktop && savedClipboard !== undefined) await desktop.evaluate(({ clipboard }, text) => clipboard.writeText(text), savedClipboard);
+    await desktop?.close();
+    child.kill("SIGTERM");
+    await new Promise<void>((resolve) => { if (child.exitCode !== null) resolve(); else child.once("exit", () => resolve()); });
+    await rm(directory, { recursive: true, force: true });
+  }
 });

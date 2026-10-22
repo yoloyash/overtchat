@@ -8,6 +8,8 @@ const voiceOrigin = (process.env.VOICE_URL ?? "http://voice:8765").replace(
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["ws"],
+  env: { OVERTCHAT_TERMINAL_RELAY_PORT: process.env.OVERTCHAT_TERMINAL_RELAY_PORT ?? "14717" },
   outputFileTracingRoot: path.join(__dirname, "../../"),
   outputFileTracingIncludes: {
     "/*": [
@@ -27,6 +29,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        {
+          source: "/api/agent-terminals/socket",
+          destination: `http://127.0.0.1:${process.env.OVERTCHAT_TERMINAL_RELAY_PORT ?? "14717"}/api/agent-terminals/socket`,
+        },
         {
           source: "/api/voice/realtime",
           destination: `${voiceOrigin}/v1/realtime`,

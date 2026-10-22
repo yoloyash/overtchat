@@ -44,20 +44,15 @@ describe("SSH environment detection", () => {
   });
 });
 
-it("discovers real Node for a packaged Windows connector instead of executing itself", async () => {
+it("runs local Windows helpers with the connector's own Node runtime", async () => {
   const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-  const previous = process.versions.bun;
-  process.versions.bun = "1.3.14";
   try {
-    const run = vi.fn().mockResolvedValue(JSON.stringify({ platform: "win32", node: "C:\\Program Files\\nodejs\\node.exe", version: "v22.19.0" }));
+    const run = vi.fn().mockResolvedValue(JSON.stringify({ platform: "win32", node: process.execPath, version: process.version }));
     const environment = await new HostEnvironments(run).inspect({ transport: "local" });
-    expect(environment.nodeVersion).toBe("v22.19.0");
+    expect(environment.nodeVersion).toBe(process.version);
     const script = Buffer.from(run.mock.calls[0]![1].split(" ").at(-1)!, "base64").toString("utf16le");
-    expect(script).toContain("Get-Command node.exe");
-    expect(script).not.toContain(process.execPath);
+    expect(script).toContain(`$node = '${process.execPath.replaceAll("'", "''")}'`);
   } finally {
-    if (previous === undefined) delete process.versions.bun;
-    else process.versions.bun = previous;
     platform.mockRestore();
   }
 });

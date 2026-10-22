@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { HostEnvironment, HostTarget } from "@overtchat/agent-runtime";
 import { sshCommandArgs } from "./ssh.js";
+import { powershellCommand, powershellLiteral } from "./powershell.js";
+export { powershellCommand, powershellLiteral } from "./powershell.js";
 
 const execFileAsync = promisify(execFile);
 const CACHE_MS = 60_000;
@@ -9,14 +11,6 @@ export type ExecutionEnvironment = HostEnvironment & {
   node?: string;
   nodeVersion?: string;
 };
-
-export function powershellCommand(script: string): string {
-  return `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(script, "utf16le").toString("base64")}`;
-}
-
-export function powershellLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
 
 export async function runHostControl(
   target: HostTarget,
@@ -139,8 +133,7 @@ export class HostEnvironments {
       overrides = parsed as Record<string, string>;
     }
     const override =
-      target.transport === "ssh" ? overrides[target.alias]
-        : process.versions.bun ? undefined : process.execPath;
+      target.transport === "ssh" ? overrides[target.alias] : process.execPath;
     const script = `
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'

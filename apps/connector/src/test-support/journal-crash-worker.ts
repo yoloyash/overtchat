@@ -2,12 +2,10 @@ import { writeSync } from "node:fs";
 import { ConnectorStateJournal } from "../state.js";
 import type { JournalDatabase } from "../journal-sqlite.js";
 
-const driverName = process.versions.bun ? "bun:sqlite" : "node:sqlite";
-const driver = await import(driverName) as {
-  Database: { prototype: JournalDatabase };
+const driver = await import("node:sqlite") as unknown as {
   DatabaseSync: { prototype: JournalDatabase };
 };
-const prototype = (process.versions.bun ? driver.Database : driver.DatabaseSync).prototype;
+const prototype = driver.DatabaseSync.prototype;
 
 const [file, action, boundary] = process.argv.slice(2);
 if (!file || !action || !boundary) throw new Error("Missing crash worker arguments.");
@@ -23,7 +21,7 @@ prototype.exec = function (sql: string) {
   originalExec.call(this, sql);
   if (armed && sql === "COMMIT" && boundary === "after-commit") pause();
 };
-const prepareName = process.versions.bun ? "query" : "prepare";
+const prepareName = "prepare";
 const originalPrepare = prototype[prepareName]!;
 prototype[prepareName] = function (sql: string) {
   const statement = originalPrepare.call(this, sql);

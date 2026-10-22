@@ -1,3 +1,5 @@
+import { TerminalChannel } from "./terminal-channel.js";
+import { connectorTerminalSupport } from "./terminal.js";
 import { createHash } from "node:crypto";
 import { boundedEventBatch } from "./event-batch.js";
 import {
@@ -73,6 +75,8 @@ function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> 
 }
 
 export class ConnectorClient {
+  private readonly terminalChannel: TerminalChannel;
+  private readonly capabilities = HOST_CONNECTOR_CAPABILITIES.filter((capability) => capability !== "workspace-terminal-v1" || connectorTerminalSupport().available);
   private readonly daemon: ConnectorDaemon;
   private readonly commandScheduler: ConnectorCommandScheduler;
   private readonly stopAbort = new AbortController();
@@ -115,6 +119,7 @@ export class ConnectorClient {
       undefined,
       processHost,
     );
+    this.terminalChannel = new TerminalChannel(config.serverUrl, config.token, this.daemon.terminals);
     this.commandScheduler = new ConnectorCommandScheduler((command) =>
       this.daemon.handle(command),
     );
@@ -150,6 +155,7 @@ export class ConnectorClient {
   }
 
   async run(): Promise<void> {
+    if (this.capabilities.includes("workspace-terminal-v1")) this.terminalChannel.start();
     void this.flush();
     while (!this.stopped && !this.terminalError) {
       try {
@@ -182,6 +188,7 @@ export class ConnectorClient {
   async stop(): Promise<void> {
     if (this.stopPromise) return this.stopPromise;
     this.stopped = true;
+    this.terminalChannel.stop();
     this.stopPromise = (async () => {
       if (this.flushTimer) clearTimeout(this.flushTimer);
       this.flushTimer = undefined;
@@ -229,7 +236,7 @@ export class ConnectorClient {
           Authorization: `Bearer ${this.config.token}`,
           "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
           "X-OvertChat-Connector-Capabilities":
-            HOST_CONNECTOR_CAPABILITIES.join(","),
+            this.capabilities.join(","),
           "X-OvertChat-Connector-Protocol": String(
             HOST_CONNECTOR_PROTOCOL_VERSION,
           ),
@@ -426,7 +433,7 @@ export class ConnectorClient {
             "Content-Type": "application/json",
             "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
             "X-OvertChat-Connector-Capabilities":
-              HOST_CONNECTOR_CAPABILITIES.join(","),
+              this.capabilities.join(","),
             "X-OvertChat-Connector-Protocol": String(
               HOST_CONNECTOR_PROTOCOL_VERSION,
             ),

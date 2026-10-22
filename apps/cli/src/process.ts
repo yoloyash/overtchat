@@ -17,6 +17,7 @@ export type RunOptions = {
   input?: string;
   inherit?: boolean;
   timeoutMs?: number;
+  windowsVerbatimArguments?: boolean;
 };
 
 export async function runCommand(
@@ -30,6 +31,7 @@ export async function runCommand(
       env: commandEnvironment(options.environment ?? process.env),
       stdio: options.inherit ? [options.input === undefined ? "inherit" : "pipe", "inherit", "inherit"] : "pipe",
       windowsHide: true,
+      windowsVerbatimArguments: options.windowsVerbatimArguments,
     });
     let timedOut = false;
     let forceKill: NodeJS.Timeout | undefined;

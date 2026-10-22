@@ -87,24 +87,47 @@ installer. A mismatch with the tagged source or a failed tag lookup blocks
 promotion. Version bumps select the next candidate; tags publish its artifacts,
 and stable promotion waits until all selected artifacts are available.
 
+Host Connector packages contain the Node runtime pinned (with upstream archive
+SHA-256 hashes) in `apps/connector/scripts/node-runtime.json`, the bundled
+application, and the matching external `node-pty` native module. Update the
+runtime version and all five hashes together. Publish the five
+`overtchat-connector-<platform>-<architecture>.tar.gz` files with
+`connector-checksums.txt` and the tagged installer.
+
+The first archive-based connector release requires a matching manager CLI
+release with archive installation support. Select both in the same stable
+manifest: existing managers update and re-execute the CLI before installing
+the connector. Older standalone connector releases remain supported by the
+new manager and promotion verifier. Do not promote the new connector alongside
+an old manager CLI.
+
+Workspace terminal releases also require `terminal-smoke --output-bytes 16777216`
+to pass using each packaged Node runtime on its native Linux/macOS,
+amd64/arm64 runner, with external Node installations excluded from PATH.
+The connector workflow runs this alongside the existing journal smoke tests.
+Producing an archive alone does not establish working PTY support. Qualify the
+matching server and desktop UI with the
+[workspace terminal checks](development.md#workspace-terminal-validation).
+This feature adds an optional connector capability and terminal stream protocol;
+it does not change the existing agent protocol or bundled-client API level.
+
 ## Windows backend qualification
 
 Windows x64 CLI and connector artifacts ship in the same `cli-v*` and
-`connector-v*` releases as Linux/macOS. Promotion requires their `.exe` assets,
-checksums, and the matching `install.ps1` version before it exposes Windows setup.
-Never add assets to an already published tag.
+`connector-v*` releases as Linux/macOS. Promotion requires the CLI `.exe`, the
+connector `.tar.gz`, their checksums, and the matching `install.ps1` version
+before it exposes Windows setup. Never add assets to an already published tag.
 
 Hosted CI runs the PowerShell installer, running-executable updater recovery,
-atomic configuration, and NTFS journal migration/crash checks. Task Scheduler
-logon behavior needs a signed-in desktop user, which hosted runners lack. Before
-promoting a release that changes the CLI or connector, download the candidate
-artifacts and run these on a signed-in Windows 11 x64 PC, using Node 22 and the
-repository's npm dependencies:
+atomic configuration, and NTFS journal migration/crash checks. Task Scheduler logon behavior needs a signed-in desktop
+user, which hosted runners lack. Before promoting a release that changes the CLI
+or connector, download the candidate artifacts and run these on a signed-in
+Windows 11 x64 PC, using Node 22 and the repository's npm dependencies:
 
 ```powershell
 .github/scripts/smoke-cli-installer-windows.ps1 -Binary .\overtchat.exe -Installer apps/site/public/install.ps1
-.github/scripts/smoke-connector-service-windows.ps1 -Binary .\overtchat-connector.exe
-node --import tsx .github/scripts/smoke-connector-rollback-windows.mjs .\overtchat-connector.exe
+.github/scripts/smoke-connector-service-windows.ps1 -Package .\overtchat-connector-windows-amd64.tar.gz
+node --import tsx .github/scripts/smoke-connector-rollback-windows.mjs .\overtchat-connector-windows-amd64.tar.gz
 ```
 
 The service smoke covers install, crash restart, graceful stop, journal reopen,
@@ -116,8 +139,8 @@ remove their tasks and temporary files.
 Then update a disposable managed installation with the candidates and check:
 browser login from another LAN device, a native and an SSH agent request,
 retained credentials and history, Docker Desktop restart, and connector startup
-after reboot and sign-in. Record the artifact SHA-256 values and the checks run
-in the release PR.
+after reboot and sign-in. Record the artifact SHA-256
+values and the checks run in the release PR.
 
 ## Website downloads
 

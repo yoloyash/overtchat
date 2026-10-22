@@ -1,3 +1,4 @@
+import { ConnectorTerminalManager } from "./terminal.js";
 import { createHash } from "node:crypto";
 import type {
   AgentDaemonRequest,
@@ -128,6 +129,7 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 }
 
 export class ConnectorDaemon {
+  readonly terminals: ConnectorTerminalManager;
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
   private readonly providerCatalogs = new AgentProviderCatalogManager();
   private readonly registry: AgentRuntimeRegistry;
@@ -154,6 +156,7 @@ export class ConnectorDaemon {
     private readonly shutdownGraceMs = SHUTDOWN_GRACE_MS,
     private readonly processHost = new ConnectorProcessHost(),
   ) {
+    this.terminals = new ConnectorTerminalManager(undefined, this.processHost.inspectEnvironment);
     configureProcessSpawner(this.processHost.spawn);
     configureHostEnvironmentResolver(this.processHost.inspectEnvironment);
     configureManagedProcessSpawner(this.processHost.spawnManaged);
@@ -255,6 +258,7 @@ export class ConnectorDaemon {
     // or timeline operation. The stores are closed by the client immediately
     // after this method returns.
     this.storesClosing = true;
+    this.terminals.stopAll();
     for (const subscription of this.subscriptions.values()) {
       this.closeSubscription(subscription);
     }
@@ -514,6 +518,7 @@ export class ConnectorDaemon {
         await this.journal.deleteSession(request.sessionId);
         return { stopped: true };
       case "stop_workspace": {
+        this.terminals.stopWorkspace(request.workspaceId);
         const removed = this.journal.sessionIdsForWorkspace(request.workspaceId);
         await this.registry.stopWorkspace(request.workspaceId);
         this.assertAccepting();
@@ -525,6 +530,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_connection": {
+        this.terminals.stopConnection(request.connectionId);
         const removed = this.journal.sessionIdsForConnection(request.connectionId);
         await this.registry.stopConnection(request.connectionId);
         this.assertAccepting();
@@ -536,6 +542,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_all": {
+        this.terminals.stopAll();
         const removed = this.journal.sessionIds();
         await this.registry.stopAll();
         this.assertAccepting();

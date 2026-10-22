@@ -1,5 +1,5 @@
 import { detectAppleSpeech, prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
-import { platformServices } from "./platform.js";
+import { platformServices, releaseAsset } from "./platform.js";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { confirm, isCancel, note, outro } from "@clack/prompts";
@@ -37,7 +37,7 @@ import {
 } from "./docker.js";
 import { primaryLanAddress } from "./network.js";
 import { runtimePaths } from "./paths.js";
-import { commandExists, requireSuccessful } from "./process.js";
+import { requireSuccessful } from "./process.js";
 import {
   kokoroGpuVariant,
   promptInstallationConfig,
@@ -587,20 +587,19 @@ export async function setup(
     }
     if (config.agents.installed) {
       preparation.message("Building Agent Connections from this worktree");
-      const nativeWindows = process.platform === "win32";
-      const connectorBinary = path.join(sourceDirectory, "apps", "connector", "dist",
-        nativeWindows ? "overtchat-connector.exe" : "overtchat-connector.mjs");
-      if (nativeWindows && !(await commandExists("bun"))) {
-        throw new Error("Windows development setup requires Bun to compile the native Host Connector. Install Bun and retry.");
-      }
       await requireSuccessful(
-        nativeWindows ? "bun" : "npm",
-        nativeWindows
-          ? ["build", "apps/connector/src/cli.ts", "--compile", "--outfile", connectorBinary]
-          : ["run", "build", "-w", "apps/connector", "--"],
+        "npm",
+        ["run", "build:package", "-w", "apps/connector", "--"],
         { cwd: sourceDirectory, inherit: true },
       );
-      process.env.OVERTCHAT_CONNECTOR_BINARY = connectorBinary;
+      process.env.OVERTCHAT_CONNECTOR_PACKAGE = path.join(
+        sourceDirectory,
+        "apps",
+        "connector",
+        "dist",
+        "release",
+        `${releaseAsset("overtchat-connector")}.tar.gz`,
+      );
     }
     preparation.message("Downloading the selected service images");
     await requireDocker(

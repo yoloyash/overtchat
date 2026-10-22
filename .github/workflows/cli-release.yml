@@ -188,7 +188,7 @@ jobs:
         run: |
           $actual = & ./release/overtchat-windows-amd64.exe version
           if ($LASTEXITCODE -ne 0 -or $actual -ne $env:VERSION) { throw 'Windows executable version check failed' }
-      - run: npm run test -w apps/cli -- src/platform.test.ts src/windows-platform.test.ts src/docker.test.ts src/self-update.test.ts src/binary-update.test.ts
+      - run: npm run test -w apps/cli -- src/platform.test.ts src/windows-platform.test.ts src/docker.test.ts src/self-update.test.ts src/binary-update.test.ts src/connector-package.test.ts
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: windows-update-fixtures

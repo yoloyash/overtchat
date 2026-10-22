@@ -87,7 +87,7 @@ for (const error of ["npm error code EACCES", "npm error code ETARGET", "unrelat
   });
 }
 
-function verifyConnector({ artifactMismatch = false, tagUnavailable = false, redirectMismatch = false } = {}) {
+function verifyConnector({ artifactMismatch = false, tagUnavailable = false, redirectMismatch = false, packaged = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "connector-promotion-test-"));
   try {
     const version = "1.2.3";
@@ -100,8 +100,9 @@ function verifyConnector({ artifactMismatch = false, tagUnavailable = false, red
     writeFileSync(join(dir, "apps/site/public/_redirects"),
       `/install/connector/${selected} https://github.com/test/repo/releases/download/connector-v${selected}/install-connector.sh 302\n/install-connector.sh /install/connector/${selected} 302\n`);
     let checksums = "";
-    for (const platform of ["darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64.exe"]) {
-      const asset = `overtchat-connector-${platform}`;
+    // Windows connectors were first released as archives.
+    for (const platform of ["darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64"]) {
+      const asset = `overtchat-connector-${platform}${packaged || platform.startsWith("windows") ? ".tar.gz" : ""}`;
       const contents = `fixture ${platform}\n`;
       writeFileSync(join(dir, "release", asset), contents);
       checksums += `${createHash("sha256").update(contents).digest("hex")}  ${asset}\n`;
@@ -126,6 +127,12 @@ function verifyConnector({ artifactMismatch = false, tagUnavailable = false, red
 
 test("connector promotion accepts tagged artifacts while main has unreleased installer changes", () => {
   const result = verifyConnector();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.output, "ready=true\n");
+});
+
+test("connector promotion accepts checksummed runtime archives", () => {
+  const result = verifyConnector({ packaged: true });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.output, "ready=true\n");
 });
@@ -157,16 +164,16 @@ for (const name of ["Verify CLI release", "Verify connector release", "Verify co
   });
 }
 
-for (const [name, prefix, checksum] of [
-  ["Verify CLI release", "overtchat", "overtchat-checksums.txt"],
-  ["Verify connector release", "overtchat-connector", "connector-checksums.txt"],
+for (const [name, prefix, checksum, windows] of [
+  ["Verify CLI release", "overtchat", "overtchat-checksums.txt", "windows-amd64.exe"],
+  ["Verify connector release", "overtchat-connector", "connector-checksums.txt", "windows-amd64.tar.gz"],
 ]) {
   test(`${name}: checksum failures remain fatal`, () => {
     const result = run(name, `
       gh() {
         while [ "$1" != "--dir" ]; do shift; done
         local destination="$2"
-        for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 windows-amd64.exe; do
+        for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 ${windows}; do
           echo corrupt > "$destination/${prefix}-$platform"
           echo "0000000000000000000000000000000000000000000000000000000000000000  ${prefix}-$platform" >> "$destination/${checksum}"
         done

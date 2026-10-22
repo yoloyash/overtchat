@@ -7,13 +7,17 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 // Run with Node 22 --import tsx on a signed-in Windows desktop. The connector
-// executable, NTFS operations, and scheduled task are real. Only a partial-copy
+// package, NTFS operations, and scheduled task are real. Only a partial-copy
 // error and management readiness are injected, inside an isolated root.
 assert.equal(process.platform, "win32");
-const binary = path.resolve(process.argv[2]);
+const archive = path.resolve(process.argv[2]);
 const exec = promisify(execFile);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "OvertChat rollback "));
-const installed = path.join(root, "bin", "overtchat-connector.exe");
+const installed = path.join(root, "bin", "overtchat-connector.cmd");
+const runtimes = path.join(root, "connector");
+const extracted = path.join(root, "package");
+const node = path.join(extracted, "overtchat-connector", "bin", "node.exe");
+const entry = path.join(extracted, "overtchat-connector", "app", "connector.mjs");
 const config = path.join(root, "config", "connector.json");
 const running = path.join(path.dirname(config), "windows-service", "running.json");
 const originalCopy = fs.copyFile;
@@ -23,11 +27,14 @@ Object.assign(process.env, {
   OVERTCHAT_BIN_DIR: path.dirname(installed),
   OVERTCHAT_CONFIG_DIR: path.dirname(config),
   OVERTCHAT_CONNECTOR_CONFIG: config,
-  OVERTCHAT_CONNECTOR_BINARY: binary,
+  OVERTCHAT_CONNECTOR_PACKAGE: archive,
 });
 for (const key of ["OVERTCHAT_CONNECTOR_STATE", "OVERTCHAT_CONNECTOR_TIMELINES", "OVERTCHAT_CONNECTOR_LOCK"]) delete process.env[key];
+// Batch launchers run through cmd.exe, as the manager runs them.
 const invoke = (command, input) => new Promise((resolve, reject) => {
-  const child = execFile(installed, [command], { windowsHide: true, timeout: 120_000 }, (error, stdout, stderr) => {
+  const child = execFile(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `""${installed}" ${command}"`], {
+    windowsHide: true, timeout: 120_000, windowsVerbatimArguments: true,
+  }, (error, stdout, stderr) => {
     if (error) reject(new Error(`${command} failed: ${stderr || error.message}`));
     else resolve(stdout);
   });
@@ -43,16 +50,24 @@ async function waitForInstance(previousNonce) {
   throw new Error("Restored connector task did not start a new instance");
 }
 try {
-  await fs.mkdir(path.dirname(installed), { recursive: true });
-  await originalCopy(binary, installed);
-  const version = (await exec(binary, ["version"])).stdout.trim();
-  await invoke("install-managed", JSON.stringify({
+  await fs.mkdir(extracted);
+  await exec(path.join(process.env.SystemRoot, "System32", "tar.exe"), ["-xzf", archive, "-C", extracted]);
+  const version = (await exec(node, [entry, "version"])).stdout.trim();
+  await fs.mkdir(path.dirname(config), { recursive: true });
+  await fs.writeFile(config, JSON.stringify({
     serverUrl: "http://127.0.0.1:49991", connectorId: "rollback_fixture",
     token: "oct_rollback_fixture.disposable-test-only",
   }));
+  globalThis.fetch = async (_url, options) => {
+    assert.notEqual(options?.method, "PUT", "An update must not rotate pairing credentials");
+    return Response.json({ connector: { id: "rollback_fixture", version, online: true } });
+  };
+  const { installManagedConnector } = await import("../../apps/cli/src/connector.ts");
+  await installManagedConnector({ appPort: 49991, connectorVersion: version }, "fixture-management-secret");
   let instance = await waitForInstance();
-  const expectedBinary = await fs.readFile(binary);
+  const expectedBinary = await fs.readFile(installed);
   const expectedConfig = await fs.readFile(config);
+  assert.equal((await fs.readdir(runtimes)).length, 1);
   fs.copyFile = async (source, destination, ...args) => {
     if (fault === "copy" && path.resolve(destination) === `${installed}.next`) {
       await fs.writeFile(destination, "incomplete executable");
@@ -61,11 +76,6 @@ try {
     return originalCopy(source, destination, ...args);
   };
   syncBuiltinESMExports();
-  globalThis.fetch = async (_url, options) => {
-    assert.notEqual(options?.method, "PUT", "An update must not rotate pairing credentials");
-    return Response.json({ connector: { id: "rollback_fixture", version, online: true } });
-  };
-  const { installManagedConnector } = await import("../../apps/cli/src/connector.ts");
   for (fault of ["copy", "startup"]) {
     await assert.rejects(
       installManagedConnector({ appPort: fault === "startup" ? 70000 : 49991, connectorVersion: version }, "fixture-management-secret"),
@@ -77,14 +87,27 @@ try {
     else instance = await waitForInstance(instance.nonce);
     assert.equal((await invoke("version")).trim(), version);
     await assert.rejects(fs.stat(`${installed}.previous`), { code: "ENOENT" });
-    console.log(`PASS: ${fault} failure preserved/restored executable, credentials, and running scheduled task (readiness fixture)`);
+    assert.equal((await fs.readdir(runtimes)).length, 1, "The failed candidate runtime must be removed");
+    console.log(`PASS: ${fault} failure preserved/restored launcher, runtime, credentials, and running scheduled task (readiness fixture)`);
   }
+  fault = undefined;
+  const [previousRuntime] = await fs.readdir(runtimes);
+  await installManagedConnector({ appPort: 49991, connectorVersion: version }, "fixture-management-secret");
+  instance = await waitForInstance(instance.nonce);
+  const [currentRuntime, ...others] = await fs.readdir(runtimes);
+  assert.deepEqual(others, [], "A successful update must remove the stopped runtime");
+  assert.notEqual(currentRuntime, previousRuntime);
+  assert.equal((await invoke("version")).trim(), version);
+  // The task runs the packaged runtime directly, without cmd.exe in between.
+  const task = await fs.readFile(path.join(path.dirname(running), "connector.ps1"), "utf8");
+  assert(task.includes(path.join(runtimes, currentRuntime, "overtchat-connector", "bin", "node.exe")));
+  console.log("PASS: update replaced the running connector and removed its previous runtime");
 } finally {
   fs.copyFile = originalCopy;
   syncBuiltinESMExports();
   globalThis.fetch = originalFetch;
-  // Stop using the known-good candidate even if a regression left the installed
-  // executable incomplete. The config override limits cleanup to this fixture.
-  await exec(binary, ["service-uninstall"], { windowsHide: true, timeout: 120_000 });
+  // Stop using the known-good package even if a regression left the installed
+  // launcher incomplete. The config override limits cleanup to this fixture.
+  await exec(node, [entry, "service-uninstall"], { windowsHide: true, timeout: 120_000 });
   await fs.rm(root, { recursive: true, force: true });
 }

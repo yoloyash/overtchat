@@ -20,7 +20,7 @@ describe("release platform selection", () => {
       `overtchat-${suffix}`,
     );
     expect(releaseAsset("overtchat-connector", platform, arch)).toBe(
-      `overtchat-connector-${suffix}`,
+      `overtchat-connector-${suffix.replace(/\.exe$/u, "")}`,
     );
   });
   it("rejects unsupported operating systems and CPUs", () => {

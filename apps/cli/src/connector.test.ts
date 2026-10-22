@@ -9,6 +9,8 @@ import { installManagedConnector } from "./connector.js";
 
 const mocks = vi.hoisted(() => ({ runCommand: vi.fn(), requireSuccessful: vi.fn(), commandExists: vi.fn() }));
 vi.mock("./process.js", () => mocks);
+const packaging = vi.hoisted(() => ({ stageConnectorPackage: vi.fn() }));
+vi.mock("./connector-package.js", async (original) => ({ ...await original(), ...packaging }));
 let root: string;
 let installed: string;
 let configFile: string;
@@ -17,14 +19,15 @@ const credentials = { serverUrl: "http://127.0.0.1:4718", connectorId: "test", t
 beforeEach(async () => {
   vi.resetAllMocks();
   root = await mkdtemp(path.join(os.tmpdir(), "connector-update-"));
-  installed = path.join(root, "overtchat-connector");
+  await mkdir(path.join(root, "bin"));
+  installed = path.join(root, "bin", "overtchat-connector");
   configFile = path.join(root, "connector.json");
   await writeFile(installed, "previous binary");
   await writeFile(path.join(root, "candidate"), "candidate binary");
   await writeFile(configFile, JSON.stringify(credentials));
   vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
   vi.spyOn(process, "getuid").mockReturnValue(501);
-  vi.stubEnv("OVERTCHAT_BIN_DIR", root);
+  vi.stubEnv("OVERTCHAT_BIN_DIR", path.join(root, "bin"));
   vi.stubEnv("OVERTCHAT_CONNECTOR_BINARY", path.join(root, "candidate"));
   vi.stubEnv("OVERTCHAT_CONNECTOR_CONFIG", configFile);
   mocks.runCommand.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
@@ -32,6 +35,22 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(async (_url, options) => Response.json(options?.method === "PUT"
     ? { connectorId: "test", token: "oct_test.new" } : { connector: { id: "test", online: true, version: "0.12.0" } })));
 });
+// Windows launchers run through cmd.exe: /d /s /c ""launcher" subcommand".
+function subcommand(args: string[]): string {
+  return process.platform === "win32" ? args.at(-1)!.slice(0, -1).split(" ").at(-1)! : args[0];
+}
+
+function useWindowsPackage() {
+  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  installed = path.join(root, "bin", "overtchat-connector.cmd");
+  vi.stubEnv("OVERTCHAT_CONNECTOR_PACKAGE", path.join(root, "runtime.tar.gz"));
+  packaging.stageConnectorPackage.mockImplementation(async (_archive: string, directory: string) => {
+    const binary = path.join(directory, "overtchat-connector.cmd");
+    await writeFile(binary, "candidate binary");
+    return { binary, payloadDirectory: path.join(root, "connector", "0.12.0.Ab12Cd") };
+  });
+}
+
 afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals();
   await rm(root, { recursive: true, force: true });
@@ -130,11 +149,10 @@ it("rejects a concurrent connector update before touching installation state", a
 });
 
 it("stages a complete Windows candidate before stopping the old service", async () => {
-  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-  installed += ".exe";
+  useWindowsPackage();
   await writeFile(installed, "previous binary");
   mocks.requireSuccessful.mockImplementation(async (_command, args) => {
-    if (args[0] === "service-stop") {
+    if (subcommand(args) === "service-stop") {
       expect(await readFile(`${installed}.next`, "utf8")).toBe("candidate binary");
       expect(await stat(`${installed}.update.json`)).toBeDefined();
     }
@@ -152,14 +170,32 @@ it("does not stop a healthy service when candidate staging fails", async () => {
   expect(fetch).not.toHaveBeenCalled();
 });
 
+it("runs the Windows batch launcher through cmd.exe without reinterpreting its path", async () => {
+  useWindowsPackage();
+  await writeFile(installed, "previous binary");
+  await installManagedConnector(config, "fixture-secret");
+  expect(mocks.requireSuccessful).toHaveBeenCalledWith(process.env.ComSpec || "cmd.exe",
+    ["/d", "/s", "/c", `""${installed}" install-managed"`],
+    expect.objectContaining({ windowsVerbatimArguments: true, input: `${JSON.stringify(credentials)}\n` }));
+});
+
+it("rejects a connector release without a Windows package", async () => {
+  useWindowsPackage();
+  vi.stubEnv("OVERTCHAT_CONNECTOR_PACKAGE", "");
+  vi.stubEnv("OVERTCHAT_CONNECTOR_BINARY", "");
+  vi.spyOn(process, "arch", "get").mockReturnValue("x64");
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("abc  overtchat-connector-linux-amd64.tar.gz\n")));
+  await expect(installManagedConnector(config, "fixture-secret")).rejects.toThrow("0.12.0 does not support Windows");
+  expect(mocks.requireSuccessful).not.toHaveBeenCalled();
+});
+
 it("retains the replacement, backup, and journal if Windows rollback cannot stop the service", async () => {
-  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-  installed += ".exe";
+  useWindowsPackage();
   await writeFile(installed, "previous binary");
   let stops = 0;
   mocks.requireSuccessful.mockImplementation(async (_command, args) => {
-    if (args[0] === "install-managed") throw new Error("startup failed after task registration");
-    if (args[0] === "service-stop" && ++stops > 1) throw new Error("replacement did not stop");
+    if (subcommand(args) === "install-managed") throw new Error("startup failed after task registration");
+    if (subcommand(args) === "service-stop" && ++stops > 1) throw new Error("replacement did not stop");
     return { exitCode: 0, stdout: "0.12.0", stderr: "" };
   });
   await expect(installManagedConnector(config, "fixture-secret")).rejects.toThrow("startup failed after task registration. Recovery failed: replacement did not stop");
@@ -190,4 +226,22 @@ it("uses noninteractive Linux permission checks before changing the connector", 
   expect(permission).toHaveBeenCalledOnce();
   expect(mocks.requireSuccessful).toHaveBeenCalledWith("sudo", ["-n", "loginctl", "enable-linger", expect.any(String)], { inherit: true, timeoutMs: 120_000 });
   expect(await readFile(installed, "utf8")).toBe("previous binary");
+});
+
+it.each([true, false])("keeps only runtimes referenced by a launcher after installing (success: %s)", async (succeeds) => {
+  const runtimes = path.join(root, "lib", "overtchat", "connector");
+  for (const name of ["0.11.0.Old123", "0.12.0.New456", "notes"]) await mkdir(path.join(runtimes, name), { recursive: true });
+  await writeFile(installed, `exec '${runtimes}/0.11.0.Old123/overtchat-connector/overtchat-connector' "$@"`);
+  await writeFile(path.join(root, "candidate"), `exec '${runtimes}/0.12.0.New456/overtchat-connector/overtchat-connector' "$@"`);
+  mocks.requireSuccessful.mockImplementation(async (_command, args) => {
+    if (!succeeds && args[0] === "install-managed") throw new Error("bootstrap failed");
+    return { exitCode: 0, stdout: "0.12.0", stderr: "" };
+  });
+  const installation = installManagedConnector(config, "fixture-secret");
+  if (succeeds) await installation;
+  else await expect(installation).rejects.toThrow("bootstrap failed");
+  const kept = async (name: string) => stat(path.join(runtimes, name)).then(() => true, () => false);
+  expect(await kept("0.11.0.Old123")).toBe(!succeeds);
+  expect(await kept("0.12.0.New456")).toBe(succeeds);
+  expect(await kept("notes")).toBe(true);
 });

@@ -20,9 +20,11 @@ import {
   commandExists,
   requireSuccessful,
   runCommand,
+  type RunOptions,
 } from "./process.js";
 import { installationMessage, logInstallation, protectInstallationSecrets } from "./install-log.js";
 import type { InstallationConfig } from "./types.js";
+import { pruneConnectorRuntimes, stageConnectorPackage } from "./connector-package.js";
 
 async function download(url: string): Promise<Uint8Array> {
   const response = await fetch(url, {
@@ -43,32 +45,54 @@ function expectedChecksum(contents: string, asset: string): string {
   throw new Error(`The connector checksum for ${asset} is missing.`);
 }
 
+/** Run a connector launcher; Windows executes its batch launcher through cmd.exe. */
+function runConnector(launcher: string, args: string[], options: RunOptions = {}) {
+  if (process.platform !== "win32") return requireSuccessful(launcher, args, options);
+  // Arguments are fixed subcommands. /s strips only the outer quotes.
+  if (args.some((arg) => !/^[a-z-]+$/u.test(arg))) throw new Error("Invalid connector command.");
+  return requireSuccessful(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `""${launcher}" ${args.join(" ")}"`], {
+    ...options, windowsVerbatimArguments: true,
+  });
+}
+
 async function stageConnectorBinary(
   version: string,
   progress: (message: string) => void,
-): Promise<{ temporaryDirectory: string; binary: string }> {
+): Promise<{ temporaryDirectory: string; binary: string; payloadDirectory?: string }> {
   const override = process.env.OVERTCHAT_CONNECTOR_BINARY?.trim();
+  const packageOverride = process.env.OVERTCHAT_CONNECTOR_PACKAGE?.trim();
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "overtchat-connector-"),
   );
   const staged = path.join(temporaryDirectory, executableName("overtchat-connector"));
   try {
+    if (packageOverride) {
+      return { temporaryDirectory, ...await stageConnectorPackage(packageOverride, temporaryDirectory, version) };
+    }
     if (override) {
+      if (process.platform === "win32") throw new Error("On Windows, set OVERTCHAT_CONNECTOR_PACKAGE to a connector archive.");
       await copyFile(override, staged);
       await chmod(staged, 0o755);
       return { temporaryDirectory, binary: staged };
     }
-    const asset = releaseAsset("overtchat-connector");
+    const assetBase = releaseAsset("overtchat-connector");
     const releaseBase = `https://github.com/${CONNECTOR_REPOSITORY}/releases/download/connector-v${version}`;
-    const [binary, checksums] = await Promise.all([
-      download(`${releaseBase}/${asset}`),
-      download(`${releaseBase}/connector-checksums.txt`),
-    ]);
+    const checksums = new TextDecoder().decode(await download(`${releaseBase}/connector-checksums.txt`));
+    const archiveAsset = `${assetBase}.tar.gz`;
+    const packaged = checksums.split(/\r?\n/u).some((line) => line.trim().split(/\s+/u)[1]?.replace(/^\*/u, "") === archiveAsset);
+    if (!packaged && process.platform === "win32") throw new Error(`Agent Connector ${version} does not support Windows.`);
+    const asset = packaged ? archiveAsset : assetBase;
+    const binary = await download(`${releaseBase}/${asset}`);
     progress("Verifying Agent Connector download");
-    const expected = expectedChecksum(new TextDecoder().decode(checksums), asset);
+    const expected = expectedChecksum(checksums, asset);
     const actual = createHash("sha256").update(binary).digest("hex");
     if (actual !== expected) {
       throw new Error("The downloaded Agent Connector failed checksum verification.");
+    }
+    if (packaged) {
+      const archive = path.join(temporaryDirectory, asset);
+      await writeFile(archive, binary, { mode: 0o600 });
+      return { temporaryDirectory, ...await stageConnectorPackage(archive, temporaryDirectory, version) };
     }
     await writeFile(staged, binary, { mode: 0o755 });
     await chmod(staged, 0o755);
@@ -174,9 +198,7 @@ export async function checkManagedConnectorPrerequisites(): Promise<void> {
     const check = await runPowerShell(`
 if ((Get-Service Schedule).Status -ne 'Running') { throw 'Windows Task Scheduler is not running.' }
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-if ($sid -in @('S-1-5-18','S-1-5-19','S-1-5-20')) { throw 'Run setup as your desktop user.' }
-$node = Get-Command node.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
-if (!$node -or ((& $node --version) -notmatch '^v(2[2-9]|[3-9][0-9])\\.')) { throw 'Native Agent Connections require Node.js 22 or newer on Windows. Install the Node.js LTS Windows package, reopen your terminal, and retry.' }`);
+if ($sid -in @('S-1-5-18','S-1-5-19','S-1-5-20')) { throw 'Run setup as your desktop user.' }`);
     if (check.exitCode !== 0) throw new Error("Agent Connections require Windows Task Scheduler and a signed-in desktop user. " + check.stderr.trim());
     return;
   }
@@ -259,10 +281,10 @@ async function installConnectorLocked(
   const restartPrevious = async () => {
     if (process.platform === "linux") {
       await requireSuccessful("systemctl", ["--user", "restart", "overtchat-connector.service"], { timeoutMs: 120_000 });
-    } else await requireSuccessful(installPath, ["service-install"], { environment, timeoutMs: 120_000 });
+    } else await runConnector(installPath, ["service-install"], { environment, timeoutMs: 120_000 });
     const credentials = await savedConnectorCredentials();
     if (!credentials) throw new Error("The previous connector has no saved pairing to recover.");
-    const version = (await requireSuccessful(installPath, ["version"], { timeoutMs: 10_000 })).stdout.trim();
+    const version = (await runConnector(installPath, ["version"], { timeoutMs: 10_000 })).stdout.trim();
     await waitForConnector(config, managementSecret, { connectorId: credentials.connectorId, version });
   };
   const recover = async () => {
@@ -274,7 +296,7 @@ async function installConnectorLocked(
         if (error.code === "ENOENT") return transaction.hadPrevious ? transaction.backup : null;
         throw error;
       });
-      if (executable) await requireSuccessful(executable, ["service-stop"], { environment, timeoutMs: 60_000 });
+      if (executable) await runConnector(executable, ["service-stop"], { environment, timeoutMs: 60_000 });
     } else if (process.platform === "darwin") {
       await runCommand("launchctl", ["bootout", `gui/${process.getuid!()}/com.overtchat.connector`], { timeoutMs: 20_000 });
     } else await runCommand("systemctl", ["--user", "stop", "overtchat-connector.service"], { timeoutMs: 20_000 });
@@ -298,21 +320,21 @@ async function installConnectorLocked(
     progress("Downloading Agent Connector");
     staged = await stageConnectorBinary(config.connectorVersion, progress);
     progress("Checking Agent Connector executable");
-    const preflight = await requireSuccessful(staged.binary, ["version"], { timeoutMs: 10_000 });
+    const preflight = await runConnector(staged.binary, ["version"], { timeoutMs: 10_000 });
     if (preflight.stdout.trim() !== config.connectorVersion)
       throw new Error("The downloaded Agent Connector failed its version check.");
     await mkdir(path.dirname(installPath), { recursive: true, mode: 0o700 });
     await transaction.prepare(staged.binary);
     if (process.platform === "win32" && transaction.hadPrevious) {
       progress("Stopping the previous Agent Connector");
-      await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
+      await runConnector(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
     }
     await transaction.replace();
     progress("Configuring Agent Connector connection");
     const provisioned = saved ?? await provisionConnector(config, managementSecret);
     protectInstallationSecrets(provisioned.token);
     progress("Starting Agent Connector service");
-    await requireSuccessful(installPath, ["install-managed"], {
+    await runConnector(installPath, ["install-managed"], {
       timeoutMs: 120_000, environment,
       input: `${JSON.stringify({ serverUrl: `http://127.0.0.1:${config.appPort}`, ...provisioned })}\n`,
     });
@@ -334,6 +356,10 @@ async function installConnectorLocked(
     throw new Error(`${failedPhase}: ${installationMessage(error)}`, { cause: error });
   } finally {
     if (staged) await rm(staged.temporaryDirectory, { recursive: true, force: true });
+    // Keep the runtimes of the installed, backup, and staged launchers.
+    await pruneConnectorRuntimes([installPath, transaction.backup, transaction.staged]).catch((error) => {
+      logInstallation(`Could not remove unused Agent Connector runtimes: ${installationMessage(error)}`);
+    });
   }
 }
 

@@ -154,11 +154,21 @@ if (!config.eventBatches) {
 }
 await journal.flush();
 const running = client.run();
+const terminalTraffic = config.terminalTraffic ? setInterval(() => {
+  enqueue({ type: "response", requestId: "terminal-load", success: true, data: "x".repeat(65536) });
+}, 50) : undefined;
+process.on("message", (message) => {
+  if (message?.type !== "disconnect-terminal") return;
+  const channel = Reflect.get(client, "terminalChannel");
+  channel.stop();
+  setTimeout(() => channel.start(), 1000).unref();
+});
 
 let stopping = false;
 process.on("SIGTERM", async () => {
   if (stopping) return;
   stopping = true;
+  clearInterval(terminalTraffic);
   for (const unsubscribe of subscriptions.values()) unsubscribe();
   await client.stop();
   await running;

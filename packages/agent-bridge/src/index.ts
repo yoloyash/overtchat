@@ -35,6 +35,7 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
   "command-wal-v1",
   "workspace-files-v1",
+  "workspace-terminal-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -603,3 +604,5 @@ export function isHostConnectorEvent(
   }
   return false;
 }
+
+export * from "./terminal";

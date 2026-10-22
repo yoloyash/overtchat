@@ -16,7 +16,8 @@ export function releaseAsset(
   }
   if (platform === "win32") {
     if (arch !== "amd64") throw new Error("Managed OvertChat for Windows requires x64.");
-    return `${component}-windows-amd64.exe`;
+    // The connector ships as an archive; callers add its extension.
+    return `${component}-windows-amd64${component === "overtchat" ? ".exe" : ""}`;
   }
   return `${component}-${platform}-${arch}`;
 }

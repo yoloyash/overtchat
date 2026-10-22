@@ -142,6 +142,7 @@ export const agentSessionRoute = createRoute({
     if (!connection || !workspace || !session) throw redirect({ to: "/" });
     return {
       provider: connection.provider,
+      hostLabel: connection.host.sshAlias || connection.host.name,
       workspace,
       initialSessionName: agentSessionDisplayTitle(session) ?? "",
     };
@@ -151,12 +152,13 @@ export const agentSessionRoute = createRoute({
   component: withPages(
     function AgentSessionPage() {
       const { id } = agentSessionRoute.useParams();
-      const { provider, workspace, initialSessionName } =
+      const { provider, hostLabel, workspace, initialSessionName } =
         agentSessionRoute.useLoaderData();
       return (
         <AgentSessionView
           sessionId={id}
           provider={provider}
+          hostLabel={hostLabel}
           workspaceId={workspace.id}
           workspaceName={workspace.name}
           workspacePath={workspace.path}

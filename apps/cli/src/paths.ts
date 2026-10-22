@@ -27,7 +27,9 @@ export function runtimePaths(environment = process.env): RuntimePaths {
 }
 
 export function executableName(component: "overtchat" | "overtchat-connector"): string {
-  return `${component}${process.platform === "win32" ? ".exe" : ""}`;
+  if (process.platform !== "win32") return component;
+  // The Windows connector command launches its packaged Node runtime.
+  return `${component}${component === "overtchat" ? ".exe" : ".cmd"}`;
 }
 
 export function installationBinDirectory(): string {

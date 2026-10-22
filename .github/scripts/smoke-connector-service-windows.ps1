@@ -1,15 +1,17 @@
-param([Parameter(Mandatory=$true)][string]$Binary)
+param([Parameter(Mandatory=$true)][string]$Package)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$Binary = (Resolve-Path -LiteralPath $Binary).Path
+$Package = (Resolve-Path -LiteralPath $Package).Path
 $root = Join-Path $env:TEMP ('OvertChat service ' + [Guid]::NewGuid().ToString())
+$runtime = Join-Path $root 'package\overtchat-connector\bin\node.exe'
+$entry = Join-Path $root 'package\overtchat-connector\app\connector.mjs'
 $oldConfig = $env:OVERTCHAT_CONNECTOR_CONFIG
 $oldState = $env:OVERTCHAT_CONNECTOR_STATE
 $oldTimelines = $env:OVERTCHAT_CONNECTOR_TIMELINES
 $oldLock = $env:OVERTCHAT_CONNECTOR_LOCK
 
 function Invoke-Connector([string]$Command) {
-  & $Binary $Command
+  & $runtime $entry $Command
   if ($LASTEXITCODE -ne 0) { throw "Connector $Command failed ($LASTEXITCODE)" }
 }
 function Wait-Running {
@@ -22,7 +24,9 @@ function Wait-Running {
 }
 
 try {
-  New-Item -ItemType Directory -Path $root | Out-Null
+  New-Item -ItemType Directory -Path (Join-Path $root 'package') | Out-Null
+  & (Join-Path $env:SystemRoot 'System32\tar.exe') -xzf $Package -C (Join-Path $root 'package')
+  if ($LASTEXITCODE -ne 0) { throw 'Connector package extraction failed' }
   $env:OVERTCHAT_CONNECTOR_CONFIG = Join-Path $root 'connector.json'
   $env:OVERTCHAT_CONNECTOR_STATE = $null
   $env:OVERTCHAT_CONNECTOR_TIMELINES = $null
@@ -34,7 +38,7 @@ try {
   # No real credentials or model requests. The connector retries an unused
   # loopback endpoint while the test exercises its real journal and lifecycle.
   @{serverUrl='http://127.0.0.1:49991';connectorId='windows_fixture';token='oct_windows_fixture.disposable-test-only'} |
-    ConvertTo-Json -Compress | & $Binary install-managed
+    ConvertTo-Json -Compress | & $runtime $entry install-managed
   if ($LASTEXITCODE -ne 0) { throw 'Connector installation failed' }
   Wait-Running
   if ((Get-Item (Join-Path $logs 'connector.log')).Length -gt 10 * 1024 * 1024 -or !(Test-Path (Join-Path $logs 'connector.log.1'))) {
@@ -77,7 +81,7 @@ try {
   Write-Output 'PASS: Windows connector install/start/crash-restart/graceful-stop/journal-reopen/restart/uninstall; limited interactive identity; paths with spaces.'
 } finally {
   if (Test-Path -LiteralPath (Join-Path $root 'windows-service')) {
-    & $Binary service-uninstall
+    & $runtime $entry service-uninstall
     if ($LASTEXITCODE -eq 0) { Remove-Item -LiteralPath $root -Recurse -Force }
   }
   $env:OVERTCHAT_CONNECTOR_CONFIG = $oldConfig
