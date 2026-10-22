@@ -87,7 +87,7 @@ for (const error of ["npm error code EACCES", "npm error code ETARGET", "unrelat
   });
 }
 
-function verifyConnector({ artifactMismatch = false, tagUnavailable = false, redirectMismatch = false } = {}) {
+function verifyConnector({ artifactMismatch = false, tagUnavailable = false, redirectMismatch = false, packaged = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "connector-promotion-test-"));
   try {
     const version = "1.2.3";
@@ -101,7 +101,7 @@ function verifyConnector({ artifactMismatch = false, tagUnavailable = false, red
       `/install/connector/${selected} https://github.com/test/repo/releases/download/connector-v${selected}/install-connector.sh 302\n/install-connector.sh /install/connector/${selected} 302\n`);
     let checksums = "";
     for (const platform of ["darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64"]) {
-      const asset = `overtchat-connector-${platform}`;
+      const asset = `overtchat-connector-${platform}${packaged ? ".tar.gz" : ""}`;
       const contents = `fixture ${platform}\n`;
       writeFileSync(join(dir, "release", asset), contents);
       checksums += `${createHash("sha256").update(contents).digest("hex")}  ${asset}\n`;
@@ -126,6 +126,12 @@ function verifyConnector({ artifactMismatch = false, tagUnavailable = false, red
 
 test("connector promotion accepts tagged artifacts while main has unreleased installer changes", () => {
   const result = verifyConnector();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.output, "ready=true\n");
+});
+
+test("connector promotion accepts checksummed runtime archives", () => {
+  const result = verifyConnector({ packaged: true });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.output, "ready=true\n");
 });

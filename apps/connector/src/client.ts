@@ -1,3 +1,5 @@
+import { TerminalChannel } from "./terminal-channel.js";
+import { connectorTerminalSupport } from "./terminal.js";
 import { createHash } from "node:crypto";
 import { boundedEventBatch } from "./event-batch.js";
 import {
@@ -36,15 +38,20 @@ const RECONNECT_MAX_DELAY_MS = 30_000;
 const EVENT_BATCH_DELAY_MS = 25;
 const MAX_BUFFERED_LIVE_EVENTS = 2_048;
 
-type LiveEventPayload = Extract<
+type LiveSessionEventPayload = Extract<
   HostConnectorEventPayload,
   { type: "session_event" }
+>;
+
+type LiveEventPayload = Extract<
+  HostConnectorEventPayload,
+  { type: "session_event" | "workspace_git_status" }
 >;
 
 type LiveEventBatch = {
   payloads: LiveEventPayload[];
   hints: Array<[string, LiveEventPayload]>;
-  queued: LiveEventPayload[];
+  queued: LiveSessionEventPayload[];
 };
 
 function endpoint(serverUrl: string, path: string): string {
@@ -73,6 +80,8 @@ function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> 
 }
 
 export class ConnectorClient {
+  private readonly terminalChannel: TerminalChannel;
+  private readonly capabilities = HOST_CONNECTOR_CAPABILITIES.filter((capability) => capability !== "workspace-terminal-v1" || connectorTerminalSupport().available);
   private readonly daemon: ConnectorDaemon;
   private readonly commandScheduler: ConnectorCommandScheduler;
   private readonly stopAbort = new AbortController();
@@ -89,13 +98,14 @@ export class ConnectorClient {
   private terminalError: Error | undefined;
   private liveEventEpoch = crypto.randomUUID();
   private liveEventSequence = 0;
-  private readonly liveEvents: LiveEventPayload[] = [];
+  private readonly liveEvents: LiveSessionEventPayload[] = [];
   /**
    * The high-volume event queue is deliberately bounded, but dropping its
    * oldest entry outright could leave a quiet session stale forever. Keep the
    * newest displaced envelope for every subscription as a reconciliation
    * marker. Once delivered it either fills the next sequence or makes the
    * browser detect a gap and request the authoritative connector timeline.
+   * Workspace Git statuses use the same latest-wins map under `git:` keys.
    */
   private readonly liveOverflowHints = new Map<string, LiveEventPayload>();
 
@@ -115,6 +125,7 @@ export class ConnectorClient {
       undefined,
       processHost,
     );
+    this.terminalChannel = new TerminalChannel(config.serverUrl, config.token, this.daemon.terminals);
     this.commandScheduler = new ConnectorCommandScheduler((command) =>
       this.daemon.handle(command),
     );
@@ -150,6 +161,7 @@ export class ConnectorClient {
   }
 
   async run(): Promise<void> {
+    if (this.capabilities.includes("workspace-terminal-v1")) this.terminalChannel.start();
     void this.flush();
     while (!this.stopped && !this.terminalError) {
       try {
@@ -182,6 +194,7 @@ export class ConnectorClient {
   async stop(): Promise<void> {
     if (this.stopPromise) return this.stopPromise;
     this.stopped = true;
+    this.terminalChannel.stop();
     this.stopPromise = (async () => {
       if (this.flushTimer) clearTimeout(this.flushTimer);
       this.flushTimer = undefined;
@@ -229,7 +242,7 @@ export class ConnectorClient {
           Authorization: `Bearer ${this.config.token}`,
           "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
           "X-OvertChat-Connector-Capabilities":
-            HOST_CONNECTOR_CAPABILITIES.join(","),
+            this.capabilities.join(","),
           "X-OvertChat-Connector-Protocol": String(
             HOST_CONNECTOR_PROTOCOL_VERSION,
           ),
@@ -283,7 +296,12 @@ export class ConnectorClient {
   }
 
   private enqueue(payload: HostConnectorEventPayload): void {
-    if (payload.type === "session_event") {
+    if (payload.type === "workspace_git_status") {
+      if (this.stopped) return;
+      // Watchers re-report on reconnect, and only the newest status matters,
+      // so an undelivered status is replaced rather than queued.
+      this.liveOverflowHints.set(`git:${payload.watchId}`, payload);
+    } else if (payload.type === "session_event") {
       if (this.stopped) return;
       // The per-session timeline is already synced to disk before the daemon
       // emits this live hint. Keeping a second durable copy here caused stale
@@ -426,7 +444,7 @@ export class ConnectorClient {
             "Content-Type": "application/json",
             "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
             "X-OvertChat-Connector-Capabilities":
-              HOST_CONNECTOR_CAPABILITIES.join(","),
+              this.capabilities.join(","),
             "X-OvertChat-Connector-Protocol": String(
               HOST_CONNECTOR_PROTOCOL_VERSION,
             ),

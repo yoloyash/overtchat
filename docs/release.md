@@ -87,6 +87,30 @@ installer. A mismatch with the tagged source or a failed tag lookup blocks
 promotion. Version bumps select the next candidate; tags publish its artifacts,
 and stable promotion waits until all selected artifacts are available.
 
+Host Connector packages contain the Node runtime pinned (with upstream archive
+SHA-256 hashes) in `apps/connector/scripts/node-runtime.json`, the bundled
+application, and the matching external `node-pty` native module. Update the
+runtime version and all four hashes together. Publish the four
+`overtchat-connector-<platform>-<architecture>.tar.gz` files with
+`connector-checksums.txt` and the tagged installer.
+
+The first archive-based connector release requires a matching manager CLI
+release with archive installation support. Select both in the same stable
+manifest: existing managers update and re-execute the CLI before installing
+the connector. Older standalone connector releases remain supported by the
+new manager and promotion verifier. Do not promote the new connector alongside
+an old manager CLI.
+
+Workspace terminal releases also require `terminal-smoke --output-bytes 16777216`
+to pass using each packaged Node runtime on its native Linux/macOS,
+amd64/arm64 runner, with external Node installations excluded from PATH.
+The connector workflow runs this alongside the existing journal smoke tests.
+Producing an archive alone does not establish working PTY support. Qualify the
+matching server and desktop UI with the
+[workspace terminal checks](development.md#workspace-terminal-validation).
+This feature adds an optional connector capability and terminal stream protocol;
+it does not change the existing agent protocol or bundled-client API level.
+
 ## Website downloads
 
 The static site's `/downloads/` page selects installers from the newest published

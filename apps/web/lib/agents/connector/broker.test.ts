@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   AgentDaemonSessionDescriptor,
   AgentRuntimeSnapshot,
+  AgentWorkspaceGitStatus,
   HostConnectorCommand,
   HostConnectorEvent,
 } from "@overtchat/agent-bridge";
@@ -1075,6 +1076,205 @@ describe("host connector daemon broker", () => {
         },
       }),
     );
+  });
+});
+
+function gitStatus(branch: string): AgentWorkspaceGitStatus {
+  return {
+    isGit: true,
+    repositoryRoot: "/workspace",
+    branch,
+    upstream: null,
+    ahead: null,
+    behind: null,
+    dirty: false,
+    changedFiles: 0,
+    additions: 0,
+    deletions: 0,
+    lineStatsComplete: true,
+    files: [],
+  };
+}
+
+const gitWatchTarget = {
+  connectorId: "connector",
+  workspaceId: "workspace",
+  target: { transport: "local" as const, shellMode: "login" as const },
+  path: "/workspace",
+};
+
+function lastRequest(
+  commands: HostConnectorCommand[],
+  type: string,
+): Extract<HostConnectorCommand, { type: "request" }> {
+  const command = commands.findLast(
+    (entry) => entry.type === "request" && entry.request.type === type,
+  );
+  if (command?.type !== "request") throw new Error(`missing ${type}`);
+  return command;
+}
+
+function gitPush(
+  sequence: number,
+  watchId: string,
+  revision: number,
+  branch: string,
+): HostConnectorEvent {
+  return {
+    sequence,
+    payload: {
+      type: "workspace_git_status",
+      watchId,
+      revision,
+      status: gitStatus(branch),
+    },
+  };
+}
+
+describe("broker workspace git watches", () => {
+  it("does not watch through a connector without the capability", () => {
+    const commands: HostConnectorCommand[] = [];
+    const broker = new HostConnectorBroker();
+    broker.register("connector", [], (command) => commands.push(command));
+    const events: unknown[] = [];
+
+    broker.watchWorkspaceGit(gitWatchTarget, (event) => events.push(event));
+
+    expect(events).toEqual([{ type: "live", live: false }]);
+    expect(commands.some((command) => command.type === "request")).toBe(false);
+  });
+
+  it("shares one connector watch and pushes newer statuses to every listener", async () => {
+    const commands: HostConnectorCommand[] = [];
+    const broker = new HostConnectorBroker();
+    broker.register("connector", [], (command) => commands.push(command), [
+      "workspace-git-watch-v1",
+    ]);
+    const first: unknown[] = [];
+    const second: unknown[] = [];
+
+    broker.watchWorkspaceGit(gitWatchTarget, (event) => first.push(event));
+    broker.watchWorkspaceGit(gitWatchTarget, (event) => second.push(event));
+    const watch = lastRequest(commands, "watch_git_status");
+    expect(
+      commands.filter(
+        (command) =>
+          command.type === "request" &&
+          command.request.type === "watch_git_status",
+      ),
+    ).toHaveLength(1);
+    if (watch.request.type !== "watch_git_status") throw new Error("type");
+    const { watchId } = watch.request;
+
+    await broker.acceptBatch("connector", "durable", [
+      response(1, watch.requestId, { status: gitStatus("main"), revision: 1 }),
+    ]);
+    await broker.acceptBatch("connector", "live", [
+      gitPush(1, watchId, 2, "feature"),
+    ]);
+
+    for (const events of [first, second]) {
+      expect(events).toEqual([
+        { type: "live", live: false },
+        { type: "live", live: true },
+        { type: "status", status: gitStatus("main") },
+        { type: "status", status: gitStatus("feature") },
+      ]);
+    }
+    expect(broker.workspaceGitStatus("connector", "workspace")).toEqual(
+      gitStatus("feature"),
+    );
+  });
+
+  it("keeps a push that overtakes the older watch response", async () => {
+    const commands: HostConnectorCommand[] = [];
+    const broker = new HostConnectorBroker();
+    broker.register("connector", [], (command) => commands.push(command), [
+      "workspace-git-watch-v1",
+    ]);
+    const events: unknown[] = [];
+    broker.watchWorkspaceGit(gitWatchTarget, (event) => events.push(event));
+    const watch = lastRequest(commands, "watch_git_status");
+    if (watch.request.type !== "watch_git_status") throw new Error("type");
+
+    await broker.acceptBatch("connector", "live", [
+      gitPush(1, watch.request.watchId, 2, "newer"),
+    ]);
+    await broker.acceptBatch("connector", "durable", [
+      response(1, watch.requestId, { status: gitStatus("older"), revision: 1 }),
+    ]);
+
+    expect(broker.workspaceGitStatus("connector", "workspace")).toEqual(
+      gitStatus("newer"),
+    );
+    expect(events.at(-1)).toEqual({ type: "status", status: gitStatus("newer") });
+  });
+
+  it("re-watches after the connector reconnects and goes non-live while offline", async () => {
+    const firstCommands: HostConnectorCommand[] = [];
+    const broker = new HostConnectorBroker(60_000);
+    const unregister = broker.register(
+      "connector",
+      [],
+      (command) => firstCommands.push(command),
+      ["workspace-git-watch-v1"],
+    );
+    const events: unknown[] = [];
+    broker.watchWorkspaceGit(gitWatchTarget, (event) => events.push(event));
+    const firstWatch = lastRequest(firstCommands, "watch_git_status");
+    await broker.acceptBatch("connector", "durable", [
+      response(1, firstWatch.requestId, { status: gitStatus("main"), revision: 1 }),
+    ]);
+
+    unregister();
+    expect(events.at(-1)).toEqual({ type: "live", live: false });
+    expect(broker.workspaceGitStatus("connector", "workspace")).toBeNull();
+
+    const secondCommands: HostConnectorCommand[] = [];
+    broker.register("connector", [], (command) => secondCommands.push(command), [
+      "workspace-git-watch-v1",
+    ]);
+    const secondWatch = lastRequest(secondCommands, "watch_git_status");
+    await broker.acceptBatch("connector", "durable-2", [
+      response(1, secondWatch.requestId, {
+        status: gitStatus("after"),
+        revision: 1,
+      }),
+    ]);
+
+    expect(events.at(-1)).toEqual({ type: "status", status: gitStatus("after") });
+  });
+
+  it("unwatches on the connector only after the release grace", async () => {
+    vi.useFakeTimers();
+    try {
+      const commands: HostConnectorCommand[] = [];
+      const broker = new HostConnectorBroker(5_000, 1_000);
+      broker.register("connector", [], (command) => commands.push(command), [
+        "workspace-git-watch-v1",
+      ]);
+      const stop = broker.watchWorkspaceGit(gitWatchTarget, vi.fn());
+      const watch = lastRequest(commands, "watch_git_status");
+      await broker.acceptBatch("connector", "durable", [
+        response(1, watch.requestId, { status: gitStatus("main"), revision: 1 }),
+      ]);
+
+      stop();
+      await vi.advanceTimersByTimeAsync(500);
+      const resumed = broker.watchWorkspaceGit(gitWatchTarget, vi.fn());
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(() => lastRequest(commands, "unwatch_git_status")).toThrow();
+
+      resumed();
+      await vi.advanceTimersByTimeAsync(1_000);
+      const unwatch = lastRequest(commands, "unwatch_git_status");
+      expect(unwatch.request).toEqual({
+        type: "unwatch_git_status",
+        watchId: watch.request.type === "watch_git_status" ? watch.request.watchId : "",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

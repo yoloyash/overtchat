@@ -13,9 +13,11 @@ const mocks = vi.hoisted(() => ({
   runCommand: vi.fn(),
   requireSuccessful: vi.fn(),
   commandExists: vi.fn(),
+  stageConnectorPackage: vi.fn(),
 }));
 vi.mock("node:fs/promises", () => mocks);
 vi.mock("./process.js", () => mocks);
+vi.mock("./connector-package.js", () => mocks);
 vi.mock("node:os", () => ({
   default: {
     homedir: () => "/Users/test",
@@ -35,8 +37,9 @@ beforeEach(() => {
   vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
   vi.spyOn(process, "getuid").mockReturnValue(501);
   vi.stubEnv("OVERTCHAT_CONNECTOR_BINARY", "/tmp/candidate");
+  vi.stubEnv("OVERTCHAT_CONNECTOR_PACKAGE", "");
   mocks.rename.mockResolvedValue(undefined);
-  mocks.mkdtemp.mockResolvedValue("/tmp/staged");
+  mocks.mkdtemp.mockResolvedValueOnce("/tmp/staged").mockResolvedValue("/Users/test/.local/bin/.candidate");
   mocks.runCommand.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
   mocks.requireSuccessful.mockResolvedValue({
     exitCode: 0,
@@ -134,6 +137,38 @@ it("cleans up failed downloads and reports their phase without replacing the con
     .rejects.toThrow("Downloading Agent Connector: Could not download");
   expect(mocks.rename).not.toHaveBeenCalled();
   expect(mocks.rm).toHaveBeenCalledWith("/tmp/staged", { recursive: true, force: true });
+});
+
+it("leaves the installed command intact when preparing its replacement fails", async () => {
+  mocks.copyFile.mockImplementation(async (_source, destination) => {
+    if (destination === "/Users/test/.local/bin/.candidate/overtchat-connector") throw new Error("disk full");
+  });
+  await expect(installManagedConnector(config, "fixture-secret")).rejects.toThrow("disk full");
+  expect(mocks.rename).not.toHaveBeenCalled();
+  expect(mocks.rm).not.toHaveBeenCalledWith("/Users/test/.local/bin/overtchat-connector", expect.anything());
+});
+
+it.each([false, true])("keeps an archive payload only after successful installation: %s", async (succeeds) => {
+  vi.stubEnv("OVERTCHAT_CONNECTOR_PACKAGE", "/tmp/runtime.tar.gz");
+  mocks.stageConnectorPackage.mockResolvedValue({
+    binary: "/tmp/staged/overtchat-connector",
+    payloadDirectory: "/Users/test/.local/lib/overtchat/connector/0.12.0.test",
+  });
+  mocks.requireSuccessful.mockImplementation(async (_command, args) => {
+    if (!succeeds && args[0] === "install-managed") throw new Error("bootstrap failed");
+    return { exitCode: 0, stdout: "0.12.0", stderr: "" };
+  });
+  const installation = installManagedConnector(config, "fixture-secret");
+  if (succeeds) await installation;
+  else await expect(installation).rejects.toThrow("bootstrap failed");
+  const removal = expect(mocks.rm);
+  const payload = "/Users/test/.local/lib/overtchat/connector/0.12.0.test";
+  if (succeeds) removal.not.toHaveBeenCalledWith(payload, expect.anything());
+  else removal.toHaveBeenCalledWith(payload, { recursive: true, force: true });
+  expect(mocks.rename).toHaveBeenCalledWith(
+    "/Users/test/.local/bin/.candidate/overtchat-connector",
+    "/Users/test/.local/bin/overtchat-connector",
+  );
 });
 
 it("uses noninteractive permission checks and sudo when no terminal is available", async () => {

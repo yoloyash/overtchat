@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ConnectorSshHost } from "@overtchat/agent-bridge";
-import type { AgentProcessHostLaunch } from "@overtchat/agent-runtime";
+import type { AgentProcessHostLaunch, HostEnvironment } from "@overtchat/agent-runtime";
+import { powershellLiteral } from "./powershell.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_ALIASES = 128;
@@ -56,6 +57,28 @@ export function sshCommandArgs(alias: string, command: string): string[] {
     "ConnectTimeout=10",
     alias,
     command,
+  ];
+}
+
+export function sshTerminalArgs(alias: string, cwd: string, platform: HostEnvironment["platform"] = "posix"): string[] {
+  if (!SAFE_ALIAS.test(alias)) throw new Error("Invalid SSH host alias.");
+  // EncodedCommand crosses either cmd.exe or PowerShell without interpreting
+  // workspace characters as shell syntax. NoExit leaves an interactive shell.
+  const windowsSetup = `try { Set-Location -LiteralPath ${powershellLiteral(cwd)} -ErrorAction Stop } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`;
+  const remote = platform === "win32"
+    ? `powershell.exe -NoLogo -NoExit -OutputFormat Text -EncodedCommand ${Buffer.from(windowsSetup, "utf16le").toString("base64")}`
+    : [
+    `cd -- ${shellQuote(cwd)}`,
+    'exec "${SHELL:-/bin/sh}" -il',
+  ].join(" && ");
+  return [
+    "-tt",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    alias,
+    remote,
   ];
 }
 

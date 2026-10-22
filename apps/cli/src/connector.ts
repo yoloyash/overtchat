@@ -20,6 +20,7 @@ import {
 } from "./process.js";
 import { installationMessage, logInstallation, protectInstallationSecrets } from "./install-log.js";
 import type { InstallationConfig } from "./types.js";
+import { stageConnectorPackage } from "./connector-package.js";
 
 async function download(url: string): Promise<Uint8Array> {
   const response = await fetch(url, {
@@ -43,29 +44,39 @@ function expectedChecksum(contents: string, asset: string): string {
 async function stageConnectorBinary(
   version: string,
   progress: (message: string) => void,
-): Promise<{ temporaryDirectory: string; binary: string }> {
+): Promise<{ temporaryDirectory: string; binary: string; payloadDirectory?: string }> {
   const override = process.env.OVERTCHAT_CONNECTOR_BINARY?.trim();
+  const packageOverride = process.env.OVERTCHAT_CONNECTOR_PACKAGE?.trim();
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "overtchat-connector-"),
   );
   const staged = path.join(temporaryDirectory, "overtchat-connector");
   try {
+    if (packageOverride) {
+      return { temporaryDirectory, ...await stageConnectorPackage(packageOverride, temporaryDirectory, version) };
+    }
     if (override) {
       await copyFile(override, staged);
       await chmod(staged, 0o755);
       return { temporaryDirectory, binary: staged };
     }
-    const asset = releaseAsset("overtchat-connector");
+    const assetBase = releaseAsset("overtchat-connector");
     const releaseBase = `https://github.com/${CONNECTOR_REPOSITORY}/releases/download/connector-v${version}`;
-    const [binary, checksums] = await Promise.all([
-      download(`${releaseBase}/${asset}`),
-      download(`${releaseBase}/connector-checksums.txt`),
-    ]);
+    const checksums = new TextDecoder().decode(await download(`${releaseBase}/connector-checksums.txt`));
+    const archiveAsset = `${assetBase}.tar.gz`;
+    const packaged = checksums.split(/\r?\n/u).some((line) => line.trim().split(/\s+/u)[1]?.replace(/^\*/u, "") === archiveAsset);
+    const asset = packaged ? archiveAsset : assetBase;
+    const binary = await download(`${releaseBase}/${asset}`);
     progress("Verifying Agent Connector download");
-    const expected = expectedChecksum(new TextDecoder().decode(checksums), asset);
+    const expected = expectedChecksum(checksums, asset);
     const actual = createHash("sha256").update(binary).digest("hex");
     if (actual !== expected) {
       throw new Error("The downloaded Agent Connector failed checksum verification.");
+    }
+    if (packaged) {
+      const archive = path.join(temporaryDirectory, asset);
+      await writeFile(archive, binary, { mode: 0o600 });
+      return { temporaryDirectory, ...await stageConnectorPackage(archive, temporaryDirectory, version) };
     }
     await writeFile(staged, binary, { mode: 0o755 });
     await chmod(staged, 0o755);
@@ -214,6 +225,8 @@ export async function installManagedConnector(
   const backupPath = `${installPath}.previous`;
   let hadPrevious = false;
   let installed = false;
+  let payloadInUse = false;
+  let promotionDirectory: string | undefined;
   try {
     progress("Checking Agent Connector executable");
     const preflight = await requireSuccessful(staged.binary, ["version"], { timeoutMs: 10_000 });
@@ -223,17 +236,23 @@ export async function installManagedConnector(
       );
     }
     await mkdir(installDirectory, { recursive: true, mode: 0o700 });
+    promotionDirectory = await mkdtemp(path.join(installDirectory, ".overtchat-connector-"));
+    const candidate = path.join(promotionDirectory, "overtchat-connector");
+    await copyFile(staged.binary, candidate);
+    await chmod(candidate, 0o755);
     try {
       await readFile(installPath);
-      hadPrevious = true;
       await rm(backupPath, { force: true });
-      await rename(installPath, backupPath);
+      await copyFile(installPath, backupPath);
+      hadPrevious = true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+    // Both paths are on the installation filesystem. Keep the stable command
+    // intact until its complete replacement is ready.
+    await rename(candidate, installPath);
     installed = true;
-    await copyFile(staged.binary, installPath);
-    await chmod(installPath, 0o755);
+    payloadInUse = true;
     progress("Configuring Agent Connector connection");
     const provisioned = await provisionConnector(config, managementSecret);
     protectInstallationSecrets(provisioned.token);
@@ -262,10 +281,14 @@ export async function installManagedConnector(
       } else {
         await runCommand("systemctl", ["--user", "stop", "overtchat-connector.service"], { timeoutMs: 20_000 }).catch(() => null);
       }
-      await rm(installPath, { force: true });
+      if (!hadPrevious) {
+        await rm(installPath, { force: true });
+        payloadInUse = false;
+      }
     }
     if (hadPrevious) {
-      await rename(backupPath, installPath).catch(() => {});
+      await rename(backupPath, installPath);
+      payloadInUse = false;
       if (process.platform === "darwin") {
         await runCommand(installPath, ["service-install"], { timeoutMs: 120_000 }).catch(() => null);
       } else {
@@ -275,6 +298,10 @@ export async function installManagedConnector(
     throw new Error(`${failedPhase}: ${installationMessage(error)}`, { cause: error });
   } finally {
     await rm(staged.temporaryDirectory, { recursive: true, force: true });
+    if (promotionDirectory) await rm(promotionDirectory, { recursive: true, force: true });
+    if (staged.payloadDirectory && !payloadInUse) {
+      await rm(staged.payloadDirectory, { recursive: true, force: true });
+    }
   }
 }
 

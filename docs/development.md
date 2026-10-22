@@ -163,6 +163,21 @@ OVERTCHAT_SSH_NODE_PATHS='{"gaming-pc":"C:\\Program Files\\nodejs\\node.exe"}' \
 npm run test -w apps/connector -- src/windows-ssh.integration.test.ts
 ```
 
+For the terminal-only checks, add `-t 'Windows.*terminal'`. These exercise a
+real SSH PTY, PowerShell startup in a path containing spaces/Unicode/shell
+metacharacters, Unicode input, Ctrl-C, resize, screen/state restoration, restart,
+bulk output and a missing-directory failure. They create disposable remote
+files and do not restart the installed connector or desktop application.
+
+To exercise the web UI against that Windows host, set both
+`OVERTCHAT_TERMINAL_WINDOWS_SSH_ALIAS` and `OVERTCHAT_TERMINAL_WINDOWS_CWD`
+when running the workspace-terminal browser test below. The directory must
+already exist. The test opens a real remote shell with a deterministic agent
+fixture and covers input, reconnect/reload, resize, Ctrl-C, bulk output and
+stop/restart. Add `OVERTCHAT_TERMINAL_DESKTOP_E2E=1` to use a locally built
+Electron client instead of Chromium; this does not qualify the installed
+Windows desktop application.
+
 Set `WINDOWS_SSH_GIT_DIR` to the remote directory containing `git.exe` to enable
 the native Git status test; that directory is added only to test process
 environments. Set `WINDOWS_SSH_PROMPT=1` to include a small real model turn
@@ -216,16 +231,24 @@ rollback; filesystem publication failures must leave the original JSON intact.
 Build the packaged connector and check it without contacting production:
 
 ```sh
-npm run build:binary -w apps/connector
-node .github/scripts/smoke-connector-journal.mjs apps/connector/dist/overtchat-connector
-bun build apps/connector/src/test-support/journal-runtime-smoke.ts --compile --outfile /tmp/overtchat-journal-smoke
-/tmp/overtchat-journal-smoke
+npm run build:package -w apps/connector
+# Substitute the host's platform/architecture (darwin/linux, amd64/arm64).
+mkdir -p /tmp/overtchat-package-check
+tar -xzf apps/connector/dist/release/overtchat-connector-darwin-arm64.tar.gz -C /tmp/overtchat-package-check
+connector_package=/tmp/overtchat-package-check/overtchat-connector
+npx esbuild apps/connector/src/test-support/journal-runtime-smoke.ts apps/connector/src/test-support/journal-crash-worker.ts \
+  --bundle --platform=node --target=node22 --format=esm \
+  --banner:js="import { createRequire as __overtchatCreateRequire } from 'node:module'; const require = __overtchatCreateRequire(import.meta.url);" \
+  --out-extension:.js=.mjs --outdir="$connector_package/test"
+"$connector_package/bin/node" .github/scripts/smoke-connector-journal.mjs \
+  "$connector_package/overtchat-connector" "$connector_package/test/journal-crash-worker.mjs" "$connector_package/bin/node"
+"$connector_package/bin/node" --max-old-space-size=256 "$connector_package/test/journal-runtime-smoke.mjs" --scale
 E2E_PORT=4747 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'drains an oversized connector backlog'
 ```
 
-Run `/tmp/overtchat-journal-smoke --scale` to qualify the same incident workload
-under the compiled Bun runtime. Both qualifications require peak RSS below 1 GiB.
-The connector workflow runs packaged migration/backup, native `SIGKILL`, compiled
+The packaged qualification uses the same Node runtime shipped to users and
+requires peak RSS below 1 GiB.
+The connector workflow runs packaged migration/backup, native `SIGKILL`, bundled
 journal operations, and incident-scale checks on Linux/macOS for both CPU
 architectures. Development journal reset moves the entire connector directory,
 including WAL and migration archives.
@@ -1053,6 +1076,67 @@ refreshing. Unit regressions additionally cover receiver restart during fragment
 Unicode byte accounting, cursor invalidation after rewind, unchanged tool results,
 and timeline persistence. Also verify foreground reconnect and history paging on
 Android and iOS before releasing bundled clients.
+
+### Workspace terminal validation
+
+Terminals use xterm.js in the shared web/desktop UI, an authenticated WebSocket
+relay in the server, and connector-owned PTYs. Development and packaged releases
+both use Node and `node-pty`. Test the packaged runtime and its native module as
+well as source development. Parsing uses PTY pause/resume with hysteresis;
+the slow-parser regression verifies exact delivery of 12 MiB with bounded queues
+and a shell that remains usable afterward.
+Terminal input must not enter the agent RPC queue or durable event journal.
+
+Run the connector and bridge tests/typechecks, web tests/typecheck/lint/build,
+and desktop build. The terminal route tests cover authorization; the connector
+stream tests exercise real PTYs, one-use origin-bound tickets, reconnects,
+concurrent viewers, resizing, restart and large output bursts.
+
+```sh
+npm run test -w apps/connector
+npm run test -w packages/agent-bridge
+E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
+  npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
+npm run build -w apps/desktop
+OVERTCHAT_TERMINAL_DESKTOP_E2E=1 E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
+  npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
+# Build/extract connector_package as in the packaged journal checks above.
+env PATH=/usr/bin:/bin SHELL=/bin/sh "$connector_package/overtchat-connector" terminal-smoke --output-bytes 16777216
+npx esbuild apps/connector/scripts/transport-fixture.mjs \
+  --bundle --platform=node --target=node22 --format=esm --external:node-pty --external:node-pty/* \
+  --banner:js="import { createRequire as __overtchatCreateRequire } from 'node:module'; const require = __overtchatCreateRequire(import.meta.url);" \
+  --outfile="$connector_package/test/transport-fixture.mjs"
+OVERTCHAT_TERMINAL_CONNECTOR_PACKAGE="$connector_package" \
+  E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
+  npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
+```
+
+The desktop variant launches the built Electron application with a disposable
+profile and signs into the real test server. It does not alter the installed
+desktop profile. The test uses real authentication, production Next.js proxying,
+connector transport and shell execution; only the agent provider is deterministic.
+It forces a terminal-channel disconnect, retains shell state, sends a 1 MiB
+output burst, and records 20 local input-to-render samples while synthetic agent
+responses are enqueued at about 1.3 MB/s. The broad 500 ms p95 assertion detects
+queueing regressions; retain the JSON attachment for actual timings.
+
+The UI checks also cover expand/restore without losing shell state, terminal
+search and keyboard focus, case-sensitive matching, context-menu selection,
+URL activation, and adding selected output to an existing unsent chat draft.
+Light/dark screenshots are retained with the test artifacts. Run the optional
+Windows SSH variant above as well as the Electron variant when changing
+terminal input, menus, fonts or sizing.
+
+The internal relay port is captured at build time alongside the Next.js rewrite.
+Set `OVERTCHAT_TERMINAL_RELAY_PORT` before both build and startup when running
+multiple local servers; changing it only after a build does not move the relay.
+The default is 14717. Do not expose this loopback port publicly.
+
+Before release, also test local and SSH interactive programs, Ctrl-C, Unicode
+paste, copy/selection, panel resizing, concurrent views, long-running output and
+reconnects. Report real SSH/network timings separately from local rendering
+latency. Run the [Windows SSH checks](#windows-ssh-validation) for Windows
+workspace targets. Native mobile terminal UI remains outside this feature's scope.
 
 ## Agent display transcript lifecycle
 

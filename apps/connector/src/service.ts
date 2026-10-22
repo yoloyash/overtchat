@@ -12,7 +12,11 @@ function systemdQuote(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
-function connectorInvocation(): string[] {
+export function connectorInvocation(): string[] {
+  // Installed launchers point at an immutable runtime directory. Keep the
+  // service on the stable launcher so an atomic upgrade/rollback takes effect.
+  const launcher = process.env.OVERTCHAT_CONNECTOR_LAUNCHER;
+  if (launcher) return [path.resolve(launcher), "run"];
   const entry = process.argv[1];
   const executable = path.resolve(process.execPath);
   if (

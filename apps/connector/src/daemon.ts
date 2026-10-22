@@ -1,3 +1,4 @@
+import { ConnectorTerminalManager } from "./terminal.js";
 import { createHash } from "node:crypto";
 import type {
   AgentDaemonRequest,
@@ -24,7 +25,6 @@ import {
   configureHostEnvironmentResolver,
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
-  inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
   probeAgentWorkspace,
   workspaceFilesService,
@@ -36,6 +36,10 @@ import { listSshHosts } from "./ssh.js";
 import { ConnectorProcessHost } from "./runtime.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
+import {
+  WorkspaceGitStatusReader,
+  WorkspaceGitWatches,
+} from "./workspace-git.js";
 
 type Emit = (event: HostConnectorEventPayload) => void;
 type ResolveImages = (
@@ -128,8 +132,11 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 }
 
 export class ConnectorDaemon {
+  readonly terminals: ConnectorTerminalManager;
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
   private readonly providerCatalogs = new AgentProviderCatalogManager();
+  private readonly workspaceGit = new WorkspaceGitStatusReader();
+  private readonly gitWatches = new WorkspaceGitWatches(this.workspaceGit);
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
@@ -154,6 +161,7 @@ export class ConnectorDaemon {
     private readonly shutdownGraceMs = SHUTDOWN_GRACE_MS,
     private readonly processHost = new ConnectorProcessHost(),
   ) {
+    this.terminals = new ConnectorTerminalManager(undefined, this.processHost.inspectEnvironment);
     configureProcessSpawner(this.processHost.spawn);
     configureHostEnvironmentResolver(this.processHost.inspectEnvironment);
     configureManagedProcessSpawner(this.processHost.spawnManaged);
@@ -255,6 +263,8 @@ export class ConnectorDaemon {
     // or timeline operation. The stores are closed by the client immediately
     // after this method returns.
     this.storesClosing = true;
+    this.terminals.stopAll();
+    const gitWatchCleanup = this.gitWatches.stop();
     for (const subscription of this.subscriptions.values()) {
       this.closeSubscription(subscription);
     }
@@ -273,6 +283,7 @@ export class ConnectorDaemon {
       this.settleWithin(captureCleanup, this.shutdownGraceMs),
       this.settleWithin(runtimeCleanup, this.shutdownGraceMs),
     ]);
+    await gitWatchCleanup;
     await this.processHost.stop();
     const failure = [captureOutcome, runtimeOutcome].find(
       (outcome): outcome is PromiseRejectedResult =>
@@ -331,6 +342,8 @@ export class ConnectorDaemon {
     if (this.connectionEpoch !== connectionEpoch) {
       this.connectionEpoch = connectionEpoch;
       this.publishedSessions.clear();
+      // The new server connection re-establishes the watches it still needs.
+      this.gitWatches.unwatchAll();
       for (const subscription of this.subscriptions.values()) {
         this.closeSubscription(subscription);
       }
@@ -383,11 +396,28 @@ export class ConnectorDaemon {
         return listAgentDirectories(hostTarget(request.target), request.path);
       case "probe_workspace":
         return probeAgentWorkspace(hostTarget(request.target), request.path);
-      case "git_status":
-        return inspectAgentWorkspaceGitStatus(
+      case "git_status": {
+        const target = hostTarget(request.target);
+        return (
+          this.gitWatches.current(target, request.path) ??
+          this.workspaceGit.read(target, request.path)
+        );
+      }
+      case "watch_git_status": {
+        const { watchId } = request;
+        return this.gitWatches.watch(
+          watchId,
           hostTarget(request.target),
           request.path,
+          (status, revision) => {
+            if (!this.serverCapabilities.has("workspace-git-watch-v1")) return;
+            this.emit({ type: "workspace_git_status", watchId, revision, status });
+          },
         );
+      }
+      case "unwatch_git_status":
+        this.gitWatches.unwatch(request.watchId);
+        return { watching: false };
       case "list_workspace_directory":
         return workspaceFilesService.listDirectory(
           hostTarget(request.target),
@@ -514,6 +544,7 @@ export class ConnectorDaemon {
         await this.journal.deleteSession(request.sessionId);
         return { stopped: true };
       case "stop_workspace": {
+        this.terminals.stopWorkspace(request.workspaceId);
         const removed = this.journal.sessionIdsForWorkspace(request.workspaceId);
         await this.registry.stopWorkspace(request.workspaceId);
         this.assertAccepting();
@@ -525,6 +556,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_connection": {
+        this.terminals.stopConnection(request.connectionId);
         const removed = this.journal.sessionIdsForConnection(request.connectionId);
         await this.registry.stopConnection(request.connectionId);
         this.assertAccepting();
@@ -536,6 +568,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_all": {
+        this.terminals.stopAll();
         const removed = this.journal.sessionIds();
         await this.registry.stopAll();
         this.assertAccepting();

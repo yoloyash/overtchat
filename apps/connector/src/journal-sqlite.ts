@@ -10,33 +10,21 @@ export interface JournalStatement {
 export interface JournalDatabase {
   exec(sql: string): void;
   prepare(sql: string): JournalStatement;
-  query?(sql: string): JournalStatement;
   close(): void;
 }
 
-// The released Bun runtime exposes bun:sqlite, while source development uses
-// Node 22. Keep the driver boundary small; both execute the same SQL/schema.
+// Development and packaged connectors use the same Node SQLite driver/schema.
 export async function openJournalDatabase(file: string): Promise<JournalDatabase> {
-  const moduleName = process.versions.bun ? "bun:sqlite" : "node:sqlite";
-  const driver = await import(moduleName) as {
-    Database: new (file: string) => JournalDatabase;
+  const driver = await import("node:sqlite") as unknown as {
     DatabaseSync: new (file: string) => JournalDatabase;
   };
-  const Database = process.versions.bun ? driver.Database : driver.DatabaseSync;
   // Create with private permissions before SQLite can create its WAL/SHM.
   const handle = await open(file, "a", 0o600);
   await handle.close();
   await chmod(file, 0o600);
-  const db = new Database(file);
+  const db = new driver.DatabaseSync(file);
   try {
     db.exec("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA cache_size = -8192;");
-    if (process.versions.bun) {
-      // Bun owns/finalizes query()'s cached statements on close. In the pinned
-      // runtime, prepare() leaves unmanaged statements alive after close(),
-      // keeping the SQLite file handle open across migration's atomic rename.
-      // Node owns all its statements and releases them when the database closes.
-      return { exec: db.exec.bind(db), prepare: db.query!.bind(db), close: db.close.bind(db) };
-    }
     return db;
   } catch (error) {
     db.close();

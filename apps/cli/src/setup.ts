@@ -1,5 +1,5 @@
 import { detectAppleSpeech, prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
-import { platformServices } from "./platform.js";
+import { platformServices, releaseAsset } from "./platform.js";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { confirm, isCancel, note, outro } from "@clack/prompts";
@@ -585,15 +585,16 @@ export async function setup(
       preparation.message("Building Agent Connections from this worktree");
       await requireSuccessful(
         "npm",
-        ["run", "build", "-w", "apps/connector", "--"],
+        ["run", "build:package", "-w", "apps/connector", "--"],
         { cwd: sourceDirectory, inherit: true },
       );
-      process.env.OVERTCHAT_CONNECTOR_BINARY = path.join(
+      process.env.OVERTCHAT_CONNECTOR_PACKAGE = path.join(
         sourceDirectory,
         "apps",
         "connector",
         "dist",
-        "overtchat-connector.mjs",
+        "release",
+        `${releaseAsset("overtchat-connector")}.tar.gz`,
       );
     }
     preparation.message("Downloading the selected service images");

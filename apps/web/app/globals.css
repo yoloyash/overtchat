@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "streamdown/styles.css";
 @import "katex/dist/katex.min.css";
+@import "@xterm/xterm/css/xterm.css";
 
 @source "../../../node_modules/streamdown/dist/*.js";
 @source "../../../node_modules/@streamdown/code/dist/*.js";

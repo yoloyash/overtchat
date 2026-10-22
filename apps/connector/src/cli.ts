@@ -13,6 +13,7 @@ import {
   installUserService,
 } from "./service.js";
 import { CONNECTOR_VERSION } from "./version.js";
+import { runConnectorTerminalSmoke } from "./terminal.js";
 import { configureServiceLogging } from "./service-logging.js";
 import { ConnectorInstanceLock } from "./lock.js";
 import { backupConnectorJournal } from "./journal-backup.js";
@@ -206,9 +207,16 @@ async function main(): Promise<void> {
       }
       console.log(CONNECTOR_VERSION);
       return;
+    case "terminal-smoke":
+      if ([...parsed.values.keys()].some((key) => key !== "output-bytes")) {
+        throw new Error("The terminal-smoke command only accepts --output-bytes.");
+      }
+      await runConnectorTerminalSmoke(Number(parsed.values.get("output-bytes") ?? 0));
+      console.log("Terminal PTY smoke test passed.");
+      return;
     default:
       throw new Error(
-        "Usage: overtchat-connector <install|install-managed|pair|preflight|journal-backup|run|version>",
+        "Usage: overtchat-connector <install|install-managed|pair|preflight|journal-backup|run|terminal-smoke|version>",
       );
   }
 }

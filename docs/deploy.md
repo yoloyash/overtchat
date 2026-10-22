@@ -454,6 +454,71 @@ servers left behind by older versions without records are not automatically
 reaped. Stopping a session aborts its work; other sessions sharing the same
 OpenCode server remain available.
 
+### Workspace terminals
+
+The web and desktop agent workspace header includes a resizable terminal panel.
+It opens one shared shell per workspace, in that workspace's directory, through
+the Host Connector. Local shells run on the connector machine; SSH workspaces use
+the connector's existing OpenSSH alias. The connector detects the target OS:
+POSIX targets use their login shell, while Windows targets open an interactive
+Windows PowerShell in the workspace directory. Windows requires an OpenSSH
+server with ConPTY support (Windows 10 / Server 2019 or newer). The connector
+itself still runs on Linux or macOS; the desktop client can run on Windows.
+The native mobile terminal UI is not supported.
+Some Windows OpenSSH versions report exit code 0 for interactive sessions even
+when the shell fails; consult the terminal's error output in that case.
+
+The toolbar identifies the host and offers Find, Expand/Restore, and Close.
+Expand keeps the same shell and restores the previous panel height. Stop and
+Restart are in the terminal actions menu. Right-click the terminal for Copy,
+Paste, Select all, Find, or Add to chat. Add to chat appends selected output to
+the current draft for review; it never sends a message automatically.
+
+Use Command-F on macOS or Ctrl-Shift-F on Windows/Linux to search terminal
+output. Enter and Shift-Enter move between matches; Escape returns focus to the
+shell. Search covers the output retained in the current view, highlights up to
+1,000 matches, and supports case-sensitive matching. Command-C on macOS or
+Ctrl-Shift-C on Windows/Linux copies selected text; Ctrl-C retains its shell
+interrupt behavior. If the browser denies clipboard access, use the system
+copy/paste shortcuts. Web URLs open in the browser; remote `localhost` URLs
+are not automatically forwarded through SSH.
+
+Closing the panel, refreshing the page, or briefly losing the connection leaves
+the shell running. Stop terminates it; Restart creates a fresh shell. Stopping a
+workspace or connection also terminates its shells. Shells are not durable across
+connector restarts, host restarts, or a broken SSH session. Use a host-side
+multiplexer separately when that durability is required.
+
+The connector must be updated to a version advertising `workspace-terminal-v1`.
+Terminal input and output use a separate outbound WebSocket connection through
+the same server origin at `/api/agent-terminals/socket`. Reverse proxies must
+forward WebSocket upgrades there, with idle timeouts longer than the 15-second
+heartbeat. No additional public port or inbound connector listener is required.
+The server's internal relay listens on loopback port 14717; do not publish it.
+The relay is process-local, like the agent broker, so a deployment must use one
+web server process for these connections.
+
+Reconnect restores up to 2,000 scrollback lines, bounded to 4 MiB of text.
+Multiple views share the shell; the most recently focused view controls its
+dimensions. A slow viewer reconnects from the current screen if it falls behind.
+There are at most 32 shells per connector. When terminal parsing falls behind,
+the connector pauses PTY reads and resumes them after the queue drains. A noisy
+command can slow down under this pressure; it is not terminated for producing
+too much output. Terminal I/O is ephemeral and is not
+stored in agent history or the connector journal.
+
+Set `OVERTCHAT_DISABLE_AGENT_TERMINAL=1` in the connector service environment and
+restart it to disable terminal support.
+
+Host Connector release archives include Node.js and the native PTY module.
+No separate Node installation is needed on the connector host. The installer
+stores each runtime under `~/.local/lib/overtchat/connector/` and keeps the
+service command at `~/.local/bin/overtchat-connector`. Upgrades replace that
+launcher atomically. The standalone upgrade installer restores the previous
+launcher or legacy executable and the journal backup on failure. Previous runtime directories are retained
+so an older launcher remains usable. Do not remove a directory referenced by
+the current launcher or an upgrade rollback file.
+
 ## Share with your family
 
 Add accounts under **Settings → Users → Add user**, then share their login

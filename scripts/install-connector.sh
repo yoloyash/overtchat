@@ -102,7 +102,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-for command in awk cp curl sed "$checksum_command" install "$service_command"; do
+for command in awk cp curl sed tar "$checksum_command" install "$service_command"; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "Required command not found: $command" >&2
     exit 1
@@ -274,7 +274,7 @@ if [ "$upgrade" = "true" ]; then
   connector_state="${HOME:?}/.config/overtchat/connector-$connector_id.state.json"
 fi
 
-asset="overtchat-connector-$platform-$architecture"
+asset_base="overtchat-connector-$platform-$architecture"
 release_url="https://github.com/$repository/releases/download/connector-v$connector_version"
 temporary_directory=$(mktemp -d)
 staged_install_path=""
@@ -287,6 +287,8 @@ binary_backup_ready="false"
 binary_may_have_changed="false"
 state_backup_ready="false"
 state_may_have_changed="false"
+payload_directory=""
+payload_in_use="false"
 
 rollback_upgrade() {
   [ "$upgrade_transaction_active" = "true" ] || return 0
@@ -315,6 +317,7 @@ rollback_upgrade() {
   if [ "$binary_may_have_changed" = "true" ]; then
     if [ "$binary_backup_ready" = "true" ]; then
       mv -f "$previous_path" "$install_path" || return 1
+      payload_in_use="false"
     else
       return 1
     fi
@@ -339,15 +342,26 @@ cleanup() {
   [ -z "$staged_install_path" ] || rm -f "$staged_install_path"
   [ -z "$previous_stage_path" ] || rm -f "$previous_stage_path"
   [ -z "$state_stage_path" ] || rm -f "$state_stage_path"
+  if [ "$payload_in_use" = "false" ] && [ -n "$payload_directory" ]; then
+    rm -rf "$payload_directory"
+  fi
 }
 
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
-curl --proto '=https' --tlsv1.2 -fsSLo "$temporary_directory/$asset" \
-  "$release_url/$asset"
 curl --proto '=https' --tlsv1.2 -fsSLo "$temporary_directory/checksums.txt" \
   "$release_url/connector-checksums.txt"
+
+# Older releases contain a standalone executable; new releases contain their
+# Node runtime and native modules in a checksummed archive.
+asset="$asset_base.tar.gz"
+if ! awk -v asset="$asset" '$2 == asset || $2 == "*" asset { found=1 } END { exit !found }' \
+    "$temporary_directory/checksums.txt"; then
+  asset="$asset_base"
+fi
+curl --proto '=https' --tlsv1.2 -fsSLo "$temporary_directory/$asset" \
+  "$release_url/$asset"
 
 expected=$(
   awk -v asset="$asset" '$2 == asset || $2 == "*" asset { print $1; exit }' \
@@ -366,6 +380,45 @@ actual=$(checksum "$temporary_directory/$asset" | awk '{ print $1 }')
 install_directory="${HOME:?}/.local/bin"
 install_path="$install_directory/overtchat-connector"
 mkdir -p "$install_directory"
+
+candidate="$temporary_directory/$asset"
+if [ "$asset" = "$asset_base.tar.gz" ]; then
+  tar -tzf "$candidate" > "$temporary_directory/members"
+  awk '
+    $0 !~ /^overtchat-connector(\/|$)/ || $0 ~ /(^|\/)\.\.(\/|$)/ { exit 1 }
+  ' "$temporary_directory/members" || {
+    echo "The Host Connector archive contains an invalid path." >&2
+    exit 1
+  }
+  tar -tvzf "$candidate" | awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" { exit 1 }' || {
+    echo "The Host Connector archive contains unsupported links or special files." >&2
+    exit 1
+  }
+  payload_parent="${HOME:?}/.local/lib/overtchat/connector"
+  mkdir -p "$payload_parent"
+  payload_directory=$(mktemp -d "$payload_parent/$connector_version.XXXXXX")
+  chmod 700 "$payload_directory"
+  tar -xzf "$candidate" -C "$payload_directory"
+  payload_launcher="$payload_directory/overtchat-connector/overtchat-connector"
+  [ -x "$payload_launcher" ] && [ -x "$payload_directory/overtchat-connector/bin/node" ] || {
+    echo "The Host Connector archive is missing its launcher or runtime." >&2
+    exit 1
+  }
+  [ "$("$payload_launcher" version)" = "$connector_version" ] || {
+    echo "The Host Connector package failed its version check." >&2
+    exit 1
+  }
+  # A stable command points to an immutable payload. Rollback restores this
+  # small launcher (or the legacy binary) without modifying a running runtime.
+  quoted_payload=$(printf '%s' "$payload_launcher" | sed "s/'/'\\\\''/g")
+  candidate="$temporary_directory/launcher"
+  {
+    printf '%s\n' '#!/bin/sh' 'set -eu' 'export OVERTCHAT_CONNECTOR_LAUNCHER="$0"'
+    printf 'exec %s "$@"\n' "'$quoted_payload'"
+  } > "$candidate"
+  chmod 755 "$candidate"
+fi
+candidate_checksum=$(checksum "$candidate" | awk '{ print $1 }')
 
 if [ "$upgrade" = "true" ]; then
   previous_path="$install_path.previous"
@@ -392,9 +445,9 @@ if [ "$upgrade" = "true" ]; then
   }
 
   staged_install_path=$(mktemp "$install_directory/.overtchat-connector.new.XXXXXX")
-  install -m 0755 "$temporary_directory/$asset" "$staged_install_path"
+  install -m 0755 "$candidate" "$staged_install_path"
   staged_actual=$(checksum "$staged_install_path" | awk '{ print $1 }')
-  [ "$staged_actual" = "$expected" ] || {
+  [ "$staged_actual" = "$candidate_checksum" ] || {
     echo "The staged Host Connector failed checksum verification." >&2
     exit 1
   }
@@ -456,6 +509,7 @@ if [ "$upgrade" = "true" ]; then
 
   # Both paths are in install_directory, so promotion is one atomic rename.
   binary_may_have_changed="true"
+  payload_in_use="true"
   if ! mv -f "$staged_install_path" "$install_path"; then
     echo "Unable to promote the new Host Connector binary." >&2
     exit 1
@@ -487,13 +541,15 @@ if [ "$upgrade" = "true" ]; then
     exit 1
   fi
 elif [ -n "$connector_name" ]; then
-  install -m 0755 "$temporary_directory/$asset" "$install_path"
+  install -m 0755 "$candidate" "$install_path"
+  payload_in_use="true"
   "$install_path" install \
     --server "$server" \
     --pair-code "$pair_code" \
     --name "$connector_name"
 else
-  install -m 0755 "$temporary_directory/$asset" "$install_path"
+  install -m 0755 "$candidate" "$install_path"
+  payload_in_use="true"
   "$install_path" install \
     --server "$server" \
     --pair-code "$pair_code"
