@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Linking,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { WebView } from "react-native-webview";
 import {
   normalizeOpenUILang,
@@ -27,6 +33,11 @@ export function OpenUICard({
   onAction?: (action: OpenUIAction) => void;
 }) {
   const { colors, scheme } = useTheme();
+  const { height: windowHeight } = useWindowDimensions();
+  // Keep an internally scrolling card inside the visible chat area, including
+  // when the keyboard reduces the window. Otherwise its bottom can be offscreen
+  // while Android directs every gesture to the inner WebView.
+  const maxHeight = Math.max(160, Math.min(1200, Math.floor(windowHeight * 0.6)));
   const server = useServerUrl();
   const ref = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
@@ -94,7 +105,11 @@ export function OpenUICard({
       <WebView
         ref={ref}
         source={source}
-        style={{ height, backgroundColor: colors.background }}
+        style={{
+          height: Math.min(height, maxHeight),
+          backgroundColor: colors.background,
+        }}
+        nestedScrollEnabled={height >= maxHeight}
         incognito
         sharedCookiesEnabled={false}
         thirdPartyCookiesEnabled={false}

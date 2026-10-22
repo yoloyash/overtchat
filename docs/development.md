@@ -1289,6 +1289,11 @@ state restoration. Also smoke-test an installed Android and iOS client against
 the updated server: submit a form, reload the chat, open links, change theme,
 scroll a tall card, and verify readable fallback when the renderer cannot load.
 Browser coverage does not validate native WebView loading or gesture behavior.
+On Android, include a card taller than the WebView height cap (60% of the window,
+up to 1,200 points) and verify its last row or submit button is visible above the
+composer and reachable with the keyboard open. Capped cards enable nested
+scrolling so the enclosing chat list does not consume their scroll gestures;
+short cards retain the chat list's normal scrolling.
 
 ## Claude rewind durability
 
