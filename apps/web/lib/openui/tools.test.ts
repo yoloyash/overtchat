@@ -29,6 +29,8 @@ describe("OpenUI tool contract", () => {
     expect(OPENUI_CHAT_LIBRARY_SPEC).toEqual(openuiChatLibrary.toSpec());
     expect(OPENUI_TOOL_PROMPT).toContain("@ToAssistant");
     expect(OPENUI_TOOL_PROMPT).toContain("text argument");
+    // Settings quote about 7,400 tokens; update that copy if this range moves.
+    expect(countTextTokens(OPENUI_TOOL_PROMPT)).toBeGreaterThan(6500);
     expect(countTextTokens(OPENUI_TOOL_PROMPT)).toBeLessThan(8000);
   });
   it.each([undefined, null, 123, {}, [], true])(
