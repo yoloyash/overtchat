@@ -11,7 +11,8 @@ import {
   type OpenUIFormState,
 } from "@overtchat/shared";
 
-// Set before the lazy import; the upstream development overlay loads remote assets.
+// Set before the lazy import; in development the upstream overlay loads remote
+// assets. Production builds strip it. OpenUICard.test.ts tracks the flag.
 (globalThis as Record<symbol, unknown>)[
   Symbol.for("openui.devtools.autoMount")
 ] = true;
