@@ -4,7 +4,7 @@ import {
   connectionAccessError,
   connectionErrorMessage,
 } from "@/lib/agents/access";
-import { agentDiscoveryTargetSchema } from "@overtchat/agent-bridge";
+import { agentDiscoveryTargetSchema, isAbsoluteAgentPath } from "@overtchat/agent-bridge";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { getAvailableHostConnector } from "@/lib/db/hostConnectors";
@@ -17,7 +17,7 @@ const requestSchema = z.object({
     .string()
     .trim()
     .max(4_096)
-    .refine((value) => !value || value.startsWith("/"), {
+    .refine((value) => !value || isAbsoluteAgentPath(value), {
       message: "Enter an absolute directory path.",
     })
     .optional(),

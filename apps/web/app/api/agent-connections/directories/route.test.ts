@@ -96,6 +96,19 @@ describe("Agent target directory route", () => {
     });
   });
 
+  it("browses Windows drive and UNC paths", async () => {
+    for (const path of ["C:\\Users\\owner", "\\\\server\\share\\project"]) {
+      const response = await POST(
+        request({ target: { connectorId: "connector", transport: "local" }, path }),
+      );
+      expect(response.status).toBe(200);
+      expect(mocks.daemonRequest).toHaveBeenLastCalledWith(
+        "connector",
+        expect.objectContaining({ path }),
+      );
+    }
+  });
+
   it("rejects relative paths before contacting the connector", async () => {
     const response = await POST(
       request({
