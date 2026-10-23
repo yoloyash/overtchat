@@ -47,16 +47,29 @@ export function validateOpenUIProgram(ui: unknown): string {
   const parsed = parser.parse(code);
   // Match the upstream Renderer: diagnostics describe recovery (dropped args,
   // invalid children, unresolved references), not necessarily a failed UI.
-  // Let the parser decide what survives instead of vetoing its recovered tree.
-  if (!parsed.root) {
+  // Unlike Renderer we can ask the model to repair, so a truncated program or
+  // one that recovers to an empty Card still fails instead of showing nothing.
+  const children = parsed.root?.props.children;
+  if (
+    !parsed.root ||
+    parsed.meta.incomplete ||
+    !Array.isArray(children) ||
+    !children.length
+  ) {
+    const errors = parsed.meta.errors
+      .filter((error) => error.severity !== "warning")
+      .slice(0, 3)
+      .map((error) => error.message)
+      .join("; ");
+    const unresolved = parsed.meta.unresolved.slice(0, 3).join(", ");
     throw new Error(
       `Invalid OpenUI program. Fix it and call present_openui again: ${
-        parsed.meta.errors
-          .filter((error) => error.severity !== "warning")
-          .slice(0, 3)
-          .map((error) => error.message)
-          .join("; ") ||
-        "Provide a renderable Card root."
+        parsed.meta.incomplete
+          ? "The program is incomplete; close every call, list and string."
+          : errors ||
+            (unresolved
+              ? `Define every referenced statement: ${unresolved}.`
+              : "Provide a Card root with at least one renderable child.")
       }`,
     );
   }

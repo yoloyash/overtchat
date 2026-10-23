@@ -40,7 +40,7 @@ describe("OpenUI tool contract", () => {
       expect(normalizeOpenUILang(value)).toBe("");
     },
   );
-  it("normalizes fenced programs and rejects programs without a renderable root", () => {
+  it("normalizes fenced programs and rejects programs without renderable content", () => {
     expect(validateOpenUIProgram("```openui\n" + valid + "\n```")).toBe(valid);
     for (const code of [
       "",
@@ -48,9 +48,15 @@ describe("OpenUI tool contract", () => {
       'root = NoSuchComponent("hi")',
       "root = missing",
       "root = Card(null)",
+      "root = Card([])",
+      'root = Card([NoSuchComponent("hi")])',
+      'root = Card([TextContent("Revenue: 42")',
     ]) {
       expect(() => validateOpenUIProgram(code)).toThrow();
     }
+    expect(() => validateOpenUIProgram("root = Card([missing])")).toThrow(
+      "Define every referenced statement: missing.",
+    );
   });
   it.each([
     [
@@ -74,7 +80,6 @@ describe("OpenUI tool contract", () => {
       'root = Card([TextContent("Revenue: 42"), NoSuchComponent("hi")])',
     ],
     ["unresolved", 'root = Card([TextContent("Revenue: 42"), missing])'],
-    ["incomplete", 'root = Card([TextContent("Revenue: 42")'],
   ])("accepts upstream recovery for %s", async (diagnostic, ui) => {
     const rendererParser = createStreamingParser(
       openuiChatLibrary.toJSONSchema(),
@@ -90,8 +95,6 @@ describe("OpenUI tool contract", () => {
     });
     if (diagnostic === "unresolved")
       expect(parsed.meta.unresolved).toEqual(["missing"]);
-    else if (diagnostic === "incomplete")
-      expect(parsed.meta.incomplete).toBe(true);
     else
       expect(parsed.meta.errors).toEqual(
         expect.arrayContaining([expect.objectContaining({ code: diagnostic })]),
