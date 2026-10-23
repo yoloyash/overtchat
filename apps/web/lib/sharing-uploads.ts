@@ -12,6 +12,7 @@ import {
   isImageToolPart,
   isOpenUIToolPart,
   normalizeOpenUILang,
+  type FetchUrlPart,
 } from "@overtchat/shared";
 import type { UIMessage } from "ai";
 
@@ -64,7 +65,14 @@ function markdownUploads(source: string, replace: Replace) {
         }
       }
       if (changed) {
-        node.value = document.body.innerHTML;
+        // Remark splits an inline anchor into opening tag, text, and closing tag.
+        // DOM serialization auto-closes the opening tag; retain the original boundary.
+        const openingAnchor = /^<a\b(?:[^"'<>]|"[^"]*"|'[^']*')*>$/i.test(
+          node.value,
+        );
+        node.value = openingAnchor
+          ? document.body.innerHTML.replace(/<\/a>$/i, "")
+          : document.body.innerHTML;
         replacement = node.value;
       }
     }
@@ -244,6 +252,18 @@ export function mapUploadReferences(
         (part.type === "text" || part.type === "reasoning")
       ) {
         return { ...part, text: markdownUploads(part.text, replace) };
+      }
+      if (part.type === "tool-fetch_url") {
+        const fetched = part as unknown as FetchUrlPart;
+        if (fetched.output?.kind === "image") {
+          return {
+            ...part,
+            output: {
+              ...fetched.output,
+              uploadUrl: uploadUrl(fetched.output.uploadUrl, replace),
+            },
+          };
+        }
       }
       if (
         isImageToolPart(part) &&

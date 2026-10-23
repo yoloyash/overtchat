@@ -202,6 +202,57 @@ describe("shared content projection", () => {
     expect(JSON.stringify(result)).toContain("/api/uploads/unused");
   });
 
+  it("preserves inline HTML anchor boundaries and text when rewriting its destination", () => {
+    const text =
+      'Read <a href="/api/uploads/document" title="A > B">the document</a>.';
+    const result = mapUploadReferences(
+      [{ id: "m", role: "assistant", parts: [{ type: "text", text }] }],
+      (id) => `/shared/${id}`,
+    );
+    expect(result[0].parts[0]).toEqual({
+      type: "text",
+      text: 'Read <a href="/shared/document" title="A > B">the document</a>.',
+    });
+  });
+
+  it("rewrites fetched image thumbnails without modifying their external source", () => {
+    const output = {
+      kind: "image",
+      url: "https://example.com/photo.png",
+      uploadUrl: "/api/uploads/fetched",
+      filename: "photo.png",
+      contentType: "image/png",
+      byteLength: 4,
+    };
+    const ids: string[] = [];
+    const result = mapUploadReferences(
+      [
+        {
+          id: "m",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-fetch_url",
+              toolCallId: "fetch",
+              state: "output-available",
+              input: { url: output.url },
+              output,
+            },
+          ],
+        },
+      ],
+      (id) => {
+        ids.push(id);
+        return `/shared/${id}`;
+      },
+    );
+    expect(ids).toEqual(["fetched"]);
+    expect(result[0].parts[0]).toMatchObject({
+      output: { ...output, uploadUrl: "/shared/fetched" },
+    });
+    expect(output.uploadUrl).toBe("/api/uploads/fetched");
+  });
+
   it("does not publish system instructions or hidden compaction checkpoints", () => {
     expect(
       sharedMessages([

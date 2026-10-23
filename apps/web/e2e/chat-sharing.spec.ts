@@ -92,6 +92,20 @@ async function setup(page: Page) {
           providerMetadata: { secret: "private-provider-data" },
         },
         {
+          type: "tool-fetch_url",
+          toolCallId: "fetch-image",
+          state: "output-available",
+          input: { url: "https://example.com/photo.png" },
+          output: {
+            kind: "image",
+            url: "https://example.com/photo.png",
+            uploadUrl: image.url,
+            filename: "Fetched photo",
+            contentType: "image/png",
+            byteLength: Buffer.from(png, "base64").length,
+          },
+        },
+        {
           type: "tool-web_search",
           toolCallId: "search",
           state: "output-available",
@@ -106,7 +120,9 @@ async function setup(page: Page) {
         },
         {
           type: "text",
-          text: "## Research result\n\nA useful finding.\n\n```js\nconst answer = 42;\n```\n\n| Item | Value |\n| --- | --- |\n| Answer | 42 |\n\nInline math: $$x^2$$.",
+          text:
+            "## Research result\n\nA useful finding.\n\n```js\nconst answer = 42;\n```\n\n| Item | Value |\n| --- | --- |\n| Answer | 42 |\n\nInline math: $$x^2$$." +
+            `\n\nRead <a href="${document.url}">original notes</a>.`,
         },
         {
           type: "tool-generate_image",
@@ -231,6 +247,27 @@ test("creates, previews, updates and revokes a complete chat; anonymous readers 
     await reader
       .getByRole("button", { name: "Searched the web", exact: true })
       .click();
+    const fetchedImage = reader
+      .getByRole("link", { name: /Fetched photo/ })
+      .locator("img");
+    await expect
+      .poll(() =>
+        fetchedImage.evaluate(
+          (node) => (node as HTMLImageElement).naturalWidth,
+        ),
+      )
+      .toBe(1);
+    expect(await fetchedImage.getAttribute("src")).toBe(
+      `/api/share/${id}/files/${image.id}`,
+    );
+    await reader
+      .getByRole("button", { name: "original notes", exact: true })
+      .click();
+    const linkModal = reader.locator('[data-streamdown="link-safety-modal"]');
+    await expect(linkModal).toContainText(
+      `/api/share/${id}/files/${document.url.split("/").at(-1)}`,
+    );
+    await linkModal.getByRole("button", { name: "Close", exact: true }).click();
     await expect(
       reader.getByText("Visible reasoning from the conversation", {
         exact: true,
@@ -512,7 +549,9 @@ test("requires a fresh transcript when the owner updates between pages", async (
       true,
     );
     await reader.getByRole("button", { name: "Show more messages" }).click();
-    await expect(reader.locator("main").getByRole("alert")).toContainText("was updated");
+    await expect(reader.locator("main").getByRole("alert")).toContainText(
+      "was updated",
+    );
     await reader.getByRole("button", { name: "Reload shared chat" }).click();
     await expect(
       reader.getByRole("heading", { name: "Updated reference", exact: true }),

@@ -281,6 +281,38 @@ describe("shared conversation persistence", () => {
     expect(existsSync(uploadPath("image"))).toBe(false);
   });
 
+  it("authorizes and retains images referenced only by fetch_url, then revokes them on update", async () => {
+    upload("fetched");
+    message("fetched-image", "assistant", [
+      {
+        type: "tool-fetch_url",
+        toolCallId: "fetch",
+        state: "output-available",
+        input: { url: "https://example.com/photo.png" },
+        output: {
+          kind: "image",
+          url: "https://example.com/photo.png",
+          uploadUrl: "/api/uploads/fetched",
+          filename: "photo.png",
+          contentType: "image/png",
+          byteLength: 4,
+        },
+      },
+    ]);
+    const share = shares.publishChatShare("chat", "owner")!;
+    expect(shares.readSharedUpload(share.id, "fetched")).not.toBeNull();
+    expect(JSON.stringify(shares.readChatShare(share.id))).toContain(
+      `/api/share/${share.id}/files/fetched`,
+    );
+    raw.exec("DELETE FROM messages WHERE id = 'fetched-image'");
+    await sweepOrphanedUploads();
+    expect(existsSync(uploadPath("fetched"))).toBe(true);
+    shares.publishChatShare("chat", "owner", true);
+    expect(shares.readSharedUpload(share.id, "fetched")).toBeNull();
+    await sweepOrphanedUploads();
+    expect(existsSync(uploadPath("fetched"))).toBe(false);
+  });
+
   it("rejects foreign/missing attachments atomically without replacing an existing share", () => {
     const share = shares.publishChatShare("chat", "owner")!;
     upload("foreign", "other");
