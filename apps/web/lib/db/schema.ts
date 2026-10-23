@@ -173,6 +173,10 @@ export const projects = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     instructions: text("instructions"),
+    defaultModelConfigId: text("default_model_config_id").references(
+      () => modelConfigs.id,
+      { onDelete: "set null" },
+    ),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

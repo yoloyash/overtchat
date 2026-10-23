@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `default_model_config_id` text REFERENCES model_configs(id) ON DELETE SET NULL;

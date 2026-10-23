@@ -1,6 +1,9 @@
 import { auth } from "@/lib/auth/server";
-import { createProject, listProjects } from "@/lib/db/projects";
-import type { ProjectListItem } from "@/lib/queries/projects";
+import {
+  createProject,
+  listProjects,
+  toProjectListItem,
+} from "@/lib/db/projects";
 
 type PostBody = { name?: string; instructions?: string | null };
 
@@ -9,13 +12,7 @@ export async function GET(req: Request) {
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const rows = await listProjects(session.user.id);
-  const items: ProjectListItem[] = rows.map((p) => ({
-    id: p.id,
-    name: p.name,
-    instructions: p.instructions,
-    updatedAt: p.updatedAt.getTime(),
-  }));
-  return Response.json({ projects: items });
+  return Response.json({ projects: rows.map(toProjectListItem) });
 }
 
 export async function POST(req: Request) {
@@ -30,15 +27,5 @@ export async function POST(req: Request) {
     name: body.name,
     instructions: body.instructions ?? null,
   });
-  return Response.json(
-    {
-      project: {
-        id: row.id,
-        name: row.name,
-        instructions: row.instructions,
-        updatedAt: row.updatedAt.getTime(),
-      },
-    },
-    { status: 201 },
-  );
+  return Response.json({ project: toProjectListItem(row) }, { status: 201 });
 }

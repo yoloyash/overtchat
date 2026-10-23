@@ -26,3 +26,4 @@ export type {
   SharedConversation,
   SharedConversationPage,
 } from "./chat-sharing";
+export * from "./relative-time";
