@@ -1,0 +1,46 @@
+# Minimal OvertChat: the chat app and Redis, nothing installed on the host.
+# Works with `docker compose` and `podman compose` (including rootless Podman).
+#
+#   1. Save this file as compose.yml in an empty directory.
+#   2. Set BETTER_AUTH_URL and HOST_CONNECTOR_URL below to the address you open
+#      in your browser.
+#   3. Create the session secret next to this file:
+#        echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" > .env
+#   4. docker compose up -d       (or: podman compose up -d)
+#   5. docker compose logs app    shows the setup code for the first account.
+#
+# Add models, search, and speech providers later in Settings.
+# Coding agents stay on your own computer: pair a Host Connector from
+# Settings → Connections; it connects out to this server.
+# See docs/deploy.md#minimal-compose for updates, backups, and autostart.
+
+services:
+  app:
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.28.0}
+    restart: always
+    ports:
+      # Loopback only; put your reverse proxy in front. Use "4718:4717" to
+      # listen on every interface instead.
+      - "127.0.0.1:4718:4717"
+    environment:
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL: https://chat.example.com
+      # Lets a Host Connector on another computer reach this server.
+      HOST_CONNECTOR_URL: https://chat.example.com
+      # No bundled search or speech containers in this stack.
+      OVERTCHAT_INSTALLED_CAPABILITIES: ""
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - overtchat-data:/app/data
+    depends_on:
+      - redis
+
+  # Optional: lets an interrupted response resume after a page reload or
+  # reconnect. Remove this service and REDIS_URL to run the app alone.
+  redis:
+    image: docker.io/library/redis@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+    restart: always
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+
+volumes:
+  overtchat-data:

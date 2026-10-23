@@ -53,6 +53,10 @@ overtchat status    # check the app and its services
 overtchat update    # update the managed installation
 ```
 
+Prefer a plain Compose file with nothing installed on the host? Docker and
+rootless Podman can run [`compose.minimal.yml`](compose.minimal.yml); see
+[Minimal Compose](docs/deploy.md#minimal-compose).
+
 [Installation, existing Compose adoption, backups, and troubleshooting →](docs/deploy.md)
 
 Use the server in your browser, on mobile, or with the desktop app for macOS

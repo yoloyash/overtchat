@@ -334,7 +334,8 @@ export function ConnectionsPanel({
               <HostConnectorInfo />
             </div>
             <p className="mb-3 text-xs text-muted-foreground">
-              Run this command in a terminal on the computer running OvertChat.
+              Run this command in a terminal on the computer with your coding agents
+              and projects. It can be a different computer from the server.
             </p>
             <div className="flex items-center gap-2">
               <code
@@ -532,8 +533,9 @@ function HostConnectorInfo() {
               Host Connector
             </Popover.Title>
             <p className="mt-1 text-muted-foreground">
-              Lets OvertChat use agent binaries and SSH hosts available on this
-              server. For Docker installs, run it on the Docker host.
+              Lets OvertChat use the agent binaries, projects, and SSH hosts on
+              the computer where it runs: this server or your own computer. It
+              only makes outbound connections to OvertChat.
             </p>
             <a
               href="https://github.com/yoloyash/overtchat/blob/main/scripts/install-connector.sh"

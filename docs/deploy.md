@@ -145,6 +145,88 @@ LAN access is subject to Windows Firewall; allow the app port only on private
 networks you intend to serve. Windows ARM64, Windows Server, and service-account
 deployments are not supported.
 
+## Minimal Compose
+
+Use [`compose.minimal.yml`](../compose.minimal.yml) to run only the app and
+Redis without installing anything on the host. It works with Docker Compose,
+`podman-compose`, and Docker Compose against a rootless Podman socket. It uses
+only named volumes, so no SELinux relabeling or host path ownership is needed.
+
+1. Download it into an empty directory and rename it `compose.yml`.
+2. Set `BETTER_AUTH_URL` and `HOST_CONNECTOR_URL` to the address you open in
+   your browser. Keep the published port on `127.0.0.1` behind a reverse proxy,
+   or change it to `"4718:4717"` to listen on every interface.
+3. Create the session secret beside the file. Compose refuses to start without it:
+
+   ```sh
+   echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" > .env
+   ```
+
+4. Start the stack and read the setup code from the app's logs:
+
+   ```sh
+   docker compose up -d        # or: podman compose up -d
+   docker compose logs app     # [setup] Create your administrator account with setup code …
+   ```
+
+Keep `.env` and the `overtchat-data` volume. Changing `BETTER_AUTH_SECRET`
+signs everyone out and invalidates stored two-factor secrets.
+
+This stack has no bundled search, speech, or voice containers. Configure Brave
+or an existing SearXNG instance, and OpenAI-compatible TTS or STT, under
+**Settings → Services**. Redis lets an interrupted response resume after a
+reload; remove the `redis` service and `REDIS_URL` to run without it. Reverse
+proxies must forward WebSocket upgrades (see
+[Cloudflare Tunnel or another reverse proxy](#cloudflare-tunnel-or-another-reverse-proxy)).
+To reach a model server on the host, use `host.containers.internal` with Podman;
+with Docker, add `extra_hosts: ["host.docker.internal:host-gateway"]` to `app`.
+
+Coding agents do not need to run on this server. Install the Host Connector on
+the computer with your agents and projects: open **Settings → Connections**
+and run the displayed command there. The connector only makes outbound HTTPS and
+WebSocket connections to `HOST_CONNECTOR_URL`. The app container needs no
+access to SSH keys, the Docker or Podman socket, or host directories. Standalone
+connectors support Linux and macOS.
+
+To update, change the image tag (or set `APP_VERSION` in `.env`), then run
+`docker compose pull && docker compose up -d`. Database migrations run at
+startup and are forward-only; never move to an older tag. Back up first:
+
+```sh
+docker compose exec app node -e '
+const db = new (require("better-sqlite3"))("/app/data/chat.db");
+db.backup("/app/data/backup.db").then(() => db.close()).catch(error => {
+  console.error(error); process.exitCode = 1; db.close();
+});
+'
+docker compose cp app:/app/data/backup.db ./backup.db
+```
+
+For password recovery, see
+[manual installations without the management CLI](#manual-installations-without-the-management-cli).
+
+### Start on boot with rootless Podman
+
+The stack uses `restart: always`, which is the policy Podman's
+`podman-restart.service` starts at boot. Enable it and allow your user's
+services to run without a login session:
+
+```sh
+systemctl --user enable podman-restart.service
+loginctl enable-linger "$USER"
+```
+
+To manage the containers as individual systemd units instead, generate them
+after the first `podman compose up -d`. For example, with the default
+`podman-compose` names in a directory called `overtchat`:
+
+```sh
+podman generate systemd --files --name overtchat_redis_1
+podman generate systemd --files --name \
+  --after container-overtchat_redis_1.service \
+  --requires container-overtchat_redis_1.service overtchat_app_1
+```
+
 ## Password recovery
 
 On web, desktop, and mobile, **Forgot password?** explains how to get help.

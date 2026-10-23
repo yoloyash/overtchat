@@ -75,7 +75,8 @@ export function SignupForm() {
             spellCheck={false}
           />
           <p className="text-xs text-muted-foreground">
-            Use the code from your installer, or run overtchat status on the server.
+            Use the code from your installer, run overtchat status on the server, or
+            check the app container&apos;s logs.
           </p>
         </div>
         <div className="space-y-1.5">
