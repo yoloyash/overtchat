@@ -1,47 +1,60 @@
-import { writeFileSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
 import { streamText } from "ai";
-import { listVllmModels } from "./http";
+import { REASONING_OVERRIDE_PRESETS } from "@/lib/model-config/reasoning-override";
+import { createTemplateRenderer, listOpenAIModels } from "./http";
 import { createConfiguredLanguageModel } from "./registry";
+import { checkThinkingLevels } from "./thinking-check";
 
 vi.mock("server-only", () => ({}));
 afterEach(() => vi.unstubAllGlobals());
 
 // Explicit opt-in: makes two small generations against an operator's model.
 it.skipIf(!process.env.VLLM_LIVE_URL)(
-  "discovers the live model and exercises thinking on/off through the production adapter",
+  "checks a thinking preset and exercises on/off through the production adapter",
   async () => {
     const baseUrl = process.env.VLLM_LIVE_URL!;
     const apiKey = process.env.VLLM_LIVE_API_KEY;
-    const models = await listVllmModels(baseUrl, apiKey);
-    const model = process.env.VLLM_LIVE_MODEL
-      ? models.find((item) => item.id === process.env.VLLM_LIVE_MODEL)
-      : models[0];
+    const presetName = process.env.VLLM_LIVE_PRESET ?? "enable_thinking";
+    const preset = REASONING_OVERRIDE_PRESETS.find(
+      (candidate) => candidate.name === presetName,
+    );
+    expect(preset).toBeDefined();
+    const { requests } = preset!.override as {
+      requests: Partial<Record<"on" | "off", Record<string, unknown>>>;
+    };
+    expect(requests.on && requests.off).toBeTruthy();
+    const models = await listOpenAIModels(baseUrl, apiKey);
+    const model = process.env.VLLM_LIVE_MODEL ?? models[0]?.id;
     expect(model).toBeDefined();
-    const controls = model!.capabilities?.reasoningControls;
-    expect(controls?.toggle).toBe(true);
-    expect(controls?.requestMapping?.toggleParameter).toBeDefined();
-    const requests: Record<string, unknown>[] = [];
+
+    const check = await checkThinkingLevels(
+      createTemplateRenderer("vllm", baseUrl, apiKey, model!),
+      requests,
+    );
+    expect(check).toMatchObject({ status: "checked", failed: [], identical: [] });
+
+    const sent: Record<string, unknown>[] = [];
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       async (input: RequestInfo | URL, init?: RequestInit) => {
-        if (String(input).endsWith("/chat/completions"))
-          requests.push(JSON.parse(String(init?.body)));
+        if (String(input).endsWith("/chat/completions")) {
+          sent.push(JSON.parse(String(init?.body)));
+        }
         return originalFetch(input, init);
       },
     );
-    const evidence = [];
+    const generations = [];
     for (const level of ["off", "on"] as const) {
       const configured = createConfiguredLanguageModel({
         providerId: "vllm",
         apiFormat: "auto",
         baseUrl,
         apiKey,
-        model: model!.id,
+        model: model!,
         providerOptions: null,
         reasoningLevel: level,
-        reasoningMapping: controls?.requestMapping,
+        reasoningRequest: requests[level],
       });
       const generation = streamText({
         model: configured.model,
@@ -51,40 +64,15 @@ it.skipIf(!process.env.VLLM_LIVE_URL)(
         maxRetries: 0,
         abortSignal: AbortSignal.timeout(90_000),
       });
-      const result = {
-        text: await generation.text,
-        reasoningText: await generation.reasoningText,
-        finishReason: await generation.finishReason,
-        usage: await generation.usage,
-      };
-      expect(requests.at(-1)?.stream).toBe(true);
-      expect(result.text).toContain("391");
-      if (level === "off") expect(result.reasoningText ?? "").toBe("");
-      else expect(result.reasoningText?.length).toBeGreaterThan(0);
-      expect(requests.at(-1)?.chat_template_kwargs).toMatchObject({
-        [controls!.requestMapping!.toggleParameter!]: level === "on",
-      });
-      expect(requests.at(-1)).not.toHaveProperty("reasoning_effort");
-      evidence.push({
-        level,
-        finishReason: result.finishReason,
-        reasoningCharacters: result.reasoningText?.length ?? 0,
-        outputTokens: result.usage.outputTokens,
-      });
+      const text = await generation.text;
+      const reasoningText = (await generation.reasoningText) ?? "";
+      expect(sent.at(-1)).toMatchObject(requests[level]!);
+      expect(text).toContain("391");
+      if (level === "off") expect(reasoningText).toBe("");
+      else expect(reasoningText.length).toBeGreaterThan(0);
+      generations.push({ level, reasoningCharacters: reasoningText.length });
     }
-    const report = JSON.stringify(
-      {
-        model: model!.id,
-        detection: model!.reasoningDetection,
-        controls,
-        generations: evidence,
-      },
-      null,
-      2,
-    );
-    console.info(report);
-    if (process.env.VLLM_LIVE_REPORT)
-      writeFileSync(process.env.VLLM_LIVE_REPORT, report);
+    console.info(JSON.stringify({ model, preset: presetName, check, generations }));
   },
   180_000,
 );

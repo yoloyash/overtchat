@@ -1,12 +1,5 @@
 import "server-only";
-import {
-  REASONING_EFFORTS,
-  type ModelCapabilities,
-  type LocalReasoningMapping,
-  type ModelReasoningControls,
-  type ReasoningEffort,
-} from "@overtchat/shared";
-import { applyLocalReasoningLevel } from "./adapters/local-reasoning";
+import type { ModelCapabilities } from "@overtchat/shared";
 import type { DiscoveredModel } from "@/lib/providers/server/types";
 
 const MODEL_LIST_TIMEOUT_MS = 10_000;
@@ -60,12 +53,6 @@ interface LlamaCppProps {
   modalities?: unknown;
 }
 
-interface RenderProbeResult {
-  key: string;
-  text?: string;
-  tokenIds?: number[];
-}
-
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
@@ -86,31 +73,6 @@ export async function listLlamaCppModels(
   apiKey: string | null | undefined,
 ): Promise<DiscoveredModel[]> {
   return listOpenAIModelsWithOptions(baseUrl, apiKey, true);
-}
-
-export async function listVllmModels(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-): Promise<DiscoveredModel[]> {
-  const models = await listOpenAIModelsWithOptions(baseUrl, apiKey, false);
-  return Promise.all(
-    models.map(async (model) => {
-      const { controls: reasoningControls, message: reasoningDetection } =
-        await discoverVllmReasoningControls(baseUrl, apiKey, model.id);
-      return {
-        ...model,
-        reasoningDetection,
-        ...(reasoningControls
-          ? {
-              capabilities: mergeCapabilities(model.capabilities, {
-                reasoning: true,
-                reasoningControls,
-              }),
-            }
-          : {}),
-      };
-    }),
-  );
 }
 
 async function listOpenAIModelsWithOptions(
@@ -153,14 +115,6 @@ async function listOpenAIModelsWithOptions(
       if (!llamaModelIds.has(model.id)) return model;
       const props = await readLlamaCppProps(baseUrl, apiKey, model.id);
       if (!props) return model;
-      const reasoningControls = probeAllLlamaCppProps
-        ? await discoverLlamaCppReasoningControls(
-            baseUrl,
-            apiKey,
-            model.id,
-            props,
-          )
-        : undefined;
       return {
         ...model,
         contextWindow:
@@ -168,7 +122,7 @@ async function listOpenAIModelsWithOptions(
           model.contextWindow,
         capabilities: mergeCapabilities(
           model.capabilities,
-          llamaCppCapabilities(props, reasoningControls),
+          llamaCppCapabilities(props),
         ),
       };
     }),
@@ -311,7 +265,9 @@ function normalizeDiscoveredModels(
 }
 
 function readPositiveInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
     ? value
     : undefined;
 }
@@ -358,7 +314,11 @@ function anthropicModelCapabilities(
   const pdfInput = readSupportedBoolean(capabilities?.pdf_input);
   const inputModalities =
     imageInput !== undefined || pdfInput !== undefined
-      ? ["text", ...(imageInput ? ["image"] : []), ...(pdfInput ? ["pdf"] : [])]
+      ? [
+          "text",
+          ...(imageInput ? ["image"] : []),
+          ...(pdfInput ? ["pdf"] : []),
+        ]
       : undefined;
 
   return compactCapabilities({
@@ -370,7 +330,9 @@ function anthropicModelCapabilities(
         ? undefined
         : imageInput === true || pdfInput === true,
     reasoning: readSupportedBoolean(capabilities?.thinking),
-    structuredOutput: readSupportedBoolean(capabilities?.structured_outputs),
+    structuredOutput: readSupportedBoolean(
+      capabilities?.structured_outputs,
+    ),
   });
 }
 
@@ -379,7 +341,8 @@ function googleModelCapabilities(
 ): ModelCapabilities | undefined {
   return compactCapabilities({
     maxOutputTokens: readPositiveInteger(model.outputTokenLimit),
-    reasoning: typeof model.thinking === "boolean" ? model.thinking : undefined,
+    reasoning:
+      typeof model.thinking === "boolean" ? model.thinking : undefined,
     temperature:
       typeof model.temperature === "number" ||
       typeof model.maxTemperature === "number"
@@ -416,12 +379,13 @@ function openAIServiceRoot(baseUrl: string): string {
 
 function llamaCppCapabilities(
   props: LlamaCppProps,
-  reasoningControls?: ModelReasoningControls,
 ): ModelCapabilities | undefined {
   const template = isRecord(props.chat_template_caps)
     ? props.chat_template_caps
     : undefined;
-  const modalities = isRecord(props.modalities) ? props.modalities : undefined;
+  const modalities = isRecord(props.modalities)
+    ? props.modalities
+    : undefined;
   const vision =
     typeof modalities?.vision === "boolean" ? modalities.vision : undefined;
   return compactCapabilities({
@@ -430,329 +394,86 @@ function llamaCppCapabilities(
     outputModalities: vision === undefined ? undefined : ["text"],
     attachment: vision,
     toolCalling: readSupportedBoolean(template?.supports_tools),
-    reasoning:
-      reasoningControls !== undefined
-        ? true
-        : readSupportedBoolean(template?.supports_preserve_reasoning),
-    reasoningControls,
+    reasoning: readSupportedBoolean(template?.supports_preserve_reasoning),
     temperature: true,
   });
 }
 
-async function discoverLlamaCppReasoningControls(
+export type TemplateRenderer = (
+  fields: Record<string, unknown>,
+) => Promise<string | undefined>;
+
+/**
+ * Renders one chat-template prompt per call without generating. vLLM's render
+ * endpoint is preferred; `/tokenize` is the fallback for servers without it.
+ * Returns undefined when the server exposes neither endpoint.
+ */
+export function createTemplateRenderer(
+  providerId: "vllm" | "llamacpp",
   baseUrl: string,
   apiKey: string | null | undefined,
   model: string,
-  props: LlamaCppProps,
-): Promise<ModelReasoningControls | undefined> {
-  const templateCaps = isRecord(props.chat_template_caps)
-    ? props.chat_template_caps
-    : undefined;
-  const supportsEffort =
-    readSupportedBoolean(templateCaps?.supports_reasoning_effort) === true;
-  return discoverReasoningControls(
-    (level) => renderLlamaCppChatTemplate(baseUrl, apiKey, model, level),
-    supportsEffort,
-  );
-}
-
-type ProbeLevel = "default" | "off" | "on" | ReasoningEffort | "invalid";
-
-async function discoverReasoningControls(
-  render: (level: ProbeLevel) => Promise<RenderProbeResult | undefined>,
-  probeEfforts = true,
-  resolvePromptText?: (
-    prompt: RenderProbeResult,
-  ) => Promise<string | undefined>,
-): Promise<ModelReasoningControls | undefined> {
-  const [defaultPrompt, offPrompt, onPrompt] = await Promise.all([
-    render("default"),
-    render("off"),
-    render("on"),
-  ]);
-  if (!defaultPrompt) return undefined;
-
-  const toggle = Boolean(
-    offPrompt && onPrompt && onPrompt.key !== offPrompt.key,
-  );
-  const defaultToggleLevel = !toggle
-    ? undefined
-    : defaultPrompt.key === offPrompt?.key
-      ? "off"
-      : defaultPrompt.key === onPrompt?.key
-        ? "on"
-        : undefined;
-
-  if (!probeEfforts) {
-    return toggle
-      ? {
-          toggle: true,
-          ...(defaultToggleLevel ? { defaultLevel: defaultToggleLevel } : {}),
-        }
-      : undefined;
-  }
-
-  const [invalidPrompt, ...effortPrompts] = await Promise.all([
-    render("invalid"),
-    ...REASONING_EFFORTS.map((effort) => render(effort)),
-  ]);
-  const groups = new Map<
-    string,
-    { aliases: ReasoningEffort[]; prompt: RenderProbeResult }
-  >();
-  for (let index = 0; index < REASONING_EFFORTS.length; index += 1) {
-    const prompt = effortPrompts[index];
-    if (!prompt) continue;
-    const effort = REASONING_EFFORTS[index];
-    const group = groups.get(prompt.key) ?? { aliases: [], prompt };
-    group.aliases.push(effort);
-    groups.set(prompt.key, group);
-  }
-
-  const projectedGroups = await Promise.all(
-    [...groups].map(async ([key, group]) => {
-      const matchesInvalid = key === invalidPrompt?.key;
-      if (group.aliases.length === 1 && !matchesInvalid) {
-        return [key, group.aliases[0]] as const;
-      }
-      const promptText =
-        group.prompt.text ?? (await resolvePromptText?.(group.prompt));
-      const projected = projectedEffortAlias(group.aliases, promptText);
-      return projected ? ([key, projected] as const) : undefined;
-    }),
-  );
-  const selectedByPrompt = new Map(
-    projectedGroups.filter(
-      (group): group is readonly [string, ReasoningEffort] =>
-        group !== undefined,
-    ),
-  );
-  const defaultLevel =
-    selectedByPrompt.get(defaultPrompt.key) ?? defaultToggleLevel;
-  const selected = new Set(selectedByPrompt.values());
-  const efforts = REASONING_EFFORTS.filter((effort) => selected.has(effort));
-  if (efforts.length > 0)
-    return { toggle, ...(defaultLevel ? { defaultLevel } : {}), efforts };
-  return toggle
-    ? {
-        toggle: true,
-        ...(defaultToggleLevel ? { defaultLevel: defaultToggleLevel } : {}),
-      }
-    : undefined;
-}
-
-function projectedEffortAlias(
-  aliases: ReasoningEffort[],
-  prompt: string | undefined,
-): ReasoningEffort | undefined {
-  if (!prompt) return undefined;
-  const matches = aliases.filter((alias) =>
-    new RegExp(`(^|[^a-z0-9_])${alias}([^a-z0-9_]|$)`, "iu").test(prompt),
-  );
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
-async function renderLlamaCppChatTemplate(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-  model: string,
-  level: ProbeLevel,
-): Promise<RenderProbeResult | undefined> {
-  const body = reasoningProbeBody(model, level);
-  const json = await tryFetchJson<Record<string, unknown>>(
-    appendPath(openAIServiceRoot(baseUrl), "apply-template"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify(body),
-    },
-  );
-  return renderedPromptKey(json);
-}
-
-async function discoverVllmReasoningControls(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-  model: string,
-): Promise<{ controls?: ModelReasoningControls; message: string }> {
+): TemplateRenderer {
   const headers = {
     "Content-Type": "application/json",
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
   };
-  const baseBody = {
-    model,
-    messages: [{ role: "user", content: "hi" }],
-    add_generation_prompt: true,
-  };
-  let tokenize = false;
-  async function render(body: Record<string, unknown>) {
-    const json = await tryFetchJson<Record<string, unknown>>(
-      tokenize
-        ? appendPath(openAIServiceRoot(baseUrl), "tokenize")
-        : appendPath(baseUrl, "chat/completions/render"),
-      {
+  const endpoints =
+    providerId === "llamacpp"
+      ? [{ url: appendPath(openAIServiceRoot(baseUrl), "apply-template") }]
+      : [
+          {
+            url: appendPath(baseUrl, "chat/completions/render"),
+            extra: { return_prompt_text: true, max_tokens: 1 },
+          },
+          { url: appendPath(openAIServiceRoot(baseUrl), "tokenize") },
+        ];
+  let endpointIndex = 0;
+  let settled = false;
+  return async (fields) => {
+    for (;;) {
+      const endpoint = endpoints[endpointIndex];
+      const json = await tryFetchJson<Record<string, unknown>>(endpoint.url, {
         method: "POST",
         headers,
-        body: JSON.stringify(tokenize ? body : { ...body, max_tokens: 1 }),
-      },
-    );
-    // /tokenize has a different response contract from the renderer API.
-    return renderedPromptKey(
-      tokenize && json ? { ...json, token_ids: json.tokens } : json,
-    );
-  }
-  let baseline = await render(baseBody);
-  if (!baseline) {
-    tokenize = true;
-    baseline = await render(baseBody);
-  }
-  if (!baseline)
-    return {
-      message:
-        "Couldn't detect thinking controls: the server's render and tokenize endpoints were unavailable or returned an unsupported response. Use server defaults or configure controls manually.",
-    };
-
-  let best: ModelReasoningControls | undefined;
-  // TokenizeChatRequest does not implement top-level reasoning_effort. Probe
-  // template kwargs there and use exactly those kwargs for chat requests too.
-  const effortParameters: NonNullable<
-    LocalReasoningMapping["effortParameter"]
-  >[] = tokenize
-    ? ["chat_template_kwargs.reasoning_effort"]
-    : ["reasoning_effort", "chat_template_kwargs.reasoning_effort"];
-  for (const toggleParameter of ["enable_thinking", "thinking"] as const) {
-    for (const effortParameter of effortParameters) {
-      const mapping = { toggleParameter, effortParameter };
-      const controls = await discoverReasoningControls(
-        async (level) => {
-          if (level === "default") return baseline;
-          const body =
-            level === "invalid"
-              ? applyLocalReasoningLevel(baseBody, "high", mapping)
-              : applyLocalReasoningLevel(baseBody, level, mapping);
-          if (level === "invalid") {
-            if (effortParameter === "reasoning_effort")
-              body.reasoning_effort = "overtchat-invalid-effort";
-            else
-              (
-                body.chat_template_kwargs as Record<string, unknown>
-              ).reasoning_effort = "overtchat-invalid-effort";
-          }
-          return render(body);
-        },
-        true,
-        (prompt) =>
-          detokenizeVllmPrompt(baseUrl, apiKey, model, prompt.tokenIds),
-      );
-      if (!controls) continue;
-      if (!controls.efforts?.length && controls.toggle) {
-        // We omit effort from a toggle-only profile. Verify that the toggle
-        // itself changed the prompt, rather than the combined effort probe.
-        const [off, on] = await Promise.all([
-          render(
-            applyLocalReasoningLevel(baseBody, "off", { toggleParameter }),
-          ),
-          render(applyLocalReasoningLevel(baseBody, "on", { toggleParameter })),
-        ]);
-        if (!off || !on || off.key === on.key) continue;
+        body: JSON.stringify({
+          ...fields,
+          model,
+          messages: [{ role: "user", content: "hi" }],
+          add_generation_prompt: true,
+          ...endpoint.extra,
+        }),
+      });
+      const key = renderedPromptKey(json);
+      if (key) {
+        settled = true;
+        return key;
       }
-      const candidate = {
-        ...controls,
-        requestMapping: {
-          toggleParameter,
-          ...(controls.efforts?.length ? { effortParameter } : {}),
-        },
-      };
-      if (
-        !best ||
-        (candidate.efforts?.length ?? 0) > (best.efforts?.length ?? 0) ||
-        ((candidate.efforts?.length ?? 0) === (best.efforts?.length ?? 0) &&
-          candidate.toggle &&
-          !best.toggle)
-      )
-        best = candidate;
-      if (best.toggle && best.efforts?.length) break;
+      // Once an endpoint has rendered, a failure belongs to the submitted
+      // fields rather than to endpoint support.
+      if (settled || endpointIndex === endpoints.length - 1) return undefined;
+      endpointIndex += 1;
     }
-    if (best?.toggle) break;
-  }
-  return {
-    controls: best,
-    message: best
-      ? `Thinking controls detected using the server's ${tokenize ? "tokenize" : "render"} endpoint.`
-      : "The server's template did not reveal distinct thinking controls. Use server defaults or configure controls manually.",
-  };
-}
-
-async function detokenizeVllmPrompt(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-  model: string,
-  tokenIds: number[] | undefined,
-): Promise<string | undefined> {
-  if (!tokenIds) return undefined;
-  const json = await tryFetchJson<Record<string, unknown>>(
-    appendPath(openAIServiceRoot(baseUrl), "detokenize"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({ model, tokens: tokenIds }),
-    },
-  );
-  return typeof json?.prompt === "string" ? json.prompt : undefined;
-}
-
-function reasoningProbeBody(model: string, level: ProbeLevel) {
-  return {
-    model,
-    messages: [{ role: "user", content: "hi" }],
-    ...(level === "default"
-      ? {}
-      : level === "on"
-        ? { chat_template_kwargs: { enable_thinking: true } }
-        : {
-            reasoning_effort:
-              level === "off"
-                ? "none"
-                : level === "invalid"
-                  ? "overtchat-invalid-effort"
-                  : level,
-            chat_template_kwargs: {
-              enable_thinking: level !== "off",
-            },
-          }),
   };
 }
 
 function renderedPromptKey(
   json: Record<string, unknown> | undefined,
-): RenderProbeResult | undefined {
+): string | undefined {
   if (!json) return undefined;
-  if (typeof json.prompt === "string") {
-    return { key: `text:${json.prompt}`, text: json.prompt };
-  }
-  if (typeof json.prompt_text === "string") {
-    return { key: `text:${json.prompt_text}`, text: json.prompt_text };
-  }
-  const tokenIds = Array.isArray(json.token_ids)
-    ? json.token_ids
-    : Array.isArray(json.prompt_token_ids)
-      ? json.prompt_token_ids
-      : undefined;
-  if (
-    tokenIds &&
-    tokenIds.every(
-      (token) => typeof token === "number" && Number.isInteger(token),
-    )
-  ) {
-    return { key: `tokens:${JSON.stringify(tokenIds)}`, tokenIds };
-  }
-  return undefined;
+  const text = [json.prompt, json.prompt_text].find(
+    (value): value is string => typeof value === "string",
+  );
+  if (text !== undefined) return `text:${text}`;
+  // /tokenize returns `tokens`; render endpoints return token ID arrays.
+  const tokenIds = [json.token_ids, json.prompt_token_ids, json.tokens].find(
+    Array.isArray,
+  );
+  return tokenIds?.every(
+    (token) => typeof token === "number" && Number.isInteger(token),
+  )
+    ? `tokens:${JSON.stringify(tokenIds)}`
+    : undefined;
 }
 
 async function tryFetchJson<T>(
@@ -763,7 +484,6 @@ async function tryFetchJson<T>(
     return await fetchJson<T>(url, init);
   } catch {
     // Render endpoints are runtime extensions and older servers may omit them.
-    // Discovery fails closed so an unverified control is never shown.
     return undefined;
   }
 }

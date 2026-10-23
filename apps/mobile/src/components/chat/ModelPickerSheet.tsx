@@ -1,5 +1,3 @@
-import { reasoningOptionsForControls } from "@overtchat/shared";
-export { reasoningOptionsForControls } from "@overtchat/shared";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetBackdrop,
@@ -11,6 +9,7 @@ import {
 import type {
   ChatReasoningLevel,
   ModelReasoningControls,
+  ModelReasoningLevel,
   PublicModelConfig,
 } from "@overtchat/shared";
 import {
@@ -95,7 +94,10 @@ export const ModelPickerSheet = forwardRef<
     () => reasoningOptionsForControls(reasoningControls),
     [reasoningControls],
   );
-  const effectiveReasoningLevel = reasoningLevel;
+  const effectiveReasoningLevel =
+    reasoningLevel === "default"
+      ? reasoningControls?.defaultLevel
+      : reasoningLevel;
   const showThinking = reasoningOptions.length > 1;
 
   useImperativeHandle(ref, () => ({
@@ -343,6 +345,9 @@ export const ModelPickerSheet = forwardRef<
               ]}
             >
               {reasoningLabel(effectiveReasoningLevel)}
+              {effectiveReasoningLevel === reasoningControls?.defaultLevel
+                ? " (default)"
+                : ""}
             </Text>
             <Ionicons
               name="chevron-forward"
@@ -410,6 +415,7 @@ export const ModelPickerSheet = forwardRef<
                 key={option}
                 option={option}
                 selected={option === effectiveReasoningLevel}
+                isDefault={option === reasoningControls?.defaultLevel}
                 onPress={() => {
                   onSelectReasoningLevel(option);
                   modalRef.current?.dismiss();
@@ -463,10 +469,12 @@ export const ModelPickerSheet = forwardRef<
 function ReasoningRow({
   option,
   selected,
+  isDefault,
   onPress,
 }: {
-  option: ChatReasoningLevel;
+  option: ModelReasoningLevel;
   selected: boolean;
+  isDefault: boolean;
   onPress: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -497,6 +505,7 @@ function ReasoningRow({
           ]}
         >
           {reasoningLabel(option)}
+          {isDefault ? " (default)" : ""}
         </Text>
       </View>
       {selected ? (
@@ -511,8 +520,22 @@ function ReasoningRow({
   );
 }
 
+export function reasoningOptionsForControls(
+  controls: ModelReasoningControls | undefined,
+): ModelReasoningLevel[] {
+  if (!controls) return [];
+  const options: ModelReasoningLevel[] = [];
+  if (controls.efforts?.length) {
+    if (controls.toggle) options.push("off");
+    if (controls.defaultLevel === "on") options.push("on");
+    options.push(...controls.efforts);
+  } else if (controls.toggle) {
+    options.push("on", "off");
+  }
+  return [...new Set(options)];
+}
+
 export function reasoningLabel(level: ChatReasoningLevel): string {
-  if (level === "default") return "Server default";
   if (level === "xhigh") return "Extra high";
   return level.charAt(0).toUpperCase() + level.slice(1);
 }

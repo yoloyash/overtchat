@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -126,9 +126,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     string | null
   >(null);
   const [imageOptionsError, setImageOptionsError] = useState(false);
-  const discoveryRef = useRef<{ detect: () => void }>(null);
-  const [detecting, setDetecting] = useState(false);
-  const [reasoningDetection, setReasoningDetection] = useState<string>();
+  const [thinkingInvalid, setThinkingInvalid] = useState(false);
   const [saveError, setSaveError] = useState("");
   // undefined means discovery was not touched in this editor session; null
   // means the current connection did not report a limit.
@@ -173,7 +171,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const canSave =
     !saving &&
-    !detecting &&
+    !(thinkingInvalid && draft.reasoningOverride !== null) &&
     !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
     !!draft.model &&
@@ -440,9 +438,6 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 }));
               }
             }}
-            ref={discoveryRef}
-            onProbingChange={setDetecting}
-            onReasoningDetection={setReasoningDetection}
             autoFetchModels={!isEditing}
           />
 
@@ -559,7 +554,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               draft.apiFormat,
             ) && (
               <ThinkingFields
-                detected={
+                automatic={
                   (detectedCapabilities === undefined
                     ? draft.discoveredCapabilities?.reasoningControls
                     : detectedCapabilities?.reasoningControls) ??
@@ -569,9 +564,21 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 onChange={(reasoningOverride) =>
                   setDraft((current) => ({ ...current, reasoningOverride }))
                 }
-                detectionMessage={reasoningDetection}
-                detecting={detecting}
-                onDetect={() => discoveryRef.current?.detect()}
+                onInvalidChange={setThinkingInvalid}
+                checkTarget={
+                  (draft.providerId === "vllm" ||
+                    draft.providerId === "llamacpp") &&
+                  draft.baseUrl &&
+                  draft.model
+                    ? {
+                        providerId: draft.providerId,
+                        apiFormat: draft.apiFormat,
+                        baseUrl: draft.baseUrl,
+                        apiKey: draft.apiKey,
+                        model: draft.model,
+                      }
+                    : undefined
+                }
               />
             )}
             <AdvancedFields

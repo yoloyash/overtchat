@@ -241,10 +241,20 @@ describe("image model selection", () => {
   });
 });
 
-it("persists manual thinking separately from refreshed detection, resolves it, and resets to automatic", async () => {
-  const profile = {
-    toggle: true,
-    requestMapping: { toggleParameter: "thinking" as const },
+it("persists custom thinking separately from refreshed detection and resets to automatic", async () => {
+  const override = {
+    defaultLevel: "on" as const,
+    requests: {
+      on: { chat_template_kwargs: { thinking: true } },
+      off: { chat_template_kwargs: { thinking: false } },
+    },
+  };
+  const detected = {
+    reasoningControls: {
+      toggle: false,
+      defaultLevel: "high" as const,
+      efforts: ["high" as const],
+    },
   };
   const input = ModelConfigSchema.parse({
     label: "Local",
@@ -252,29 +262,36 @@ it("persists manual thinking separately from refreshed detection, resolves it, a
     apiFormat: "auto",
     baseUrl: "http://local/v1",
     model: "test",
-    reasoningOverride: profile,
+    reasoningOverride: override,
   });
   const created = await modelConfigDb.createModelConfig(input);
   const updated = await modelConfigDb.updateModelConfig(created.id, {
     ...input,
-    discoveredCapabilities: {
-      reasoningControls: { toggle: false, efforts: ["high"] },
-    },
+    discoveredCapabilities: detected,
   });
-  expect(updated?.reasoningOverride).toEqual(profile);
+  expect(updated?.reasoningOverride).toEqual(override);
   expect(
-    modelConfigDb.toAdminModelConfig(updated!).resolvedCapabilities
-      ?.reasoningControls,
-  ).toEqual(profile);
+    modelConfigDb.toAdminModelConfig(updated!).resolvedCapabilities,
+  ).toEqual({
+    reasoning: true,
+    reasoningControls: { toggle: true, defaultLevel: "on" },
+  });
   const automatic = await modelConfigDb.updateModelConfig(created.id, {
     ...input,
     reasoningOverride: null,
-    discoveredCapabilities: {
-      reasoningControls: { toggle: false, efforts: ["high"] },
-    },
+    discoveredCapabilities: detected,
   });
   expect(
     modelConfigDb.toAdminModelConfig(automatic!).resolvedCapabilities
       ?.reasoningControls,
-  ).toEqual({ toggle: false, efforts: ["high"] });
+  ).toEqual(detected.reasoningControls);
+  const hidden = await modelConfigDb.updateModelConfig(created.id, {
+    ...input,
+    reasoningOverride: { requests: {} },
+    discoveredCapabilities: detected,
+  });
+  expect(
+    modelConfigDb.toAdminModelConfig(hidden!).resolvedCapabilities
+      ?.reasoningControls,
+  ).toBeUndefined();
 });

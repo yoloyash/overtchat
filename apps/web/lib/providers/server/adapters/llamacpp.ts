@@ -21,7 +21,7 @@ export const llamaCppAdapter = createOpenAICompatibleAdapter(
       return applyLocalReasoningLevel(
         withRuntimeExtensions,
         config.reasoningLevel,
-        config.reasoningMapping,
+        config.reasoningRequest,
       );
     },
     acceptsReasoningLevel: true,

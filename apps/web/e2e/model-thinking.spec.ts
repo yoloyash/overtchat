@@ -27,13 +27,11 @@ test.beforeAll(async () => {
       return res.end(
         JSON.stringify({
           tokens:
-            body.chat_template_kwargs?.enable_thinking === false
+            body.chat_template_kwargs?.thinking === false
               ? [1, 2, 3]
               : [1, 2],
         }),
       );
-    if (req.url === "/detokenize")
-      return res.end(JSON.stringify({ prompt: "<assistant>" }));
     if (!body.stream)
       return res.end(
         JSON.stringify({
@@ -109,134 +107,94 @@ async function send(page: Page, level: string) {
     .find((body) => JSON.stringify(body.messages).includes('"Hello"'))!;
 }
 
-test("detects a toggle through tokenize, saves it, and sends off and server default from the composer", async ({
+async function chooseSelect(page: Page, trigger: string, option: string) {
+  await page.locator(trigger).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
+test("configures a preset, checks it through tokenize, and sends its fields from the composer", async ({
   page,
 }, testInfo) => {
   const id = await createModel(page);
   await page.goto(`/settings/models/${id}`);
-  await page.getByRole("button", { name: "Detect again" }).click();
   await expect(
     page.getByText(
-      "Thinking controls detected using the server's tokenize endpoint.",
+      "No thinking levels are known for this model. Choose Custom to configure them.",
     ),
   ).toBeVisible();
+  await chooseSelect(page, "#p-thinking-mode", "Custom");
+  await page.getByRole("button", { name: "thinking", exact: true }).click();
+  await page.getByRole("button", { name: "Check with server" }).click();
   await expect(
-    page.getByRole("checkbox", { name: "On / Off", exact: true }),
-  ).toBeChecked();
-  await expect(
-    page.getByRole("checkbox", { name: "Thinking effort high", exact: true }),
-  ).not.toBeChecked();
+    page.getByText(
+      "Each level renders a distinct prompt. Without thinking fields, the server renders like On.",
+    ),
+  ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
     .toBe(390);
-  await page
-    .getByLabel("Configuration", { exact: true })
-    .scrollIntoViewIfNeeded();
+  await page.locator("#p-thinking-requests").scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath("thinking-settings.png"),
     fullPage: true,
   });
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.waitForURL("**/settings/models");
+
   const off = await send(page, "off");
-  expect(off.chat_template_kwargs).toEqual({ enable_thinking: false });
+  expect(off.chat_template_kwargs).toEqual({ thinking: false });
   expect(off).not.toHaveProperty("reasoning_effort");
-  const defaults = await send(page, "Server default");
-  expect(defaults).not.toHaveProperty("chat_template_kwargs");
-  expect(defaults).not.toHaveProperty("reasoning_effort");
+  const on = await send(page, "on (default)");
+  expect(on.chat_template_kwargs).toEqual({ thinking: true });
 });
 
-test("manual effort controls survive detection and reload, reach chat, and can reset to automatic", async ({
+test("custom effort levels validate, persist, reach chat, and reset to automatic", async ({
   page,
 }) => {
+  const id = await createModel(page);
+  await page.goto(`/settings/models/${id}`);
+  await chooseSelect(page, "#p-thinking-mode", "Custom");
+  const requests = page.locator("#p-thinking-requests");
+  const save = page.getByRole("button", { name: "Save changes" });
+  await requests.fill("{");
+  await expect(save).toBeDisabled();
+  await requests.fill(
+    JSON.stringify({
+      off: { reasoning_effort: "none" },
+      high: { reasoning_effort: "high" },
+    }),
+  );
+  await expect(
+    page.getByText("Choose the server's default thinking level."),
+  ).toBeVisible();
+  await chooseSelect(page, "#p-thinking-default", "High");
+  await save.click();
+  await page.waitForURL("**/settings/models");
+
+  await page.goto(`/settings/models/${id}`);
+  await expect(requests).toContainText('"high"');
+  const off = await send(page, "off");
+  expect(off.reasoning_effort).toBe("none");
+  expect(off).not.toHaveProperty("chat_template_kwargs");
+
+  await page.goto(`/settings/models/${id}`);
+  await chooseSelect(page, "#p-thinking-mode", "Automatic");
+  await save.click();
+  await page.waitForURL("**/settings/models");
+  const models = await (await page.request.get("/api/model-configs")).json();
+  expect(models.modelConfigs[0].capabilities?.reasoningControls).toBeUndefined();
+});
+
+test("reports servers without a template render endpoint", async ({ page }) => {
   unavailable = true;
   const id = await createModel(page);
   await page.goto(`/settings/models/${id}`);
-  await page.getByRole("button", { name: "Detect again" }).click();
-  await expect(
-    page.getByText(/Couldn't detect thinking controls:/),
-  ).toBeVisible();
-  await page
-    .getByLabel("Configuration", { exact: true })
-    .selectOption("custom");
-  await page.getByRole("checkbox", { name: "On / Off", exact: true }).check();
-  await page
-    .getByRole("checkbox", { name: "Thinking effort high", exact: true })
-    .check();
-  await page
-    .getByLabel("Thinking toggle parameter", { exact: true })
-    .selectOption("thinking");
-  await page
-    .getByLabel("Thinking effort parameter", { exact: true })
-    .selectOption("chat_template_kwargs.reasoning_effort");
-  unavailable = false;
-  await page.getByRole("button", { name: "Detect again" }).click();
+  await chooseSelect(page, "#p-thinking-mode", "Custom");
+  await page.getByRole("button", { name: "Check with server" }).click();
   await expect(
     page.getByText(
-      "Thinking controls detected using the server's tokenize endpoint.",
+      "This server has no template render endpoint, so the fields can't be checked without generating.",
     ),
   ).toBeVisible();
-  await expect(
-    page.getByRole("checkbox", { name: "Thinking effort high", exact: true }),
-  ).toBeChecked();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await page.waitForURL("**/settings/models");
-  await page.goto(`/settings/models/${id}`);
-  await expect(page.getByLabel("Configuration", { exact: true })).toHaveValue(
-    "custom",
-  );
-  await expect(
-    page.getByLabel("Thinking effort parameter", { exact: true }),
-  ).toHaveValue("chat_template_kwargs.reasoning_effort");
-  const saved = (
-    await (await page.request.get("/api/model-configs?admin=1")).json()
-  ).modelConfigs[0];
-  const legacy = { ...saved };
-  delete legacy.reasoningOverride;
-  expect(
-    (
-      await page.request.patch(`/api/model-configs/${id}`, { data: legacy })
-    ).ok(),
-  ).toBe(true);
-  const afterLegacy = (
-    await (await page.request.get("/api/model-configs?admin=1")).json()
-  ).modelConfigs[0];
-  expect(afterLegacy.reasoningOverride).toEqual(saved.reasoningOverride);
-  const high = await send(page, "high");
-  expect(high.chat_template_kwargs).toEqual({
-    thinking: true,
-    reasoning_effort: "high",
-  });
-  expect(high).not.toHaveProperty("reasoning_effort");
-  await page.goto(`/settings/models/${id}`);
-  await page
-    .getByLabel("Configuration", { exact: true })
-    .selectOption("automatic");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await page.waitForURL("**/settings/models");
-  const models = await (await page.request.get("/api/model-configs")).json();
-  expect(models.modelConfigs[0].capabilities.reasoningControls).toMatchObject({
-    toggle: true,
-    requestMapping: { toggleParameter: "enable_thinking" },
-  });
-  expect(
-    models.modelConfigs[0].capabilities.reasoningControls.efforts,
-  ).toBeUndefined();
 });
-
- test("new model setup prefills detected thinking controls before saving", async ({ page }) => {
-   await page.goto("/settings/models/new");
-   await page.locator("#p-provider").click();
-   await page.getByRole("option", { name: "vLLM", exact: true }).click();
-   await page.locator("#p-base-url").fill(baseUrl);
-   await expect(page.getByText("Thinking controls detected using the server's tokenize endpoint.")).toBeVisible();
-   await expect(page.getByRole("checkbox", { name: "On / Off", exact: true })).toBeChecked();
-   await page.getByRole("button", { name: "Add model", exact: true }).click();
-   await page.waitForURL("**/settings/models");
-   const models = (await (await page.request.get("/api/model-configs?admin=1")).json()).modelConfigs;
-   expect(models).toHaveLength(1);
-   expect(models[0].model).toBe("local-model");
-   expect(models[0].reasoningOverride).toBeNull();
-   expect(models[0].discoveredCapabilities.reasoningControls.toggle).toBe(true);
- });

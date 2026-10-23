@@ -63,7 +63,7 @@ test("search and a single synced default stay independent of existing chats and 
 }) => {
   await preparePicker(page);
   const reasoning = page.getByRole("button", {
-    name: /deepseek-v4-flash-preview-long-name, thinking default/,
+    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
   });
   const fast = page.getByRole("button", { name: "Fast Model", exact: true });
   await reasoning.click();
@@ -141,7 +141,7 @@ test("search and a single synced default stay independent of existing chats and 
     await otherPage.goto("/chat/saved-chat");
     await expect(
       otherPage.getByRole("button", {
-        name: /deepseek-v4-flash-preview-long-name, thinking default/,
+        name: /deepseek-v4-flash-preview-long-name, thinking medium/,
       }),
     ).toBeVisible();
   } finally {
@@ -187,7 +187,7 @@ test("the header saves the selected model even when filtered out, replaces and c
 }) => {
   await preparePicker(page);
   const picker = page.getByRole("button", {
-    name: /deepseek-v4-flash-preview-long-name, thinking default/,
+    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
   });
   const fast = page.getByRole("button", { name: "Fast Model", exact: true });
   const menu = page.getByRole("menu");
@@ -270,7 +270,7 @@ test("failed default saves leave the saved preference unchanged", async ({
   });
   await page
     .getByRole("button", {
-      name: /deepseek-v4-flash-preview-long-name, thinking default/,
+      name: /deepseek-v4-flash-preview-long-name, thinking medium/,
     })
     .click();
   await page.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
@@ -293,7 +293,7 @@ test("reopening the picker refreshes a default changed elsewhere without switchi
 }) => {
   await preparePicker(page);
   const picker = page.getByRole("button", {
-    name: /deepseek-v4-flash-preview-long-name, thinking default/,
+    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
   });
   await picker.click();
   await page.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
@@ -441,7 +441,7 @@ test("model and thinking controls live together in the composer", async ({
 
   const textarea = page.getByPlaceholder("Message… or / for commands");
   const picker = page.getByRole("button", {
-    name: /deepseek-v4-flash-preview-long-name, thinking default/,
+    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
   });
   await expect(textarea).toBeVisible();
   await expect(picker).toBeVisible();
@@ -457,7 +457,7 @@ test("model and thinking controls live together in the composer", async ({
   expect(dictateBox).not.toBeNull();
   expect(pickerBox!.y).toBeGreaterThan(textareaBox!.y);
   expect(pickerBox!.x + pickerBox!.width).toBeLessThanOrEqual(dictateBox!.x);
-  await expect(picker).toContainText("default");
+  await expect(picker).toContainText("medium");
 
   await picker.click();
   const menu = page.getByRole("menu");

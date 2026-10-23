@@ -43,21 +43,13 @@ export const REASONING_EFFORTS = [
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 export type ModelReasoningLevel = "off" | "on" | ReasoningEffort;
 
-/** Request fields used by an OpenAI-compatible model's loaded template. */
-export interface LocalReasoningMapping {
-  toggleParameter?: "enable_thinking" | "thinking";
-  effortParameter?: "reasoning_effort" | "chat_template_kwargs.reasoning_effort";
-}
-
 export interface ModelReasoningControls {
-  /** The detected or administrator-configured model supports disabling thinking. */
+  /** The runtime can render a distinct non-reasoning prompt. */
   toggle: boolean;
-  /** Known server default; omitted when it cannot be identified. */
-  defaultLevel?: ModelReasoningLevel;
-  /** Detected or administrator-configured effort choices. */
+  /** Explicit level whose rendered prompt matches an omitted override. */
+  defaultLevel: ModelReasoningLevel;
+  /** Distinct effort behaviors accepted by the loaded chat template. */
   efforts?: ReasoningEffort[];
-  /** Absent for cloud adapters and older saved discovery results. */
-  requestMapping?: LocalReasoningMapping;
 }
 
 /**

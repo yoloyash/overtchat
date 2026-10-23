@@ -66,13 +66,6 @@ Do not change unrelated manifest fields.
   Release a matching desktop build alongside the server update; verify that
   older clients show the update-required screen before entering the app and
   that the matching client can save and reopen an editing-size override.
-  API level 6 permits thinking controls with an unknown default and adds
-  explicit request mappings and a separate manual override. Earlier bundled
-  clients assume the default is known and cannot reliably render these controls.
-  Release matching desktop/mobile builds with the server; verify mismatched
-  desktop clients show the compatibility screen, and matched clients can select
-  Server default, On/Off, and configured effort levels. See
-  [Local thinking controls validation](development.md#local-thinking-controls-validation).
 - **STT:** The STT workflow builds `speech/stt/Dockerfile.cpu` and
   `speech/stt/Dockerfile.gpu` with `speech/stt/` as their context, publishes both
   images, and dispatches promotion.

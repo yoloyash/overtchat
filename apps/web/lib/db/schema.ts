@@ -14,13 +14,13 @@ import {
   type ChatGenerationStatus,
   type ChatKind,
   type ModelCapabilities,
-  type ModelReasoningControls,
 } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
   PROVIDER_IDS,
 } from "@/lib/providers/catalog";
 import type { ModelPricing } from "@/lib/model-config/schema";
+import type { ReasoningOverride } from "@/lib/model-config/reasoning-override";
 import type { McpServerConfig } from "@/lib/mcp/schema";
 
 // One durable bootstrap record. A null nonce means setup is permanently closed.
@@ -794,7 +794,9 @@ export const modelConfigs = sqliteTable(
     discoveredCapabilities: text("discovered_capabilities", {
       mode: "json",
     }).$type<ModelCapabilities>(),
-    reasoningOverride: text("reasoning_override", { mode: "json" }).$type<ModelReasoningControls>(),
+    reasoningOverride: text("reasoning_override", {
+      mode: "json",
+    }).$type<ReasoningOverride>(),
     systemPrompt: text("system_prompt"),
     providerOptions: text("provider_options", { mode: "json" }).$type<
       Record<string, unknown>

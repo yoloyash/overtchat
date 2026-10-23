@@ -36,27 +36,7 @@ export async function PATCH(
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // Older clients do not know this additive field. Preserve it for an
-  // unchanged model; changing the connection must not reuse its old mapping.
-  let input = body;
-  if (
-    body &&
-    typeof body === "object" &&
-    !Array.isArray(body) &&
-    !("reasoningOverride" in body) &&
-    (!("modelType" in body) || body.modelType !== "image")
-  ) {
-    const record = body as Record<string, unknown>;
-    if (
-      record.model === existing.model &&
-      record.providerId === existing.providerId &&
-      record.apiFormat === existing.apiFormat &&
-      record.baseUrl === existing.baseUrl
-    ) {
-      input = { ...record, reasoningOverride: existing.reasoningOverride };
-    }
-  }
-  const parsed = ModelConfigSchema.safeParse(input);
+  const parsed = ModelConfigSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
@@ -64,8 +44,7 @@ export async function PATCH(
     );
   }
   try {
-    if (parsed.data.modelType !== "image")
-      createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });

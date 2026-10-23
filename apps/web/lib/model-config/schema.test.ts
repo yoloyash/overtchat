@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   modelSupportsChatReasoningLevel,
-  reasoningOptionsForControls,
   modelSupportsToolCalling,
   type ModelCapabilities,
 } from "@overtchat/shared";
@@ -403,63 +402,5 @@ describe("custom image configuration", () => {
     expect(ModelConfigSchema.safeParse({ ...custom, ...patch }).success).toBe(
       false,
     );
-  });
-});
-
-describe("manual thinking controls", () => {
-  const base = {
-    label: "Local",
-    providerId: "vllm",
-    apiFormat: "auto",
-    baseUrl: "http://local/v1",
-    model: "test",
-  };
-  it("accepts manual controls without a detected default and never treats default as an explicit level", () => {
-    const result = ModelConfigSchema.parse({
-      ...base,
-      reasoningOverride: {
-        toggle: false,
-        efforts: ["low", "high"],
-        requestMapping: {
-          effortParameter: "chat_template_kwargs.reasoning_effort",
-        },
-      },
-    });
-    expect(result.reasoningOverride?.defaultLevel).toBeUndefined();
-    expect(
-      reasoningOptionsForControls(result.reasoningOverride ?? undefined),
-    ).toEqual(["default", "low", "high"]);
-    expect(
-      reasoningOptionsForControls({ toggle: true, defaultLevel: "on" }),
-    ).toEqual(["default", "on", "off"]);
-    expect(reasoningOptionsForControls({ toggle: false })).toEqual([]);
-    const effortOnly = {
-      toggle: true,
-      efforts: ["high" as const],
-      requestMapping: { effortParameter: "reasoning_effort" as const },
-    };
-    expect(reasoningOptionsForControls(effortOnly)).toEqual([
-      "default",
-      "off",
-      "high",
-    ]);
-    expect(
-      modelSupportsChatReasoningLevel({ reasoningControls: effortOnly }, "on"),
-    ).toBe(false);
-  });
-  it.each([
-    { toggle: true },
-    { toggle: false, efforts: ["high"] },
-    {
-      toggle: false,
-      efforts: ["ultra"],
-      requestMapping: { effortParameter: "reasoning_effort" },
-    },
-    { toggle: true, requestMapping: { toggleParameter: "messages" } },
-    { toggle: false, defaultLevel: "high" },
-  ])("rejects unmappable or invalid controls: %j", (reasoningOverride) => {
-    expect(
-      ModelConfigSchema.safeParse({ ...base, reasoningOverride }).success,
-    ).toBe(false);
   });
 });

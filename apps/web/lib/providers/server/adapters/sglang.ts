@@ -9,6 +9,6 @@ export const sglangAdapter = createOpenAICompatibleAdapter("sglang", {
     applyLocalReasoningLevel(
       body,
       config.reasoningLevel,
-      config.reasoningMapping,
+      config.reasoningRequest,
     ),
 });

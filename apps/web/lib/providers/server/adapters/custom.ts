@@ -54,7 +54,7 @@ function createCustomLanguageModel(
             applyLocalReasoningLevel(
               body,
               config.reasoningLevel,
-              config.reasoningMapping,
+              config.reasoningRequest,
             ),
         }),
         providerOptionsKey: "custom",

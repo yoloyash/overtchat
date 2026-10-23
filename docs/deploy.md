@@ -726,29 +726,34 @@ file.
 
 ### Local model thinking controls
 
-In **Settings → Models**, choose the matching server provider (for example,
-**vLLM**) and select a discovered model. The **Thinking** section prefills
-controls when the loaded template can be inspected. **Detect again** refreshes
-that information after a server or template change; save to apply the result.
-vLLM discovery tries the render endpoint, then `/tokenize`, without generating
-an answer. Missing inspection endpoints do not prevent ordinary chat.
+OvertChat does not probe a local model's chat template to guess its thinking
+switch. The chat thinking selector uses levels from the model catalog, or from
+detection saved by earlier releases, until an administrator configures them.
 
-If detection is unavailable or incomplete, select **Custom** in Thinking.
-Choose On/Off and the effort levels the model actually supports, then select
-its request parameters. Toggle templates commonly use
-`chat_template_kwargs.enable_thinking` or `chat_template_kwargs.thinking`;
-effort may use `reasoning_effort` or `chat_template_kwargs.reasoning_effort`.
-Custom choices persist separately from detection. Select **Automatic** to use
-detection again, or leave every custom control unchecked to hide the selector.
-These settings also support llama.cpp, SGLang, and custom Chat Completions
-connections. Controls belong to the configured model, not just its server type.
+For vLLM, llama.cpp, SGLang, and custom Chat Completions models, open
+**Settings → Models**, edit the model, and set **Thinking → Levels** to
+**Custom**. Start from a preset:
 
-In chat, **Server default** omits the per-chat thinking override and retains
-any saved Provider options. Explicit choices override conflicting thinking
-parameters while preserving unrelated options. On/Off, effort levels, and
-thinking token budgets are different controls: a template with only an on/off
-switch does not gain effort levels by accepting an API parameter. Backend token
-budgets can still be configured separately through Advanced Provider options.
+- **enable_thinking** or **thinking**: On/Off through
+  `chat_template_kwargs`, for templates with a boolean switch.
+- **reasoning_effort**: low, medium, and high.
+- **None**: hides the thinking selector.
+
+**Request fields** holds one JSON entry per level (`on`, `off`, `minimal`,
+`low`, `medium`, `high`, `xhigh`, or `max`). OvertChat merges the chosen
+level's entry into the request body as a JSON Merge Patch: objects merge,
+`null` removes a field, and other values replace it. Configure both `on` and
+`off`, or at least one effort level. With effort levels, `on` is offered only
+when it is the default. Set **Default level** to what the server does when no
+thinking field is sent; chat preselects it and marks it as the default.
+
+For vLLM and llama.cpp, **Check with server** renders the prompt template once
+per level without generating. vLLM uses its render endpoint and falls back to
+`/tokenize`; llama.cpp uses `/apply-template`. The check reports levels that
+render the same prompt, fields the server rejects, and which level matches a
+request without thinking fields. It cannot see fields the server applies
+outside the template. Custom levels survive model re-detection; select
+**Automatic** to return to catalog or saved levels.
 
 ## Share with your family
 

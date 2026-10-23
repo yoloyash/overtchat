@@ -11,6 +11,7 @@ import type {
   AdminModelConfig,
   ModelConfigInput,
 } from "@/lib/model-config/schema";
+import { readReasoningOverride } from "@/lib/model-config/reasoning-override";
 
 export type { ModelConfigInput };
 export type ModelConfigRow = typeof modelConfigs.$inferSelect;
@@ -31,7 +32,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     contextWindow: row.contextWindow,
     discoveredContextWindow: row.discoveredContextWindow,
     discoveredCapabilities: row.discoveredCapabilities,
-    reasoningOverride: row.reasoningOverride,
+    reasoningOverride: readReasoningOverride(row.reasoningOverride),
     resolvedContextWindow: resolveModelContextWindow(
       row.contextWindow,
       row.discoveredContextWindow,

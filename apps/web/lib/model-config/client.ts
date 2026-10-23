@@ -4,19 +4,23 @@ import {
   resolveChatModelId,
   REASONING_EFFORTS,
   type ModelCapabilities,
+  type ModelReasoningLevel,
+  type ReasoningEffort,
 } from "@overtchat/shared";
 import { useState } from "react";
 import { useModelPreferences } from "@/lib/queries/modelPreferences";
-import { ModelReasoningControlsSchema } from "./schema";
 import type {
   CatalogModelPricing,
   ModelDiscoveryInput,
 } from "@/lib/model-config/schema";
+import type {
+  ReasoningOverride,
+  ThinkingCheckResult,
+} from "@/lib/model-config/reasoning-override";
 import { apiUrl } from "@/lib/api-url";
 
 export interface AvailableModel {
   id: string;
-  reasoningDetection?: string;
   /** Limit reported by the provider endpoint. */
   contextWindow?: number;
   /** Exact vendored-catalog fallback for UI guidance. */
@@ -85,9 +89,6 @@ export async function fetchModelsForProvider(
     return [
       {
         id: record.id,
-        ...(typeof record.reasoningDetection === "string"
-          ? { reasoningDetection: record.reasoningDetection }
-          : {}),
         ...(contextWindow === undefined ? {} : { contextWindow }),
         ...(catalogContextWindow === undefined ? {} : { catalogContextWindow }),
         ...(capabilities === undefined ? {} : { capabilities }),
@@ -166,22 +167,46 @@ function readCapabilities(value: unknown): ModelCapabilities | undefined {
 function readReasoningControls(
   value: unknown,
 ): ModelCapabilities["reasoningControls"] | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
+  }
   const record = value as Record<string, unknown>;
-  const parsed = ModelReasoningControlsSchema.safeParse({
-    ...record,
-    ...(Array.isArray(record.efforts)
-      ? {
-          efforts: [
-            ...new Set(
-              record.efforts.filter((effort) =>
-                REASONING_EFFORTS.includes(effort),
-              ),
-            ),
-          ],
-        }
+  if (typeof record.toggle !== "boolean") return undefined;
+  const defaultLevel = readReasoningLevel(record.defaultLevel);
+  if (!defaultLevel) return undefined;
+  const efforts = Array.isArray(record.efforts)
+    ? record.efforts.filter((effort): effort is ReasoningEffort =>
+        REASONING_EFFORTS.includes(effort as ReasoningEffort),
+      )
+    : undefined;
+  return {
+    toggle: record.toggle,
+    defaultLevel,
+    ...(efforts && efforts.length > 0
+      ? { efforts: [...new Set(efforts)] }
       : {}),
+  };
+}
+
+function readReasoningLevel(value: unknown): ModelReasoningLevel | undefined {
+  if (value === "off" || value === "on") return value;
+  return REASONING_EFFORTS.includes(value as ReasoningEffort)
+    ? (value as ReasoningEffort)
+    : undefined;
+}
+
+export async function checkThinkingLevels(
+  input: ModelDiscoveryInput & {
+    model: string;
+    reasoningOverride: ReasoningOverride;
+  },
+): Promise<ThinkingCheckResult> {
+  const res = await fetch(apiUrl("/api/models/thinking-check"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
-  return parsed.success ? parsed.data : undefined;
+  const json = (await res.json()) as ThinkingCheckResult & { error?: string };
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json;
 }

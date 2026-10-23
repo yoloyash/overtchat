@@ -1265,6 +1265,57 @@ describe("chat route setup boundary", () => {
     );
   });
 
+  it("forwards a custom level's request fields", async () => {
+    const off = { chat_template_kwargs: { thinking: false } };
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "off",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "vllm",
+      apiFormat: "auto",
+      reasoningOverride: {
+        defaultLevel: "on",
+        requests: { on: { chat_template_kwargs: { thinking: true } }, off },
+      },
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: { toggle: true, defaultLevel: "on" },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningLevel: "off", reasoningRequest: off }),
+    );
+  });
+
+  it("rejects levels a custom configuration does not define", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "on",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "vllm",
+      apiFormat: "auto",
+      reasoningOverride: {
+        defaultLevel: "high",
+        requests: { off: {}, high: { reasoning_effort: "high" } },
+      },
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: { toggle: true, defaultLevel: "high", efforts: ["high"] },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(400);
+    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
+  });
+
   it("rejects reasoning levels absent from discovered controls", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,

@@ -1,10 +1,6 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
-import type {
-  ChatReasoningLevel,
-  LocalReasoningMapping,
-  ModelCapabilities,
-} from "@overtchat/shared";
+import type { ChatReasoningLevel, ModelCapabilities } from "@overtchat/shared";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
 
 export interface ProviderConnection {
@@ -22,7 +18,8 @@ export interface ProviderModelConfig extends ProviderConnection {
   supportsImageInput?: boolean;
   /** Per-chat override. Provider adapters decide whether and how to consume it. */
   reasoningLevel?: ChatReasoningLevel;
-  reasoningMapping?: LocalReasoningMapping;
+  /** Administrator-configured request fields for `reasoningLevel`. */
+  reasoningRequest?: Record<string, unknown>;
 }
 
 export interface ResolvedLanguageModel {
@@ -42,8 +39,6 @@ export interface DiscoveredModel {
   id: string;
   contextWindow?: number;
   capabilities?: ModelCapabilities;
-  /** Safe, actionable discovery status for model setup. */
-  reasoningDetection?: string;
 }
 
 export type AnthropicCacheControl = NonNullable<

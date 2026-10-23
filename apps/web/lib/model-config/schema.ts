@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { CustomImageOptionsSchema, customImageOptions } from "./image-options";
+import { REASONING_EFFORTS, type ModelCapabilities } from "@overtchat/shared";
 import {
-  REASONING_EFFORTS,
-  type ModelCapabilities,
-  type ModelReasoningControls,
-} from "@overtchat/shared";
+  ReasoningOverrideSchema,
+  type ReasoningOverride,
+} from "./reasoning-override";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -51,8 +51,8 @@ export interface AdminModelConfig {
   resolvedContextWindow?: number;
   /** Runtime fields with exact-catalog fallback for admin UI guidance. */
   resolvedCapabilities?: ModelCapabilities;
-  /** Null follows discovery; an explicit profile survives re-detection. */
-  reasoningOverride?: ModelReasoningControls | null;
+  /** Null follows the catalog or saved detection; survives re-detection. */
+  reasoningOverride: ReasoningOverride | null;
   systemPrompt: string | null;
   providerOptions: Record<string, unknown> | null;
   toolCallingEnabled: boolean;
@@ -98,23 +98,6 @@ const RuntimeModelFields = {
     .transform((value) => value ?? true),
 };
 
-export const ModelReasoningControlsSchema = z.object({
-  toggle: z.boolean(),
-  defaultLevel: z.enum(["off", "on", ...REASONING_EFFORTS]).optional(),
-  efforts: z
-    .array(z.enum(REASONING_EFFORTS))
-    .max(REASONING_EFFORTS.length)
-    .optional(),
-  requestMapping: z
-    .object({
-      toggleParameter: z.enum(["enable_thinking", "thinking"]).optional(),
-      effortParameter: z
-        .enum(["reasoning_effort", "chat_template_kwargs.reasoning_effort"])
-        .optional(),
-    })
-    .optional(),
-});
-
 export function supportsLocalReasoningConfig(
   providerId: string,
   apiFormat: string,
@@ -134,7 +117,13 @@ const ModelCapabilitiesSchema = z
     attachment: z.boolean().optional(),
     toolCalling: z.boolean().optional(),
     reasoning: z.boolean().optional(),
-    reasoningControls: ModelReasoningControlsSchema.optional(),
+    reasoningControls: z
+      .object({
+        toggle: z.boolean(),
+        defaultLevel: z.enum(["off", "on", ...REASONING_EFFORTS]),
+        efforts: z.array(z.enum(REASONING_EFFORTS)).optional(),
+      })
+      .optional(),
     structuredOutput: z.boolean().optional(),
     temperature: z.boolean().optional(),
   })
@@ -171,7 +160,7 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
   discoveredCapabilities: ModelCapabilitiesSchema.nullish().transform(
     (value) => value ?? null,
   ),
-  reasoningOverride: ModelReasoningControlsSchema.nullish().transform(
+  reasoningOverride: ReasoningOverrideSchema.nullish().transform(
     (value) => value ?? null,
   ),
   systemPrompt: z
@@ -197,52 +186,7 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
         code: "custom",
         path: ["reasoningOverride"],
         message:
-          "Custom thinking controls require a local or OpenAI-compatible chat provider.",
-      });
-    }
-    if (
-      override?.toggle &&
-      !override.requestMapping?.toggleParameter &&
-      !override.requestMapping?.effortParameter
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["reasoningOverride"],
-        message: "Choose a request parameter for the thinking toggle.",
-      });
-    }
-    if (
-      override?.toggle &&
-      !override.requestMapping?.toggleParameter &&
-      !override.efforts?.length
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["reasoningOverride"],
-        message:
-          "Select an effort level to enable thinking when using an effort-only toggle.",
-      });
-    }
-    if (
-      override?.efforts?.length &&
-      !override.requestMapping?.effortParameter
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["reasoningOverride"],
-        message: "Choose a request parameter for thinking effort.",
-      });
-    }
-    if (
-      override?.defaultLevel &&
-      !(override.defaultLevel === "on" || override.defaultLevel === "off"
-        ? override.toggle
-        : override.efforts?.includes(override.defaultLevel))
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["reasoningOverride"],
-        message: "The default thinking level must be an available option.",
+          "Custom thinking levels require a local or Chat Completions provider.",
       });
     }
     if (value.modelType === "image") {
