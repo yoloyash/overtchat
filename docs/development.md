@@ -350,21 +350,26 @@ E2E_PORT=4857 npm run test:e2e -w apps/web -- model-thinking.spec.ts composer-mo
 
 The browser tests exercise presets, the template check with `/tokenize`
 fallback, an unavailable render endpoint, JSON validation, persistence, and
-composer requests against a local HTTP fixture. For a running vLLM model whose
-template has a thinking switch and whose server parses reasoning, opt in to two
-small generations:
+composer requests against a local HTTP fixture. To send one small generation
+per level to a running model, opt in to the live test:
 
 ```sh
-VLLM_LIVE_URL=http://localhost:8000/v1 \
-VLLM_LIVE_MODEL=mimo-v2.6-flash \
-npm run test -w apps/web -- lib/providers/server/vllm-reasoning.live.test.ts
+THINKING_LIVE_URL=http://localhost:8000/v1 \
+THINKING_LIVE_PROVIDER=custom \
+THINKING_LIVE_REQUESTS='{"low":{"reasoning_effort":25},"high":{"reasoning_effort":100}}' \
+THINKING_LIVE_DEFAULT=high \
+npm run test -w apps/web -- lib/providers/server/thinking.live.test.ts
 ```
 
-Set `VLLM_LIVE_API_KEY` if required and `VLLM_LIVE_PRESET` to use a preset
-other than `enable_thinking`. Omit `VLLM_LIVE_MODEL` to use the first listed
-model. The test checks the preset against the template, then sends Off and On
-through the production adapter and checks both answers and reasoning presence.
-It does not modify saved models or chats. Ordinary unit runs skip it.
+`THINKING_LIVE_PROVIDER` defaults to `vllm`, and `THINKING_LIVE_REQUESTS`
+defaults to the `enable_thinking` preset. Set `THINKING_LIVE_MODEL` to choose
+a model other than the first listed one and `THINKING_LIVE_API_KEY` if
+required. For vLLM and llama.cpp, the test first requires the template check
+to report distinct levels. Each generation must answer correctly with the
+level's fields in the request body; Off must produce no reasoning and On must
+produce some. `THINKING_LIVE_REPORT` writes a small JSON report without
+credentials or transcripts. The test does not modify saved models or chats,
+and ordinary unit runs skip it.
 
 ## Chat compaction validation
 
