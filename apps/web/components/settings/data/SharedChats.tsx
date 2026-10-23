@@ -29,7 +29,7 @@ export function SharedChats() {
             <li key={share.id} className="flex items-center gap-4 p-4">
               <div className="min-w-0 flex-1">
                 <a
-                  href={shareUrl(share.id)}
+                  href={shareUrl(share)}
                   target="_blank"
                   rel="noreferrer"
                   className="block truncate text-sm font-medium underline"

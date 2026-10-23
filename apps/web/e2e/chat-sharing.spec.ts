@@ -1,4 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { networkInterfaces } from "node:os";
+import { createServer as createHttpsServer } from "node:https";
+import { request as httpRequest } from "node:http";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { chromium, expect, test, type Page } from "@playwright/test";
 import {
   openE2eDatabase,
   resetE2eDatabase,
@@ -355,6 +362,15 @@ test("shares every message in a long chat and works on a narrow touch viewport",
   } finally {
     db.close();
   }
+  // The submitted form value is beyond page one, but its form must display it immediately.
+  const formDb = openE2eDatabase();
+  try {
+    formDb
+      .prepare("UPDATE messages SET created_at = 1000 WHERE id = 'form-answer'")
+      .run();
+  } finally {
+    formDb.close();
+  }
   const response = await page.request.post("/api/chat/sharing-chat/share");
   const { share } = await response.json();
   const anonymous = await browser.newContext({
@@ -365,12 +381,26 @@ test("shares every message in a long chat and works on a narrow touch viewport",
   });
   try {
     const reader = await anonymous.newPage();
+    const firstPage = reader.waitForResponse((r) =>
+      r.url().includes(`/api/share/${share.id}`),
+    );
     await reader.goto(`/share/${share.id}`);
+    expect((await (await firstPage).json()).messages).toHaveLength(50);
     await expect(
-      reader.getByText("Explain the research", { exact: true }),
-    ).toBeVisible();
+      reader.getByRole("textbox", { name: "Destination", exact: true }),
+    ).toHaveValue("Kyoto");
+    await expect(reader.locator("article")).toHaveCount(50);
+    const secondPage = reader.waitForResponse((r) =>
+      r.url().includes("?cursor="),
+    );
     await reader.getByRole("button", { name: "Show more messages" }).tap();
+    expect((await (await secondPage).json()).messages).toHaveLength(50);
+    await expect(reader.locator("article")).toHaveCount(100);
+    const thirdPage = reader.waitForResponse((r) =>
+      r.url().includes("?cursor="),
+    );
     await reader.getByRole("button", { name: "Show more messages" }).tap();
+    expect((await (await thirdPage).json()).messages).toHaveLength(18);
     await expect(
       reader.getByText("Long conversation message 114", { exact: true }),
     ).toBeVisible();
@@ -436,5 +466,216 @@ test("public tokens cannot manage chats or access unrelated files; deleting the 
     ).toBe(404);
   } finally {
     await anonymous.close();
+  }
+});
+
+test("requires a fresh transcript when the owner updates between pages", async ({
+  page,
+  browser,
+}) => {
+  await setup(page);
+  const db = openE2eDatabase();
+  try {
+    const insert = db.prepare(
+      "INSERT INTO messages (id, chat_id, role, parts, created_at) VALUES (?, 'sharing-chat', 'assistant', ?, ?)",
+    );
+    for (let i = 0; i < 60; i++)
+      insert.run(
+        `more-${i}`,
+        JSON.stringify([{ type: "text", text: `More ${i}` }]),
+        10 + i,
+      );
+  } finally {
+    db.close();
+  }
+  const { share } = await (
+    await page.request.post("/api/chat/sharing-chat/share")
+  ).json();
+  const anonymous = await browser.newContext({
+    baseURL: new URL(page.url()).origin,
+  });
+  try {
+    const reader = await anonymous.newPage();
+    await reader.goto(`/share/${share.id}`);
+    await expect(reader.locator("article")).toHaveCount(50);
+    const editDb = openE2eDatabase();
+    try {
+      editDb
+        .prepare(
+          "UPDATE chats SET title = 'Updated reference' WHERE id = 'sharing-chat'",
+        )
+        .run();
+    } finally {
+      editDb.close();
+    }
+    expect((await page.request.put("/api/chat/sharing-chat/share")).ok()).toBe(
+      true,
+    );
+    await reader.getByRole("button", { name: "Show more messages" }).click();
+    await expect(reader.locator("main").getByRole("alert")).toContainText("was updated");
+    await reader.getByRole("button", { name: "Reload shared chat" }).click();
+    await expect(
+      reader.getByRole("heading", { name: "Updated reference", exact: true }),
+    ).toBeVisible();
+    await expect(reader.locator("article")).toHaveCount(50);
+    await reader.getByRole("button", { name: "Show more messages" }).click();
+    await expect(reader.locator("article")).toHaveCount(63);
+  } finally {
+    await anonymous.close();
+  }
+});
+
+test("serves anonymous shared pages and files through a LAN address", async ({
+  page,
+  browser,
+}) => {
+  const { document } = await setup(page);
+  const { share } = await (
+    await page.request.post("/api/chat/sharing-chat/share")
+  ).json();
+  const lan = Object.values(networkInterfaces())
+    .flat()
+    .find((address) => address?.family === "IPv4" && !address.internal);
+  expect(lan, "test host must have a LAN interface").toBeTruthy();
+  const origin = new URL(page.url());
+  origin.hostname = lan!.address;
+  const anonymous = await browser.newContext();
+  try {
+    const reader = await anonymous.newPage();
+    await reader.goto(new URL(`/share/${share.id}`, origin).href);
+    await expect(
+      reader.getByRole("heading", { name: "Research reference", exact: true }),
+    ).toBeVisible();
+    const file = reader.getByRole("link", { name: /notes.txt/ });
+    const url = new URL((await file.getAttribute("href"))!, origin);
+    expect(url.hostname).toBe(lan!.address);
+    const response = await anonymous.request.get(url.href);
+    expect(response.ok()).toBe(true);
+    expect(await response.text()).toBe("Shared attachment contents");
+    expect(
+      (
+        await anonymous.request.get(new URL(document.url, origin).href)
+      ).status(),
+    ).toBe(401);
+  } finally {
+    await anonymous.close();
+  }
+});
+
+test("serves shared content through HTTPS at a Cloud-style hostname", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const { image } = await setup(page);
+  const { share } = await (
+    await page.request.post("/api/chat/sharing-chat/share")
+  ).json();
+  const upstream = new URL(page.url()).origin;
+  const folder = mkdtempSync(path.join(tmpdir(), "overtchat-share-proxy-"));
+  const key = path.join(folder, "key.pem");
+  const cert = path.join(folder, "cert.pem");
+  const host = "share-test.overtchat.app";
+  execFileSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      key,
+      "-out",
+      cert,
+      "-days",
+      "1",
+      "-subj",
+      `/CN=${host}`,
+      "-addext",
+      `subjectAltName=DNS:${host}`,
+    ],
+    { stdio: "ignore" },
+  );
+  const proxy = createHttpsServer(
+    { key: readFileSync(key), cert: readFileSync(cert) },
+    (req, res) => {
+      const target = httpRequest(
+        new URL(req.url!, upstream),
+        {
+          method: req.method,
+          headers: {
+            ...req.headers,
+            "x-forwarded-host": req.headers.host,
+            "x-forwarded-proto": "https",
+          },
+        },
+        (response) => {
+          res.writeHead(response.statusCode!, response.headers);
+          response.pipe(res);
+        },
+      );
+      target.on("error", () => {
+        res.writeHead(502);
+        res.end();
+      });
+      req.pipe(target);
+      res.on("close", () => target.destroy());
+    },
+  );
+  await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  const port = (proxy.address() as { port: number }).port;
+  const cloudBrowser = await chromium.launch({
+    args: [`--host-resolver-rules=MAP ${host} 127.0.0.1`, "--no-proxy-server"],
+  });
+  try {
+    const context = await cloudBrowser.newContext({ ignoreHTTPSErrors: true });
+    const reader = await context.newPage();
+    const errors: string[] = [];
+    reader.on("pageerror", (e) => errors.push(e.message));
+    const origin = `https://${host}:${port}`;
+    const response = await reader.goto(`${origin}/share/${share.id}`);
+    expect(response?.headers()["x-robots-tag"]).toContain("noindex");
+    await expect(
+      reader.getByRole("heading", { name: "Research reference", exact: true }),
+    ).toBeVisible();
+    await expect(reader.getByAltText("photo.png")).toBeVisible();
+    await expect
+      .poll(() =>
+        reader
+          .getByAltText("photo.png")
+          .evaluate((node) => (node as HTMLImageElement).naturalWidth),
+      )
+      .toBe(1);
+    expect(
+      await reader
+        .getByAltText("photo.png")
+        .evaluate((node) => (node as HTMLImageElement).src),
+    ).toBe(`${origin}/api/share/${share.id}/files/${image.id}`);
+    const text = await reader.evaluate(async (id) => {
+      const response = await fetch(`/api/share/${id}`);
+      return { status: response.status, body: await response.json() };
+    }, share.id);
+    expect(text.status).toBe(200);
+    expect(text.body.title).toBe("Research reference");
+    expect(errors).toEqual([]);
+    await page.request.delete("/api/chat/sharing-chat/share");
+    await reader.reload();
+    await expect(
+      reader.getByRole("heading", {
+        name: "Shared chat unavailable",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(
+      await reader.evaluate(
+        async (url) => (await fetch(url)).status,
+        `/api/share/${share.id}/files/${image.id}`,
+      ),
+    ).toBe(404);
+  } finally {
+    await cloudBrowser.close();
+    proxy.closeAllConnections();
+    await new Promise<void>((resolve) => proxy.close(() => resolve()));
+    rmSync(folder, { recursive: true, force: true });
   }
 });

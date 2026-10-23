@@ -1,3 +1,4 @@
+import { withShareUrl } from "@/lib/share-url";
 import { auth } from "@/lib/auth/server";
 import { getChat } from "@/lib/db/chats";
 import {
@@ -17,13 +18,14 @@ async function handle(req: Request, context: Context) {
   if (!(await getChat(id, userId)))
     return new Response("Not found", { status: 404 });
   return shareResponse(() => {
-    if (req.method === "GET") return { share: getChatShare(id, userId) };
+    if (req.method === "GET")
+      return { share: withShareUrl(getChatShare(id, userId)) };
     if (req.method === "DELETE") {
       revokeChatShare(id, userId);
       return { share: null };
     }
     const share = publishChatShare(id, userId, req.method === "PUT");
-    return share ? { share } : null;
+    return share ? { share: withShareUrl(share) } : null;
   });
 }
 

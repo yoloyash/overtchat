@@ -1,5 +1,5 @@
 import { createRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { rootRoute } from "./root";
 import { publicShareQuery } from "@/lib/queries/shares";
 import { SharedTranscript } from "@/components/chat/SharedTranscript";
@@ -13,15 +13,15 @@ export const shareRoute = createRoute({
 
 function SharedChatPage() {
   const { id } = shareRoute.useParams();
-  const query = useQuery(publicShareQuery(id));
+  const query = useInfiniteQuery(publicShareQuery(id));
+  const client = useQueryClient();
+  const data = query.data?.pages[0];
   return (
     <div className="min-h-dvh overflow-auto bg-background text-foreground">
       <meta name="robots" content="noindex,nofollow,noarchive" />
       <meta name="referrer" content="no-referrer" />
       <title>
-        {query.data?.title
-          ? `${query.data.title} · OvertChat`
-          : "Shared chat · OvertChat"}
+        {data?.title ? `${data.title} · OvertChat` : "Shared chat · OvertChat"}
       </title>
       <header className="border-b px-6 py-4">
         <Link to="/" className="font-semibold">
@@ -34,20 +34,38 @@ function SharedChatPage() {
         ) : query.error ? (
           <div role="alert" className="space-y-3">
             <p>{query.error.message}</p>
-            <Button onClick={() => void query.refetch()}>Try again</Button>
+            <Button
+              onClick={() =>
+                void client.resetQueries({
+                  queryKey: publicShareQuery(id).queryKey,
+                })
+              }
+            >
+              Reload shared chat
+            </Button>
           </div>
-        ) : query.data ? (
+        ) : data ? (
           <>
             <div>
               <h1 className="text-2xl font-semibold wrap-anywhere">
-                {query.data.title}
+                {data.title}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 Shared conversation ·{" "}
-                {new Date(query.data.updatedAt!).toLocaleDateString()}
+                {new Date(data.updatedAt!).toLocaleDateString()}
               </p>
             </div>
-            <SharedTranscript messages={query.data.messages} />
+            <SharedTranscript
+              messages={query.data!.pages.flatMap(
+                (page) => page?.messages ?? [],
+              )}
+              formStates={query.data!.pages.flatMap(
+                (page) => page?.formStates ?? [],
+              )}
+              onLoadMore={() => void query.fetchNextPage()}
+              hasMore={query.hasNextPage}
+              loadingMore={query.isFetchingNextPage}
+            />
           </>
         ) : (
           <div>

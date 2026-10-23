@@ -1,4 +1,9 @@
 import "server-only";
+import {
+  collectOpenUIStates,
+  type SharedConversationPage,
+} from "@overtchat/shared";
+import type { UIMessage } from "ai";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "./client";
 import {
@@ -12,6 +17,7 @@ import { sharedMessages } from "@/lib/sharing";
 import { mapUploadReferences } from "@/lib/sharing-uploads";
 
 export class ShareConflict extends Error {}
+export class ShareBadRequest extends Error {}
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -128,7 +134,9 @@ export function publishChatShare(
       const content = snapshot(tx, chatId, userId);
       if (!content) return null;
       const id = existing?.id ?? crypto.randomUUID();
-      const now = new Date();
+      const now = new Date(
+        Math.max(Date.now(), (existing?.updatedAt.getTime() ?? 0) + 1),
+      );
       const row = {
         id,
         chatId,
@@ -161,17 +169,77 @@ export function revokeChatShare(chatId: string, userId: string) {
     .run();
 }
 
-export function readChatShare(id: string) {
-  const row = db.select().from(chatShares).where(eq(chatShares.id, id)).get();
-  if (!row) return null;
-  return {
-    title: row.title,
-    updatedAt: row.updatedAt.toISOString(),
-    messages: mapUploadReferences(
-      row.messages,
-      (uploadId) => `/api/share/${id}/files/${uploadId}`,
-    ),
-  };
+/** SQLite selects a page; the application never decodes the entire snapshot on reads. */
+export function readChatShare(
+  id: string,
+  cursor?: string,
+): SharedConversationPage | null {
+  if (cursor && !/^\d{1,16}:\d{1,9}$/.test(cursor))
+    throw new ShareBadRequest("Invalid page cursor.");
+  return db.transaction((tx) => {
+    const row = tx
+      .select({
+        title: chatShares.title,
+        updatedAt: chatShares.updatedAt,
+        total: sql<number>`json_array_length(${chatShares.messages})`,
+      })
+      .from(chatShares)
+      .where(eq(chatShares.id, id))
+      .get();
+    if (!row) return null;
+    const [revision, offset = 0] = cursor ? cursor.split(":").map(Number) : [];
+    if (revision !== undefined && revision !== row.updatedAt.getTime()) {
+      throw new ShareConflict(
+        "This shared chat was updated. Reload to see the latest version.",
+      );
+    }
+    if (offset >= row.total && offset !== 0)
+      throw new ShareBadRequest("Invalid page cursor.");
+    const page = tx
+      .all<{ message: string }>(
+        sql`
+      SELECT item.value AS message FROM chat_shares, json_each(chat_shares.messages) AS item
+      WHERE chat_shares.id = ${id} AND item.key >= ${offset}
+      ORDER BY item.key LIMIT 50
+    `,
+      )
+      .map((item) => JSON.parse(item.message) as UIMessage);
+    // A later user turn can hold the saved state of a form on this page.
+    const formMessages = page.length
+      ? tx
+          .all<{ metadata: string }>(
+            sql`
+      SELECT json_extract(item.value, '$.metadata') AS metadata
+      FROM chat_shares, json_each(chat_shares.messages) AS item
+      WHERE chat_shares.id = ${id}
+      AND json_extract(item.value, '$.metadata.openuiAction.messageId') IN (${sql.join(
+        page.map((m) => sql`${m.id}`),
+        sql`, `,
+      )})
+      ORDER BY item.key
+    `,
+          )
+          .map((item) => ({
+            id: "",
+            role: "user" as const,
+            parts: [],
+            metadata: JSON.parse(item.metadata),
+          }))
+      : [];
+    return {
+      title: row.title,
+      updatedAt: row.updatedAt.toISOString(),
+      messages: mapUploadReferences(
+        page,
+        (uploadId) => `/api/share/${id}/files/${uploadId}`,
+      ),
+      formStates: [...collectOpenUIStates(formMessages)],
+      nextCursor:
+        offset + page.length < row.total
+          ? `${row.updatedAt.getTime()}:${offset + page.length}`
+          : null,
+    };
+  });
 }
 
 export function readSharedUpload(shareId: string, uploadId: string) {

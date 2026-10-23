@@ -53,7 +53,7 @@ export function ShareChatDialog({
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const share = current.data?.share;
-  const url = share ? shareUrl(share.id) : "";
+  const url = share ? shareUrl(share) : "";
   const error = change.error || current.error;
 
   async function copy() {
@@ -91,7 +91,8 @@ export function ShareChatDialog({
           <Dialog.Description className="mt-2 text-sm text-muted-foreground">
             Anyone with the link can read this conversation, including its
             attachments, reasoning, and tool results. New messages and edits
-            stay private until you update the link.
+            stay private until you update the link. Deleting this chat also
+            removes its link.
           </Dialog.Description>
           {share && (
             <div className="mt-4 space-y-2">

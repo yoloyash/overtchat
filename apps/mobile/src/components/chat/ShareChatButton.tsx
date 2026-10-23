@@ -79,7 +79,7 @@ function ShareChatContent({
   const [nativeError, setNativeError] = useState("");
   const share = current.data?.share;
   const url = share
-    ? `${getApiBase()}/share/${encodeURIComponent(share.id)}`
+    ? (share.url ?? `${getApiBase()}/share/${encodeURIComponent(share.id)}`)
     : "";
   const error = change.error || current.error;
   const button = (label: string, action: () => void, disabled = false) => (
@@ -120,7 +120,7 @@ function ShareChatContent({
       <Text style={{ color: colors.mutedForeground }}>
         Anyone with the link can read this conversation, including attachments,
         reasoning, and tool results. New messages and edits stay private until
-        you update the link.
+        you update the link. Deleting this chat also removes its link.
       </Text>
       {share && (
         <>

@@ -1,10 +1,7 @@
-import { ShareConflict } from "@/lib/db/chatShares";
+import { ShareBadRequest, ShareConflict } from "@/lib/db/chatShares";
 
-export const shareHeaders = {
-  "Cache-Control": "no-store",
-  "X-Robots-Tag": "noindex, nofollow, noarchive",
-  "Referrer-Policy": "no-referrer",
-};
+import { shareHeaders } from "./share-headers";
+export { shareHeaders } from "./share-headers";
 
 export function shareResponse(action: () => unknown): Response {
   try {
@@ -16,9 +13,9 @@ export function shareResponse(action: () => unknown): Response {
         })
       : Response.json(result, { headers: shareHeaders });
   } catch (error) {
-    if (error instanceof ShareConflict) {
+    if (error instanceof ShareConflict || error instanceof ShareBadRequest) {
       return new Response(error.message, {
-        status: 409,
+        status: error instanceof ShareBadRequest ? 400 : 409,
         headers: shareHeaders,
       });
     }

@@ -1,15 +1,30 @@
 import { useMemo, useState } from "react";
 import type { UIMessage } from "ai";
-import { collectOpenUIStates } from "@overtchat/shared";
+import { collectOpenUIStates, type OpenUIFormState } from "@overtchat/shared";
 import { MessageBubble } from "./MessageBubble";
 import { Button } from "@/components/ui/button";
 
-export function SharedTranscript({ messages }: { messages: UIMessage[] }) {
+export function SharedTranscript({
+  messages,
+  formStates,
+  onLoadMore,
+  hasMore,
+  loadingMore,
+}: {
+  messages: UIMessage[];
+  formStates?: Array<[string, OpenUIFormState]>;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+}) {
   const [visible, setVisible] = useState(50);
-  const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
+  const openuiStates = useMemo(
+    () => new Map([...collectOpenUIStates(messages), ...(formStates ?? [])]),
+    [messages, formStates],
+  );
   return (
     <div className="space-y-8" data-shared-transcript="">
-      {messages.slice(0, visible).map((message) => (
+      {(onLoadMore ? messages : messages.slice(0, visible)).map((message) => (
         <article
           key={message.id}
           aria-label={
@@ -27,12 +42,13 @@ export function SharedTranscript({ messages }: { messages: UIMessage[] }) {
           />
         </article>
       ))}
-      {visible < messages.length && (
+      {(onLoadMore ? hasMore : visible < messages.length) && (
         <Button
           variant="outline"
-          onClick={() => setVisible((count) => count + 50)}
+          disabled={loadingMore}
+          onClick={onLoadMore ?? (() => setVisible((count) => count + 50))}
         >
-          Show more messages
+          {loadingMore ? "Loading messages…" : "Show more messages"}
         </Button>
       )}
     </div>

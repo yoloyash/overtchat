@@ -89,7 +89,7 @@ import { ShareChatButton } from "./ShareChatButton";
 let root: Root;
 let container: HTMLElement;
 let qc: QueryClient;
-let shared: { id: string } | null;
+let shared: { id: string; url?: string } | null;
 const writes: string[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
@@ -215,4 +215,36 @@ it("keeps publication disabled while generating and surfaces server failures wit
   );
   expect(button("Share link")).toBeUndefined();
   expect(button("Create link").disabled).toBe(false);
+});
+
+it("uses the configured Cloud share address while connected through LAN", async () => {
+  mocks.server = "http://192.168.1.20:4718";
+  shared = {
+    id: "share-token",
+    url: "https://smiths.overtchat.app/share/share-token",
+  };
+  await render();
+  await click("Share chat");
+  await click("Share link");
+  expect(mocks.share).toHaveBeenCalledWith({
+    message: shared.url,
+    url: shared.url,
+  });
+  await click("View shared chat");
+  expect(mocks.open).toHaveBeenCalledWith(shared.url);
+  expect(
+    mocks.fetch.mock.calls.every(([url]) => url.startsWith(mocks.server)),
+  ).toBe(true);
+});
+
+it("shares a LAN address when the server has no public address", async () => {
+  mocks.server = "http://192.168.1.20:4718";
+  await render();
+  await click("Share chat");
+  await click("Create link");
+  await click("Share link");
+  expect(mocks.share).toHaveBeenCalledWith({
+    message: "http://192.168.1.20:4718/share/share-token",
+    url: "http://192.168.1.20:4718/share/share-token",
+  });
 });

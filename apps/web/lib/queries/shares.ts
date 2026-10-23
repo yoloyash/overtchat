@@ -1,9 +1,11 @@
 import {
   queryOptions,
+  infiniteQueryOptions,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
 import { apiUrl, getApiOrigin } from "@/lib/api-url";
+import type { SharedConversationPage } from "@overtchat/shared";
 import type { ChatShare, SharedConversation } from "@/lib/sharing";
 import { shareKeys } from "./keys";
 
@@ -14,8 +16,11 @@ async function request<T>(path: string, method = "GET"): Promise<T> {
   return response.json();
 }
 
-export function shareUrl(id: string) {
-  return `${getApiOrigin() || window.location.origin}/share/${encodeURIComponent(id)}`;
+export function shareUrl(share: ChatShare) {
+  return (
+    share.url ??
+    `${getApiOrigin() || window.location.origin}/share/${encodeURIComponent(share.id)}`
+  );
 }
 
 export const sharesQuery = queryOptions({
@@ -46,21 +51,29 @@ export const sharePreviewQuery = (id: string) =>
   });
 
 export const publicShareQuery = (id: string) =>
-  queryOptions({
+  infiniteQueryOptions({
     queryKey: shareKeys.public(id),
-    queryFn: async (): Promise<SharedConversation | null> => {
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }): Promise<SharedConversationPage | null> => {
+      const suffix = pageParam
+        ? `?cursor=${encodeURIComponent(pageParam)}`
+        : "";
       const response = await fetch(
-        apiUrl(`/api/share/${encodeURIComponent(id)}`),
+        apiUrl(`/api/share/${encodeURIComponent(id)}${suffix}`),
         { cache: "no-store" },
       );
-      if (response.status === 404) return null;
+      if (response.status === 404 && !pageParam) return null;
       if (!response.ok)
-        throw new Error("Could not load the shared chat. Please try again.");
+        throw new Error(
+          (await response.text()) || "Could not load the shared chat.",
+        );
       return response.json();
     },
+    getNextPageParam: (last) => last?.nextCursor ?? undefined,
     staleTime: 0,
     gcTime: 0,
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
 export function useChangeChatShare() {

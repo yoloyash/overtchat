@@ -57,6 +57,16 @@ beforeEach(() => {
   message("answer", "assistant", [{ type: "text", text: "Answer" }]);
 });
 
+function readAll(id: string) {
+  let page = shares.readChatShare(id)!;
+  const messages = [...page.messages];
+  while (page.nextCursor) {
+    page = shares.readChatShare(id, page.nextCursor)!;
+    messages.push(...page.messages);
+  }
+  return messages;
+}
+
 function message(
   id: string,
   role: string,
@@ -92,10 +102,8 @@ describe("shared conversation persistence", () => {
       ]);
     const share = shares.publishChatShare("chat", "owner")!;
     expect(share.id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(shares.readChatShare(share.id)?.messages).toHaveLength(122);
-    expect(shares.readChatShare(share.id)?.messages.at(-1)?.id).toBe(
-      "long-119",
-    );
+    expect(readAll(share.id)).toHaveLength(122);
+    expect(readAll(share.id).at(-1)?.id).toBe("long-119");
     raw.exec(
       "DELETE FROM messages WHERE id = 'answer'; UPDATE chats SET title = 'Edited title' WHERE id = 'chat'",
     );
@@ -109,7 +117,61 @@ describe("shared conversation persistence", () => {
     expect(frozen.messages.some((m) => m.id === "later")).toBe(false);
     expect(shares.publishChatShare("chat", "owner", true)?.id).toBe(share.id);
     expect(shares.readChatShare(share.id)?.title).toBe("Edited title");
-    expect(shares.readChatShare(share.id)?.messages.at(-1)?.id).toBe("later");
+    expect(readAll(share.id).at(-1)?.id).toBe("later");
+  });
+
+  it("pages snapshots consistently and preserves form state submitted on a later page", () => {
+    for (let i = 0; i < 110; i++)
+      message(`page-${i}`, "assistant", [{ type: "text", text: `Page ${i}` }]);
+    message("late-form", "user", [{ type: "text", text: "Submit" }], {
+      openuiAction: {
+        messageId: "answer",
+        toolCallId: "form",
+        message: "Submit",
+        formState: { city: "Kyoto" },
+      },
+    });
+    const share = shares.publishChatShare("chat", "owner")!;
+    const first = shares.readChatShare(share.id)!;
+    expect(first.messages).toHaveLength(50);
+    expect(first.messages.at(-1)?.id).toBe("page-47");
+    expect(first.formStates).toEqual([
+      [JSON.stringify(["answer", "form"]), { city: "Kyoto" }],
+    ]);
+    const second = shares.readChatShare(share.id, first.nextCursor!)!;
+    expect(second.messages[0].id).toBe("page-48");
+    expect(second.messages).toHaveLength(50);
+    const third = shares.readChatShare(share.id, second.nextCursor!)!;
+    expect(third.messages).toHaveLength(13);
+    expect(third.nextCursor).toBeNull();
+    expect(readAll(share.id).map((m) => m.id)).toHaveLength(113);
+    expect(() => shares.readChatShare(share.id, "garbage")).toThrow(
+      "Invalid page cursor",
+    );
+    expect(() =>
+      shares.readChatShare(
+        share.id,
+        first.nextCursor!.replace(":50", ":99999"),
+      ),
+    ).toThrow("Invalid page cursor");
+    shares.publishChatShare("chat", "owner", true);
+    expect(() => shares.readChatShare(share.id, first.nextCursor!)).toThrow(
+      "was updated",
+    );
+    shares.revokeChatShare("chat", "owner");
+    expect(shares.readChatShare(share.id, second.nextCursor!)).toBeNull();
+  });
+
+  it("publishes code examples without granting attachment access", () => {
+    upload("example");
+    const text =
+      'Literal /api/uploads/missing and `/api/uploads/example`.\n\n```js\nfetch("/api/uploads/missing")\n```';
+    message("code-example", "assistant", [{ type: "text", text }]);
+    const share = shares.publishChatShare("chat", "owner")!;
+    expect(shares.readChatShare(share.id)!.messages.at(-1)!.parts).toEqual([
+      { type: "text", text },
+    ]);
+    expect(shares.readSharedUpload(share.id, "example")).toBeNull();
   });
 
   it("retains rich content and saved form values without replay metadata or hidden parts", () => {
@@ -386,6 +448,44 @@ describe("share HTTP boundaries", () => {
     expect(
       (await publicRoute.GET(new Request("http://test"), publicContext)).status,
     ).toBe(404);
+  });
+
+  it("enforces read budgets on both public endpoints even when forwarding headers change", async () => {
+    upload("active");
+    message("attachment", "user", [
+      { type: "file", url: "/api/uploads/active", mediaType: "image/png" },
+    ]);
+    const share = shares.publishChatShare("chat", "owner")!;
+    const params = Promise.resolve({ id: share.id });
+    for (let i = 0; i < 120; i++) {
+      expect(
+        (
+          await publicRoute.GET(
+            new Request("http://test", {
+              headers: { "x-forwarded-for": `192.0.2.${i}` },
+            }),
+            { params },
+          )
+        ).status,
+      ).toBe(200);
+    }
+    expect(
+      (await publicRoute.GET(new Request("http://test"), { params })).status,
+    ).toBe(429);
+    for (let i = 0; i < 600; i++) {
+      const response = await fileRoute.GET(new Request("http://test"), {
+        params: Promise.resolve({ id: share.id, fileId: "active" }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("test");
+    }
+    expect(
+      (
+        await fileRoute.GET(new Request("http://test"), {
+          params: Promise.resolve({ id: share.id, fileId: "active" }),
+        })
+      ).status,
+    ).toBe(429);
   });
 
   it("serves only share-member files, with revocation-safe caches and safe content disposition", async () => {
