@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
+import { createStreamingParser } from "@openuidev/lang-core";
 import { ToolLoopAgent, isStepCount } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import {
@@ -39,17 +40,78 @@ describe("OpenUI tool contract", () => {
       expect(normalizeOpenUILang(value)).toBe("");
     },
   );
-  it("normalizes fenced programs and rejects invalid complete programs", () => {
+  it("normalizes fenced programs and rejects programs without a renderable root", () => {
     expect(validateOpenUIProgram("```openui\n" + valid + "\n```")).toBe(valid);
     for (const code of [
       "",
       "This is prose",
-      'root = Card([NoSuchComponent("hi")])',
-      "root = Card([missing])",
+      'root = NoSuchComponent("hi")',
+      "root = missing",
+      "root = Card(null)",
     ]) {
       expect(() => validateOpenUIProgram(code)).toThrow();
     }
   });
+  it.each([
+    [
+      "excess-args",
+      'root = Card([TextContent("Revenue: 42")], [], 1, 2, 3, 4, 5)',
+    ],
+    [
+      "type-mismatch",
+      'root = Card([TextContent("Revenue: 42", "unsupported")])',
+    ],
+    [
+      "null-required",
+      'root = Card([TextContent("Revenue: 42"), TextContent(null)])',
+    ],
+    [
+      "missing-required",
+      'root = Card([TextContent("Revenue: 42"), TextContent()])',
+    ],
+    [
+      "unknown-component",
+      'root = Card([TextContent("Revenue: 42"), NoSuchComponent("hi")])',
+    ],
+    ["unresolved", 'root = Card([TextContent("Revenue: 42"), missing])'],
+    ["incomplete", 'root = Card([TextContent("Revenue: 42")'],
+  ])("accepts upstream recovery for %s", async (diagnostic, ui) => {
+    const rendererParser = createStreamingParser(
+      openuiChatLibrary.toJSONSchema(),
+      "Card",
+    );
+    rendererParser.set(ui.slice(0, Math.floor(ui.length / 2)));
+    const parsed = rendererParser.set(ui, true);
+    expect(parsed.root).toMatchObject({
+      typeName: "Card",
+      props: {
+        children: [{ typeName: "TextContent", props: { text: "Revenue: 42" } }],
+      },
+    });
+    if (diagnostic === "unresolved")
+      expect(parsed.meta.unresolved).toEqual(["missing"]);
+    else if (diagnostic === "incomplete")
+      expect(parsed.meta.incomplete).toBe(true);
+    else
+      expect(parsed.meta.errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: diagnostic })]),
+      );
+    expect(validateOpenUIProgram(ui)).toBe(ui);
+    await expect(
+      createOpenUITools().present_openui.execute!(
+        { ui, text: "Revenue: 42" },
+        { toolCallId: "recovered", messages: [], context: {} },
+      ),
+    ).resolves.toEqual({ displayed: true, text: "Revenue: 42" });
+  });
+  it.each(['data = Query("load", {})', 'save = Mutation("save", {})'])(
+    "still rejects unsupported data sources: %s",
+    (statement) => {
+      expect(() => validateOpenUIProgram(`${valid}\n${statement}`)).toThrow(
+        "Query and Mutation are unavailable",
+      );
+    },
+  );
   it("persists readable content with the successful tool output", async () => {
     const result = await createOpenUITools().present_openui.execute!(
       { ui: valid, text: "Revenue: 42" },

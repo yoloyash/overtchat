@@ -1373,6 +1373,13 @@ context, and form state through reload and native export/import. Unsubmitted
 form edits stay in memory and are lost on reload. Query/Mutation data sources
 are unsupported; models obtain data through ordinary chat tools first.
 
+Presentation follows the upstream parser's recovered tree: excess arguments,
+invalid children, unresolved references, and incomplete syntax do not fail a
+tool call when the parser still returns a root. Parser diagnostics do not
+replace rendered content with a fallback. Programs without a renderable root
+still enter the bounded model repair loop; runtime renderer failures retain
+the readable fallback. See [upstream renderer behavior](https://www.openui.com/docs/openui-lang/renderer).
+
 The browser and desktop share the React renderer. Mobile uses the same renderer
 in a WebView served from `/openui/index.html`, without authentication cookies or
 remote script dependencies. Only the two most recent cards mount a WebView;
@@ -1391,11 +1398,21 @@ renderer compatibility:
 npm run openui:generate -w apps/web
 npm run openui:check -w apps/web
 npm run test -w apps/web -- lib/openui lib/import app/api/chat/route.test.ts
-E2E_PORT=4897 npm run test:e2e -w apps/web -- openui.spec.ts
+E2E_PORT=4897 npm run test:e2e -w apps/web -- openui.spec.ts openui-recovery.spec.ts
 npm run typecheck -w apps/web
 npm run typecheck -w apps/mobile
 npm run build -w apps/desktop
 ```
+
+To also generate and render a real answer through a locally served model:
+
+```sh
+OPENUI_LIVE_URL=http://localhost:8000/v1 E2E_PORT=4897 npm run test:e2e -w apps/web -- openui-recovery.spec.ts
+```
+
+The live check discovers the first served model and uses the isolated E2E
+database. The deterministic recovery check holds a tool stream open until the
+card is visible, then verifies completion, interaction, persistence, and reload.
 
 The browser suite exercises the actual mobile bundle and bridge, malformed
 program fallback, structured form submission, duplicate-click suppression, and

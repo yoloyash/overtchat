@@ -140,6 +140,7 @@ function OpenUIContent({
   onOpenUrl,
 }: OpenUIRendererProps) {
   const [errors, setErrors] = useState<OpenUIError[]>([]);
+  const [hasRoot, setHasRoot] = useState(true);
   const sent = useRef(false);
   // The parent removes the callback while a turn is queued/running. Re-enable
   // submission only after that cycle; synchronous double clicks are ignored.
@@ -190,8 +191,14 @@ function OpenUIContent({
     },
     [messageId, toolCallId, isStreaming, onAction, onOpenUrl],
   );
+  // Parser diagnostics can accompany a recovered tree. Preserve that content
+  // just as Renderer does; fallback is for no root or runtime failures.
   const failed =
-    !isStreaming && errors.some((error) => error.severity !== "warning");
+    !isStreaming &&
+    (!hasRoot ||
+      errors.some(
+        (error) => error.source !== "parser" && error.severity !== "warning",
+      ));
   return (
     <ThemeProvider mode={mode} lightTheme={theme} darkTheme={theme}>
       <div data-openui-rendered="" data-openui-streaming={String(isStreaming)}>
@@ -206,6 +213,7 @@ function OpenUIContent({
             initialState={initialState}
             onAction={handleAction}
             onError={setErrors}
+            onParseResult={(result) => setHasRoot(!!result?.root)}
           />
         </fieldset>
         {failed && (

@@ -190,7 +190,7 @@ test("mobile bundle renders forms, sends structured actions and restores submitt
   expect(externalRequests).toEqual([]);
 });
 
-test("mobile bundle exposes readable fallback for invalid components", async ({
+test("mobile bundle exposes readable fallback when there is no renderable root", async ({
   page,
 }) => {
   await page.goto("/openui/index.html");
@@ -198,7 +198,7 @@ test("mobile bundle exposes readable fallback for invalid components", async ({
     window.overtchatOpenUI!.render({
       messageId: "a",
       toolCallId: "t",
-      code: 'root = Card([ImaginaryWidget("broken")])',
+      code: 'root = ImaginaryWidget("broken")',
       isStreaming: false,
       fallbackText: "Revenue was 42 dollars.",
       mode: "dark",

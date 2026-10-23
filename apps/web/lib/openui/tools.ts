@@ -45,22 +45,18 @@ export function validateOpenUIProgram(ui: unknown): string {
   if (code.length > OPENUI_MAX_PROGRAM_LENGTH)
     throw new Error("OpenUI program is too large. Simplify the interface.");
   const parsed = parser.parse(code);
-  const errors = parsed.meta.errors.filter(
-    (error) => error.severity !== "warning",
-  );
-  if (
-    !parsed.root ||
-    parsed.meta.incomplete ||
-    parsed.meta.unresolved.length ||
-    errors.length
-  ) {
+  // Match the upstream Renderer: diagnostics describe recovery (dropped args,
+  // invalid children, unresolved references), not necessarily a failed UI.
+  // Let the parser decide what survives instead of vetoing its recovered tree.
+  if (!parsed.root) {
     throw new Error(
       `Invalid OpenUI program. Fix it and call present_openui again: ${
-        errors
+        parsed.meta.errors
+          .filter((error) => error.severity !== "warning")
           .slice(0, 3)
           .map((error) => error.message)
           .join("; ") ||
-        "Use a complete Card root and define every referenced statement."
+        "Provide a renderable Card root."
       }`,
     );
   }
