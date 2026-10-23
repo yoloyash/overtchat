@@ -188,8 +188,18 @@ WebSocket connections to `HOST_CONNECTOR_URL`. The app container needs no
 access to SSH keys, the Docker or Podman socket, or host directories. Standalone
 connectors support Linux and macOS.
 
-To update, change the image tag (or set `APP_VERSION` in `.env`), then run
-`docker compose pull && docker compose up -d`. Database migrations run at
+For password recovery, see
+[manual installations without the management CLI](#manual-installations-without-the-management-cli).
+
+### Minimal Compose updates
+
+Administrators see **Server update available** in the account menu when a newer
+stable release is published. Because the file sets
+`OVERTCHAT_UPDATE_METHOD=compose`, the notice shows the Compose steps rather
+than the management CLI. `DISABLE_UPDATE_CHECK=true` turns the check off.
+
+To update manually, change the image tag (or set `APP_VERSION` in `.env`), then
+run `docker compose pull && docker compose up -d`. Database migrations run at
 startup and are forward-only; never move to an older tag. Back up first:
 
 ```sh
@@ -202,8 +212,19 @@ db.backup("/app/data/backup.db").then(() => db.close()).catch(error => {
 docker compose cp app:/app/data/backup.db ./backup.db
 ```
 
-For password recovery, see
-[manual installations without the management CLI](#manual-installations-without-the-management-cli).
+For automatic updates, use `ghcr.io/yoloyash/overtchat-app:latest`, which moves
+only after a release is promoted to stable. With Podman, also uncomment the
+`io.containers.autoupdate` label in the file and run the stack as
+[systemd units](#start-on-boot-with-rootless-podman). Then enable the daily check:
+
+```sh
+podman auto-update --dry-run    # shows whether a newer image is available
+systemctl --user enable --now podman-auto-update.timer
+```
+
+If the updated container fails to start, Podman restores the previous image but
+not the database, so keep backups. With Docker, a tool that watches image tags
+can update or notify for `:latest` in the same way.
 
 ### Start on boot with rootless Podman
 
@@ -216,16 +237,32 @@ systemctl --user enable podman-restart.service
 loginctl enable-linger "$USER"
 ```
 
-To manage the containers as individual systemd units instead, generate them
-after the first `podman compose up -d`. For example, with the default
-`podman-compose` names in a directory called `overtchat`:
+Alternatively, run the containers as systemd units, which automatic updates
+require. Start the stack once with `podman compose up -d` to create its
+network, volume, and containers, then replace the containers with units. These
+commands use the default `podman-compose` names for a directory called
+`overtchat`:
 
 ```sh
-podman generate systemd --files --name overtchat_redis_1
-podman generate systemd --files --name \
+mkdir -p ~/.config/systemd/user && cd ~/.config/systemd/user
+podman generate systemd --new --files --name overtchat_redis_1
+podman generate systemd --new --files --name \
   --after container-overtchat_redis_1.service \
   --requires container-overtchat_redis_1.service overtchat_app_1
+# Let each unit, not podman-compose, own its container.
+sed -i '/PODMAN_SYSTEMD_UNIT=podman-compose/d' container-overtchat_*.service
+chmod 600 container-overtchat_*.service
+podman rm -f --depend overtchat_redis_1
+systemctl --user daemon-reload
+systemctl --user enable --now container-overtchat_redis_1.service container-overtchat_app_1.service
+loginctl enable-linger "$USER"
 ```
+
+The units contain the app environment, including `BETTER_AUTH_SECRET`; keep
+them private like `.env`. From then on, manage the stack with `systemctl --user`
+rather than `podman compose`. To apply Compose file changes, run
+`systemctl --user disable --now container-overtchat_app_1.service container-overtchat_redis_1.service`,
+then `podman compose up -d`, and repeat these steps.
 
 ## Password recovery
 

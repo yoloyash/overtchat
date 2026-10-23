@@ -18,6 +18,10 @@ services:
   app:
     image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.28.0}
     restart: always
+    # For Podman automatic updates, use the :latest tag and uncomment these
+    # lines; see docs/deploy.md#minimal-compose-updates.
+    # labels:
+    #   io.containers.autoupdate: registry
     ports:
       # Loopback only; put your reverse proxy in front. Use "4718:4717" to
       # listen on every interface instead.
@@ -30,6 +34,8 @@ services:
       # No bundled search or speech containers in this stack.
       OVERTCHAT_INSTALLED_CAPABILITIES: ""
       REDIS_URL: redis://redis:6379
+      # Update notices show the Compose steps instead of the management CLI.
+      OVERTCHAT_UPDATE_METHOD: compose
     volumes:
       - overtchat-data:/app/data
     depends_on:
