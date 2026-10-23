@@ -8,7 +8,8 @@ import {
   chatShareUploads,
   uploads,
 } from "./schema";
-import { mapUploadReferences, sharedMessages } from "@/lib/sharing";
+import { sharedMessages } from "@/lib/sharing";
+import { mapUploadReferences } from "@/lib/sharing-uploads";
 
 export class ShareConflict extends Error {}
 

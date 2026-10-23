@@ -29,29 +29,6 @@ export function isSharedGeneratedImage(
   );
 }
 
-/** Walk message content, including Markdown, tool results and OpenUI source. */
-export function mapUploadReferences<T>(
-  value: T,
-  replace: (id: string) => string,
-): T {
-  function visit(item: unknown): unknown {
-    if (typeof item === "string") {
-      return item.replace(
-        /\/api\/uploads\/([a-zA-Z0-9_-]+)/g,
-        (_, id: string) => replace(id),
-      );
-    }
-    if (Array.isArray(item)) return item.map(visit);
-    if (item && typeof item === "object") {
-      return Object.fromEntries(
-        Object.entries(item).map(([key, child]) => [key, visit(child)]),
-      );
-    }
-    return item;
-  }
-  return visit(value) as T;
-}
-
 /** Keep visible content in its canonical format, excluding model replay metadata. */
 export function sharedMessages(messages: UIMessage[]): UIMessage[] {
   return messages
