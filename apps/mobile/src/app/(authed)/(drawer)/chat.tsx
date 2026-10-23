@@ -15,7 +15,7 @@ import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
-import { useNavigation } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
 import {
   useCallback,
@@ -62,6 +62,7 @@ import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useOptionalProject } from "@/lib/queries/projects";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
 import { useSelectedModel } from "@/lib/modelPreferences";
@@ -202,7 +203,12 @@ function ChatSurface({
     refresh: refreshMessages,
   } = useChatMessages(isNew ? null : chatId);
 
-  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
+  const { data: project } = useOptionalProject(projectId);
+  const [selectedId, setSelectedId] = useSelectedModel(
+    models,
+    initialModelId,
+    projectId,
+  );
   const [searchRequested, setSearchRequested] = useState(false);
   const [openuiRequested, setOpenuiRequested] = useState(false);
   const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
@@ -479,7 +485,35 @@ function ChatSurface({
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: "",
+      headerTitle: project
+        ? () => (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Open project ${project.name}`}
+              onPress={() => router.push(`/projects/${project.id}`)}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.projectChip,
+                { backgroundColor: pressed ? colors.muted : "transparent" },
+              ]}
+            >
+              <Ionicons
+                name="folder-outline"
+                size={15}
+                color={colors.mutedForeground}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.projectChipText,
+                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                ]}
+              >
+                {project.name}
+              </Text>
+            </Pressable>
+          )
+        : "",
       headerRight: () => (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           {chatPersisted && (
@@ -496,7 +530,7 @@ function ChatSurface({
         </View>
       ),
     });
-  }, [navigation, colors, onNewChat, chatId, chatPersisted, streaming, voice.busy]);
+  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy]);
 
   function requestBody(
     action: ChatRequestAction,
@@ -903,6 +937,16 @@ function ChatSurface({
 }
 
 const styles = StyleSheet.create({
+  projectChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    maxWidth: 220,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  projectChipText: { fontSize: 14, flexShrink: 1 },
   root: { flex: 1 },
   headerRight: { paddingHorizontal: 12 },
   gate: {

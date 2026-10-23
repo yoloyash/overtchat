@@ -42,21 +42,27 @@ export function ChatPending() {
 /** Shown while a project loads. */
 export function ProjectPending() {
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden">
       <div data-titlebar className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
         <div data-titlebar-leading className="size-8 rounded-md motion-skeleton" />
-        <div className="h-4 w-44 rounded motion-skeleton" />
       </div>
-      <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-8">
-        <section className="space-y-3">
-          <div className="h-5 w-32 rounded motion-skeleton" />
-          <div className="h-32 rounded-lg motion-skeleton" />
-        </section>
-        <section className="space-y-3">
-          <div className="h-5 w-24 rounded motion-skeleton" />
-          <div className="h-12 rounded-lg motion-skeleton" />
-          <div className="h-12 rounded-lg motion-skeleton" />
-        </section>
+      <div className="mx-auto grid w-full max-w-5xl gap-x-10 gap-y-8 px-4 pt-8 md:px-8 md:pt-14 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="flex items-center gap-3 lg:col-span-2">
+          <div className="size-10 rounded-xl motion-skeleton" />
+          <div className="h-7 w-48 rounded motion-skeleton" />
+        </div>
+        <div className="space-y-8">
+          <div className="h-24 rounded-3xl motion-skeleton" />
+          <div className="space-y-2">
+            <div className="h-4 w-16 rounded motion-skeleton" />
+            <div className="h-14 rounded-lg motion-skeleton" />
+            <div className="h-14 rounded-lg motion-skeleton" />
+          </div>
+        </div>
+        <div className="space-y-3 max-lg:hidden">
+          <div className="h-32 rounded-xl motion-skeleton" />
+          <div className="h-28 rounded-xl motion-skeleton" />
+        </div>
       </div>
     </div>
   );

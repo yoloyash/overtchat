@@ -2,7 +2,7 @@
 
 import type { OpenUIAction } from "@overtchat/shared";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,6 +19,7 @@ import {
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useOptionalProject } from "@/lib/queries/projects";
 import {
   activityKeys,
   chatKeys,
@@ -108,6 +109,11 @@ interface Props {
   initialQuery?: string;
   /** Called once when a new chat is first saved, so its URL can move to `/chat/:id`. */
   onPersisted?: () => void;
+  /** Replaces the new-chat greeting, for example with a project's home page. */
+  renderEmptyState?: (
+    composer: ReactNode,
+    actions: { selectModel: (id: string) => void },
+  ) => ReactNode;
 }
 
 export function ChatArea({
@@ -119,15 +125,21 @@ export function ChatArea({
   projectId,
   initialQuery,
   onPersisted,
+  renderEmptyState,
 }: Props) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { openPalette } = useSidebar();
   const { data: chats } = useChats();
+  const { data: project } = useOptionalProject(projectId);
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : (modelsData ?? null);
-  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
+  const [selectedId, setSelectedId] = useSelectedModel(
+    models,
+    initialModelId,
+    projectId,
+  );
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
   const modelLoading = models === null || (models.length > 0 && !selectedId);
@@ -699,7 +711,9 @@ export function ChatArea({
 
   // Temporary mode is only switchable before the first message, matching the
   // header toggle's visibility rule.
-  const canToggleTemporary = Boolean(isNew) && messages.length === 0 && !voiceActive;
+  const canToggleTemporary =
+    Boolean(isNew) && messages.length === 0 && !voiceActive && !renderEmptyState;
+  const showEmptyState = messages.length === 0 && !voiceActive;
   let contextUsage: { usedTokens: number; contextWindow?: number } | undefined;
   if (contextMeterEnabled) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -829,6 +843,11 @@ export function ChatArea({
         shareChatId={chatPersisted && !temporary ? chatId : undefined}
         sharingDisabled={streaming || voiceActive}
         title={headerTitle}
+        project={
+          project && !(renderEmptyState && showEmptyState)
+            ? { id: project.id, name: project.name }
+            : undefined
+        }
         contextUsage={contextUsage}
         sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}
@@ -856,7 +875,9 @@ export function ChatArea({
         </div>
       )}
 
-      {messages.length === 0 && !voiceActive ? (
+      {showEmptyState && renderEmptyState && !showOnboarding ? (
+        renderEmptyState(composer, { selectModel: handleSelectModel })
+      ) : showEmptyState ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {showOnboarding ? (
             <AdminOnboardingCard

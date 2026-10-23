@@ -12,12 +12,10 @@ import {
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { agentSessionDisplayTitle } from "@/lib/agents/sidebar";
 import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
-import { fetchProject, projectQuery } from "@/lib/queries/projects";
 import {
   ActivityPending,
   AppPending,
   ChatPending,
-  ProjectPending,
 } from "@/spa/pending";
 import { withPages } from "@/spa/lazy";
 import { findInListQuery } from "@/spa/loaders";
@@ -41,29 +39,6 @@ const LibraryBrowser = lazyRouteComponent(
   () => import("@/components/library/LibraryBrowser"),
   "LibraryBrowser",
 );
-const ProjectPanel = lazyRouteComponent(
-  () => import("@/components/projects/ProjectPanel"),
-  "ProjectPanel",
-);
-
-export const projectRoute = createRoute({
-  getParentRoute: () => appRoute,
-  path: "/projects/$id",
-  loader: async ({ context, params }) => {
-    const project = await fetchProject(params.id);
-    if (!project) throw redirect({ to: "/" });
-    context.queryClient.setQueryData(projectQuery(params.id).queryKey, project);
-  },
-  pendingComponent: ProjectPending,
-  component: withPages(
-    function ProjectPage() {
-      const { id } = projectRoute.useParams();
-      return <ProjectPanel projectId={id} />;
-    },
-    ProjectPanel,
-  ),
-});
-
 export const newAgentSessionRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/agents/new",

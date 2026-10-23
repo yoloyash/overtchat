@@ -6,7 +6,7 @@ import {
   signupRoute,
   twoFactorSetupRoute,
 } from "@/spa/routes/auth";
-import { chatRoute, homeRoute } from "@/spa/routes/chat";
+import { chatRoute, homeRoute, projectRoute } from "@/spa/routes/chat";
 import { shareRoute } from "@/spa/routes/share";
 import {
   activityIndexRoute,
@@ -15,7 +15,6 @@ import {
   agentSessionRoute,
   libraryRoute,
   newAgentSessionRoute,
-  projectRoute,
 } from "@/spa/routes/pages";
 import {
   accountSettingsRoute,
