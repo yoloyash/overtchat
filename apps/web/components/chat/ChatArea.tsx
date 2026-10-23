@@ -826,6 +826,8 @@ export function ChatArea({
       onDrop={handleDrop}
     >
       <ChatHeader
+        shareChatId={chatPersisted && !temporary ? chatId : undefined}
+        sharingDisabled={streaming || voiceActive}
         title={headerTitle}
         contextUsage={contextUsage}
         sessionUsage={sessionCostEnabled ? sessionUsage : undefined}

@@ -46,6 +46,25 @@ messages; Redis buffers live events for reconnecting clients. Without Redis,
 generations still complete and clients recover saved messages, but cannot
 replay missed live deltas.
 
+## Chat sharing validation
+
+Shared links store frozen `UIMessage` snapshots in SQLite. Publication and file
+membership are committed together. Public file reads authorize against that
+membership; private upload APIs continue to require the owner's session.
+Orphan cleanup must retain uploads referenced by a share.
+
+```sh
+npm run test -w apps/web -- lib/db/chatShares.test.ts lib/sharing.test.ts lib/db/uploads.test.ts
+npm run test -w apps/mobile -- src/components/chat/ShareChatButton.test.tsx
+E2E_PORT=4883 npm run test:e2e -w apps/web -- chat-sharing.spec.ts attachment-security.spec.ts openui.spec.ts image-generation.spec.ts
+```
+
+The sharing browser tests use a separate anonymous browser context and real
+database/uploads. They exercise preview, publication, frozen content, explicit
+updates, revocation, deletion, rich rendering, long transcripts, and narrow
+touch viewports. Mobile component tests exercise the native sharing controls
+with mocked OS share/browser APIs; they do not qualify a physical device.
+
 ## Dependency updates
 
 Use the pinned npm 10.9.8 for dependency changes, including Dependabot PRs.

@@ -27,6 +27,12 @@ function crossSiteWrite(request: NextRequest, corsOrigin: string | null): boolea
 
 /** Applies CORS to every API route and refuses cross-site browser writes. */
 export function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/share/")) {
+    const response = NextResponse.next();
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    return response;
+  }
   const origin = allowedCorsOrigin(request.headers.get("origin"));
   if (request.method === "OPTIONS") {
     return new NextResponse(null, {
@@ -45,5 +51,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: "/api/:path*",
+  matcher: ["/api/:path*", "/share/:path*"],
 };

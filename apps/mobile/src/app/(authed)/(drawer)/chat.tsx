@@ -43,6 +43,7 @@ import { ErrorNotice } from "@/components/ErrorNotice";
 import { VoiceControls } from "@/components/chat/VoiceControls";
 import { useMobileVoice } from "@/lib/voice/useMobileVoice";
 import { Composer } from "@/components/chat/Composer";
+import { ShareChatButton } from "@/components/chat/ShareChatButton";
 import { MessageList } from "@/components/chat/MessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import {
@@ -480,17 +481,22 @@ function ChatSurface({
     navigation.setOptions({
       headerTitle: "",
       headerRight: () => (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onNewChat}
-          hitSlop={10}
-          style={styles.headerRight}
-        >
-          <Ionicons name="create-outline" size={22} color={colors.foreground} />
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {chatPersisted && (
+            <ShareChatButton chatId={chatId} disabled={streaming || voice.busy} />
+          )}
+          <Pressable
+            accessibilityRole="button"
+            onPress={onNewChat}
+            hitSlop={10}
+            style={styles.headerRight}
+          >
+            <Ionicons name="create-outline" size={22} color={colors.foreground} />
+          </Pressable>
+        </View>
       ),
     });
-  }, [navigation, colors, onNewChat]);
+  }, [navigation, colors, onNewChat, chatId, chatPersisted, streaming, voice.busy]);
 
   function requestBody(
     action: ChatRequestAction,

@@ -7,6 +7,7 @@ import {
   twoFactorSetupRoute,
 } from "@/spa/routes/auth";
 import { chatRoute, homeRoute } from "@/spa/routes/chat";
+import { shareRoute } from "@/spa/routes/share";
 import {
   activityIndexRoute,
   activityProfileRoute,
@@ -36,6 +37,7 @@ import {
 } from "@/spa/routes/settings";
 
 const routeTree = rootRoute.addChildren([
+  shareRoute,
   authRoute.addChildren([loginRoute, signupRoute, twoFactorSetupRoute]),
   appRoute.addChildren([
     homeRoute,

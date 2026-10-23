@@ -613,6 +613,26 @@ details and your server's LAN or HTTPS URL. With OvertChat Cloud, the
 with their own chats and projects. Only the first account uses public signup;
 administrators create subsequent accounts.
 
+## Shared chat links
+
+Use **Share chat** in a saved conversation to preview it and create a public
+link. Anyone who can reach your server and has the link can read the snapshot
+without an account, including its attachments, generated images, reasoning,
+tool results, and artifacts. System instructions, provider metadata, and account
+settings are excluded. Recipients cannot edit the chat or run its tools.
+
+Later messages and edits remain private until you select **Update link**.
+**Unshare** disables the link and its file URLs. Deleting the original chat or
+its owner also removes the share. Web and desktop users can review and revoke
+links under **Settings → Data → Shared chats**; mobile users can manage a link
+from the conversation's sharing dialog. Previously downloaded copies remain
+with their recipients.
+
+Links use your server's address. A LAN-only or VPN-only server remains reachable
+only on that network. Shared files remain in the server's upload store while
+the snapshot references them, even if they are edited out of the original chat.
+Normal database and upload-directory backups include shared conversations.
+
 ## Desktop
 
 The desktop app connects to your existing OvertChat server. It does not install

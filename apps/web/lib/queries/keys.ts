@@ -11,6 +11,13 @@ export const chatKeys = {
   usage: (id: string) => [...chatKeys.detail(id), "usage"] as const,
 };
 
+export const shareKeys = {
+  all: () => ["shares"] as const,
+  chat: (id: string) => [...shareKeys.all(), "chat", id] as const,
+  preview: (id: string) => [...shareKeys.all(), "preview", id] as const,
+  public: (id: string) => ["publicShare", id] as const,
+};
+
 export const projectKeys = {
   all: () => ["projects"] as const,
   list: () => [...projectKeys.all(), "list"] as const,

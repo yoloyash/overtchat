@@ -1,0 +1,440 @@
+import { expect, test, type Page } from "@playwright/test";
+import {
+  openE2eDatabase,
+  resetE2eDatabase,
+  setupUrl,
+} from "./helpers/database";
+
+const png =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=";
+const ui =
+  'root = Card([CardHeader("Travel form"), booking])\nbooking = Form("trip", Buttons([Button("Plan trip", @ToAssistant("Plan this trip"))]), [FormControl("Destination", Input("destination", "City"))])';
+
+test.beforeEach(resetE2eDatabase);
+
+async function setup(page: Page) {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Sharing Tester");
+  await page.locator("#email").fill("sharing@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  const imageResponse = await page.request.post("/api/uploads", {
+    multipart: {
+      file: {
+        name: "photo.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(png, "base64"),
+      },
+    },
+  });
+  expect(imageResponse.ok()).toBe(true);
+  const image = await imageResponse.json();
+  image.id = image.url.split("/").at(-1);
+  const documentResponse = await page.request.post("/api/uploads", {
+    multipart: {
+      file: {
+        name: "notes.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("Shared attachment contents"),
+      },
+    },
+  });
+  expect(documentResponse.ok()).toBe(true);
+  const document = await documentResponse.json();
+  const db = openE2eDatabase();
+  try {
+    const owner = db.prepare("SELECT id FROM user LIMIT 1").get() as {
+      id: string;
+    };
+    db.prepare(
+      "INSERT INTO chats (id, user_id, title) VALUES ('sharing-chat', ?, 'Research reference')",
+    ).run(owner.id);
+    const insert = db.prepare(
+      "INSERT INTO messages (id, chat_id, role, parts, metadata, created_at) VALUES (?, 'sharing-chat', ?, ?, ?, ?)",
+    );
+    insert.run(
+      "question",
+      "user",
+      JSON.stringify([
+        { type: "text", text: "Explain the research" },
+        {
+          type: "file",
+          url: image.url,
+          mediaType: "image/png",
+          filename: "photo.png",
+        },
+        {
+          type: "file",
+          url: document.url,
+          mediaType: "text/plain",
+          filename: "notes.txt",
+        },
+      ]),
+      null,
+      1,
+    );
+    insert.run(
+      "answer",
+      "assistant",
+      JSON.stringify([
+        {
+          type: "reasoning",
+          text: "Visible reasoning from the conversation",
+          state: "done",
+          providerMetadata: { secret: "private-provider-data" },
+        },
+        {
+          type: "tool-web_search",
+          toolCallId: "search",
+          state: "output-available",
+          input: { query: "reference" },
+          output: [
+            {
+              title: "Reference source",
+              link: "https://example.com/reference",
+              snippet: "Reference text",
+            },
+          ],
+        },
+        {
+          type: "text",
+          text: "## Research result\n\nA useful finding.\n\n```js\nconst answer = 42;\n```\n\n| Item | Value |\n| --- | --- |\n| Answer | 42 |\n\nInline math: $$x^2$$.",
+        },
+        {
+          type: "tool-generate_image",
+          toolCallId: "image",
+          state: "output-available",
+          output: {
+            images: [
+              {
+                id: image.id,
+                url: image.url,
+                filename: "generated.png",
+                mediaType: "image/png",
+              },
+            ],
+            prompt: "Generated illustration",
+            model: "Fixture image model",
+            size: "auto",
+            quality: "auto",
+            referenceImageIds: [],
+          },
+        },
+        {
+          type: "tool-present_openui",
+          toolCallId: "form",
+          state: "output-available",
+          input: { ui, text: "Choose a destination" },
+          output: { displayed: true, text: "Choose a destination" },
+        },
+      ]),
+      JSON.stringify({ secret: "private-message-metadata" }),
+      2,
+    );
+    insert.run(
+      "form-answer",
+      "user",
+      JSON.stringify([{ type: "text", text: "Plan Kyoto" }]),
+      JSON.stringify({
+        openuiAction: {
+          messageId: "answer",
+          toolCallId: "form",
+          message: "Plan Kyoto",
+          formState: { trip: { destination: { value: "Kyoto" } } },
+        },
+      }),
+      3,
+    );
+    insert.run(
+      "system",
+      "system",
+      JSON.stringify([{ type: "text", text: "Private system instruction" }]),
+      null,
+      4,
+    );
+  } finally {
+    db.close();
+  }
+  return { image, document };
+}
+
+test("creates, previews, updates and revokes a complete chat; anonymous readers can view rich content and files", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  const { image, document } = await setup(page);
+  await page.goto("/chat/sharing-chat");
+  await page.getByRole("button", { name: "Share chat", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Share chat" });
+  await dialog
+    .getByText("Preview current conversation", { exact: true })
+    .click();
+  await expect(
+    dialog.getByText("Explain the research", { exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByText("Preview current conversation", { exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Create link", exact: true })
+    .click();
+  const link = dialog.getByRole("textbox", { name: "Shared chat link" });
+  await expect(link).toHaveValue(/\/share\/[0-9a-f-]+$/);
+  const url = await link.inputValue();
+  const id = url.split("/").at(-1)!;
+
+  const anonymous = await browser.newContext({
+    baseURL: new URL(page.url()).origin,
+  });
+  const reader = await anonymous.newPage();
+  const privateRequests: string[] = [];
+  const errors: string[] = [];
+  reader.on("pageerror", (error) => errors.push(error.message));
+  reader.on("request", (request) => {
+    if (
+      new URL(request.url()).pathname.startsWith("/api/") &&
+      !new URL(request.url()).pathname.startsWith("/api/share/")
+    )
+      privateRequests.push(request.url());
+  });
+  try {
+    const response = await reader.goto(url);
+    expect(response?.headers()["x-robots-tag"]).toContain("noindex");
+    await expect(
+      reader.getByRole("heading", { name: "Research reference", exact: true }),
+    ).toBeVisible();
+    await expect(
+      reader.getByRole("heading", { name: "Research result", exact: true }),
+    ).toBeVisible();
+    await expect(reader.getByRole("table")).toBeVisible();
+    await expect(reader.locator(".katex").first()).toBeVisible();
+    await expect(
+      reader.getByText("const answer = 42;", { exact: true }),
+    ).toBeVisible();
+    await expect(reader.getByAltText("photo.png")).toBeVisible();
+    await expect(reader.getByAltText("Generated illustration")).toBeVisible();
+    await expect(
+      reader.getByRole("textbox", { name: "Destination", exact: true }),
+    ).toHaveValue("Kyoto");
+    await expect(
+      reader.getByRole("button", { name: "Plan trip", exact: true }),
+    ).toBeDisabled();
+    await reader
+      .getByRole("button", { name: "Searched the web", exact: true })
+      .click();
+    await expect(
+      reader.getByText("Visible reasoning from the conversation", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      reader.getByRole("link", { name: /Reference source/ }).first(),
+    ).toBeVisible();
+    for (const name of [
+      "Edit",
+      "Regenerate",
+      "Continue response",
+      "Read aloud",
+      "Send message",
+    ])
+      await expect(
+        reader.getByRole("button", { name, exact: true }),
+      ).toHaveCount(0);
+    const fileUrl = await reader
+      .getByRole("link", { name: /notes.txt/ })
+      .getAttribute("href");
+    const attachment = await anonymous.request.get(new URL(fileUrl!, url).href);
+    expect(attachment.status()).toBe(200);
+    expect(await attachment.text()).toBe("Shared attachment contents");
+    const bytes = await anonymous.request.get(
+      new URL(`/api/share/${id}/files/${image.id}`, url).href,
+    );
+    expect(bytes.status()).toBe(200);
+    expect(Buffer.from(await bytes.body()).toString("base64")).toBe(png);
+    expect(
+      (await anonymous.request.get(new URL(document.url, url).href)).status(),
+    ).toBe(401);
+    const publicBody = await (
+      await anonymous.request.get(new URL(`/api/share/${id}`, url).href)
+    ).text();
+    for (const secret of [
+      "Private system instruction",
+      "private-provider-data",
+      "private-message-metadata",
+    ])
+      expect(publicBody).not.toContain(secret);
+    await reader.screenshot({
+      path: testInfo.outputPath("shared-chat.png"),
+      fullPage: true,
+    });
+    expect(privateRequests).toEqual([]);
+    expect(errors).toEqual([]);
+
+    const db = openE2eDatabase();
+    try {
+      db.prepare(
+        "UPDATE chats SET title = 'Updated research' WHERE id = 'sharing-chat'",
+      ).run();
+      db.prepare(
+        "INSERT INTO messages (id, chat_id, role, parts, created_at) VALUES ('later', 'sharing-chat', 'assistant', ?, 5)",
+      ).run(
+        JSON.stringify([{ type: "text", text: "A later private finding" }]),
+      );
+    } finally {
+      db.close();
+    }
+    await reader.reload();
+    await expect(
+      reader.getByRole("heading", { name: "Research reference", exact: true }),
+    ).toBeVisible();
+    await expect(
+      reader.getByText("A later private finding", { exact: true }),
+    ).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await page.getByRole("button", { name: "Share chat", exact: true }).click();
+    await dialog
+      .getByRole("button", { name: "Update link", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("button", { name: "Update link", exact: true }),
+    ).toBeEnabled();
+    await expect(link).toHaveValue(url);
+    await reader.reload();
+    await expect(
+      reader.getByRole("heading", { name: "Updated research", exact: true }),
+    ).toBeVisible();
+    await expect(
+      reader.getByText("A later private finding", { exact: true }),
+    ).toBeVisible();
+
+    await page.goto("/settings/data");
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("link", { name: "Updated research", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Unshare", exact: true }).click();
+    await expect(
+      page.getByText("No shared chats.", { exact: true }),
+    ).toBeVisible();
+    await reader.reload();
+    await expect(
+      reader.getByRole("heading", {
+        name: "Shared chat unavailable",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(
+      (await anonymous.request.get(new URL(fileUrl!, url).href)).status(),
+    ).toBe(404);
+  } finally {
+    await anonymous.close();
+  }
+});
+
+test("shares every message in a long chat and works on a narrow touch viewport", async ({
+  page,
+  browser,
+}) => {
+  await setup(page);
+  const db = openE2eDatabase();
+  try {
+    const insert = db.prepare(
+      "INSERT INTO messages (id, chat_id, role, parts, created_at) VALUES (?, 'sharing-chat', 'assistant', ?, ?)",
+    );
+    for (let i = 0; i < 115; i++)
+      insert.run(
+        `long-${i}`,
+        JSON.stringify([
+          { type: "text", text: `Long conversation message ${i}` },
+        ]),
+        10 + i,
+      );
+  } finally {
+    db.close();
+  }
+  const response = await page.request.post("/api/chat/sharing-chat/share");
+  const { share } = await response.json();
+  const anonymous = await browser.newContext({
+    baseURL: new URL(page.url()).origin,
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const reader = await anonymous.newPage();
+    await reader.goto(`/share/${share.id}`);
+    await expect(
+      reader.getByText("Explain the research", { exact: true }),
+    ).toBeVisible();
+    await reader.getByRole("button", { name: "Show more messages" }).tap();
+    await reader.getByRole("button", { name: "Show more messages" }).tap();
+    await expect(
+      reader.getByText("Long conversation message 114", { exact: true }),
+    ).toBeVisible();
+    await expect(reader.locator("article")).toHaveCount(118);
+    expect(
+      await reader.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    await anonymous.close();
+  }
+});
+
+test("public tokens cannot manage chats or access unrelated files; deleting the original revokes the link", async ({
+  page,
+  browser,
+}) => {
+  const { image } = await setup(page);
+  const { share } = await (
+    await page.request.post("/api/chat/sharing-chat/share")
+  ).json();
+  const anonymous = await browser.newContext({
+    baseURL: new URL(page.url()).origin,
+  });
+  try {
+    for (const method of ["GET", "POST", "PUT", "DELETE"]) {
+      const response = await anonymous.request.fetch(
+        `/api/chat/sharing-chat/share`,
+        { method },
+      );
+      expect(response.status()).toBe(401);
+    }
+    expect((await anonymous.request.get("/api/shares")).status()).toBe(401);
+    expect(
+      (await anonymous.request.get("/api/chat/sharing-chat/messages")).status(),
+    ).toBe(401);
+    expect(
+      (
+        await anonymous.request.get(
+          `/api/share/${share.id}/files/not-in-this-chat`,
+        )
+      ).status(),
+    ).toBe(404);
+    expect(
+      (
+        await page.request.post("/api/chat/sharing-chat/share", {
+          headers: {
+            origin: "https://foreign.example",
+            "sec-fetch-site": "cross-site",
+          },
+        })
+      ).status(),
+    ).toBe(403);
+    await page.request.delete("/api/chats/sharing-chat");
+    expect(
+      (await anonymous.request.get(`/api/share/${share.id}`)).status(),
+    ).toBe(404);
+    expect(
+      (
+        await anonymous.request.get(`/api/share/${share.id}/files/${image.id}`)
+      ).status(),
+    ).toBe(404);
+  } finally {
+    await anonymous.close();
+  }
+});

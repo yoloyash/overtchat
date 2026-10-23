@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import type { UsageTotals } from "@/lib/usage/types";
 import { UsageIndicator } from "./UsageIndicator";
+import { ShareChatButton } from "./ShareChatDialog";
 
 export function ChatHeader({
   title,
@@ -14,6 +15,8 @@ export function ChatHeader({
   showTempToggle,
   temporary,
   onToggleTemporary,
+  shareChatId,
+  sharingDisabled,
 }: {
   title: string | null;
   contextUsage?: { usedTokens: number; contextWindow?: number };
@@ -21,6 +24,8 @@ export function ChatHeader({
   showTempToggle: boolean;
   temporary: boolean;
   onToggleTemporary: () => void;
+  shareChatId?: string;
+  sharingDisabled?: boolean;
 }) {
   return (
     <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
@@ -36,6 +41,7 @@ export function ChatHeader({
         <div className="flex-1" />
       )}
       <div className="flex shrink-0 items-center">
+        {shareChatId && <ShareChatButton chatId={shareChatId} disabled={sharingDisabled} />}
         <UsageIndicator
           contextUsage={contextUsage}
           sessionUsage={sessionUsage}

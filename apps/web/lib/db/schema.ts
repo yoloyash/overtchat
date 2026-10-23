@@ -7,7 +7,7 @@ import {
   primaryKey,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { UIMessagePart, UIDataTypes, UITools } from "ai";
+import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import {
   CHAT_GENERATION_STATUSES,
   CHAT_KINDS,
@@ -895,3 +895,23 @@ export const voiceSessions = sqliteTable("voice_sessions", {
   authSessionId: text("auth_session_id").notNull().references(() => session.id, { onDelete: "cascade" }),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+// Frozen UIMessage snapshots: edits and later turns never change a public link.
+export const chatShares = sqliteTable("chat_shares", {
+  id: text("id").primaryKey(),
+  chatId: text("chat_id").notNull().unique().references(() => chats.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  messages: text("messages", { mode: "json" }).$type<UIMessage[]>().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [index("chat_shares_user_idx").on(table.userId)]);
+
+// Keeps immutable uploads alive even after editing them out of the source chat.
+export const chatShareUploads = sqliteTable("chat_share_uploads", {
+  shareId: text("share_id").notNull().references(() => chatShares.id, { onDelete: "cascade" }),
+  uploadId: text("upload_id").notNull().references(() => uploads.id, { onDelete: "cascade" }),
+}, (table) => [
+  primaryKey({ columns: [table.shareId, table.uploadId] }),
+  index("chat_share_uploads_upload_idx").on(table.uploadId),
+]);

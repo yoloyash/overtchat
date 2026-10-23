@@ -21,3 +21,4 @@ export * from "./two-factor";
 export * from "./chat-continuation";
 export * from "./chat-queue";
 export * from "./chat-generation";
+export type { ChatShare, SharedConversation } from "./chat-sharing";

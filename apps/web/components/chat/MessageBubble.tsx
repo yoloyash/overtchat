@@ -64,6 +64,7 @@ export function MessageBubble({
   message,
   streaming,
   canAct,
+  readOnly = false,
   onRegenerate,
   onContinue,
   onImageReference,
@@ -77,13 +78,14 @@ export function MessageBubble({
   message: UIMessage;
   streaming: boolean;
   canAct: boolean;
-  onRegenerate: (id: string) => void;
+  readOnly?: boolean;
+  onRegenerate?: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   onOpenUIAction?: (action: OpenUIAction) => void;
   openuiStates?: Map<string, OpenUIFormState>;
-  onEdit: (id: string, text: string, files: FileUIPart[]) => void;
-  speech: ReturnType<typeof useSpeech>;
+  onEdit?: (id: string, text: string, files: FileUIPart[]) => void;
+  speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
 }) {
@@ -105,7 +107,7 @@ export function MessageBubble({
             const changed =
               next !== text || keptFiles.length !== files.length;
             if (changed && (next.trim() || keptFiles.length > 0)) {
-              onEdit(message.id, next, keptFiles);
+              onEdit?.(message.id, next, keptFiles);
             }
           }}
         />
@@ -125,13 +127,13 @@ export function MessageBubble({
             {text}
           </div>
         )}
-        <MessageActions show={canAct}>
+        <MessageActions show={canAct || readOnly}>
           <CopyButton text={text} />
-          <ActionButton
+          {!readOnly && <ActionButton
             label="Edit"
             onClick={() => setEditing(true)}
             icon={<Pencil className="size-3.5" />}
-          />
+          />}
         </MessageActions>
       </div>
     );
@@ -141,7 +143,8 @@ export function MessageBubble({
     <AssistantBubble
       message={message}
       streaming={streaming}
-      canAct={canAct}
+      canAct={canAct && !readOnly}
+      readOnly={readOnly}
       onRegenerate={onRegenerate}
       onContinue={onContinue}
       onImageReference={onImageReference}
@@ -158,6 +161,7 @@ function AssistantBubble({
   message,
   streaming,
   canAct,
+  readOnly = false,
   onRegenerate,
   onContinue,
   onImageReference,
@@ -170,12 +174,13 @@ function AssistantBubble({
   message: UIMessage;
   streaming: boolean;
   canAct: boolean;
-  onRegenerate: (id: string) => void;
+  readOnly?: boolean;
+  onRegenerate?: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   onOpenUIAction?: (action: OpenUIAction) => void;
   openuiStates?: Map<string, OpenUIFormState>;
-  speech: ReturnType<typeof useSpeech>;
+  speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
 }) {
@@ -231,6 +236,7 @@ function AssistantBubble({
             if (seg.kind === "image") {
               return (
                 <GeneratedImageCard
+                  readOnly={readOnly}
                   key={seg.index}
                   part={seg.part}
                   streaming={streaming}
@@ -275,19 +281,19 @@ function AssistantBubble({
         {!streaming && <Sources message={message} />}
       </div>
       {!streaming && (
-        <MessageActions show={canAct}>
+        <MessageActions show={canAct || readOnly}>
           <CopyButton text={stripCitationMarkers(text)} />
-          <SpeakButton
+          {!readOnly && speech && <SpeakButton
             messageId={message.id}
             text={speakableText(message)}
             speech={speech}
-          />
-          <ActionButton
+          />}
+          {!readOnly && onRegenerate && <ActionButton
             label="Regenerate"
             onClick={() => onRegenerate(message.id)}
             icon={<RotateCcw className="size-3.5" />}
-          />
-          {onContinue && (
+          />}
+          {!readOnly && onContinue && (
             <ActionButton
               label="Continue response"
               onClick={() => onContinue(message.id)}
@@ -317,7 +323,7 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
     );
   }
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-muted/40 px-3 py-2.5">
+    <a href={serverUrl(part.url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border bg-muted/40 px-3 py-2.5">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
         <MediaIcon
           mediaType={part.mediaType}
@@ -331,7 +337,7 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
           {humanMediaLabel(part.mediaType)}
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 
