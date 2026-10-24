@@ -344,6 +344,8 @@ export const agentWorkspaces = sqliteTable(
       .references(() => agentConnections.id, { onDelete: "cascade" }),
     path: text("path").notNull(),
     name: text("name").notNull(),
+    /** Path of the workspace this Git worktree was created from, on the same host. */
+    worktreeParentPath: text("worktree_parent_path"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

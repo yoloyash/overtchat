@@ -183,6 +183,13 @@
       "when": 1792799328340,
       "tag": "0025_project_default_model",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1792823579434,
+      "tag": "0026_agent_workspace_worktree_parent",
+      "breakpoints": true
     }
   ]
 }

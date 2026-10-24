@@ -3126,6 +3126,141 @@ test("header branch picker lists, creates, and switches branches with stash and 
   }
 });
 
+test("worktrees nest under their workspace and are created and removed from the header and sidebar", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Worktree Tester");
+  await page.locator("#email").fill("worktree@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const db = openE2eDatabase();
+  try {
+    db.prepare(`
+      INSERT INTO agent_workspaces (id, connection_id, path, name, worktree_parent_path)
+      VALUES ('worktree-workspace', 'connection', '/home/me/.overtchat/worktrees/runtime-1/topic', 'topic', '/tmp/runtime-test')
+    `).run();
+  } finally {
+    db.close();
+  }
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.route(new RegExp("/api/agent-workspaces/[^/]+/git-status$"), (route) =>
+    route.fulfill({
+      json: {
+        status: {
+          isGit: true,
+          repositoryRoot: "/tmp/runtime-test",
+          branch: route.request().url().includes("worktree-workspace") ? "topic" : "main",
+          upstream: null,
+          ahead: null,
+          behind: null,
+          dirty: false,
+          changedFiles: 0,
+          additions: 0,
+          deletions: 0,
+          lineStatsComplete: true,
+          files: [],
+        },
+      },
+    }),
+  );
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-branches$"), (route) =>
+    route.fulfill({
+      json: {
+        branches: {
+          isGit: true,
+          current: "main",
+          truncated: false,
+          branches: [
+            { name: "main", remote: null, current: true, worktreePath: null, committedAt: Date.now() },
+            { name: "topic", remote: null, current: false, worktreePath: "/home/me/.overtchat/worktrees/runtime-1/topic", committedAt: null },
+            { name: "release", remote: "origin", current: false, worktreePath: null, committedAt: null },
+          ],
+        },
+      },
+    }),
+  );
+  const createRequests: unknown[] = [];
+  await page.route(new RegExp("/api/agent-workspaces/workspace/worktrees$"), async (route) => {
+    createRequests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 201,
+      json: {
+        worktree: {
+          path: "/home/me/.overtchat/worktrees/runtime-1/release-fix",
+          worktreePath: "/home/me/.overtchat/worktrees/runtime-1/release-fix",
+          name: "release-fix",
+          branch: "release-fix",
+        },
+        workspaceId: "worktree-workspace",
+      },
+    });
+  });
+  const removalRequests: string[] = [];
+  await page.route(new RegExp("/api/agent-workspaces/worktree-workspace/worktree$"), async (route) => {
+    removalRequests.push(route.request().method());
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        inspection: {
+          exists: true,
+          worktreePath: "/home/me/.overtchat/worktrees/runtime-1/topic",
+          branch: "topic",
+          changedFiles: 2,
+        },
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  // The worktree is listed under the workspace it was created from.
+  const worktrees = page.getByRole("list", { name: "Worktrees of Runtime test" });
+  await expect(worktrees.getByRole("button", { name: "Expand topic" })).toBeVisible();
+
+  // The header branch picker opens the new worktree dialog for this workspace.
+  await page.getByTestId("agent-branch-picker").click();
+  await page.getByRole("menuitem", { name: "New worktree…" }).click();
+  const dialog = page.getByRole("dialog", { name: "New worktree" });
+  const base = dialog.getByRole("combobox", { name: "Start from" });
+  await expect(base).toContainText("main");
+  await base.click();
+  await page.getByRole("option", { name: "origin/release" }).click();
+  await dialog.getByLabel("New branch").fill("release-fix");
+  await dialog.getByRole("button", { name: "Create worktree" }).click();
+  await page.waitForURL(/\/agents\/new\?workspaceId=worktree-workspace&provider=codex$/);
+  await expect(page.getByText("Created worktree release-fix")).toBeVisible();
+  expect(createRequests).toEqual([
+    { base: { kind: "remote", remote: "origin", name: "release" }, branch: "release-fix" },
+  ]);
+
+  // Removing an OvertChat worktree warns about uncommitted changes and deletes it from the host.
+  await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await page.getByRole("menuitem", { name: "Organize workspaces" }).click();
+  await page.getByRole("button", { name: "Remove topic" }).click();
+  const removal = page.getByRole("alertdialog");
+  await expect(removal.getByRole("heading", { name: "Remove worktree?" })).toBeVisible();
+  await expect(removal.getByText("2 uncommitted changes will be lost.")).toBeVisible();
+  await expect(removal).toContainText("Its commits stay on the topic branch.");
+  await removal.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Worktree removed").first()).toBeVisible();
+  expect(removalRequests).toEqual(["GET", "DELETE"]);
+});
+
 test("workspace terminal streams a real shell, retains state, and reconnects under output load", async ({ page: browserPage }, testInfo) => {
   test.setTimeout(120_000);
   const windowsAlias = process.env.OVERTCHAT_TERMINAL_WINDOWS_SSH_ALIAS;

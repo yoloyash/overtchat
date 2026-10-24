@@ -19,6 +19,8 @@ import type {
   AgentSessionDirectoryEntry,
   AgentSessionLaunchConfig,
   AgentSshHostCandidate,
+  AgentWorkspaceGitBaseRef,
+  AgentWorkspaceGitWorktree,
   DetectedAgentInstallation,
   HostConnectorListItem,
   HostConnectorPairing,
@@ -413,6 +415,23 @@ export function useDeleteAgentWorkspaceGroup() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (group: AgentWorkspaceGroup) => {
+      // Removing an OvertChat worktree deletes it from the host and removes
+      // the folder for every agent at once.
+      const worktree = group.targets.find(
+        ({ workspace }) => workspace.worktreeParentPath,
+      );
+      if (worktree) {
+        const response = await fetch(
+          apiUrl(
+            `/api/agent-workspaces/${encodeURIComponent(worktree.workspace.id)}/worktree`,
+          ),
+          { method: "DELETE" },
+        );
+        if (!response.ok && response.status !== 404) {
+          throw await responseError(response);
+        }
+        return;
+      }
       for (const { workspace } of group.targets) {
         const response = await fetch(
           apiUrl(`/api/agent-workspaces/${workspace.id}`),
@@ -427,6 +446,34 @@ export function useDeleteAgentWorkspaceGroup() {
       }
     },
     // Refresh even when only some provider records were removed.
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
+  });
+}
+
+export function useCreateAgentWorktree(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      base: AgentWorkspaceGitBaseRef;
+      branch: string;
+    }): Promise<{ worktree: AgentWorkspaceGitWorktree; workspaceId: string }> => {
+      const response = await fetch(
+        apiUrl(
+          `/api/agent-workspaces/${encodeURIComponent(workspaceId)}/worktrees`,
+        ),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        },
+      );
+      if (!response.ok) throw await responseError(response);
+      return (await response.json()) as {
+        worktree: AgentWorkspaceGitWorktree;
+        workspaceId: string;
+      };
+    },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
   });
