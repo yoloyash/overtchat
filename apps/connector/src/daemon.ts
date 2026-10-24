@@ -26,7 +26,10 @@ import {
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
   listAgentDirectories,
+  createAgentWorkspaceGitWorktree,
+  inspectAgentWorkspaceGitWorktree,
   listAgentWorkspaceGitBranches,
+  removeAgentWorkspaceGitWorktree,
   probeAgentWorkspace,
   switchAgentWorkspaceGitBranch,
   workspaceFilesService,
@@ -440,6 +443,22 @@ export class ConnectorDaemon {
             stash: request.stash,
             busyPaths: this.busySessionPaths(request.target),
           },
+        );
+      case "create_git_worktree":
+        return createAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
+          { base: request.base, branch: request.branch },
+        );
+      case "inspect_git_worktree":
+        return inspectAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
+        );
+      case "remove_git_worktree":
+        return removeAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
         );
       case "list_workspace_directory":
         return workspaceFilesService.listDirectory(
