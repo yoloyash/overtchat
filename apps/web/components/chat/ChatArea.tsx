@@ -50,7 +50,10 @@ import {
   writeStoredMessageStats,
   type StoredMessageStats,
 } from "@/lib/chat/stats";
-import { messagesForChatRequest } from "@/lib/chat/history";
+import {
+  CHAT_MESSAGE_MAX_PAGE_SIZE,
+  messagesForChatRequest,
+} from "@/lib/chat/history";
 import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import {
@@ -388,13 +391,24 @@ export function ChatArea({
     isPending: loadingOlderMessages,
   } = useLoadOlderChatMessages(chatId);
   const loadingOlderMessagesRef = useRef(false);
+  // Set when the whole history is wanted, including while a single page is
+  // already loading, so that load carries on to the end.
+  const loadAllOlderMessagesRef = useRef(false);
+  const [olderMessagesFailed, setOlderMessagesFailed] = useState(false);
   const loadOlderPages = useCallback(async (all: boolean) => {
+    if (all) loadAllOlderMessagesRef.current = true;
     if (!olderMessageCursor || loadingOlderMessagesRef.current) return;
     loadingOlderMessagesRef.current = true;
+    setOlderMessagesFailed(false);
     let cursor: string | null = olderMessageCursor;
     try {
       do {
-        const page = await loadOlderMessages(cursor);
+        const page = await loadOlderMessages({
+          cursor,
+          limit: loadAllOlderMessagesRef.current
+            ? CHAT_MESSAGE_MAX_PAGE_SIZE
+            : undefined,
+        });
         setMessages((current) => {
           const currentIds = new Set(current.map(({ id }) => id));
           return [
@@ -404,14 +418,16 @@ export function ChatArea({
         });
         setOlderMessageCursor(page.nextCursor);
         cursor = page.nextCursor;
-      } while (all && cursor);
+      } while (loadAllOlderMessagesRef.current && cursor);
     } catch {
+      setOlderMessagesFailed(true);
       toast.error({
         title: "Could not load older messages",
         description: "Check your connection and try again.",
       });
     } finally {
       loadingOlderMessagesRef.current = false;
+      loadAllOlderMessagesRef.current = false;
     }
   }, [loadOlderMessages, olderMessageCursor, setMessages]);
   const handleLoadOlderMessages = useCallback(
@@ -931,6 +947,7 @@ export function ChatArea({
             storedStats={storedStats}
             hasOlderMessages={olderMessageCursor !== null}
             loadingOlderMessages={loadingOlderMessages}
+            olderMessagesFailed={olderMessagesFailed}
             onLoadOlderMessages={handleLoadOlderMessages}
             onLoadAllOlderMessages={handleLoadAllOlderMessages}
             onRegenerate={handleRegenerate}

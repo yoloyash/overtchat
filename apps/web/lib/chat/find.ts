@@ -6,6 +6,8 @@ import { groupMessageParts, isManualCompactionMessage } from "@overtchat/shared"
 import { stripCitationMarkers } from "@/lib/citations";
 import { textOf } from "@/lib/chat/message";
 
+export const CHAT_FIND_MAX_QUERY_LENGTH = 200;
+
 /** One occurrence of the find query, addressed by message and position. */
 export type ChatFindMatch = {
   messageId: string;
@@ -51,7 +53,8 @@ const IGNORED_ELEMENTS = [
   "[data-streamdown=mermaid-block]",
   "[data-code-preview]",
   "[hidden]",
-  "button",
+  // Streamdown renders links as buttons that confirm before opening.
+  "button:not([data-streamdown=link])",
   "svg",
   ".katex",
 ].join(", ");
@@ -177,22 +180,55 @@ export function findOccurrences(text: string, query: string): number[] {
   return offsets;
 }
 
+/** How many times `query` occurs in the text find searches in `message`. */
+export function chatFindOccurrenceCount(
+  message: UIMessage,
+  query: string,
+): number {
+  let count = 0;
+  for (const segment of chatFindSegments(message)) {
+    count += findOccurrences(segment, query).length;
+  }
+  return count;
+}
+
+/**
+ * Every match in order. `countOverride` replaces a message's predicted count,
+ * e.g. with the count found in its rendered text once it has been on screen.
+ */
 export function collectChatFindMatches(
   messages: readonly UIMessage[],
   query: string,
+  countOverride?: (message: UIMessage) => number | undefined,
 ): ChatFindMatch[] {
   if (!query) return [];
   const matches: ChatFindMatch[] = [];
   messages.forEach((message, messageIndex) => {
-    let occurrence = 0;
-    for (const segment of chatFindSegments(message)) {
-      for (let i = findOccurrences(segment, query).length; i > 0; i -= 1) {
-        matches.push({ messageId: message.id, messageIndex, occurrence });
-        occurrence += 1;
-      }
+    const count =
+      countOverride?.(message) ?? chatFindOccurrenceCount(message, query);
+    for (let occurrence = 0; occurrence < count; occurrence += 1) {
+      matches.push({ messageId: message.id, messageIndex, occurrence });
     }
   });
   return matches;
+}
+
+/**
+ * The index of the selected occurrence. When its message now holds fewer
+ * occurrences, the message's last one stands in for it.
+ */
+export function resolveChatFindIndex(
+  matches: readonly ChatFindMatch[],
+  selection: { messageId: string; occurrence: number },
+): number {
+  let fallback = -1;
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    if (match.messageId !== selection.messageId) continue;
+    if (match.occurrence === selection.occurrence) return index;
+    if (match.occurrence < selection.occurrence) fallback = index;
+  }
+  return fallback;
 }
 
 /**

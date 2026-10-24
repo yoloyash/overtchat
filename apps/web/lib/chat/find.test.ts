@@ -5,6 +5,7 @@ import {
   collectChatFindMatches,
   findOccurrences,
   initialChatFindIndex,
+  resolveChatFindIndex,
   stepChatFindIndex,
 } from "./find";
 
@@ -116,6 +117,28 @@ describe("chat find matches", () => {
       { messageId: "three", messageIndex: 2, occurrence: 0 },
       { messageId: "three", messageIndex: 2, occurrence: 1 },
     ]);
+  });
+
+  it("lets a message's rendered count replace its predicted count", () => {
+    const messages = [
+      message("one", "user", "cat"),
+      message("two", "assistant", "cat cat"),
+    ];
+    const matches = collectChatFindMatches(messages, "cat", (m) =>
+      m.id === "two" ? 1 : undefined,
+    );
+    expect(matches.map(({ messageId }) => messageId)).toEqual(["one", "two"]);
+  });
+
+  it("keeps a selection whose message lost occurrences on its last one", () => {
+    const matches = [
+      { messageId: "a", messageIndex: 0, occurrence: 0 },
+      { messageId: "b", messageIndex: 1, occurrence: 0 },
+      { messageId: "b", messageIndex: 1, occurrence: 1 },
+    ];
+    expect(resolveChatFindIndex(matches, { messageId: "b", occurrence: 1 })).toBe(2);
+    expect(resolveChatFindIndex(matches, { messageId: "b", occurrence: 4 })).toBe(2);
+    expect(resolveChatFindIndex(matches, { messageId: "c", occurrence: 0 })).toBe(-1);
   });
 
   it("does not match a phrase across rendered paragraphs", () => {

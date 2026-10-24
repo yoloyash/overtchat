@@ -115,11 +115,12 @@ export type ChatMessagesPage = {
 export async function fetchChatMessagesPage(
   id: string,
   cursor?: string,
+  limit = CHAT_MESSAGE_PAGE_SIZE,
 ): Promise<ChatMessagesPage | null> {
   const params = new URLSearchParams({
     openui: "1",
     ...(cursor ? { cursor } : {}),
-    limit: String(CHAT_MESSAGE_PAGE_SIZE),
+    limit: String(limit),
   });
   const response = await fetch(
     apiUrl(`/api/chat/${encodeURIComponent(id)}/messages?${params}`),
@@ -131,8 +132,8 @@ export async function fetchChatMessagesPage(
 
 export function useLoadOlderChatMessages(id: string) {
   return useMutation({
-    mutationFn: async (cursor: string) => {
-      const page = await fetchChatMessagesPage(id, cursor);
+    mutationFn: async ({ cursor, limit }: { cursor: string; limit?: number }) => {
+      const page = await fetchChatMessagesPage(id, cursor, limit);
       if (!page) throw new Error("HTTP 404");
       return page;
     },

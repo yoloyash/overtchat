@@ -45,6 +45,7 @@ export function MessageList({
   storedStats,
   hasOlderMessages,
   loadingOlderMessages,
+  olderMessagesFailed,
   onLoadOlderMessages,
   onLoadAllOlderMessages,
   onRegenerate,
@@ -66,6 +67,7 @@ export function MessageList({
   storedStats: StoredMessageStats;
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
+  olderMessagesFailed: boolean;
   onLoadOlderMessages: () => void;
   onLoadAllOlderMessages: () => void;
   onRegenerate: (id: string) => void;
@@ -129,11 +131,21 @@ export function MessageList({
     },
   });
 
+  const liveMessage = streaming ? messages.at(-1) : undefined;
   const find = useChatFind({
     messages,
+    liveMessageId:
+      liveMessage?.role === "assistant" ? liveMessage.id : undefined,
+    historyComplete: !hasOlderMessages,
     scrollRef,
-    scrollToIndex: (index) =>
-      virtualizer.scrollToIndex(index, { align: "center" }),
+    // Positions the list directly rather than through scrollToIndex, whose
+    // own correction loop would keep moving the list after the reader scrolls.
+    jumpToIndex: (index) => {
+      const offset = virtualizer.getOffsetForIndex(index, "center")?.[0];
+      if (offset !== undefined && scrollRef.current) {
+        scrollRef.current.scrollTop = offset;
+      }
+    },
     // Find covers the whole chat, so fetch the history that is not loaded yet.
     onOpen: hasOlderMessages ? onLoadAllOlderMessages : undefined,
   });
@@ -273,10 +285,13 @@ export function MessageList({
           query={find.query}
           total={find.total}
           activeIndex={find.activeIndex}
-          pending={find.pending || loadingOlderMessages}
+          pending={find.pending}
+          counting={hasOlderMessages && !olderMessagesFailed}
+          historyIncomplete={hasOlderMessages && olderMessagesFailed}
           onQueryChange={find.setQuery}
           onNext={find.next}
           onPrevious={find.previous}
+          onRetryHistory={onLoadAllOlderMessages}
           onClose={find.close}
         />
       )}
