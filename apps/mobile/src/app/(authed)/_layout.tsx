@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { RequiredTwoFactorNotice } from "@/components/RequiredTwoFactorNotice";
 import { ChatSessionContext, type ChatSession } from "@/lib/chat/session";
 import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
+import { useSignInRequestPrompt } from "@/lib/queries/signInRequests";
 import { useTheme } from "@/lib/theme";
 
 type State = { id: string; isNew: boolean; projectId: string | null };
@@ -38,6 +39,7 @@ export default function AuthedLayout() {
 
   useNotifications(session);
   const twoFactor = useTwoFactorStatus();
+  useSignInRequestPrompt({ enabled: twoFactor.data?.enabled === true });
 
   if (twoFactor.data?.required && !twoFactor.data.enabled) {
     return <RequiredTwoFactorNotice onCheckAgain={() => void twoFactor.refetch()} />;
@@ -58,6 +60,7 @@ export default function AuthedLayout() {
         <Stack.Screen name="personalization" />
         <Stack.Screen name="search" />
         <Stack.Screen name="projects/[id]" />
+        <Stack.Screen name="sign-in-request" options={{ presentation: "modal" }} />
       </Stack>
     </ChatSessionContext.Provider>
   );

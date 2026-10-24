@@ -351,6 +351,25 @@ Authenticator, or Authy (or type the key), enter a code, and save the ten
 backup codes. Sign-in then asks for a code from the app after the password.
 Each backup code works once; **New backup codes** replaces them.
 
+### Approve sign-ins from a signed-in device
+
+Instead of typing a code, a sign-in can be approved from a browser, desktop app,
+or phone where the account is already signed in. The new sign-in shows a
+two-digit number; the signed-in device asks "Is this you signing in?" with the
+browser or app and its address, and the user picks that number from three.
+Picking the wrong number or **No, it's not me** blocks the sign-in. Requests
+expire after five minutes, and each account's sign-ins can send five per ten
+minutes.
+
+Open web and desktop windows check for requests while visible. The mobile app
+checks while open and, with **Settings → Notifications → Sign-in requests** on,
+receives them as push notifications. The notification only says someone is
+signing in (with **Show previews**, also which browser or app); the request is
+loaded and answered over the app's own login. An authenticator app is still
+required to turn two-factor on and remains the fallback, with backup codes, on
+every sign-in. The address shown comes from the same forwarded-address header
+that sign-in rate limiting uses; when no proxy sets it, no address is shown.
+
 An administrator can remove another user's authenticator, for example after a
 lost phone, in **Settings → Users → Reset two-factor**. The acting administrator
 enters their own current password. If every administrator is locked out, run
@@ -369,7 +388,8 @@ like the password-recovery request above.
 Setting `OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR=true` in the app's environment makes
 administrators set up two-factor before they can use the app, and keeps them
 from turning it off. Other users can still choose. Two-factor sign-in needs the
-current web, desktop, and mobile apps; older apps ask the user to update.
+current web, desktop, and mobile apps; older apps ask the user to update. Older
+apps keep using codes and never receive approval requests.
 
 ## Choose how to access OvertChat
 

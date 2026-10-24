@@ -34,6 +34,7 @@ const input = {
   chats: true,
   agents: true,
   previews: true,
+  signIns: false,
 };
 const fetchMock = vi.fn();
 function request(method: string, body: unknown) {
@@ -391,6 +392,80 @@ describe("push registration and delivery through the production migration", () =
       .where(eq(schema.user.id, "alice"))
       .run();
     await sender.notifyAgentIdle("agent");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stores sign-in approval as off for apps that don't send it", async () => {
+    const older: Partial<typeof input> = { ...input };
+    delete older.signIns;
+    expect((await route.POST(request("POST", older))).status).toBe(200);
+    expect(db.select().from(schema.pushDevices).get()?.signIns).toBe(false);
+  });
+  it("asks only devices that opted in to approve a sign-in, without a secret", async () => {
+    register();
+    repository.registerPushDevice("alice", "login-alice", {
+      ...input,
+      id: crypto.randomUUID(),
+      token: "ExpoPushToken[approver]",
+      chats: false,
+      agents: false,
+      signIns: true,
+    });
+    repository.registerPushDevice("bob", "login-bob", {
+      ...input,
+      id: crypto.randomUUID(),
+      token: "ExpoPushToken[bob]",
+      signIns: true,
+    });
+    await sender.notifySignInRequest({
+      userId: "alice",
+      id: "request",
+      device: "Chrome on macOS",
+      expiresAt: new Date(Date.now() + 300_000),
+    });
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      to: "ExpoPushToken[approver]",
+      title: "Is this you signing in?",
+      body: "Chrome on macOS is signing in to your account. Tap to approve or deny.",
+      data: { kind: "sign-in", targetId: "request" },
+      channelId: "sign-in-requests",
+      ttl: 300,
+    });
+    expect(JSON.stringify(sent[0].data)).not.toMatch(/code|number/i);
+  });
+  it("keeps the signing-in device out of sign-in alerts when previews are off", async () => {
+    repository.registerPushDevice("alice", "login-alice", {
+      ...input,
+      previews: false,
+      signIns: true,
+    });
+    await sender.notifySignInRequest({
+      userId: "alice",
+      id: "request",
+      device: "Chrome on macOS",
+      expiresAt: new Date(Date.now() + 300_000),
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)[0].body).toBe(
+      "Someone is signing in to your account. Tap to approve or deny.",
+    );
+  });
+  it("does not ask an impersonated login to approve a sign-in", async () => {
+    repository.registerPushDevice("alice", "login-alice", {
+      ...input,
+      signIns: true,
+    });
+    db.update(schema.session)
+      .set({ impersonatedBy: "bob" })
+      .where(eq(schema.session.id, "login-alice"))
+      .run();
+    await sender.notifySignInRequest({
+      userId: "alice",
+      id: "request",
+      device: "Chrome on macOS",
+      expiresAt: new Date(Date.now() + 300_000),
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -28,6 +28,11 @@ test("leaves the cookie alone when the response doesn't mention it", () => {
 
 test("sends it only with two-factor requests", () => {
   assert.equal(needsTwoFactorCookie("/api/auth/two-factor/verify-totp"), true);
+  // Approving on another device sends, waits for, and verifies a one-time code.
+  assert.equal(needsTwoFactorCookie("/api/auth/two-factor/send-otp"), true);
+  assert.equal(needsTwoFactorCookie("/api/auth/two-factor/approval"), true);
+  assert.equal(needsTwoFactorCookie("/api/auth/two-factor/verify-otp"), true);
+  assert.equal(needsTwoFactorCookie("/api/sign-in-requests"), false);
   assert.equal(needsTwoFactorCookie("/api/auth/get-session"), false);
   assert.equal(needsTwoFactorCookie("/api/chats"), false);
 });

@@ -10,6 +10,7 @@ import { AppShell } from "@/components/AppShell";
 import { AppError } from "@/components/AppError";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { TwoFactorPrompt } from "@/components/auth/TwoFactorPrompt";
+import { SignInRequestPrompt } from "@/components/auth/SignInRequestPrompt";
 import { DesktopServer } from "@/components/auth/DesktopServer";
 import { Sidebar } from "@/components/Sidebar";
 import { activeChatIdsQuery, chatListQuery } from "@/lib/queries/chats";
@@ -75,6 +76,7 @@ function AppLayout() {
     <AppShell sidebar={<Sidebar isAdmin={isAdmin} />}>
       <Outlet />
       <TwoFactorPrompt key={session.user.id} />
+      <SignInRequestPrompt key={`sign-in-${session.user.id}`} />
     </AppShell>
   );
 }

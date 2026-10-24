@@ -3,6 +3,7 @@ export const queryKeys = {
     ["authCookie", server, sessionId, updatedAt] as const,
   capabilities: () => ["capabilities", "public"] as const,
   twoFactor: () => ["two-factor"] as const,
+  signInRequests: (server: string) => ["sign-in-requests", server] as const,
   agentConnections: (server: string) =>
     ["agents", server, "connections"] as const,
   agentSession: (server: string, id: string) =>

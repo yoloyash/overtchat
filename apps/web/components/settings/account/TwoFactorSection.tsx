@@ -58,7 +58,7 @@ export function TwoFactorSection({
       ) : status.enabled ? (
         <SettingsRow
           title="Authenticator app"
-          description="On. Keep your backup codes somewhere safe in case you lose your device."
+          description="On. When you sign in somewhere new, you can also approve it from a device where you're already signed in. Keep your backup codes somewhere safe in case you lose your device."
           controlAlign="end"
         >
           <div className="flex flex-wrap justify-end gap-2">

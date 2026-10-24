@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => ({
   cookie: "cookie" as string | undefined,
   last: null as NotificationResponse | null,
   listener: undefined as ((response: NotificationResponse) => void) | undefined,
+  received: undefined as
+    | ((notification: NotificationResponse["notification"]) => void)
+    | undefined,
+  invalidate: vi.fn(),
+  showSignIn: vi.fn(),
   push: vi.fn(),
   sync: vi.fn(),
   intro: vi.fn(),
@@ -30,6 +35,16 @@ vi.mock("expo-notifications", () => ({
     mocks.listener = listener;
     return { remove: mocks.remove };
   },
+  addNotificationReceivedListener: (listener: typeof mocks.received) => {
+    mocks.received = listener;
+    return { remove: vi.fn() };
+  },
+}));
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidate }),
+}));
+vi.mock("@/lib/queries/signInRequests", () => ({
+  showSignInRequest: mocks.showSignIn,
 }));
 vi.mock("expo-network", () => ({
   addNetworkStateListener: () => ({ remove: vi.fn() }),
@@ -200,4 +215,26 @@ it("introduces notifications only once the login is available", async () => {
     userId: "alice",
     cookie: "cookie",
   });
+});
+
+it("opens a sign-in request from its notification, even one seen before", async () => {
+  await render();
+  await act(async () => mocks.listener?.(notification("sign-in")));
+  expect(mocks.showSignIn).toHaveBeenCalledExactlyOnceWith("target", {
+    again: true,
+  });
+  expect(mocks.push).not.toHaveBeenCalled();
+});
+
+it("checks for a sign-in request as soon as one arrives in the foreground", async () => {
+  await render();
+  await act(async () => mocks.received?.(notification("sign-in").notification));
+  expect(mocks.invalidate).toHaveBeenCalledExactlyOnceWith({
+    queryKey: ["sign-in-requests", "http://server"],
+  });
+  await act(async () => mocks.received?.(notification("chat").notification));
+  await act(async () =>
+    mocks.received?.(notification("sign-in", "other-server:alice").notification),
+  );
+  expect(mocks.invalidate).toHaveBeenCalledTimes(1);
 });

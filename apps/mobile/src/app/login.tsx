@@ -11,15 +11,40 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as SecureStore from "expo-secure-store";
 import {
+  SIGN_IN_APPROVAL_METHOD,
   TOTP_CODE_LENGTH,
   TWO_FACTOR_CLIENT_HEADER,
   twoFactorErrorMessage,
   twoFactorSignInExpired,
 } from "@overtchat/shared";
+import { SignInApprovalStep } from "@/components/SignInApprovalStep";
 import { getAuthClient } from "@/lib/auth/client";
 import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
+
+type CodeStep = "approval" | "totp" | "backup";
+
+/** How this app last finished two-factor, so returning users start there. */
+const METHOD_KEY = "overtchat.twoFactorMethod";
+
+function lastMethod(): CodeStep | null {
+  try {
+    const value = SecureStore.getItem(METHOD_KEY);
+    return value === "approval" || value === "totp" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberMethod(step: CodeStep) {
+  try {
+    SecureStore.setItem(METHOD_KEY, step === "approval" ? "approval" : "totp");
+  } catch {
+    // The next sign-in starts with the default.
+  }
+}
 
 export default function LoginScreen() {
   const { colors, radii, fonts } = useTheme();
@@ -32,8 +57,12 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Set after the password when the account uses two-factor.
-  const [codeStep, setCodeStep] = useState<"totp" | "backup" | null>(null);
+  const [codeStep, setCodeStep] = useState<CodeStep | null>(null);
+  // The server can ask the user's signed-in devices to approve this sign-in.
+  const [canApprove, setCanApprove] = useState(false);
   const [code, setCode] = useState("");
+  // Why approval couldn't be used, shown on the code step.
+  const [notice, setNotice] = useState("");
 
   async function onSubmit() {
     if (submitting) return;
@@ -49,8 +78,14 @@ export default function LoginScreen() {
         return;
       }
       if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
+        const approve =
+          "twoFactorMethods" in data &&
+          Array.isArray(data.twoFactorMethods) &&
+          data.twoFactorMethods.includes(SIGN_IN_APPROVAL_METHOD);
+        setCanApprove(approve);
         setCode("");
-        setCodeStep("totp");
+        setNotice("");
+        setCodeStep(approve && lastMethod() !== "totp" ? "approval" : "totp");
         return;
       }
       await session.refetch();
@@ -61,8 +96,19 @@ export default function LoginScreen() {
     }
   }
 
+  function restart(message: string) {
+    setCodeStep(null);
+    setPassword("");
+    setError(message);
+  }
+
+  async function onApproved() {
+    rememberMethod("approval");
+    await session.refetch();
+  }
+
   async function onVerify() {
-    if (submitting || !codeStep) return;
+    if (submitting || !codeStep || codeStep === "approval") return;
     setSubmitting(true);
     setError("");
     try {
@@ -78,6 +124,7 @@ export default function LoginScreen() {
         setError(twoFactorErrorMessage(error));
         return;
       }
+      rememberMethod(codeStep);
       await session.refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not verify the code.");
@@ -115,7 +162,11 @@ export default function LoginScreen() {
               <Text
                 style={[styles.title, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
               >
-                {codeStep ? "Two-factor authentication" : "Welcome back"}
+                {codeStep === "approval"
+                  ? "Approve this sign-in"
+                  : codeStep
+                    ? "Two-factor authentication"
+                    : "Welcome back"}
               </Text>
               <Text
                 style={[
@@ -123,7 +174,9 @@ export default function LoginScreen() {
                   { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                 ]}
               >
-                {codeStep === "backup"
+                {codeStep === "approval"
+                  ? "Open OvertChat on a computer or another device where you're signed in, and pick this number."
+                  : codeStep === "backup"
                   ? "Enter one of the backup codes you saved when you set up two-factor."
                   : codeStep
                     ? "Enter the 6-digit code from your authenticator app."
@@ -131,8 +184,27 @@ export default function LoginScreen() {
               </Text>
             </View>
 
-            {codeStep ? (
+            {codeStep === "approval" ? (
+              <SignInApprovalStep
+                onApproved={onApproved}
+                onRestart={restart}
+                onUnavailable={(message) => {
+                  setNotice(message);
+                  setCodeStep("totp");
+                }}
+              />
+            ) : codeStep ? (
               <View style={styles.field}>
+                {notice !== "" && (
+                  <Text
+                    style={[
+                      styles.notice,
+                      { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                    ]}
+                  >
+                    {notice}
+                  </Text>
+                )}
                 <Text
                   style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
                 >
@@ -232,52 +304,70 @@ export default function LoginScreen() {
               </Text>
             )}
 
-            <Pressable
-              accessibilityRole="button"
-              disabled={submitting}
-              onPress={codeStep ? onVerify : onSubmit}
-              style={({ pressed }) => [
-                styles.cta,
-                {
-                  backgroundColor: colors.primary,
-                  borderRadius: radii.md,
-                  opacity: pressed || submitting ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.ctaText,
-                  { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
-                ]}
-              >
-                {codeStep
-                  ? submitting
-                    ? "Verifying…"
-                    : "Verify"
-                  : submitting
-                    ? "Signing in…"
-                    : "Sign in"}
-              </Text>
-            </Pressable>
-
-            {codeStep ? (
+            {codeStep !== "approval" && (
               <Pressable
                 accessibilityRole="button"
-                hitSlop={8}
-                onPress={() => {
-                  setCodeStep(codeStep === "backup" ? "totp" : "backup");
-                  setCode("");
-                  setError("");
-                }}
+                disabled={submitting}
+                onPress={codeStep ? onVerify : onSubmit}
+                style={({ pressed }) => [
+                  styles.cta,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: radii.md,
+                    opacity: pressed || submitting ? 0.85 : 1,
+                  },
+                ]}
               >
-                <Text style={[
-                  styles.recoveryLink,
-                  { color: colors.primary, fontFamily: fonts.sansMedium },
-                ]}>
-                  {codeStep === "backup" ? "Use your authenticator app" : "Use a backup code"}
+                <Text
+                  style={[
+                    styles.ctaText,
+                    { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
+                  ]}
+                >
+                  {codeStep
+                    ? submitting
+                      ? "Verifying…"
+                      : "Verify"
+                    : submitting
+                      ? "Signing in…"
+                      : "Sign in"}
                 </Text>
               </Pressable>
+            )}
+
+            {codeStep ? (
+              <View style={styles.links}>
+                {(codeStep === "approval"
+                  ? (["totp", "backup"] as const)
+                  : codeStep === "totp"
+                    ? (["backup", ...(canApprove ? (["approval"] as const) : [])] as const)
+                    : (["totp", ...(canApprove ? (["approval"] as const) : [])] as const)
+                ).map((next) => (
+                  <Pressable
+                    key={next}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    disabled={submitting}
+                    onPress={() => {
+                      setCodeStep(next);
+                      setCode("");
+                      setError("");
+                      setNotice("");
+                    }}
+                  >
+                    <Text style={[
+                      styles.recoveryLink,
+                      { color: colors.primary, fontFamily: fonts.sansMedium },
+                    ]}>
+                      {next === "totp"
+                        ? "Use your authenticator app"
+                        : next === "backup"
+                          ? "Use a backup code"
+                          : "Approve on another device"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             ) : (
               <Pressable
                 accessibilityRole="button"
@@ -352,6 +442,8 @@ const styles = StyleSheet.create({
   cta: { paddingVertical: 12, alignItems: "center", justifyContent: "center" },
   ctaText: { fontSize: 15 },
   recoveryLink: { fontSize: 14, textAlign: "center" },
+  links: { gap: 14 },
+  notice: { fontSize: 14, marginBottom: 6 },
   serverRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   serverText: { flex: 1, fontSize: 13 },
   serverLinkText: { fontSize: 13 },

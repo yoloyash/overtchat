@@ -112,8 +112,40 @@ export const pushDevices = sqliteTable(
     chats: integer("chats", { mode: "boolean" }).notNull().default(false),
     agents: integer("agents", { mode: "boolean" }).notNull().default(false),
     previews: integer("previews", { mode: "boolean" }).notNull().default(false),
+    signIns: integer("sign_ins", { mode: "boolean" }).notNull().default(false),
   },
   (table) => [index("push_devices_user_idx").on(table.userId)],
+);
+
+// A two-factor sign-in waiting for the user to approve it on a signed-in
+// device. `challenge` is a hash of the pending sign-in's cookie, and `code` is
+// the Better Auth one-time code released to that sign-in once it's approved.
+export const signInApprovals = sqliteTable(
+  "sign_in_approvals",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    challenge: text("challenge").notNull().unique(),
+    code: text("code"),
+    number: integer("number").notNull(),
+    choices: text("choices", { mode: "json" }).$type<number[]>().notNull(),
+    device: text("device").notNull(),
+    ipAddress: text("ip_address"),
+    status: text("status", {
+      enum: ["pending", "approved", "denied", "mismatch"],
+    })
+      .notNull()
+      .default("pending"),
+    decidedBySessionId: text("decided_by_session_id").references(
+      () => session.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("sign_in_approvals_user_idx").on(table.userId)],
 );
 
 export const account = sqliteTable(

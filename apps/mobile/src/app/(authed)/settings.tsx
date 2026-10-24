@@ -7,6 +7,7 @@ import {
   type NotificationPreferences,
 } from "@/lib/notifications/client";
 import { toastError } from "@/lib/toast";
+import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
 import { useState, type ReactNode } from "react";
@@ -57,6 +58,7 @@ export default function SettingsScreen() {
   const { settings: notificationPrefs, error: notificationError } =
     useNotificationSettings(notificationScope);
   const [savingNotifications, setSavingNotifications] = useState(false);
+  const twoFactor = useTwoFactorStatus();
   async function setNotificationPreference(
     patch: Partial<NotificationPreferences>,
   ) {
@@ -152,10 +154,25 @@ export default function SettingsScreen() {
               accessibilityLabel="Response notifications"
               disabled={savingNotifications || !cookie}
             />
+            {twoFactor.data?.enabled ? (
+              <>
+                <Divider />
+                <SwitchRow
+                  label="Sign-in requests"
+                  sub="Approve sign-ins to your account from this phone instead of typing a code."
+                  value={notificationPrefs.signIns}
+                  onValueChange={(signIns) =>
+                    void setNotificationPreference({ signIns })
+                  }
+                  accessibilityLabel="Sign-in requests"
+                  disabled={savingNotifications || !cookie}
+                />
+              </>
+            ) : null}
             <Divider />
             <SwitchRow
               label="Show previews"
-              sub="Include chat text and agent session names. Previews pass through Expo and Apple or Google and may appear on your lock screen."
+              sub="Include chat text, agent session names, and the browser or app signing in. Previews pass through Expo and Apple or Google and may appear on your lock screen."
               value={notificationPrefs.previews}
               onValueChange={(previews) =>
                 void setNotificationPreference({ previews })

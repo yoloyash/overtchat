@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gt, ne } from "drizzle-orm";
+import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentConnections,
@@ -100,6 +100,32 @@ export function notificationDevices(
     )
     .all()
     .filter((row) => !row.banned && (kind !== "agent" || row.role === "admin"))
+    .map((row) => row.device);
+}
+
+/** Devices that asked to approve the user's sign-ins, on logins that still work. */
+export function signInRequestDevices(userId: string) {
+  return db
+    .select({ device: pushDevices, banned: user.banned })
+    .from(pushDevices)
+    .innerJoin(
+      session,
+      and(
+        eq(session.id, pushDevices.sessionId),
+        eq(session.userId, pushDevices.userId),
+      ),
+    )
+    .innerJoin(user, eq(user.id, pushDevices.userId))
+    .where(
+      and(
+        eq(pushDevices.userId, userId),
+        eq(pushDevices.signIns, true),
+        gt(session.expiresAt, new Date()),
+        isNull(session.impersonatedBy),
+      ),
+    )
+    .all()
+    .filter((row) => !row.banned)
     .map((row) => row.device);
 }
 

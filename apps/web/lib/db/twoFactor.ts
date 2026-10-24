@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { session, twoFactor, user } from "@/lib/db/schema";
+import { session, signInApprovals, twoFactor, user } from "@/lib/db/schema";
 import { resetActorAuthorized, type ResetAuthorization } from "@/lib/db/passwords";
 
 /**
@@ -28,6 +28,7 @@ export function resetUserTwoFactor(
       .get();
     if (!target.twoFactorEnabled && !enrollment) return "not_enabled";
     tx.delete(twoFactor).where(eq(twoFactor.userId, userId)).run();
+    tx.delete(signInApprovals).where(eq(signInApprovals.userId, userId)).run();
     tx.update(user)
       .set({ twoFactorEnabled: false, updatedAt: new Date() })
       .where(eq(user.id, userId))
