@@ -123,7 +123,10 @@ export function MessageBubble({
           </div>
         )}
         {text && (
-          <div className="min-w-0 max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
+          <div
+            data-chat-find-text=""
+            className="min-w-0 max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground"
+          >
             {text}
           </div>
         )}
@@ -219,18 +222,19 @@ function AssistantBubble({
             if (seg.kind === "text") {
               const showCaret = streaming && isLast;
               return (
-                <Streamdown
-                  key={seg.index}
-                  className="font-sans space-y-3 text-[15px] leading-relaxed"
-                  plugins={MESSAGE_MARKDOWN_PLUGINS}
-                  remarkPlugins={CITATION_REMARK_PLUGINS}
-                  allowedTags={CITATION_ALLOWED_TAGS}
-                  components={citationComponents}
-                  isAnimating={streaming}
-                  caret={showCaret ? "block" : undefined}
-                >
-                  {(seg.part as { text: string }).text}
-                </Streamdown>
+                <div key={seg.index} data-chat-find-text="">
+                  <Streamdown
+                    className="font-sans space-y-3 text-[15px] leading-relaxed"
+                    plugins={MESSAGE_MARKDOWN_PLUGINS}
+                    remarkPlugins={CITATION_REMARK_PLUGINS}
+                    allowedTags={CITATION_ALLOWED_TAGS}
+                    components={citationComponents}
+                    isAnimating={streaming}
+                    caret={showCaret ? "block" : undefined}
+                  >
+                    {(seg.part as { text: string }).text}
+                  </Streamdown>
+                </div>
               );
             }
             if (seg.kind === "image") {

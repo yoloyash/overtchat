@@ -28,7 +28,9 @@ import {
 } from "@/lib/chat/stats";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
+import { ChatFindBar } from "./ChatFindBar";
 import { MessageBubble } from "./MessageBubble";
+import { useChatFind } from "./useChatFind";
 
 export function MessageList({
   messages,
@@ -44,6 +46,7 @@ export function MessageList({
   hasOlderMessages,
   loadingOlderMessages,
   onLoadOlderMessages,
+  onLoadAllOlderMessages,
   onRegenerate,
   onContinue,
   onImageReference,
@@ -64,6 +67,7 @@ export function MessageList({
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
   onLoadOlderMessages: () => void;
+  onLoadAllOlderMessages: () => void;
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
@@ -123,6 +127,15 @@ export function MessageList({
         onLoadOlderMessages();
       }
     },
+  });
+
+  const find = useChatFind({
+    messages,
+    scrollRef,
+    scrollToIndex: (index) =>
+      virtualizer.scrollToIndex(index, { align: "center" }),
+    // Find covers the whole chat, so fetch the history that is not loaded yet.
+    onOpen: hasOlderMessages ? onLoadAllOlderMessages : undefined,
   });
 
   useLayoutEffect(() => {
@@ -253,6 +266,20 @@ export function MessageList({
           })}
         </div>
       </div>
+
+      {find.open && (
+        <ChatFindBar
+          inputRef={find.inputRef}
+          query={find.query}
+          total={find.total}
+          activeIndex={find.activeIndex}
+          pending={find.pending || loadingOlderMessages}
+          onQueryChange={find.setQuery}
+          onNext={find.next}
+          onPrevious={find.previous}
+          onClose={find.close}
+        />
+      )}
 
       {(loadingOlderMessages || (hasOlderMessages && isAtTop)) && (
         <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">

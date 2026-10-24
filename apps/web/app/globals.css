@@ -243,6 +243,32 @@
   }
 }
 
+/* In-chat find (components/chat/useChatFind.ts). */
+::highlight(chat-find) {
+  background-color: oklch(0.9 0.17 100 / 0.55);
+}
+
+.dark ::highlight(chat-find) {
+  background-color: oklch(0.8 0.15 95 / 0.35);
+}
+
+::highlight(chat-find-active) {
+  background-color: oklch(0.78 0.17 65);
+  color: oklch(0.2 0 0);
+}
+
+@media (forced-colors: active) {
+  ::highlight(chat-find) {
+    background-color: Mark;
+    color: MarkText;
+  }
+
+  ::highlight(chat-find-active) {
+    background-color: Highlight;
+    color: HighlightText;
+  }
+}
+
 @keyframes text-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
