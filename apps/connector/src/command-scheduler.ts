@@ -49,6 +49,8 @@ function priority(command: ScheduledCommand["command"]): number {
     case "get_catalog":
     case "list_workspace_directory":
     case "read_workspace_file":
+    case "list_git_branches":
+    case "switch_git_branch":
       return 0;
     default:
       return 1;

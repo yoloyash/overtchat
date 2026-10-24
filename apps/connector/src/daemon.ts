@@ -26,7 +26,9 @@ import {
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
   listAgentDirectories,
+  listAgentWorkspaceGitBranches,
   probeAgentWorkspace,
+  switchAgentWorkspaceGitBranch,
   workspaceFilesService,
   type AgentSessionRuntime,
   type HostTarget,
@@ -113,6 +115,12 @@ function hostTarget(target: AgentDaemonTarget): HostTarget {
         alias: target.alias,
         shellMode: target.shellMode,
       };
+}
+
+function sameHost(left: AgentDaemonTarget, right: AgentDaemonTarget): boolean {
+  return left.transport === "local"
+    ? right.transport === "local"
+    : right.transport === "ssh" && left.alias === right.alias;
 }
 
 function workspaceDescriptor(
@@ -418,6 +426,21 @@ export class ConnectorDaemon {
       case "unwatch_git_status":
         this.gitWatches.unwatch(request.watchId);
         return { watching: false };
+      case "list_git_branches":
+        return listAgentWorkspaceGitBranches(
+          hostTarget(request.target),
+          request.path,
+        );
+      case "switch_git_branch":
+        return switchAgentWorkspaceGitBranch(
+          hostTarget(request.target),
+          request.path,
+          {
+            branch: request.branch,
+            stash: request.stash,
+            busyPaths: this.busySessionPaths(request.target),
+          },
+        );
       case "list_workspace_directory":
         return workspaceFilesService.listDirectory(
           hostTarget(request.target),
@@ -580,6 +603,28 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
     }
+  }
+
+  /** Working directories on `target` where an agent turn is in progress or about to start. */
+  private busySessionPaths(target: AgentDaemonTarget): string[] {
+    const paths = new Set<string>();
+    for (const sessionId of this.journal.sessionIds()) {
+      const snapshot = this.registry.get(sessionId)?.snapshot();
+      if (
+        !snapshot ||
+        (snapshot.status !== "running" &&
+          snapshot.state.isCompacting !== true &&
+          !snapshot.pendingInteraction &&
+          !snapshot.queuedMessages.length)
+      ) {
+        continue;
+      }
+      const descriptor = this.journal.sessionDescriptor(sessionId);
+      if (descriptor && sameHost(descriptor.target, target)) {
+        paths.add(descriptor.cwd);
+      }
+    }
+    return [...paths];
   }
 
   private async open(

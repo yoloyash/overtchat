@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   acquireLease: vi.fn(),
   listWorkspaceDirectory: vi.fn(),
   readWorkspaceFile: vi.fn(),
+  switchGitBranch: vi.fn(),
   registryOptions: null as {
     runtimeExited?: (sessionId: string, runtime: unknown) => void | Promise<void>;
     saveQueuedMessages?: (
@@ -45,6 +46,7 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
   return {
     ...original,
     configureProcessSpawner: mocks.configureProcessSpawner,
+    switchAgentWorkspaceGitBranch: mocks.switchGitBranch,
     workspaceFilesService: {
       listDirectory: mocks.listWorkspaceDirectory,
       readFile: mocks.readWorkspaceFile,
@@ -383,6 +385,76 @@ describe("connector daemon command identity", () => {
         type: "response",
         requestId: "read-file",
         success: true,
+      }),
+    ]);
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
+  it("blocks branch switches with the agents busy on the same host", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const sessions = {
+      running: { ...session, sessionId: "running", cwd: "/repo/app" },
+      queued: { ...session, sessionId: "queued", cwd: "/repo" },
+      idle: { ...session, sessionId: "idle", cwd: "/idle" },
+      remote: {
+        ...session,
+        sessionId: "remote",
+        target: { transport: "ssh" as const, alias: "workstation" },
+        cwd: "/remote",
+      },
+    };
+    for (const descriptor of Object.values(sessions)) {
+      await journal.recordSession(descriptor);
+    }
+    const base = mocks.snapshot();
+    const snapshots: Record<string, unknown> = {
+      running: { ...base, status: "running", queuedMessages: [] },
+      queued: { ...base, status: "idle", state: {}, queuedMessages: base.queuedMessages },
+      idle: { ...base, status: "idle", state: {}, queuedMessages: [] },
+      remote: { ...base, status: "running", queuedMessages: [] },
+    };
+    mocks.get.mockImplementation((sessionId: string) => ({
+      ...runtime(),
+      snapshot: () => snapshots[sessionId],
+    }));
+    mocks.switchGitBranch.mockResolvedValue({ status: "agent_running" });
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    await daemon.handle({
+      type: "request",
+      requestId: "switch",
+      request: {
+        type: "switch_git_branch",
+        target: { transport: "local", shellMode: "interactive" },
+        path: "/repo",
+        branch: { kind: "local", name: "feature" },
+        stash: true,
+      },
+    });
+
+    expect(mocks.switchGitBranch).toHaveBeenCalledWith(
+      { transport: "local", shellMode: "interactive" },
+      "/repo",
+      {
+        branch: { kind: "local", name: "feature" },
+        stash: true,
+        busyPaths: ["/repo/app", "/repo"],
+      },
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "response",
+        requestId: "switch",
+        success: true,
+        data: { status: "agent_running" },
       }),
     ]);
     await daemon.stop();
