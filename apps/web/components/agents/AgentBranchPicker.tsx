@@ -2,13 +2,23 @@
 
 import { useState } from "react";
 import { Menu } from "@base-ui/react/menu";
-import { Check, ChevronDown, GitBranch, Loader2, Plus, Search } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  GitBranch,
+  GitBranchPlus,
+  Loader2,
+  Plus,
+  Search,
+} from "lucide-react";
 import type {
+  AgentProviderId,
   AgentWorkspaceGitBranch,
   AgentWorkspaceGitSwitchResult,
   AgentWorkspaceGitSwitchTarget,
 } from "@overtchat/agent-bridge";
 import { formatUpdatedAt } from "@overtchat/shared";
+import { NewAgentWorktreeDialog } from "@/components/agents/NewAgentWorktreeDialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
@@ -48,17 +58,23 @@ function switchedDescription(
 }
 
 export function AgentBranchPicker({
+  provider,
   workspaceId,
+  workspaceName,
   branch,
   running,
 }: {
+  /** Agent a session in a new worktree starts with. */
+  provider: AgentProviderId;
   workspaceId: string;
+  workspaceName: string;
   /** Checked-out branch; null when HEAD is detached. */
   branch: string | null;
   /** The open session has a turn in progress. */
   running: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [worktreeOpen, setWorktreeOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [stashPrompt, setStashPrompt] = useState<{
     target: AgentWorkspaceGitSwitchTarget;
@@ -161,150 +177,172 @@ export function AgentBranchPicker({
   }
 
   return (
-    <Menu.Root open={open} onOpenChange={changeOpen}>
-      <Menu.Trigger
-        aria-label={`Branch ${branchText}. Switch branch`}
-        data-testid="agent-branch-picker"
-        className="flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 outline-none motion-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground"
-      >
-        <GitBranch className="size-3.5 shrink-0" />
-        <span className="max-w-28 truncate">{branchText}</span>
-        <ChevronDown className="size-3 shrink-0 opacity-60" />
-      </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner side="bottom" align="start" sideOffset={6}>
-          <Menu.Popup
-            aria-label="Switch branch"
-            className={cn(
-              "z-50 max-h-[min(28rem,calc(100vh-5rem))] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
-              motionClasses.popup,
-            )}
-          >
-            {stashPrompt ? (
-              <>
-                <div className="px-2.5 pb-2 pt-1.5">
-                  <div className="font-medium">
-                    {stashPrompt.changedFiles} uncommitted{" "}
-                    {stashPrompt.changedFiles === 1 ? "change" : "changes"}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Stash them to switch to {stashPrompt.label}.
-                    {branch && ` Switching back to ${branch} restores them.`}
-                  </p>
-                </div>
-                <Menu.Item
-                  closeOnClick={false}
-                  disabled={pending}
-                  onClick={() =>
-                    void select(stashPrompt.target, stashPrompt.label, true)
-                  }
-                  className={itemClassName}
-                >
-                  {pending ? (
-                    <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
-                  ) : (
-                    <GitBranch className="size-3.5 text-muted-foreground" />
-                  )}
-                  Stash changes and switch
-                </Menu.Item>
-                <Menu.Item
-                  closeOnClick={false}
-                  disabled={pending}
-                  onClick={() => setStashPrompt(null)}
-                  className={itemClassName}
-                >
-                  <span className="size-3.5" />
-                  Cancel
-                </Menu.Item>
-              </>
-            ) : (
-              <>
-                <div className="sticky top-0 z-10 bg-popover pb-1">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      autoFocus
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (!["Escape", "Tab", "ArrowDown", "ArrowUp"].includes(event.key)) {
-                          event.stopPropagation();
-                        }
-                      }}
-                      placeholder="Search or create a branch"
-                      aria-label="Search branches"
-                      className="h-8 pl-7 text-xs md:text-xs"
-                    />
-                  </div>
-                  {running && (
-                    <p className="px-2 pt-1.5 text-xs text-muted-foreground">
-                      Switch branches after the agent&apos;s turn ends.
+    <>
+      <Menu.Root open={open} onOpenChange={changeOpen}>
+        <Menu.Trigger
+          aria-label={`Branch ${branchText}. Switch branch`}
+          data-testid="agent-branch-picker"
+          className="flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 outline-none motion-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground"
+        >
+          <GitBranch className="size-3.5 shrink-0" />
+          <span className="max-w-28 truncate">{branchText}</span>
+          <ChevronDown className="size-3 shrink-0 opacity-60" />
+        </Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Positioner side="bottom" align="start" sideOffset={6}>
+            <Menu.Popup
+              aria-label="Switch branch"
+              className={cn(
+                "z-50 max-h-[min(28rem,calc(100vh-5rem))] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                motionClasses.popup,
+              )}
+            >
+              {stashPrompt ? (
+                <>
+                  <div className="px-2.5 pb-2 pt-1.5">
+                    <div className="font-medium">
+                      {stashPrompt.changedFiles} uncommitted{" "}
+                      {stashPrompt.changedFiles === 1 ? "change" : "changes"}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Stash them to switch to {stashPrompt.label}.
+                      {branch && ` Switching back to ${branch} restores them.`}
                     </p>
-                  )}
-                  {pending && (
-                    <p className="flex items-center gap-1.5 px-2 pt-1.5 text-xs text-muted-foreground">
-                      <Loader2 className={cn("size-3", motionClasses.spinner)} />
-                      Switching branches…
-                    </p>
-                  )}
-                </div>
-                {branches.isPending && (
-                  <div className="flex items-center justify-center gap-2 px-2 py-6 text-xs text-muted-foreground">
-                    <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
-                    Loading branches…
                   </div>
-                )}
-                {branches.error && (
-                  <div className="px-2.5 py-4 text-xs text-destructive">
-                    {branches.error.message}
-                  </div>
-                )}
-                {canCreate && (
                   <Menu.Item
                     closeOnClick={false}
-                    disabled={running || pending}
-                    onClick={() => void select({ kind: "new", name: query }, query)}
+                    disabled={pending}
+                    onClick={() =>
+                      void select(stashPrompt.target, stashPrompt.label, true)
+                    }
                     className={itemClassName}
                   >
-                    <Plus className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate">
-                      Create branch{" "}
-                      <span className="font-mono text-xs">{query}</span>
-                    </span>
+                    {pending ? (
+                      <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+                    ) : (
+                      <GitBranch className="size-3.5 text-muted-foreground" />
+                    )}
+                    Stash changes and switch
                   </Menu.Item>
-                )}
-                {branches.data && !filtered.length && !canCreate && (
-                  <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                    {branches.data.isGit ? "No matching branches." : "Not a Git repository."}
+                  <Menu.Item
+                    closeOnClick={false}
+                    disabled={pending}
+                    onClick={() => setStashPrompt(null)}
+                    className={itemClassName}
+                  >
+                    <span className="size-3.5" />
+                    Cancel
+                  </Menu.Item>
+                </>
+              ) : (
+                <>
+                  <div className="sticky top-0 z-10 bg-popover pb-1">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        autoFocus
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (!["Escape", "Tab", "ArrowDown", "ArrowUp"].includes(event.key)) {
+                            event.stopPropagation();
+                          }
+                        }}
+                        placeholder="Search or create a branch"
+                        aria-label="Search branches"
+                        className="h-8 pl-7 text-xs md:text-xs"
+                      />
+                    </div>
+                    {running && (
+                      <p className="px-2 pt-1.5 text-xs text-muted-foreground">
+                        Switch branches after the agent&apos;s turn ends.
+                      </p>
+                    )}
+                    {pending && (
+                      <p className="flex items-center gap-1.5 px-2 pt-1.5 text-xs text-muted-foreground">
+                        <Loader2 className={cn("size-3", motionClasses.spinner)} />
+                        Switching branches…
+                      </p>
+                    )}
                   </div>
-                )}
-                {local.length > 0 && (
-                  <Menu.Group>
-                    <Menu.GroupLabel className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-                      Local
-                    </Menu.GroupLabel>
-                    {local.map(branchItem)}
-                  </Menu.Group>
-                )}
-                {remote.length > 0 && (
-                  <Menu.Group>
-                    <Menu.GroupLabel className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-                      Remote
-                    </Menu.GroupLabel>
-                    {remote.map(branchItem)}
-                  </Menu.Group>
-                )}
-                {branches.data?.truncated && (
-                  <p className="px-2.5 py-2 text-[11px] text-muted-foreground">
-                    Showing the {branches.data.branches.length} most recently
-                    updated branches.
-                  </p>
-                )}
-              </>
-            )}
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
+                  {branches.isPending && (
+                    <div className="flex items-center justify-center gap-2 px-2 py-6 text-xs text-muted-foreground">
+                      <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+                      Loading branches…
+                    </div>
+                  )}
+                  {branches.error && (
+                    <div className="px-2.5 py-4 text-xs text-destructive">
+                      {branches.error.message}
+                    </div>
+                  )}
+                  {canCreate && (
+                    <Menu.Item
+                      closeOnClick={false}
+                      disabled={running || pending}
+                      onClick={() => void select({ kind: "new", name: query }, query)}
+                      className={itemClassName}
+                    >
+                      <Plus className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 truncate">
+                        Create branch{" "}
+                        <span className="font-mono text-xs">{query}</span>
+                      </span>
+                    </Menu.Item>
+                  )}
+                  {branches.data && !filtered.length && !canCreate && (
+                    <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+                      {branches.data.isGit ? "No matching branches." : "Not a Git repository."}
+                    </div>
+                  )}
+                  {local.length > 0 && (
+                    <Menu.Group>
+                      <Menu.GroupLabel className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                        Local
+                      </Menu.GroupLabel>
+                      {local.map(branchItem)}
+                    </Menu.Group>
+                  )}
+                  {remote.length > 0 && (
+                    <Menu.Group>
+                      <Menu.GroupLabel className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                        Remote
+                      </Menu.GroupLabel>
+                      {remote.map(branchItem)}
+                    </Menu.Group>
+                  )}
+                  {branches.data?.truncated && (
+                    <p className="px-2.5 py-2 text-[11px] text-muted-foreground">
+                      Showing the {branches.data.branches.length} most recently
+                      updated branches.
+                    </p>
+                  )}
+                  {branches.data?.isGit && (
+                    <>
+                      <Menu.Separator className="my-1 h-px bg-border" />
+                      <Menu.Item
+                        disabled={pending}
+                        onClick={() => setWorktreeOpen(true)}
+                        className={itemClassName}
+                      >
+                        <GitBranchPlus className="size-4 shrink-0 text-muted-foreground" />
+                        New worktree…
+                      </Menu.Item>
+                    </>
+                  )}
+                </>
+              )}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
+      <NewAgentWorktreeDialog
+        open={worktreeOpen}
+        onOpenChange={setWorktreeOpen}
+        workspaceId={workspaceId}
+        workspaceName={workspaceName}
+        provider={provider}
+      />
+    </>
   );
 }

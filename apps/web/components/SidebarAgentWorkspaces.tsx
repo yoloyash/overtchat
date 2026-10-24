@@ -12,6 +12,7 @@ import {
   ChevronUp,
   FileDiff,
   GitBranch,
+  GitBranchPlus,
   GripVertical,
   Loader2,
   Monitor,
@@ -34,6 +35,7 @@ import {
 import {
   agentConnectionTarget,
   groupAgentWorkspaces,
+  nestAgentWorkspaceGroups,
   projectAgentWorkspaceProviders,
   type AgentWorkspaceGroup,
   type AgentWorkspaceSession,
@@ -47,9 +49,14 @@ import {
 } from "@/lib/queries/agentConnections";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
+import {
+  useAgentWorkspaceGitStatus,
+  useAgentWorktreeInspection,
+} from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
 import { NewAgentSessionDialog } from "@/components/agents/NewAgentSessionDialog";
+import { NewAgentWorktreeDialog } from "@/components/agents/NewAgentWorktreeDialog";
+import { AgentWorktreeRemovalDetails } from "@/components/agents/AgentWorktreeRemovalDetails";
 import { authClient } from "@/lib/auth/client";
 import { getApiOrigin } from "@/lib/api-url";
 import { useLocalStorage } from "@/lib/useLocalStorage";
@@ -79,6 +86,14 @@ export function SidebarAgentWorkspaces({
   const [pendingRemoval, setPendingRemoval] =
     useState<AgentWorkspaceGroup | null>(null);
   const [removalError, setRemovalError] = useState("");
+  const pendingRemovalWorktree =
+    pendingRemoval?.targets.find(
+      ({ workspace }) => workspace.worktreeParentPath,
+    )?.workspace ?? null;
+  // Removal waits until the dialog can say what would be lost.
+  const worktreeInspection = useAgentWorktreeInspection(
+    pendingRemovalWorktree?.id ?? "",
+  );
 
   async function confirmRemoval() {
     if (!pendingRemoval || removal.isPending) return;
@@ -101,7 +116,9 @@ export function SidebarAgentWorkspaces({
         void navigate({ to: "/" });
       }
       toast.success({
-        title: "Workspace removed",
+        title: pendingRemovalWorktree
+          ? "Worktree removed"
+          : "Workspace removed",
         description: pendingRemoval.name,
       });
       setPendingRemoval(null);
@@ -140,6 +157,10 @@ export function SidebarAgentWorkspaces({
     () => orderAgentWorkspaces(groupAgentWorkspaces(connections), savedOrder),
     [connections, savedOrder],
   );
+  const nested = useMemo(
+    () => nestAgentWorkspaceGroups(orderedGroups),
+    [orderedGroups],
+  );
   const revealedChatRef = useRef<string | null>(null);
   useEffect(() => {
     if (!session?.user.id) return;
@@ -161,8 +182,15 @@ export function SidebarAgentWorkspaces({
     // manual collapse when the connection list refetches.
     if (revealedChatRef.current === revealKey) return;
     revealedChatRef.current = revealKey;
-    if (expansion[activeGroup.key] !== true) {
-      setSavedExpansion({ ...expansion, [activeGroup.key]: true });
+    // A worktree's workspace must be open for the worktree to show.
+    const reveal = [activeGroup.key, activeGroup.parentKey].filter(
+      (key): key is string => key !== null && expansion[key] !== true,
+    );
+    if (reveal.length > 0) {
+      setSavedExpansion({
+        ...expansion,
+        ...Object.fromEntries(reveal.map((key) => [key, true])),
+      });
     }
   }, [
     location.pathname,
@@ -175,7 +203,7 @@ export function SidebarAgentWorkspaces({
   const [dragGroups, setDragGroups] = useState<AgentWorkspaceGroup[] | null>(
     null,
   );
-  const groups = dragGroups ?? orderedGroups;
+  const groups = dragGroups ?? nested.roots;
   const recentSessions = useMemo(
     () =>
       orderedGroups
@@ -238,7 +266,7 @@ export function SidebarAgentWorkspaces({
         </div>
       )}
       <DragDropProvider
-        onDragStart={() => setDragGroups(orderedGroups)}
+        onDragStart={() => setDragGroups(nested.roots)}
         onDragEnd={(event) => {
           if (!event.canceled) {
             setSavedOrder(
@@ -270,6 +298,30 @@ export function SidebarAgentWorkspaces({
                 setPendingRemoval(group);
               }}
               providerFilter={providerFilter}
+              worktrees={nested.worktrees.get(group.key) ?? []}
+              renderWorktree={(worktree, worktreeIndex) => (
+                <WorkspaceNode
+                  key={worktree.key}
+                  group={worktree}
+                  index={worktreeIndex}
+                  sortGroup={group.key}
+                  sortable={false}
+                  organizing={organizing}
+                  expanded={
+                    typeof expansion[worktree.key] === "boolean"
+                      ? (expansion[worktree.key] as boolean)
+                      : undefined
+                  }
+                  onExpandedChange={(next) => setExpanded(worktree.key, next)}
+                  onRemove={() => {
+                    setRemovalError("");
+                    setPendingRemoval(worktree);
+                  }}
+                  providerFilter={providerFilter}
+                  worktrees={[]}
+                  renderWorktree={() => null}
+                />
+              )}
             />
           ))}
         </ul>
@@ -297,14 +349,25 @@ export function SidebarAgentWorkspaces({
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Remove workspace?
+              {pendingRemovalWorktree
+                ? "Remove worktree?"
+                : "Remove workspace?"}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {pendingRemoval?.name}
-              </span>{" "}
-              and its agent chats will be removed from OvertChat. Files and
-              native agent sessions remain on the host.
+              {pendingRemovalWorktree ? (
+                <AgentWorktreeRemovalDetails
+                  workspaceId={pendingRemovalWorktree.id}
+                  name={pendingRemoval?.name ?? ""}
+                />
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">
+                    {pendingRemoval?.name}
+                  </span>{" "}
+                  and its agent chats will be removed from OvertChat. Files and
+                  native agent sessions remain on the host.
+                </>
+              )}
             </AlertDialog.Description>
             {removalError && (
               <p role="alert" className="mt-3 text-xs text-destructive">
@@ -326,7 +389,7 @@ export function SidebarAgentWorkspaces({
               <Button
                 variant="destructive"
                 size="sm"
-                disabled={removal.isPending}
+                disabled={removal.isPending || worktreeInspection.isLoading}
                 onClick={() => void confirmRemoval()}
               >
                 {removal.isPending ? "Removing…" : "Remove"}
@@ -348,6 +411,9 @@ function WorkspaceNode({
   onExpandedChange,
   onRemove,
   providerFilter,
+  worktrees,
+  renderWorktree,
+  sortGroup,
 }: {
   group: AgentWorkspaceGroup;
   index: number;
@@ -357,20 +423,34 @@ function WorkspaceNode({
   onExpandedChange: (open: boolean) => void;
   onRemove: () => void;
   providerFilter: AgentProviderId | null;
+  /** OvertChat worktrees created from this workspace. */
+  worktrees: AgentWorkspaceGroup[];
+  renderWorktree: (
+    worktree: AgentWorkspaceGroup,
+    index: number,
+  ) => React.ReactNode;
+  sortGroup?: string;
 }) {
   const { ref, handleRef, isDragSource, isDropping } = useSortable({
     id: group.key,
     index,
+    group: sortGroup,
     disabled: !sortable,
   });
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();
   const { closeMobile } = useSidebar();
   const [createOpen, setCreateOpen] = useState(false);
+  const [worktreeOpen, setWorktreeOpen] = useState(false);
   const hasActiveSession = group.sessions.some(
     ({ session }) => pathname === `/agents/${session.id}`,
   );
-  const open = expanded ?? hasActiveSession;
+  const hasActiveWorktreeSession = worktrees.some((worktree) =>
+    worktree.sessions.some(
+      ({ session }) => pathname === `/agents/${session.id}`,
+    ),
+  );
+  const open = expanded ?? (hasActiveSession || hasActiveWorktreeSession);
   const sessionListId = useId();
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
   const hasRunningSession = group.sessions.some(({ session }) =>
@@ -415,6 +495,10 @@ function WorkspaceNode({
     };
   });
 
+  // Worktrees of a worktree are created from it but nest under the same workspace.
+  const canCreateWorktree =
+    gitStatus?.isGit === true && sessionTargets.length > 0;
+
   function startNewSession() {
     const target = sessionTargets[0];
     if (sessionTargets.length !== 1 || !target) {
@@ -452,7 +536,11 @@ function WorkspaceNode({
           aria-controls={sessionListId}
           className={cn(
             "flex min-h-10 min-w-0 flex-1 items-start gap-1.5 rounded-md px-1 py-0.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11",
-            organizing ? "pr-0" : "pr-7 max-md:pr-11",
+            organizing
+              ? "pr-0"
+              : canCreateWorktree
+                ? "pr-14 max-md:pr-[5.5rem]"
+                : "pr-7 max-md:pr-11",
           )}
           title={`${group.path} · ${workspaceHostLabel(group)}`}
         >
@@ -520,23 +608,39 @@ function WorkspaceNode({
             <Trash2 aria-hidden="true" className="size-3.5" />
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={startNewSession}
-            disabled={sessionTargets.length === 0}
-            aria-label={`New session in ${group.name}`}
-            title={
-              sessionTargets.length > 0
-                ? `New session in ${group.name}`
-                : "No agents are currently available on this machine"
-            }
-            className={cn(
-              "absolute inset-y-0 right-0 flex w-7 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
-              motionClasses.hoverReveal,
+          <>
+            {canCreateWorktree && (
+              <button
+                type="button"
+                onClick={() => setWorktreeOpen(true)}
+                aria-label={`New worktree from ${group.name}`}
+                title={`New worktree from ${group.name}`}
+                className={cn(
+                  "absolute inset-y-0 right-7 flex w-7 items-center justify-center rounded-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:right-11 max-md:w-11",
+                  motionClasses.hoverReveal,
+                )}
+              >
+                <GitBranchPlus className="size-3.5" />
+              </button>
             )}
-          >
-            <Plus className="size-4" />
-          </button>
+            <button
+              type="button"
+              onClick={startNewSession}
+              disabled={sessionTargets.length === 0}
+              aria-label={`New session in ${group.name}`}
+              title={
+                sessionTargets.length > 0
+                  ? `New session in ${group.name}`
+                  : "No agents are currently available on this machine"
+              }
+              className={cn(
+                "absolute inset-y-0 right-0 flex w-7 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
+                motionClasses.hoverReveal,
+              )}
+            >
+              <Plus className="size-4" />
+            </button>
+          </>
         )}
         <button
           ref={handleRef}
@@ -547,6 +651,8 @@ function WorkspaceNode({
           className={cn(
             "flex min-h-10 w-7 shrink-0 touch-none cursor-grab items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40 max-md:min-h-11 max-md:w-11",
             !organizing && "hidden",
+            // Worktrees follow their workspace; keep the column for alignment.
+            sortGroup !== undefined && "invisible",
           )}
         >
           <GripVertical aria-hidden="true" className="size-3.5" />
@@ -598,6 +704,28 @@ function WorkspaceNode({
           </>
         )}
       </ul>
+      {worktrees.length > 0 && (
+        <ul
+          aria-label={`Worktrees of ${group.name}`}
+          hidden={!open}
+          className={cn(
+            "ml-2.5 mt-0.5 flex-col gap-0.5 border-l border-sidebar-border pl-1.5",
+            open ? "flex" : "hidden",
+          )}
+        >
+          {worktrees.map(renderWorktree)}
+        </ul>
+      )}
+      {canCreateWorktree && (
+        <NewAgentWorktreeDialog
+          open={worktreeOpen}
+          onOpenChange={setWorktreeOpen}
+          workspaceId={representativeWorkspace.id}
+          workspaceName={group.name}
+          provider={representativeTarget.connection.provider}
+          onCreated={() => onExpandedChange(true)}
+        />
+      )}
       {sessionTargets.length > 1 && (
         <NewAgentSessionDialog
           open={createOpen}

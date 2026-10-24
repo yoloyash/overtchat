@@ -120,7 +120,9 @@ export function AgentSessionHeader({
         {workspacePath}
       </span>
       <WorkspaceGitSummary
+        provider={provider}
         workspaceId={workspaceId}
+        workspacePath={workspacePath}
         status={gitStatus}
         running={running}
         onShowChanges={onShowWorkspaceChanges}
@@ -247,12 +249,16 @@ export function AgentSessionHeader({
 }
 
 function WorkspaceGitSummary({
+  provider,
   workspaceId,
+  workspacePath,
   status,
   running,
   onShowChanges,
 }: {
+  provider: AgentProviderId;
   workspaceId: string;
+  workspacePath: string;
   status: AgentWorkspaceGitStatus | undefined;
   running: boolean;
   onShowChanges: () => void;
@@ -278,7 +284,9 @@ function WorkspaceGitSummary({
       className="hidden min-w-0 items-center gap-2 px-1 text-[11px] text-muted-foreground lg:flex"
     >
       <AgentBranchPicker
+        provider={provider}
         workspaceId={workspaceId}
+        workspaceName={workspacePath.split(/[\\/]/).filter(Boolean).at(-1) ?? workspacePath}
         branch={status.branch}
         running={running}
       />

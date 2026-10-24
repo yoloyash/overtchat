@@ -282,6 +282,7 @@ async function syncWorkspaceProvider(input: {
   target: AgentDiscoveryTarget;
   path: string;
   name: string;
+  worktreeParentPath?: string;
   installation: ReadyProvider;
   materializeEmpty: boolean;
 }): Promise<"created" | "refreshed" | "skipped"> {
@@ -355,7 +356,11 @@ async function syncWorkspaceProvider(input: {
       shellMode: input.installation.shellMode,
       detectedVersion: input.installation.version,
     },
-    workspace: { path: input.path, name: input.name },
+    workspace: {
+      path: input.path,
+      name: input.name,
+      worktreeParentPath: input.worktreeParentPath,
+    },
     sessions,
     ids: {
       hostId: crypto.randomUUID(),
@@ -371,6 +376,10 @@ export async function provisionAgentWorkspace(input: {
   target: AgentDiscoveryTarget;
   path: string;
   installations?: DetectedAgentInstallation[];
+  /** Overrides the folder name. */
+  name?: string;
+  /** Marks the folder as a Git worktree created from this workspace path. */
+  worktreeParentPath?: string;
 }): Promise<AgentWorkspaceSyncResult> {
   const snapshot = await getAgentProviderSnapshot(input.target);
   const providersById = new Map(
@@ -416,7 +425,8 @@ export async function provisionAgentWorkspace(input: {
         userId: input.userId,
         target: input.target,
         path: workspace.path,
-        name: workspace.name,
+        name: input.name ?? workspace.name,
+        worktreeParentPath: input.worktreeParentPath,
         installation,
         materializeEmpty: true,
       });
