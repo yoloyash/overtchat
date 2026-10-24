@@ -1,12 +1,15 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import type {
   AgentWorkspaceDirectoryListing,
   AgentWorkspaceFilePreview,
+  AgentWorkspaceGitBranches,
   AgentWorkspaceGitStatus,
+  AgentWorkspaceGitSwitchResult,
+  AgentWorkspaceGitSwitchTarget,
 } from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
 import { apiUrl } from "@/lib/api-url";
@@ -67,6 +70,70 @@ export function useAgentWorkspaceGitStatus(
             ? 5_000
             : false
         : false,
+  });
+}
+
+async function fetchAgentWorkspaceGitBranches(
+  id: string,
+): Promise<AgentWorkspaceGitBranches> {
+  const response = await fetch(
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/git-branches`),
+  );
+  if (!response.ok) throw await responseError(response);
+  return ((await response.json()) as { branches: AgentWorkspaceGitBranches })
+    .branches;
+}
+
+/** Branches change outside the app, so every open of the picker refetches. */
+export function useAgentWorkspaceGitBranches(
+  id: string,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: agentWorkspaceKeys.gitBranches(id),
+    queryFn: () => fetchAgentWorkspaceGitBranches(id),
+    enabled: Boolean(id) && enabled,
+    retry: false,
+    staleTime: 0,
+  });
+}
+
+export function useSwitchAgentWorkspaceGitBranch(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      branch: AgentWorkspaceGitSwitchTarget;
+      stash?: boolean;
+    }): Promise<AgentWorkspaceGitSwitchResult> => {
+      const response = await fetch(
+        apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/git-branches`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        },
+      );
+      if (!response.ok) throw await responseError(response);
+      return ((await response.json()) as {
+        result: AgentWorkspaceGitSwitchResult;
+      }).result;
+    },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: agentWorkspaceKeys.gitStatus(id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: agentWorkspaceKeys.gitBranches(id),
+        }),
+        // Files can differ on the new branch.
+        queryClient.invalidateQueries({
+          queryKey: agentWorkspaceKeys.directories(id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [...agentWorkspaceKeys.all(), "file", id],
+        }),
+      ]),
   });
 }
 
