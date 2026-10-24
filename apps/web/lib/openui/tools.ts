@@ -22,7 +22,7 @@ export const OPENUI_TOOL_PROMPT = generateSystemPrompt({
   promptOptions: {
     toolCalls: false,
     bindings: true,
-    builtinFunctions: true,
+    builtinFunctions: false,
     preamble: [
       "Interactive UI (OpenUI):",
       `When a response benefits from interactive visual components (charts, data tables, forms, dashboards, KPI cards, carousels, tabs, or step-by-step guides) or when the user asks for an interactive UI, render the interface by calling ${OPENUI_PRESENT_TOOL_NAME}.`,

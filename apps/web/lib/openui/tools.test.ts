@@ -26,13 +26,15 @@ const usage = {
 };
 
 describe("OpenUI tool contract", () => {
-  it("uses the exact renderer spec and keeps the complete prompt under 8000 tokens", () => {
+  it("uses the exact renderer spec and keeps the complete prompt under 7300 tokens", () => {
     expect(OPENUI_CHAT_LIBRARY_SPEC).toEqual(openuiChatLibrary.toSpec());
     expect(OPENUI_TOOL_PROMPT).toContain("@ToAssistant");
     expect(OPENUI_TOOL_PROMPT).toContain("text argument");
-    // Settings quote about 7,400 tokens; update that copy if this range moves.
-    expect(countTextTokens(OPENUI_TOOL_PROMPT)).toBeGreaterThan(6500);
-    expect(countTextTokens(OPENUI_TOOL_PROMPT)).toBeLessThan(8000);
+    expect(OPENUI_TOOL_PROMPT).toContain("@Reset");
+    expect(OPENUI_TOOL_PROMPT).not.toContain("@Count");
+    // Settings quote about 6,800 tokens; update that copy if this range moves.
+    expect(countTextTokens(OPENUI_TOOL_PROMPT)).toBeGreaterThan(6300);
+    expect(countTextTokens(OPENUI_TOOL_PROMPT)).toBeLessThan(7300);
   });
   it.each([undefined, null, 123, {}, [], true])(
     "safely ignores malformed streamed arguments: %j",

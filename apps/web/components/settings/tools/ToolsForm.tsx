@@ -55,7 +55,7 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
         </SettingsRow>
         <SettingsRow
           title="Interactive UI (OpenUI)"
-          description="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI Lang. You can also request it for a single message from the + menu or /openui. When active, it adds about 7,400 tokens to the system prompt, so responses may start a little slower and use more context."
+          description="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI Lang. You can also request it for a single message from the + menu or /openui. When active, it adds about 6,800 tokens to the system prompt, so responses may start a little slower and use more context."
           htmlFor="openui-enabled"
           align="center"
           controlAlign="end"

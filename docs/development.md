@@ -1397,8 +1397,11 @@ synthetic history, without model requests or credentials.
 OpenUI uses the upstream component library and a `present_openui` tool. Clients
 explicitly advertise renderer support; automatic generation defaults off. A
 one-message request can opt in. Voice turns do not offer the tool. The full
-component/action prompt costs approximately 7,400 tokens, so small-context
-models may decline an explicit request or skip automatic generation.
+component/action prompt costs approximately 6,800 tokens, so small-context
+models may decline an explicit request or skip automatic generation. The prompt
+omits the built-in data functions (`@Count`, `@Sum`, `@Each`, ...) because
+programs carry static data from the conversation; `$variable` bindings, `@Set`,
+and `@Reset` remain available.
 
 The tool stores a readable answer alongside its program for copy, speech,
 search, renderer failures, and older clients. Model history replays the two

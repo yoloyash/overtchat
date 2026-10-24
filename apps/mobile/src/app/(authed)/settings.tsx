@@ -237,7 +237,7 @@ export default function SettingsScreen() {
             />
             <SwitchRow
               label="Interactive UI (OpenUI)"
-              sub="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI. You can also request it per message from the + menu. When active, it adds about 7,400 tokens to the system prompt, so responses may start a little slower and use more context."
+              sub="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI. You can also request it per message from the + menu. When active, it adds about 6,800 tokens to the system prompt, so responses may start a little slower and use more context."
               value={openuiEnabled}
               onValueChange={setOpenUIEnabled}
               accessibilityLabel="Enable interactive UI"
