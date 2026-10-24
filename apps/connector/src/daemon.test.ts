@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   listWorkspaceDirectory: vi.fn(),
   readWorkspaceFile: vi.fn(),
   switchGitBranch: vi.fn(),
+  createGitWorktree: vi.fn(),
+  removeGitWorktree: vi.fn(),
   registryOptions: null as {
     runtimeExited?: (sessionId: string, runtime: unknown) => void | Promise<void>;
     saveQueuedMessages?: (
@@ -47,6 +49,8 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
     ...original,
     configureProcessSpawner: mocks.configureProcessSpawner,
     switchAgentWorkspaceGitBranch: mocks.switchGitBranch,
+    createAgentWorkspaceGitWorktree: mocks.createGitWorktree,
+    removeAgentWorkspaceGitWorktree: mocks.removeGitWorktree,
     workspaceFilesService: {
       listDirectory: mocks.listWorkspaceDirectory,
       readFile: mocks.readWorkspaceFile,
@@ -456,6 +460,51 @@ describe("connector daemon command identity", () => {
         success: true,
         data: { status: "agent_running" },
       }),
+    ]);
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
+  it("creates and removes worktrees on the requested host", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const worktree = { path: "/wt/topic", worktreePath: "/wt/topic", name: "topic", branch: "topic" };
+    mocks.createGitWorktree.mockResolvedValue(worktree);
+    mocks.removeGitWorktree.mockResolvedValue({ removed: true });
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    const target = { transport: "ssh" as const, alias: "workstation", shellMode: "login" as const };
+
+    await daemon.handle({
+      type: "request",
+      requestId: "create",
+      request: {
+        type: "create_git_worktree",
+        target,
+        path: "/repo",
+        base: { kind: "remote", remote: "origin", name: "main" },
+        branch: "topic",
+      },
+    });
+    await daemon.handle({
+      type: "request",
+      requestId: "remove",
+      request: { type: "remove_git_worktree", target, path: "/wt/topic" },
+    });
+
+    expect(mocks.createGitWorktree).toHaveBeenCalledWith(target, "/repo", {
+      base: { kind: "remote", remote: "origin", name: "main" },
+      branch: "topic",
+    });
+    expect(mocks.removeGitWorktree).toHaveBeenCalledWith(target, "/wt/topic");
+    expect(events).toEqual([
+      expect.objectContaining({ requestId: "create", success: true, data: worktree }),
+      expect.objectContaining({ requestId: "remove", success: true, data: { removed: true } }),
     ]);
     await daemon.stop();
     await timelines.close();

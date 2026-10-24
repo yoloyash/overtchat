@@ -13,7 +13,7 @@ import {
 // Like the status probe, these scripts run under the host's own Node so local,
 // SSH, and Windows targets execute identical code. Input arrives on stdin so
 // branch names never pass through a shell.
-const AGENT_WORKSPACE_GIT_COMMON = `
+export const AGENT_WORKSPACE_GIT_COMMON = `
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
@@ -23,7 +23,7 @@ const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
 // "On <branch>: ", which identifies the branch the changes belong to.
 const SWITCH_STASH_MESSAGE = "OvertChat branch switch";
 
-function git(args, cwd, { readOnly = false } = {}) {
+function git(args, cwd, { readOnly = false, timeoutMs = 0 } = {}) {
   return new Promise((resolve, reject) => {
     execFile(
       "git",
@@ -36,6 +36,7 @@ function git(args, cwd, { readOnly = false } = {}) {
           ...(readOnly ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
         },
         maxBuffer: MAX_GIT_OUTPUT_BYTES,
+        timeout: timeoutMs,
         windowsHide: true,
       },
       (error, stdout, stderr) => {
@@ -64,6 +65,53 @@ async function repositoryRoot(cwd) {
     if (/not a git repository|must be run in a work tree/i.test(error.message)) return null;
     throw error;
   }
+}
+
+function readInput() {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => { data += chunk; });
+    process.stdin.on("end", () => {
+      try { resolve(JSON.parse(data)); } catch (error) { reject(error); }
+    });
+    process.stdin.on("error", reject);
+  });
+}
+
+async function refExists(root, ref) {
+  try {
+    await git(["show-ref", "--verify", "--quiet", ref], root, { readOnly: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function currentBranch(root) {
+  try {
+    return (await git(["symbolic-ref", "--quiet", "--short", "HEAD"], root, { readOnly: true })).trim();
+  } catch {
+    return null;
+  }
+}
+
+// Counts every change a checkout could carry or clobber, including untracked files.
+async function changedFiles(root) {
+  const records = (await git(
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    root,
+    { readOnly: true },
+  )).split("\\0");
+  let count = 0;
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record) continue;
+    count += 1;
+    // Renames and copies are followed by their original path.
+    if (record[0] === "R" || record[0] === "C") index += 1;
+  }
+  return count;
 }
 
 function samePath(left, right) {
@@ -158,53 +206,6 @@ emit(listBranches(process.cwd()));
 // Input: {"branch": AgentWorkspaceGitSwitchTarget, "stash": boolean, "busyPaths": string[]}
 export const AGENT_WORKSPACE_GIT_SWITCH_SCRIPT = `
 ${AGENT_WORKSPACE_GIT_COMMON}
-function readInput() {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => { data += chunk; });
-    process.stdin.on("end", () => {
-      try { resolve(JSON.parse(data)); } catch (error) { reject(error); }
-    });
-    process.stdin.on("error", reject);
-  });
-}
-
-async function refExists(root, ref) {
-  try {
-    await git(["show-ref", "--verify", "--quiet", ref], root, { readOnly: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function currentBranch(root) {
-  try {
-    return (await git(["symbolic-ref", "--quiet", "--short", "HEAD"], root, { readOnly: true })).trim();
-  } catch {
-    return null;
-  }
-}
-
-// Counts every change a checkout could carry or clobber, including untracked files.
-async function changedFiles(root) {
-  const records = (await git(
-    ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-    root,
-    { readOnly: true },
-  )).split("\\0");
-  let count = 0;
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    if (!record) continue;
-    count += 1;
-    // Renames and copies are followed by their original path.
-    if (record[0] === "R" || record[0] === "C") index += 1;
-  }
-  return count;
-}
-
 async function stashes(root) {
   const output = await git(["stash", "list", "--format=%gd%x00%H%x00%gs"], root, { readOnly: true });
   return output.split("\\n").filter(Boolean).map((line) => {
