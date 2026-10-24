@@ -9,6 +9,8 @@ import {
   isHostConnectorEvent,
   isAgentWorkspaceGitBranches,
   isAgentWorkspaceGitSwitchResult,
+  isAgentWorkspaceGitWorktree,
+  isAgentWorkspaceGitWorktreeInspection,
   parseHostConnectorCapabilities,
 } from "./index";
 import { agentProviderCatalogSchema } from "./agents";
@@ -141,6 +143,49 @@ describe("Host Connector protocol compatibility", () => {
     expect(isAgentWorkspaceGitSwitchResult({ status: "changes_present", changedFiles: 3 })).toBe(true);
     expect(isAgentWorkspaceGitSwitchResult({ status: "agent_running" })).toBe(true);
     expect(isAgentWorkspaceGitSwitchResult({ status: "switched", branch: "main" })).toBe(false);
+  });
+
+  it("validates Git worktree requests and results", () => {
+    const request = (value: Record<string, unknown>) =>
+      isHostConnectorCommand({ type: "request", requestId: "request", request: value });
+    const target = { transport: "local" };
+    const create = (base: unknown, branch: unknown = "topic") =>
+      request({ type: "create_git_worktree", target, path: "/srv/project", base, branch });
+    expect(create({ kind: "local", name: "main" })).toBe(true);
+    expect(create({ kind: "remote", remote: "origin", name: "main" })).toBe(true);
+    expect(create({ kind: "new", name: "main" })).toBe(false);
+    expect(create({ kind: "local", name: "main" }, "-b")).toBe(false);
+    expect(create({ kind: "local", name: "main" }, "")).toBe(false);
+    for (const type of ["inspect_git_worktree", "remove_git_worktree"]) {
+      expect(request({ type, target, path: "/wt/topic" })).toBe(true);
+      expect(request({ type, target, path: "" })).toBe(false);
+    }
+
+    expect(
+      isAgentWorkspaceGitWorktree({
+        path: "/wt/topic/app",
+        worktreePath: "/wt/topic",
+        name: "topic",
+        branch: "topic",
+      }),
+    ).toBe(true);
+    expect(isAgentWorkspaceGitWorktree({ path: "/wt/topic", name: "topic" })).toBe(false);
+    expect(
+      isAgentWorkspaceGitWorktreeInspection({
+        exists: true,
+        worktreePath: "/wt/topic",
+        branch: null,
+        changedFiles: 2,
+      }),
+    ).toBe(true);
+    expect(
+      isAgentWorkspaceGitWorktreeInspection({
+        exists: false,
+        worktreePath: null,
+        branch: null,
+        changedFiles: -1,
+      }),
+    ).toBe(false);
   });
 
   it("accepts a session-directory snapshot and provider-independent upserts", () => {

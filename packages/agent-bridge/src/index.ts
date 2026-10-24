@@ -9,10 +9,13 @@ import type {
   AgentSessionSync,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
+  AgentWorkspaceGitBaseRef,
   AgentWorkspaceGitBranches,
   AgentWorkspaceGitStatus,
   AgentWorkspaceGitSwitchResult,
   AgentWorkspaceGitSwitchTarget,
+  AgentWorkspaceGitWorktree,
+  AgentWorkspaceGitWorktreeInspection,
   ConnectorShellMode,
 } from "./agents";
 import {
@@ -42,6 +45,7 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "workspace-terminal-v1",
   "workspace-git-watch-v1",
   "workspace-git-branch-v1",
+  "workspace-git-worktree-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -135,6 +139,20 @@ export type AgentDaemonRequest =
       /** Stash uncommitted changes instead of reporting them. */
       stash: boolean;
     }
+  /** Responds with an `AgentWorkspaceGitWorktree`. */
+  | {
+      type: "create_git_worktree";
+      target: AgentDaemonTarget;
+      /** Workspace the worktree is created from. */
+      path: string;
+      base: AgentWorkspaceGitBaseRef;
+      /** New branch checked out in the worktree. */
+      branch: string;
+    }
+  /** Responds with an `AgentWorkspaceGitWorktreeInspection`. */
+  | { type: "inspect_git_worktree"; target: AgentDaemonTarget; path: string }
+  /** Deletes a worktree OvertChat created; the branch is kept. */
+  | { type: "remove_git_worktree"; target: AgentDaemonTarget; path: string }
   | {
       type: "list_workspace_directory";
       target: AgentDaemonTarget;
@@ -414,6 +432,16 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
         isAgentWorkspaceGitSwitchTarget(value.branch) &&
         typeof value.stash === "boolean"
       );
+    case "create_git_worktree":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        isNonEmptyString(value.path) &&
+        isAgentWorkspaceGitBaseRef(value.base) &&
+        isAgentWorkspaceGitRefName(value.branch)
+      );
+    case "inspect_git_worktree":
+    case "remove_git_worktree":
+      return isAgentDaemonTarget(value.target) && isNonEmptyString(value.path);
     case "list_workspace_directory":
     case "read_workspace_file":
       return (
@@ -732,6 +760,15 @@ export function isAgentWorkspaceGitSwitchTarget(
   }
 }
 
+export function isAgentWorkspaceGitBaseRef(
+  value: unknown,
+): value is AgentWorkspaceGitBaseRef {
+  return (
+    isAgentWorkspaceGitSwitchTarget(value) &&
+    (value.kind === "local" || value.kind === "remote")
+  );
+}
+
 export function isAgentWorkspaceGitBranches(
   value: unknown,
 ): value is AgentWorkspaceGitBranches {
@@ -772,6 +809,30 @@ export function isAgentWorkspaceGitSwitchResult(
     default:
       return false;
   }
+}
+
+export function isAgentWorkspaceGitWorktree(
+  value: unknown,
+): value is AgentWorkspaceGitWorktree {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.path) &&
+    isNonEmptyString(value.worktreePath) &&
+    isNonEmptyString(value.name) &&
+    isNonEmptyString(value.branch)
+  );
+}
+
+export function isAgentWorkspaceGitWorktreeInspection(
+  value: unknown,
+): value is AgentWorkspaceGitWorktreeInspection {
+  return (
+    isRecord(value) &&
+    typeof value.exists === "boolean" &&
+    isNullableGitString(value.worktreePath) &&
+    isNullableGitString(value.branch) &&
+    isGitCount(value.changedFiles)
+  );
 }
 
 export * from "./terminal";

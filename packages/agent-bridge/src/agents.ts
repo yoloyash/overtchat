@@ -162,6 +162,11 @@ export type AgentWorkspaceListItem = {
   id: string;
   path: string;
   name: string;
+  /**
+   * Set when OvertChat created this workspace as a Git worktree: the path of
+   * the workspace it was created from, on the same machine.
+   */
+  worktreeParentPath?: string | null;
   sessions: AgentSessionListItem[];
 };
 
@@ -215,6 +220,30 @@ export type AgentWorkspaceGitSwitchTarget =
   | { kind: "remote"; remote: string; name: string }
   /** Creates a branch at the current commit, keeping uncommitted changes. */
   | { kind: "new"; name: string };
+
+/** A branch a new worktree starts from. */
+export type AgentWorkspaceGitBaseRef =
+  | { kind: "local"; name: string }
+  | { kind: "remote"; remote: string; name: string };
+
+export type AgentWorkspaceGitWorktree = {
+  /** Workspace directory inside the worktree, matching the source workspace's place in its repository. */
+  path: string;
+  /** Root of the new worktree. */
+  worktreePath: string;
+  /** Directory name of the worktree, used as the workspace name. */
+  name: string;
+  branch: string;
+};
+
+export type AgentWorkspaceGitWorktreeInspection = {
+  /** False when the worktree directory is already gone. */
+  exists: boolean;
+  worktreePath: string | null;
+  branch: string | null;
+  /** Uncommitted changes, which removing the worktree discards. Its commits stay on the branch. */
+  changedFiles: number;
+};
 
 export type AgentWorkspaceGitSwitchResult =
   | {
