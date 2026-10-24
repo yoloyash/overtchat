@@ -6,6 +6,7 @@ export {
 } from "./runtime/discovery";
 export * from "./runtime/filesystem";
 export * from "./runtime/git";
+export * from "./runtime/git-branches";
 export * from "./runtime/process";
 export * from "./runtime/provider-catalogs";
 export * from "./runtime/provider-snapshots";

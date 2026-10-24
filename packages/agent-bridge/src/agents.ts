@@ -188,6 +188,50 @@ export type AgentWorkspaceGitFile = {
   worktreeStatus: string | null;
 };
 
+export type AgentWorkspaceGitBranch = {
+  /** Local branch name, or the branch name within `remote`. */
+  name: string;
+  /** Remote name for a remote-tracking branch without a local counterpart. */
+  remote: string | null;
+  current: boolean;
+  /** Another worktree has this local branch checked out, so it cannot be switched to here. */
+  worktreePath: string | null;
+  /** Last commit time in Unix milliseconds. */
+  committedAt: number | null;
+};
+
+export type AgentWorkspaceGitBranches = {
+  isGit: boolean;
+  /** Checked-out branch; null when detached or not a repository. */
+  current: string | null;
+  /** Local branches first, each group most recently committed first. */
+  branches: AgentWorkspaceGitBranch[];
+  truncated: boolean;
+};
+
+export type AgentWorkspaceGitSwitchTarget =
+  | { kind: "local"; name: string }
+  /** Creates (or reuses) the local branch that tracks `remote/name`. */
+  | { kind: "remote"; remote: string; name: string }
+  /** Creates a branch at the current commit, keeping uncommitted changes. */
+  | { kind: "new"; name: string };
+
+export type AgentWorkspaceGitSwitchResult =
+  | {
+      status: "switched";
+      branch: string;
+      /** Uncommitted changes were stashed before switching. */
+      stashed: boolean;
+      /** Changes stashed by an earlier switch away from `branch` were restored. */
+      restored: boolean;
+      /** A stash from an earlier switch was kept because `branch` has moved since. */
+      keptStash: string | null;
+    }
+  /** Nothing changed; the repository has uncommitted changes and `stash` was false. */
+  | { status: "changes_present"; changedFiles: number }
+  /** Nothing changed; an agent turn is running in this repository's working tree. */
+  | { status: "agent_running" };
+
 export type AgentWorkspaceDirectoryEntry = {
   name: string;
   path: string;

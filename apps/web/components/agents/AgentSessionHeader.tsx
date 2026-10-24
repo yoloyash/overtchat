@@ -15,6 +15,7 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AgentBranchPicker } from "@/components/agents/AgentBranchPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import type {
   AgentProviderId,
@@ -119,7 +120,9 @@ export function AgentSessionHeader({
         {workspacePath}
       </span>
       <WorkspaceGitSummary
+        workspaceId={workspaceId}
         status={gitStatus}
+        running={running}
         onShowChanges={onShowWorkspaceChanges}
       />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
@@ -244,10 +247,14 @@ export function AgentSessionHeader({
 }
 
 function WorkspaceGitSummary({
+  workspaceId,
   status,
+  running,
   onShowChanges,
 }: {
+  workspaceId: string;
   status: AgentWorkspaceGitStatus | undefined;
+  running: boolean;
   onShowChanges: () => void;
 }) {
   if (!status?.isGit) return null;
@@ -270,10 +277,11 @@ function WorkspaceGitSummary({
       title={title}
       className="hidden min-w-0 items-center gap-2 px-1 text-[11px] text-muted-foreground lg:flex"
     >
-      <span className="flex min-w-0 items-center gap-1">
-        <GitBranch className="size-3.5 shrink-0" />
-        <span className="max-w-28 truncate">{branch}</span>
-      </span>
+      <AgentBranchPicker
+        workspaceId={workspaceId}
+        branch={status.branch}
+        running={running}
+      />
       {status.dirty && (
         <button
           type="button"

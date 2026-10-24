@@ -3001,6 +3001,131 @@ test("agent context meter stays visible while unknown and renders a 1M reading a
   await expect(unknown).toBeVisible();
 });
 
+test("header branch picker lists, creates, and switches branches with stash and busy outcomes", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Branch Tester");
+  await page.locator("#email").fill("branch@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  let currentBranch = "main";
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-status$"), (route) =>
+    route.fulfill({
+      json: {
+        status: {
+          isGit: true,
+          repositoryRoot: "/tmp/runtime-test",
+          branch: currentBranch,
+          upstream: null,
+          ahead: null,
+          behind: null,
+          dirty: true,
+          changedFiles: 1,
+          additions: 1,
+          deletions: 0,
+          lineStatsComplete: true,
+          files: [],
+        },
+      },
+    }),
+  );
+  const switchRequests: unknown[] = [];
+  const switchResults: unknown[] = [
+    { status: "changes_present", changedFiles: 3 },
+    { status: "switched", branch: "feature/login", stashed: true, restored: false, keptStash: null },
+    { status: "agent_running" },
+    { status: "switched", branch: "topic/new", stashed: false, restored: false, keptStash: null },
+  ];
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-branches$"), async (route) => {
+    if (route.request().method() === "POST") {
+      switchRequests.push(route.request().postDataJSON());
+      const result = switchResults.shift() as { status: string; branch?: string };
+      if (result.status === "switched" && result.branch) currentBranch = result.branch;
+      await route.fulfill({ json: { result } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        branches: {
+          isGit: true,
+          current: currentBranch,
+          truncated: false,
+          branches: [
+            { name: currentBranch, remote: null, current: true, worktreePath: null, committedAt: Date.now() },
+            { name: "feature/login", remote: null, current: false, worktreePath: null, committedAt: Date.now() - 3_600_000 },
+            { name: "elsewhere", remote: null, current: false, worktreePath: "/tmp/elsewhere", committedAt: null },
+            { name: "remote-only", remote: "origin", current: false, worktreePath: null, committedAt: null },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  const picker = page.getByTestId("agent-branch-picker");
+  await expect(picker).toHaveText("main");
+  await picker.click();
+  const menu = page.getByRole("menu", { name: "Switch branch" });
+  await expect(page.getByLabel("Search branches")).toBeFocused();
+  const options = menu.getByTestId("agent-branch-option");
+  await expect(options).toHaveCount(4);
+  await expect(menu.getByRole("group").nth(1)).toContainText("origin/remote-only");
+  await expect(options.filter({ hasText: "Checked out in /tmp/elsewhere" })).toHaveAttribute("aria-disabled", "true");
+  await expect(options.filter({ hasText: /^main/ })).toHaveAttribute("aria-disabled", "true");
+
+  // Uncommitted changes ask before stashing; the menu stays open.
+  await options.filter({ hasText: "feature/login" }).click();
+  await expect(menu.getByText("3 uncommitted changes")).toBeVisible();
+  await expect(menu.getByText("Stash them to switch to feature/login. Switching back to main restores them.")).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Stash changes and switch" }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.getByText("Switched to feature/login")).toBeVisible();
+  await expect(page.getByText("Your uncommitted changes on main were stashed. Switch back to main to restore them.")).toBeVisible();
+  await expect(picker).toHaveText("feature/login");
+  expect(switchRequests).toEqual([
+    { branch: { kind: "local", name: "feature/login" }, stash: false },
+    { branch: { kind: "local", name: "feature/login" }, stash: true },
+  ]);
+
+  // The connector refuses while an agent turn runs in this repository.
+  await picker.click();
+  await options.filter({ hasText: "origin/remote-only" }).click();
+  await expect(page.getByText("An agent is working in this repository").first()).toBeVisible();
+  expect(switchRequests.at(-1)).toEqual({ branch: { kind: "remote", remote: "origin", name: "remote-only" }, stash: false });
+
+  // Searching for a missing name offers to create it.
+  await picker.click();
+  await page.getByLabel("Search branches").fill("topic/new");
+  await expect(options).toHaveCount(0);
+  await menu.getByRole("menuitem", { name: "Create branch topic/new" }).click();
+  await expect(page.getByText("Switched to topic/new")).toBeVisible();
+  expect(switchRequests.at(-1)).toEqual({ branch: { kind: "new", name: "topic/new" }, stash: false });
+
+  // While this session's turn runs, every branch is disabled.
+  snapshot.status = "running";
+  snapshot.activeTurn = { startedAt: Date.now() };
+  await page.reload();
+  await picker.click();
+  await expect(menu.getByText("Switch branches after the agent's turn ends.")).toBeVisible();
+  for (const option of await options.all()) {
+    await expect(option).toHaveAttribute("aria-disabled", "true");
+  }
+});
+
 test("workspace terminal streams a real shell, retains state, and reconnects under output load", async ({ page: browserPage }, testInfo) => {
   test.setTimeout(120_000);
   const windowsAlias = process.env.OVERTCHAT_TERMINAL_WINDOWS_SSH_ALIAS;
