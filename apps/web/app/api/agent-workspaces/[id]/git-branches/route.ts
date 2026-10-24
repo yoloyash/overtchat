@@ -3,51 +3,27 @@ import {
   isAgentWorkspaceGitSwitchResult,
   isAgentWorkspaceGitSwitchTarget,
 } from "@overtchat/agent-bridge";
-import { auth } from "@/lib/auth/server";
-import { storedConnectionAccessError } from "@/lib/agents/access";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { daemonTarget } from "@/lib/agents/connector/descriptors";
-import { getOwnedAgentWorkspace } from "@/lib/db/agentConnections";
+import {
+  authorizedGitWorkspace,
+  gitErrorResponse,
+  type WorkspaceRouteContext,
+} from "@/lib/agents/connector/workspaceGitRoute";
 
 // A checkout of a large repository may take up to the connector's two minutes.
 export const maxDuration = 150;
 
-type RouteContext = { params: Promise<{ id: string }> };
-
-// Git's own messages are the useful ones here; the agent-installation mapping
-// would misread "not found" in them.
-function errorResponse(error: unknown): Response {
-  return Response.json(
-    { error: error instanceof Error ? error.message : String(error) },
-    { status: 400 },
+function authorizedWorkspace(req: Request, context: WorkspaceRouteContext) {
+  return authorizedGitWorkspace(
+    req,
+    context,
+    "workspace-git-branch-v1",
+    "Update the OvertChat Host Connector to switch branches.",
   );
 }
 
-async function authorizedWorkspace(req: Request, { params }: RouteContext) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return { response: new Response("Unauthorized", { status: 401 }) };
-  const accessError = storedConnectionAccessError(session.user.role);
-  if (accessError) {
-    return { response: Response.json({ error: accessError }, { status: 403 }) };
-  }
-  const { id } = await params;
-  const owned = await getOwnedAgentWorkspace(id, session.user.id);
-  if (!owned) return { response: new Response("Not found", { status: 404 }) };
-  if (
-    hostConnectorBroker.isOnline(owned.host.connectorId) &&
-    !hostConnectorBroker.supports(owned.host.connectorId, "workspace-git-branch-v1")
-  ) {
-    return {
-      response: Response.json(
-        { error: "Update the OvertChat Host Connector to switch branches." },
-        { status: 426 },
-      ),
-    };
-  }
-  return { owned };
-}
-
-export async function GET(req: Request, context: RouteContext): Promise<Response> {
+export async function GET(req: Request, context: WorkspaceRouteContext): Promise<Response> {
   const { owned, response } = await authorizedWorkspace(req, context);
   if (!owned) return response;
   try {
@@ -61,11 +37,11 @@ export async function GET(req: Request, context: RouteContext): Promise<Response
     }
     return Response.json({ branches }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return errorResponse(error);
+    return gitErrorResponse(error);
   }
 }
 
-export async function POST(req: Request, context: RouteContext): Promise<Response> {
+export async function POST(req: Request, context: WorkspaceRouteContext): Promise<Response> {
   const { owned, response } = await authorizedWorkspace(req, context);
   if (!owned) return response;
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
@@ -89,6 +65,6 @@ export async function POST(req: Request, context: RouteContext): Promise<Respons
     }
     return Response.json({ result }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return errorResponse(error);
+    return gitErrorResponse(error);
   }
 }

@@ -51,6 +51,9 @@ function priority(command: ScheduledCommand["command"]): number {
     case "read_workspace_file":
     case "list_git_branches":
     case "switch_git_branch":
+    case "create_git_worktree":
+    case "inspect_git_worktree":
+    case "remove_git_worktree":
       return 0;
     default:
       return 1;

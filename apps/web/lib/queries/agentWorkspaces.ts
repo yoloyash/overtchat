@@ -10,6 +10,7 @@ import type {
   AgentWorkspaceGitStatus,
   AgentWorkspaceGitSwitchResult,
   AgentWorkspaceGitSwitchTarget,
+  AgentWorkspaceGitWorktreeInspection,
 } from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
 import { apiUrl } from "@/lib/api-url";
@@ -134,6 +135,29 @@ export function useSwitchAgentWorkspaceGitBranch(id: string) {
           queryKey: [...agentWorkspaceKeys.all(), "file", id],
         }),
       ]),
+  });
+}
+
+/** What removing an OvertChat worktree would discard; read fresh each time. */
+export function useAgentWorktreeInspection(
+  id: string,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: agentWorkspaceKeys.worktree(id),
+    queryFn: async (): Promise<AgentWorkspaceGitWorktreeInspection> => {
+      const response = await fetch(
+        apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/worktree`),
+      );
+      if (!response.ok) throw await responseError(response);
+      return ((await response.json()) as {
+        inspection: AgentWorkspaceGitWorktreeInspection;
+      }).inspection;
+    },
+    enabled: Boolean(id) && enabled,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 

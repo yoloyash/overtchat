@@ -61,6 +61,7 @@ raw.exec(`
     connection_id TEXT NOT NULL,
     path TEXT NOT NULL,
     name TEXT NOT NULL,
+    worktree_parent_path TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     FOREIGN KEY (connection_id) REFERENCES agent_connections(id) ON DELETE CASCADE,
@@ -299,6 +300,60 @@ describe("agent connection persistence", () => {
           }),
         ],
       }),
+    ]);
+  });
+
+  it("records worktree origins, inherited by agents added to the folder later", async () => {
+    const install = (
+      provider: "pi" | "codex",
+      host: { transport: "local" } | { transport: "ssh"; sshAlias: string },
+      worktreeParentPath?: string,
+    ) =>
+      repository.saveAgentWorkspaceInstallation({
+        userId: "alice",
+        host: {
+          name: host.transport === "local" ? "This server" : host.sshAlias,
+          connectorId: "alice-connector",
+          ...host,
+        },
+        connection: {
+          provider,
+          executable: provider,
+          shellMode: "interactive",
+          detectedVersion: "1.0.0",
+        },
+        workspace: { path: "/wt/topic", name: "topic", worktreeParentPath },
+        sessions: [],
+      });
+    install("pi", { transport: "local" }, "/work/project");
+    install("codex", { transport: "local" });
+    // The same path on another host is a different folder.
+    install("codex", { transport: "ssh", sshAlias: "devbox" });
+
+    const connections = await repository.listAgentConnections("alice");
+    const parents = Object.fromEntries(
+      connections.map((connection) => [
+        `${connection.host.transport}:${connection.provider}`,
+        connection.workspaces[0]?.worktreeParentPath,
+      ]),
+    );
+    expect(parents).toEqual({
+      "local:pi": "/work/project",
+      "local:codex": "/work/project",
+      "ssh:codex": null,
+    });
+    const local = connections.find(
+      (connection) =>
+        connection.host.transport === "local" && connection.provider === "pi",
+    )!;
+    const owned = await repository.getOwnedAgentWorkspace(
+      local.workspaces[0]!.id,
+      "alice",
+    );
+    const rows = await repository.listOwnedAgentWorkspaceFolderRows(owned!, "alice");
+    expect(rows.map((row) => row.connection.provider).sort()).toEqual([
+      "codex",
+      "pi",
     ]);
   });
 
