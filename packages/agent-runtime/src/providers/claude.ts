@@ -110,6 +110,13 @@ export const claudeProviderAdapter: AgentProviderAdapter = {
       : null,
   mergeCommands: (discovered) => mergeAgentSlashCommands(COMMANDS, discovered),
   normalizeCommand: (command, state) => {
+    if (
+      command.type === "prompt" &&
+      !command.images?.length &&
+      /^\/usage(?:\s*)$/iu.test(command.message)
+    ) {
+      return { type: "show_usage" };
+    }
     const normalized = normalizeAgentSessionCommand(command, state);
     if (normalized.type === "set_auto_compaction") {
       throw new Error("Claude Code manages context compaction automatically.");

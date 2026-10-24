@@ -21,6 +21,11 @@ class FakeQuery implements AsyncIterator<unknown> {
   readonly getContextUsage = vi.fn()
     .mockResolvedValueOnce({ totalTokens: 0, maxTokens: 200_000 })
     .mockRejectedValue(new Error("Context control unavailable"));
+  readonly usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET = vi.fn(async () => ({
+    subscription_type: "max",
+    rate_limits_available: true,
+    rate_limits: { five_hour: { utilization: 7, resets_at: "2026-10-24T01:30:00Z" } },
+  }));
   readonly interrupt = vi.fn(async () => ({ still_queued: [] }));
   readonly rewindFiles = vi.fn(async () => ({ canRewind: true }));
   private readonly values: unknown[] = [];
@@ -1091,6 +1096,38 @@ describe("Claude context reporting", () => {
       await expect(client.getState()).resolves.toHaveProperty("sessionId");
       expect((await client.getSessionStats()).contextUsage).toBeUndefined();
     } finally { await client.stop(); vi.useRealTimers(); }
+  });
+
+  it("reads plan usage through the SDK without sending a prompt", async () => {
+    const { client, query } = await createClientForTest();
+    try {
+      await expect(client.getUsage()).resolves.toEqual({
+        planType: "max",
+        windows: [{
+          id: "five_hour",
+          label: "Session",
+          usedPercent: 7,
+          resetsAt: Date.parse("2026-10-24T01:30:00Z") / 1_000,
+          windowDurationMins: 300,
+        }],
+        credits: null,
+        activity: null,
+        unavailableReason: null,
+      });
+      expect(query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET).toHaveBeenCalledOnce();
+    } finally { await client.stop(); }
+  });
+
+  it("bounds an unanswered usage request", async () => {
+    const { client, query } = await createClientForTest();
+    vi.useFakeTimers();
+    query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET.mockImplementation(() => new Promise(() => {}));
+    try {
+      const usage = client.getUsage();
+      const assertion = expect(usage).rejects.toThrow("did not report account usage in time");
+      await vi.advanceTimersByTimeAsync(20_001);
+      await assertion;
+    } finally { vi.useRealTimers(); await client.stop(); }
   });
 
   it("restores a resumed session's reading without sending a prompt", async () => {

@@ -1096,6 +1096,7 @@ export function AgentSessionView({
           />
           <AgentUsageDialog
             open={usageOpen}
+            providerLabel={providerLabel}
             usage={usage}
             pending={usageCommand.isPending}
             error={usageError}

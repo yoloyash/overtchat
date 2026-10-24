@@ -16,6 +16,7 @@ import type {
   AgentModel,
   AgentSessionStats,
   AgentSlashCommand,
+  AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import type {
   AgentRuntimeClient,
@@ -37,6 +38,7 @@ import {
   renameClaudeSession,
 } from "@overtchat/agent-runtime/claude/sessions";
 import { forkClaudeSession } from "@overtchat/agent-runtime/claude/rewind";
+import { parseClaudeUsage } from "@overtchat/agent-runtime/claude/usage";
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -114,6 +116,8 @@ type AssistantProjection = {
 };
 
 const INTERRUPT_SETTLE_MS = 5_000;
+// Usage also scans local transcripts and calls the plan usage endpoint.
+const USAGE_TIMEOUT_MS = 20_000;
 
 const EMPTY_STATS: AgentSessionStats = {
   sessionFile: null,
@@ -382,6 +386,32 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       await this.readyPromise;
       return this.submit(message, images, options, true);
     });
+  }
+
+  async getUsage(): Promise<AgentUsageSnapshot> {
+    await this.readyPromise;
+    if (this.stopped) throw new Error("Claude session stopped.");
+    const query = this.sdkQuery;
+    // Experimental SDK control request; older CLIs may not answer it.
+    if (typeof query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET !== "function") {
+      throw new Error("This Claude Code version does not report account usage.");
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const usage = await Promise.race([
+        query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Claude Code did not report account usage in time.")),
+            USAGE_TIMEOUT_MS,
+          );
+          timer.unref?.();
+        }),
+      ]);
+      return parseClaudeUsage(usage);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async abort(): Promise<unknown> {
