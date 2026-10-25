@@ -126,6 +126,32 @@ jobs:
             test ! -e /app/apps/web/scripts
           '
 
+  sandbox:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [slim, full]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Build the ${{ matrix.tier }} sandbox
+        run: docker build --target "${{ matrix.tier }}" --tag overtchat-sandbox-test sandbox
+      - name: Test isolation with the production container settings
+        run: >-
+          docker run --rm --init --read-only
+          --tmpfs /runs:size=512m,mode=0711 --tmpfs /tmp:size=64m
+          --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN
+          --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add KILL
+          --security-opt no-new-privileges:true --pids-limit 512
+          -v "$GITHUB_WORKSPACE/sandbox:/tests:ro"
+          overtchat-sandbox-test
+          python -B -W error::ResourceWarning -m unittest discover -s /tests -p 'test_*.py' -v
+
   voice:
     permissions:
       contents: read

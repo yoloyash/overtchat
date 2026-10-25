@@ -22,6 +22,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 | CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; both site installers (`install`, `install.ps1`); manifest `cliVersion` | `cli-vX.Y.Z` |
 | Connector | Package and lockfile; bridge release version; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
+| Code sandbox | `compose.yml` `SANDBOX_VERSION` default (both tiers) | `sandbox-vX.Y.Z` |
 | Bundled images | Manifest Redis, SearXNG, Kokoro, or OvertChat Cloud tunnel and proxy image digest | None |
 | Mobile | See [Mobile release](#mobile-release) | `mobile-vX.Y.Z` |
 | Desktop | `apps/desktop/package.json`; workspace lockfile entry | `desktop-vX.Y.Z` |
@@ -69,6 +70,11 @@ Do not change unrelated manifest fields.
 - **STT:** The STT workflow builds `speech/stt/Dockerfile.cpu` and
   `speech/stt/Dockerfile.gpu` with `speech/stt/` as their context, publishes both
   images, and dispatches promotion.
+- **Code sandbox:** The sandbox workflow builds the `slim` and `full` targets of
+  `sandbox/Dockerfile` and publishes `overtchat-sandbox` and
+  `overtchat-sandbox-full` for amd64 and arm64. Both tiers share one version.
+  Managed installs do not select it yet, so there is no manifest field or
+  promotion step.
 - **Bundled images:** Promotion verifies amd64 and arm64 for every selected
   digest except the amd64-only Kokoro Blackwell image. Keep the CPU, standard
   CUDA, and Blackwell Kokoro digests on the same upstream release. A

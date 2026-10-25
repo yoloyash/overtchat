@@ -451,6 +451,39 @@ advertise documents. To include a live tool-calling model, set
 document type, step through versions, and check the share sheet, saving, and
 links in an HTML document.
 
+## Code sandbox validation
+
+`sandbox/` builds the optional code execution image in two tiers: `slim`
+(Python data, chart, image and document libraries, and poppler) and `full`
+(adds pandoc, LibreOffice, Tesseract, ffmpeg and scientific libraries).
+`POST /run` takes Python code and input files and returns output and the files
+written to `outputs/`. Each run is a fresh user from a pool, with resource
+limits and a seccomp filter that denies network sockets and new namespaces;
+see `sandbox/AGENTS.md` for the isolation invariants.
+
+Build a tier and run its tests with the production container settings:
+
+```sh
+docker build --target slim --tag overtchat-sandbox-test sandbox
+docker run --rm --init --read-only --tmpfs /runs:size=512m,mode=0711 --tmpfs /tmp:size=64m \
+  --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN \
+  --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add KILL \
+  --security-opt no-new-privileges:true --pids-limit 512 \
+  -v "$PWD/sandbox:/tests:ro" overtchat-sandbox-test \
+  python -B -W error::ResourceWarning -m unittest discover -s /tests -p 'test_*.py'
+```
+
+Repeat with `--target full`, which also runs the conversion and OCR test. The
+tests cover output and file handling, charts from `plt.show()`, blocked network
+sockets, the dropped privileges, isolation and cleanup between runs, timeouts,
+memory and output limits, request validation, and the HTTP API. Without the
+listed capabilities the server fails closed: `/healthz` returns 503 with the
+reason.
+
+To try the Compose service, run `docker compose --profile sandbox up -d --build
+sandbox`, then call it from a container on the internal `sandbox` network, for
+example `curl http://sandbox:8080/healthz`.
+
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,

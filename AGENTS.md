@@ -32,6 +32,7 @@ runbook instead of copying its instructions.
 | `packages/shared` | Cross-client chat/tool/model contracts and generated web/native theme outputs |
 | `scripts/dev.mjs` | Root development-stack orchestration |
 | `speech/` | Bundled speech inference and packaging: native Apple TTS/STT and CPU/CUDA STT containers |
+| `sandbox/` | Optional code execution image: stateless Python runs, each as a fresh unprivileged user |
 | `compose.yml`, `searxng/`, `voice/` | Self-hosted application, search sidecar, and realtime voice orchestration |
 | `.github/` | Validation, artifact publication, and release promotion automation |
 
