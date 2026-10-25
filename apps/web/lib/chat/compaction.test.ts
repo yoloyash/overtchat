@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { convertToModelMessages, type ModelMessage, type UIMessage } from "ai";
 import { ChatContextManager } from "./compaction";
 import {
@@ -48,6 +48,12 @@ function setup(
 }
 
 describe("automatic chat compaction", () => {
+  beforeAll(() => {
+    // Building the real tokenizer's vocabulary can exceed a test's 5s budget
+    // on a busy runner. Pay that one-time cost in setup instead.
+    countTextTokens("Initialize the chat tokenizer.");
+  }, 30_000);
+
   it("reserves actual output and headroom for 131072, small windows, and provider input/output limits", () => {
     expect(resolveContextBudget(131072)).toEqual({
       reservedOutputTokens: 13107,

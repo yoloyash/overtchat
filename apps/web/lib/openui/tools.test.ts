@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
 import { createStreamingParser } from "@openuidev/lang-core";
@@ -26,6 +26,12 @@ const usage = {
 };
 
 describe("OpenUI tool contract", () => {
+  beforeAll(() => {
+    // Building the real tokenizer's vocabulary can exceed a test's 5s budget
+    // on a busy runner. Pay that one-time cost in setup instead.
+    countTextTokens("Initialize the chat tokenizer.");
+  }, 30_000);
+
   it("uses the exact renderer spec and keeps the complete prompt under 7300 tokens", () => {
     expect(OPENUI_CHAT_LIBRARY_SPEC).toEqual(openuiChatLibrary.toSpec());
     expect(OPENUI_TOOL_PROMPT).toContain("@ToAssistant");
