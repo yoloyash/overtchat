@@ -68,7 +68,9 @@ describe("document token ranges", () => {
     const solid = "x".repeat(50_000);
     const solidEnd = rangeEnd(solid, 0, 500);
     expect(solidEnd).toBeGreaterThan(0);
-    expect(countTextTokens(solid.slice(0, solidEnd))).toBeLessThanOrEqual(500);
+    // Count in pieces as production does: tokenizing one long unbroken run
+    // at once is quadratic.
+    expect(measureTokens(solid.slice(0, solidEnd), Number.MAX_SAFE_INTEGER)).toBeLessThanOrEqual(500);
   });
 
   it("counts CJK text by tokens rather than characters", () => {
