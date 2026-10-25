@@ -4,7 +4,7 @@ import {
   appleSpeechToken,
 } from "./apple-speech.js";
 import { readInstallationConfig, readInstallationSecrets } from "./config.js";
-import { CLI_VERSION } from "./constants.js";
+import { CLI_VERSION, SANDBOX_IMAGES } from "./constants.js";
 import {
   detectDockerCommand,
   runDocker,
@@ -84,6 +84,14 @@ export function components(config: InstallationConfig): Component[] {
       image: config.voiceImage,
       state: "unknown",
     });
+  if (config.sandbox.installed)
+    result.push({
+      id: "sandbox",
+      service: config.sandbox.tier === "full" ? "sandbox-full" : "sandbox",
+      configured: config.sandboxVersion,
+      image: `${SANDBOX_IMAGES[config.sandbox.tier]}:${config.sandboxVersion}`,
+      state: "unknown",
+    });
   if (config.agents.installed)
     result.push({
       id: "connector",
@@ -122,6 +130,8 @@ export const composeServices = [
   "stt-cpu",
   "stt-gpu",
   "voice",
+  "sandbox",
+  "sandbox-full",
   "cloud-tunnel",
   "cloud-proxy",
 ];

@@ -28,6 +28,7 @@ function config(): InstallationConfig {
     voiceImage: "ghcr.io/example/overtchat-voice:0.1.0",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
+    sandboxVersion: "0.1.0",
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
     searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
@@ -61,6 +62,7 @@ function config(): InstallationConfig {
       apiKey: "stt-secret",
     },
     voice: { installed: true },
+    sandbox: { installed: false, tier: "slim" },
     agents: { installed: true },
   };
 }
@@ -74,7 +76,7 @@ describe("managed Compose configuration", () => {
     relayCaPem: "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----",
   };
   const cloudSecrets = {
-    betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice",
+    betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox",
     cloudCredential: "oc_credential",
   };
 
@@ -128,7 +130,7 @@ describe("managed Compose configuration", () => {
     selected.tts = { provider: "openai-compatible", bundledInstalled: true, accelerator: "apple", baseUrl: "https://external.example/v1" };
     selected.stt = { provider: "bundled", bundledInstalled: true, accelerator: "cpu" };
     const environment = renderStackEnvironment(selected, {
-      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", cloudCredential: "",
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
     }, paths);
     expect(environment).toContain('COMPOSE_PROFILES="stt-cpu,voice"');
     expect(environment).toContain('OVERTCHAT_BUNDLED_TTS_URL="http://host.docker.internal:5093"');
@@ -145,7 +147,7 @@ describe("managed Compose configuration", () => {
   ] as const)("coordinates binding and accepted login addresses for %s", (mode, bindAddress, publicUrl) => {
     const selected = { ...config(), access: { mode }, bindAddress, publicUrl };
     const environment = renderStackEnvironment(selected, {
-      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", cloudCredential: "",
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
     }, paths);
     expect(environment).toContain(`APP_BIND_ADDRESS="${bindAddress}"`);
     expect(environment).toContain(`BETTER_AUTH_URL="${publicUrl}"`);
@@ -163,6 +165,7 @@ describe("managed Compose configuration", () => {
         managementSecret: "management",
         searxngSecret: "search",
         voiceSharedSecret: "voice-secret",
+        sandboxToken: "sandbox-token",
         cloudCredential: "",
       },
       paths,
@@ -235,6 +238,38 @@ describe("managed Compose configuration", () => {
     expect(compose).not.toContain("STT_API_KEY");
   });
 
+  it.each([
+    ["slim", "sandbox", "ghcr.io/yoloyash/overtchat-sandbox"],
+    ["full", "sandbox-full", "ghcr.io/yoloyash/overtchat-sandbox-full"],
+  ] as const)("runs the %s code sandbox on the internal network only when installed", (tier, profile, image) => {
+    const secrets = {
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox-token", cloudCredential: "",
+    };
+    const installed = { ...config(), sandbox: { installed: true, tier } };
+    const environment = renderStackEnvironment(installed, secrets, paths);
+    expect(environment).toContain(`COMPOSE_PROFILES="tts-cpu,stt-gpu,voice,${profile}"`);
+    expect(environment).toContain('SANDBOX_VERSION="0.1.0"');
+    expect(environment).toContain('SANDBOX_TOKEN="sandbox-token"');
+    expect(environment).toContain('OVERTCHAT_SANDBOX_URL="http://sandbox:8080"');
+
+    const deferred = renderStackEnvironment({ ...installed, sandbox: { installed: false, tier } }, secrets, paths);
+    expect(deferred).toContain('COMPOSE_PROFILES="tts-cpu,stt-gpu,voice"');
+    expect(deferred).toContain('OVERTCHAT_SANDBOX_URL=""');
+
+    const compose = renderComposeFile(installed);
+    const service = compose.slice(compose.search(new RegExp(`\\n  ${profile}:( &sandbox)?\\n`, "u")));
+    expect(service).toContain(`image: ${image}:\${SANDBOX_VERSION}`);
+    expect(service).toContain(`profiles: [${profile}]`);
+    expect(compose).toMatch(/ {2}sandbox: &sandbox\n[\s\S]*?read_only: true[\s\S]*?cap_drop: \[ALL\]\n {4}cap_add: \[SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, KILL\]\n {4}security_opt: \["no-new-privileges:true"\][\s\S]*?SANDBOX_TOKEN: \$\{SANDBOX_TOKEN\}\n {4}networks:\n {6}sandbox:\n {8}aliases: \[sandbox\]/u);
+    expect(compose).toContain("SANDBOX_URL: ${OVERTCHAT_SANDBOX_URL:-}");
+    expect(compose).toContain("networks: [default, sandbox]");
+    expect(compose).toContain("networks:\n  # Shared only by the app and the sandbox, with no route to the internet.\n  sandbox:\n    internal: true\n");
+    // The sandbox publishes nothing and mounts nothing from the host.
+    const sandboxServices = compose.slice(compose.indexOf("  sandbox: &sandbox"), compose.indexOf("\nnetworks:"));
+    expect(sandboxServices).not.toContain("ports:");
+    expect(sandboxServices).not.toContain("volumes:");
+  });
+
   it("selects the Blackwell image and GPU profile independently from STT", () => {
     const gpuConfig = config();
     gpuConfig.tts = {
@@ -256,7 +291,7 @@ describe("managed Compose configuration", () => {
         betterAuthSecret: "auth",
         managementSecret: "management",
         searxngSecret: "search",
-        voiceSharedSecret: "voice", cloudCredential: "",
+        voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
       },
       paths,
     );
@@ -289,7 +324,7 @@ describe("managed Compose configuration", () => {
         betterAuthSecret: "auth",
         managementSecret: "management",
         searxngSecret: "search",
-        voiceSharedSecret: "voice", cloudCredential: "",
+        voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
       },
       paths,
     );

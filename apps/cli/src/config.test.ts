@@ -23,6 +23,7 @@ const manifest: ReleaseManifest = {
   voiceVersion: "5.0.0",
   connectorVersion: "3.0.0",
   sttVersion: "4.0.0",
+  sandboxVersion: "0.1.0",
   redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
   searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
@@ -87,6 +88,7 @@ describe("existing installation adoption", () => {
       voiceImage: "ghcr.io/yoloyash/overtchat-voice:5.0.0",
       connectorVersion: "3.0.0",
       sttVersion: "4.0.0",
+      sandboxVersion: "0.1.0",
       redisImage: manifest.redisImage,
       searxngImage: manifest.searxngImage,
       kokoroImage: manifest.kokoroImage,
@@ -123,6 +125,14 @@ describe("existing installation adoption", () => {
     expect(initialSecrets(detected).betterAuthSecret).toBe(
       "existing-auth-secret",
     );
+  });
+
+  it("keeps a code sandbox that the adopted installation already runs", () => {
+    expect(defaultInstallationConfig(null, manifest).sandbox).toEqual({ installed: false, tier: "slim" });
+    expect(defaultInstallationConfig(existing({ sandboxTier: "full" }), manifest).sandbox).toEqual({
+      installed: true,
+      tier: "full",
+    });
   });
 
   it("never downgrades an already newer official app image", () => {
@@ -167,6 +177,50 @@ describe("managed installation state", () => {
         voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.0.0",
         voice: { installed: false },
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("gives state from before code execution an upgradeable sandbox", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-legacy-sandbox-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const legacy: Partial<InstallationConfig> = defaultInstallationConfig(null, manifest);
+      delete legacy.sandboxVersion;
+      delete legacy.sandbox;
+      await writeFile(paths.stateFile, JSON.stringify(legacy));
+
+      await expect(readInstallationConfig(paths)).resolves.toMatchObject({
+        sandboxVersion: "0.0.0",
+        sandbox: { installed: false, tier: "slim" },
+      });
+
+      // An unknown tier is read as the standard one.
+      await writeFile(
+        paths.stateFile,
+        JSON.stringify({ ...legacy, sandboxVersion: "0.1.0", sandbox: { installed: true, tier: "huge" } }),
+      );
+      await expect(readInstallationConfig(paths)).resolves.toMatchObject({
+        sandbox: { installed: true, tier: "slim" },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the sandbox token and issues one when it is missing", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-sandbox-token-"));
+    const paths = pathsFor(directory);
+    try {
+      await mkdir(path.dirname(paths.secretsFile), { recursive: true });
+      await writeFile(paths.secretsFile, 'SANDBOX_TOKEN="stored-token"\n');
+      const stored = await readInstallationSecrets(paths);
+      expect(stored.sandboxToken).toBe("stored-token");
+      expect(initialSecrets(null, stored).sandboxToken).toBe("stored-token");
+      expect(initialSecrets(null, {}).sandboxToken).toMatch(/^[a-f0-9]{64}$/u);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

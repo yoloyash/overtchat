@@ -13,9 +13,10 @@ curl -fsSL https://overtchat.com/install | sh
 
 On Windows, use the PowerShell command in [Windows](#windows) instead.
 
-Choose where to access OvertChat, local search, speech, and voice services,
-and whether to check for updates. The wizard generates the configuration and
-secrets; no `.env` file editing is needed. On Linux, it installs Docker if needed.
+Choose where to access OvertChat, local search, speech, voice and
+[code execution](#code-execution), and whether to check for updates. The wizard
+generates the configuration and secrets; no `.env` file editing is needed. On
+Linux, it installs Docker if needed.
 Open the printed private setup link, create the administrator account,
 and add your model endpoint in the web app. The link prefills a one-time setup
 code that proves you operate this server. If you open the regular server address,
@@ -755,6 +756,31 @@ request without thinking fields. It cannot see fields the server applies
 outside the template. Custom levels survive model re-detection; select
 **Automatic** to return to catalog or saved levels.
 
+## Code execution
+
+Code execution lets tool-calling models run Python on a chat's files: analyze
+spreadsheets, make charts, edit images, and create documents such as Word or
+PDF files. Each run happens in a separate sandbox container without internet
+access and returns the files it writes as downloads. Choose one image:
+
+- Standard (`sandbox`): Python data, chart, image and document libraries (about 500 MB).
+- Full (`sandbox-full`): also pandoc, LibreOffice, OCR and ffmpeg (about 2 GB).
+
+Guided installations choose this in `overtchat setup`, which also generates the
+token the app and sandbox share; `overtchat update` keeps the sandbox current.
+For a manually managed checkout, set `OVERTCHAT_SANDBOX_URL=http://sandbox:8080`
+in `.env`, optionally a random `SANDBOX_TOKEN`, then start the profile and
+recreate the app:
+
+```sh
+docker compose --profile sandbox up -d
+```
+
+The sandbox needs the capabilities listed in `compose.yml` to switch each run to
+a fresh unprivileged user. Without them it refuses runs, and models are not
+offered code execution. Web, desktop and mobile clients show each run's code,
+output and returned files.
+
 ## Share with your family
 
 Add accounts under **Settings → Users → Add user**, then share their login
@@ -1003,8 +1029,8 @@ overtchat logs speech --follow       # native Apple speech
 overtchat logs install --tail 100     # setup/update phases and failure diagnostics
 ```
 
-Service names are `app`, `redis`, `search`, `tts`, `stt`, `voice`, `connector`,
-`speech`, and `install`. Container and speech logs require a saved installation;
+Service names are `app`, `redis`, `search`, `tts`, `stt`, `voice`, `sandbox`,
+`connector`, `speech`, and `install`. Container and speech logs require a saved installation;
 connector and installation logs are available even if setup failed before saving
 its configuration. Log output may contain application data; review it before
 sharing.
@@ -1066,27 +1092,5 @@ for automatic coordination of these settings.
 
 For manual Compose, `DISABLE_UPDATE_CHECK=true` disables release notifications.
 Guided installations expose this preference in `overtchat setup`.
-
-### Code execution
-
-Code execution lets tool-calling models run Python on a chat's files: analyze
-spreadsheets, make charts, edit images, and create documents such as Word or
-PDF files. Each run happens in a separate sandbox container without internet
-access and returns the files it writes as downloads. Choose one image:
-
-- `sandbox`: Python data, chart, image and document libraries (about 500 MB).
-- `sandbox-full`: also pandoc, LibreOffice, OCR and ffmpeg (about 2 GB).
-
-Set `OVERTCHAT_SANDBOX_URL=http://sandbox:8080` in `.env`, optionally a random
-`SANDBOX_TOKEN`, then start the profile and recreate the app:
-
-```sh
-docker compose --profile sandbox up -d
-```
-
-The sandbox needs the capabilities listed in `compose.yml` to switch each run to
-a fresh unprivileged user. Without them it refuses runs, and models are not
-offered code execution. Web, desktop and mobile clients show each run's code,
-output and returned files.
 
 [Development setup](development.md) · [Release process](release.md)

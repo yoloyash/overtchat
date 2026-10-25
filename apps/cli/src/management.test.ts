@@ -77,6 +77,7 @@ describe("component discovery", () => {
       accelerator: "gpu",
     };
     selected.voice.installed = true;
+    selected.sandbox = { installed: true, tier: "full" };
     expect(
       components(selected).map(({ id, service }) => [id, service]),
     ).toEqual([
@@ -85,9 +86,14 @@ describe("component discovery", () => {
       ["search", "searxng"],
       ["stt", "stt-gpu"],
       ["voice", "voice"],
+      ["sandbox", "sandbox-full"],
       ["connector", undefined],
       ["speech", undefined],
     ]);
+    expect(components(selected).find((entry) => entry.id === "sandbox")).toMatchObject({
+      configured: selected.sandboxVersion,
+      image: `ghcr.io/yoloyash/overtchat-sandbox-full:${selected.sandboxVersion}`,
+    });
   });
   it("does not claim another checkout's containers", () => {
     const container = {

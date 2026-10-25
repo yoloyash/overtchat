@@ -51,6 +51,14 @@ export type VoiceConfig = {
   installed: boolean;
 };
 
+// The full tier adds pandoc, LibreOffice, OCR and ffmpeg to the slim one.
+export type SandboxTier = "slim" | "full";
+
+export type SandboxConfig = {
+  installed: boolean;
+  tier: SandboxTier;
+};
+
 export type AccessMode = "local" | "lan" | "tailscale" | "advanced" | "cloud";
 export type TailscaleRoute = { hostname: string; port: number; target: string };
 // The relay connection returned when this server was linked to OvertChat Cloud.
@@ -83,6 +91,7 @@ export type InstallationConfig = {
   voiceImage: string;
   connectorVersion: string;
   sttVersion: string;
+  sandboxVersion: string;
   redisImage: string;
   searxngImage: string;
   kokoroImage: string;
@@ -108,6 +117,7 @@ export type InstallationConfig = {
   tts: TtsConfig;
   stt: SttConfig;
   voice: VoiceConfig;
+  sandbox: SandboxConfig;
   agents: AgentConfig;
   adoptedFrom?: string;
 };
@@ -136,6 +146,7 @@ export type ExistingInstallation = {
   ttsGpuVariant?: KokoroGpuVariant;
   sttAccelerator?: "cpu" | "gpu";
   sttGpuUuid?: string;
+  sandboxTier?: SandboxTier;
 };
 
 export type RuntimePaths = {

@@ -52,6 +52,11 @@ jobs:
             echo "compose.yml defaults to $compose_version, but the release tag is $RELEASE_TAG" >&2
             exit 1
           fi
+          manifest_version=$(node -p "require('./apps/site/public/install-manifest.json').sandboxVersion")
+          if [[ "$manifest_version" != "$version" ]]; then
+            echo "release manifest selects $manifest_version, but the release tag is $RELEASE_TAG" >&2
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -118,3 +123,17 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=sandbox-${{ matrix.tier }}
           cache-to: type=gha,scope=sandbox-${{ matrix.tier }},mode=max
+
+  promote:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Promote release after both sandbox images are public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: >-
+          gh workflow run promote-release.yml --ref main
+          -f require_complete=false

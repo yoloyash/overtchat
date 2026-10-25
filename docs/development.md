@@ -1275,6 +1275,14 @@ Verify CLI self-update preserves terminal stdin. Connector recovery tests must s
 that offline SSH hosts do not delay the channel, new launches await target recovery,
 and shutdown cancels probes before releasing the journal's instance lock.
 
+For code execution, choose Standard or Full in setup, then check that `status`
+lists the sandbox and its version, `logs sandbox` follows the selected tier, and
+choosing Set up later removes the container. In the generated stack, the app
+reaches `http://sandbox:8080` with the shared token while the sandbox has no route
+to the internet. Before a sandbox version is published, tag a locally built image
+as `ghcr.io/yoloyash/overtchat-sandbox:<version>` (or `overtchat-sandbox-full`) and
+run setup in development mode, which ignores pull failures.
+
 Installer binary and terminal checks are documented in [Release process](release.md).
 
 ## Agent transport validation

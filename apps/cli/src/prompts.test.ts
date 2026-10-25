@@ -11,7 +11,8 @@ const selectPrompts = vi.hoisted(
   () =>
     [] as Array<{
       message: string;
-      options: Array<{ value: string; label: string }>;
+      options: Array<{ value: string; label: string; hint?: string }>;
+      initialValue?: string;
     }>,
 );
 const confirmPrompts = vi.hoisted(
@@ -43,7 +44,8 @@ vi.mock("@clack/prompts", () => ({
   select: vi.fn(
     async (prompt: {
       message: string;
-      options: Array<{ value: string; label: string }>;
+      options: Array<{ value: string; label: string; hint?: string }>;
+      initialValue?: string;
     }) => {
       selectPrompts.push(prompt);
       return promptAnswers.get(prompt.message);
@@ -96,6 +98,7 @@ function setupConfig(): InstallationConfig {
     voiceImage: "ghcr.io/example/overtchat-voice:1.0.0",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
+    sandboxVersion: "0.1.0",
     redisImage: "redis",
     searxngImage: "searxng",
     kokoroImage: "kokoro-cpu",
@@ -126,6 +129,7 @@ function setupConfig(): InstallationConfig {
       gpuUuid: "GPU-old",
     },
     voice: { installed: true },
+    sandbox: { installed: false, tier: "slim" },
     agents: { installed: true },
   };
 }
@@ -143,6 +147,12 @@ describe("existing installation summary", () => {
         "",
         "This storage will be reused. A verified SQLite snapshot will be created before the app is replaced or migrations run.",
       ].join("\n"),
+    );
+  });
+
+  it("lists a detected code sandbox", () => {
+    expect(existingInstallationSummary(installation({ sandboxTier: "full" }))).toContain(
+      "Bundled services: SearXNG, Kokoro (CPU), Parakeet (CPU), Code sandbox (full)",
     );
   });
 
@@ -261,13 +271,40 @@ describe("setup provider selection", () => {
     }
   });
 
+  it.each([
+    { saved: { installed: false, tier: "slim" as const }, answer: "full", expectedDefault: "later", expected: { installed: true, tier: "full" } },
+    { saved: { installed: true, tier: "full" as const }, answer: "slim", expectedDefault: "full", expected: { installed: true, tier: "slim" } },
+    { saved: { installed: true, tier: "full" as const }, answer: "later", expectedDefault: "full", expected: { installed: false, tier: "full" } },
+  ])("installs code execution $answer from saved $saved.installed $saved.tier", async ({ saved, answer, expectedDefault, expected }) => {
+    promptAnswers.set("Web search", "disabled");
+    promptAnswers.set("Text-to-speech", "disabled");
+    promptAnswers.set("Speech-to-text", "disabled");
+    promptAnswers.set("Install code execution?", answer);
+    promptAnswers.set("Install Agent Connections?", false);
+
+    const selected = await promptInstallationConfig({ ...setupConfig(), sandbox: saved }, []);
+
+    expect(selected.sandbox).toEqual(expected);
+    const prompt = selectPrompts.find((entry) => entry.message === "Install code execution?");
+    expect(prompt?.initialValue).toBe(expectedDefault);
+    expect(prompt?.options.map((option) => [option.value, option.label])).toEqual([
+      ["slim", "Standard"],
+      ["full", "Full"],
+      ["later", "Set up later"],
+    ]);
+  });
+
   it("removes previously installed optional services when setup is deferred", async () => {
     promptAnswers.set("Web search", "disabled");
     promptAnswers.set("Text-to-speech", "disabled");
     promptAnswers.set("Speech-to-text", "disabled");
+    promptAnswers.set("Install code execution?", "later");
     promptAnswers.set("Install Agent Connections?", false);
 
-    const selected = await promptInstallationConfig(setupConfig(), []);
+    const selected = await promptInstallationConfig(
+      { ...setupConfig(), sandbox: { installed: true, tier: "slim" } },
+      [],
+    );
 
     expect(selected.search).toEqual({
       provider: "disabled",
@@ -282,5 +319,6 @@ describe("setup provider selection", () => {
       bundledInstalled: false,
     });
     expect(selected.voice).toEqual({ installed: false });
+    expect(selected.sandbox).toEqual({ installed: false, tier: "slim" });
   });
 });
