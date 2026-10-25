@@ -33,7 +33,6 @@ const existing = {
   contextWindow: 16000,
   discoveredContextWindow: 32000,
   discoveredCapabilities: { toolCalling: true },
-  reasoningOverride: null as unknown,
   systemPrompt: "Keep this",
   providerOptions: { openai: { store: false } },
   toolCallingEnabled: true,
@@ -56,36 +55,6 @@ describe("model updates", () => {
       id: "model",
     }));
   });
-  it("updates availability without overwriting advanced fields or credentials", async () => {
-    const response = await PATCH(request({ enabled: false }), params);
-    expect(response.status).toBe(200);
-    const fields: Partial<typeof existing> = { ...existing };
-    delete fields.id;
-    expect(mocks.update).toHaveBeenCalledWith("model", {
-      ...fields,
-      enabled: false,
-    });
-  });
-  it("keeps custom thinking levels when toggling availability", async () => {
-    const reasoningOverride = {
-      defaultLevel: "on",
-      requests: { on: { think: true }, off: { think: false } },
-    };
-    mocks.get.mockResolvedValue({
-      ...existing,
-      providerId: "vllm",
-      baseUrl: "http://localhost:8000/v1",
-      apiKey: null,
-      providerOptions: null,
-      reasoningOverride,
-    });
-    const response = await PATCH(request({ enabled: false }), params);
-    expect(response.status).toBe(200);
-    expect(mocks.update.mock.calls[0][1]).toMatchObject({
-      enabled: false,
-      reasoningOverride,
-    });
-  });
   it("retains the existing complete-editor request contract", async () => {
     expect(
       (await PATCH(request({ ...existing, label: "Renamed" }), params)).status,
@@ -95,7 +64,7 @@ describe("model updates", () => {
       apiKey: "existing-secret",
     });
   });
-  it.each([{ enabled: "false" }, { enabled: false, label: "incomplete" }, {}])(
+  it.each([{ enabled: false }, { enabled: false, label: "incomplete" }, {}])(
     "rejects malformed/incomplete updates",
     async (body) => {
       expect((await PATCH(request(body), params)).status).toBe(400);

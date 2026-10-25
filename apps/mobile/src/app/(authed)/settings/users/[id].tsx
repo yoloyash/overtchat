@@ -76,7 +76,8 @@ function CreateUser() {
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
-          autoComplete="email"
+          // Another person's credentials must not autofill or save as the admin's.
+          autoComplete="off"
         />
         <Field
           editable={!action.busy && !created}
@@ -84,7 +85,7 @@ function CreateUser() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          autoComplete="new-password"
+          autoComplete="off"
         />
         <Choice
           disabled={action.busy || created}
@@ -223,7 +224,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
-                  autoComplete="new-password"
+                  autoComplete="off"
                 />
                 <Field
                   editable={!action.busy}
@@ -231,7 +232,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
                   value={confirm}
                   onChangeText={setConfirm}
                   secureTextEntry
-                  autoComplete="new-password"
+                  autoComplete="off"
                 />
               </Section>
               <Action

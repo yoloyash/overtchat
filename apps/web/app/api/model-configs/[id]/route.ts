@@ -36,19 +36,7 @@ export async function PATCH(
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // A narrow availability edit preserves the latest credentials and advanced fields.
-  const availabilityOnly =
-    body !== null &&
-    typeof body === "object" &&
-    !Array.isArray(body) &&
-    Object.keys(body).length === 1 &&
-    "enabled" in body &&
-    typeof body.enabled === "boolean";
-  const parsed = ModelConfigSchema.safeParse(
-    availabilityOnly
-      ? { ...existing, enabled: (body as { enabled: boolean }).enabled }
-      : body,
-  );
+  const parsed = ModelConfigSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
@@ -56,8 +44,7 @@ export async function PATCH(
     );
   }
   try {
-    if (parsed.data.modelType !== "image")
-      createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });
