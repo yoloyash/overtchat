@@ -18,6 +18,8 @@ export interface ProviderModelConfig extends ProviderConnection {
   supportsImageInput?: boolean;
   /** Per-chat override. Provider adapters decide whether and how to consume it. */
   reasoningLevel?: ChatReasoningLevel;
+  /** Administrator-configured request fields for `reasoningLevel`. */
+  reasoningRequest?: Record<string, unknown>;
 }
 
 export interface ResolvedLanguageModel {

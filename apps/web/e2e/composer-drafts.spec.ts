@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
 async function createAccountAndFixtures(page: Page) {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Draft Test Admin");
   await page.locator("#email").fill("draft-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

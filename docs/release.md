@@ -17,12 +17,12 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 
 | Component | Change | Tag |
 | --- | --- | --- |
-| App | Manifest `appVersion`; `compose.yml` default | `vX.Y.Z` |
+| App | Manifest `appVersion`; `compose.yml` and `compose.minimal.yml` defaults | `vX.Y.Z` |
 | Realtime voice | Manifest `voiceVersion`; `compose.yml` default | `voice-vX.Y.Z` |
-| CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
+| CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; both site installers (`install`, `install.ps1`); manifest `cliVersion` | `cli-vX.Y.Z` |
 | Connector | Package and lockfile; bridge release version; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
-| Bundled images | Manifest Redis, SearXNG, or Kokoro image digest | None |
+| Bundled images | Manifest Redis, SearXNG, Kokoro, or OvertChat Cloud tunnel and proxy image digest | None |
 | Mobile | See [Mobile release](#mobile-release) | `mobile-vX.Y.Z` |
 | Desktop | `apps/desktop/package.json`; workspace lockfile entry | `desktop-vX.Y.Z` |
 
@@ -42,12 +42,12 @@ Do not change unrelated manifest fields.
   release, and dispatches promotion.
 - **Realtime voice:** The voice workflow publishes the amd64/arm64 image and
   dispatches promotion.
-- **CLI:** The CLI workflow verifies Linux/macOS binaries, publishes the GitHub
+- **CLI:** The CLI workflow verifies Linux/macOS/Windows binaries, publishes the GitHub
   release, and dispatches promotion.
 - **Apple speech:** Ships inside the CLI. Run [Apple speech validation](development.md#apple-speech)
   after changing it. The first release requires both app and CLI version bumps
   and coordinated promotion so the app supports native routing/authentication.
-- **Connector:** The connector workflow verifies Linux/macOS binaries, publishes
+- **Connector:** The connector workflow verifies Linux/macOS/Windows binaries, publishes
   the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases
   retain the current protocol. Protocol 6 adds byte-bounded batches, fragmented
@@ -61,6 +61,11 @@ Do not change unrelated manifest fields.
   tag. Follow [Desktop macOS release](#desktop-macos-release) and
   [Desktop Linux release](#desktop-linux-release) to validate and publish it;
   desktop downloads do not use manifest promotion.
+  API level 5 adds the optional custom image `editSize` setting. Earlier desktop
+  clients strictly validate image provider options and reject this new key.
+  Release a matching desktop build alongside the server update; verify that
+  older clients show the update-required screen before entering the app and
+  that the matching client can save and reopen an editing-size override.
 - **STT:** The STT workflow builds `speech/stt/Dockerfile.cpu` and
   `speech/stt/Dockerfile.gpu` with `speech/stt/` as their context, publishes both
   images, and dispatches promotion.
@@ -82,6 +87,62 @@ installer. A mismatch with the tagged source or a failed tag lookup blocks
 promotion. Version bumps select the next candidate; tags publish its artifacts,
 and stable promotion waits until all selected artifacts are available.
 
+Host Connector packages contain the Node runtime pinned (with upstream archive
+SHA-256 hashes) in `apps/connector/scripts/node-runtime.json`, the bundled
+application, and the matching external `node-pty` native module. Update the
+runtime version and all five hashes together. Publish the five
+`overtchat-connector-<platform>-<architecture>.tar.gz` files with
+`connector-checksums.txt` and the tagged installer.
+
+The first archive-based connector release requires a matching manager CLI
+release with archive installation support. Select both in the same stable
+manifest: existing managers update and re-execute the CLI before installing
+the connector. Older standalone connector releases remain supported by the
+new manager and promotion verifier. Do not promote the new connector alongside
+an old manager CLI.
+
+Workspace terminal releases also require `terminal-smoke --output-bytes 16777216`
+to pass using each packaged Node runtime on its native runner, with external
+Node installations excluded from PATH. The connector workflow runs this
+alongside the existing journal smoke tests on Linux, macOS, and Windows.
+Producing an archive alone does not establish working PTY support. Qualify the
+matching server and desktop UI with the
+[workspace terminal checks](development.md#workspace-terminal-validation).
+This feature adds an optional connector capability and terminal stream protocol;
+it does not change the existing agent protocol or bundled-client API level.
+
+## Windows backend qualification
+
+Windows x64 CLI and connector artifacts ship in the same `cli-v*` and
+`connector-v*` releases as Linux/macOS. Promotion requires the CLI `.exe`, the
+connector `.tar.gz`, their checksums, and the matching `install.ps1` version
+before it exposes Windows setup. Never add assets to an already published tag.
+
+Hosted CI runs the PowerShell installer, running-executable updater recovery,
+atomic configuration, the packaged terminal smoke, and NTFS journal
+migration/crash checks. Task Scheduler logon behavior needs a signed-in desktop
+user, which hosted runners lack. Before promoting a release that changes the CLI
+or connector, download the candidate artifacts and run these on a signed-in
+Windows 11 x64 PC, using Node 22 and the repository's npm dependencies:
+
+```powershell
+.github/scripts/smoke-cli-installer-windows.ps1 -Binary .\overtchat.exe -Installer apps/site/public/install.ps1
+.github/scripts/smoke-connector-service-windows.ps1 -Package .\overtchat-connector-windows-amd64.tar.gz
+node --import tsx .github/scripts/smoke-connector-rollback-windows.mjs .\overtchat-connector-windows-amd64.tar.gz
+```
+
+The service smoke covers install, crash restart, graceful stop, journal reopen,
+restart, and uninstall under a non-elevated interactive token. The rollback smoke
+injects staging and startup failures against a real task and NTFS files; its
+management readiness is a fixture. All three use isolated paths with spaces and
+remove their tasks and temporary files.
+
+Then update a disposable managed installation with the candidates and check:
+browser login from another LAN device, a native and an SSH agent request, a
+workspace terminal, retained credentials and history, Docker Desktop restart,
+and connector startup after reboot and sign-in. Record the artifact SHA-256
+values and the checks run in the release PR.
+
 ## Website downloads
 
 The static site's `/downloads/` page selects installers from the newest published
@@ -100,6 +161,9 @@ dispatch promotion as documented above; that token does not trigger release-even
 workflows. The independent desktop update feed does not refresh the marketing site.
 
 ## Coordinated server and desktop launch
+
+This documents the initial one-time coordinated launch of server 0.23.0 and
+desktop 0.1.0.
 
 Merge the desktop stack before publishing server 0.23.0 and desktop 0.1.0.
 Use a release-preparation PR to select `appVersion: 0.23.0` in the candidate
@@ -169,7 +233,10 @@ and stapled separately. Verification checks the app recovered from both
 downloads, bundle/version/architecture, Developer ID team, secure timestamp,
 runtime entitlements, packaged files, Electron fuses, staple, and Gatekeeper.
 The packaging scripts also generate updater metadata from the final downloadable
-bytes, after notarization. Publishing the qualified draft triggers the
+bytes, after notarization. Explicit CloudKit transport errors during stapling
+are retried up to three times with short backoff; rejected notarization, invalid
+signatures, missing tickets, and Gatekeeper failures still stop the build.
+Publishing the qualified draft triggers the
 [desktop update feed](#desktop-update-feed) workflow.
 
 ### Apple credentials
@@ -212,9 +279,9 @@ gh workflow run desktop-release.yml --ref <reviewed-ref>
 For a release, merge the versioned commit into `main`, then create the matching
 `desktop-vX.Y.Z` tag. The draft contains
 `overtchat-X.Y.Z-mac-arm64.{dmg,zip}` and
-`overtchat-X.Y.Z-mac-x64.{dmg,zip}`, the four Linux x64 downloads below, and
+`overtchat-X.Y.Z-mac-x64.{dmg,zip}`, the four Linux x64 downloads below, `overtchat-X.Y.Z-windows-x64.exe`, and
 checksums for each platform/architecture, plus `stable-arm64-mac.yml`,
-`stable-x64-mac.yml`, and `stable-linux.yml`.
+`stable-x64-mac.yml`, `stable-linux.yml`, and Windows `stable.yml`.
 Never move a tag or replace assets after publication. A failed build can resume
 its still-unpublished draft; manual builds only upload workflow artifacts.
 
@@ -251,8 +318,8 @@ remains the credential-free development packaging command.
 
 The desktop workflow builds Linux **x64** downloads using electron-builder's
 standard `AppImage`, `deb`, `rpm`, and `tar.gz` targets. It uses the same bundled
-UI, desktop version, and `desktop-vX.Y.Z` tag as macOS. Windows and Linux ARM64
-are not part of this release. No paid signing account is required for these
+UI, desktop version, and `desktop-vX.Y.Z` tag as macOS and Windows. Linux ARM64
+is not part of this release. No paid signing account is required for these
 direct GitHub downloads; this workflow does not provision an APT/YUM repository.
 In-app updates use the [desktop update feed](#desktop-update-feed).
 
@@ -334,17 +401,72 @@ desktop environment, package format, and app version. Before publishing:
    For the first release, use two candidate builds. Removing the package must
    leave the user's settings intact while removing installed launchers/profile.
 
-Publish the existing desktop draft only after its macOS and Linux gates pass,
+Publish the existing desktop draft only after its macOS, Linux, and Windows gates pass,
 using the publication command in the macOS section. Never replace public assets
 or move a published tag.
+
+## Desktop Windows release
+
+The desktop workflow builds an unsigned Windows **x64** NSIS installer on
+`windows-2025`, using the existing desktop version and tag. It installs per user
+without elevation, provides Start menu integration, and supports in-app updates.
+Windows ARM64 and Microsoft Store packaging are outside this target.
+
+PRs and manual dispatches upload workflow artifacts. Tags add these to the same
+verified draft as macOS/Linux:
+
+- `overtchat-X.Y.Z-windows-x64.exe`
+- `desktop-checksums-windows-x64.txt`
+- `stable.yml` (Windows channel naming has no platform suffix)
+
+The Windows job verifies the PE architecture, ASAR contents, release version,
+fuses, and update URL. It builds a private `0.0.0` baseline pointing at a loopback
+feed, installs it, and exercises the exact candidate through `electron-updater`:
+API compatibility guards, interrupted download/retry, normal quit without
+installation, explicit install/relaunch, encrypted login retention, sign-out
+persistence, and uninstall. The private baseline is a workflow artifact only;
+never publish it or replace the candidate with it.
+
+To repeat on `gaming-pc` or another Windows 11 x64 device, use a test account
+without an OvertChat installation/profile. Install Node 22/npm 10.9.8, check out
+the same source commit, run `npm ci`, and download the workflow's
+`desktop-windows-x64` and `desktop-windows-baseline` artifacts. From the repo root:
+
+```powershell
+node --import tsx .github/scripts/smoke-desktop-windows.mjs <baseline.exe> <candidate-directory> <X.Y.Z>
+```
+
+The smoke refuses existing profiles/installations, installs into a temporary
+folder, and removes its app and profile afterward. Screenshots and redacted logs
+are retained in the printed diagnostics directory. It does not test a full chat
+server or microphone hardware.
+
+Before publishing, also download the exact candidate through a browser on
+Windows 11 x64. Check SmartScreen/Smart App Control behavior, normal installer
+launch, Start menu and taskbar icons, server selection, real login/chat streaming,
+agent UI, attachments/downloads, microphone, menus, and Change Server. Confirm
+saved sign-in across restart and uninstall/reinstall behavior. SSH-transferred
+files do not establish browser-download reputation behavior.
+
+Initial releases are unsigned: warnings or policy blocks are expected on some
+systems. Do not describe the download as signed or universally warning-free.
+Signing can be added later, with publisher verification and unsigned-to-signed
+upgrade qualification. Do not disable OS protections as a release workaround.
+Publish only after the Windows and existing macOS/Linux gates pass.
 
 ## Desktop update feed
 
 `.github/workflows/desktop-update-feed.yml` runs when a stable `desktop-vX.Y.Z`
 release is published. Drafts and prereleases do not change the public feed.
 It downloads the immutable GitHub assets, verifies checksums and metadata,
-and publishes the three channel YAML files under `desktop/` in Cloudflare R2
+and publishes the four channel YAML files under `desktop/` in Cloudflare R2
 bucket `overtchat-updates`, served at `https://updates.overtchat.com`.
+Existing releases through `desktop-v0.3.0` may contain only the three macOS/Linux
+feeds. Publishing or retrying those releases leaves the Windows feed untouched.
+If any Windows artifact is present, its checksum, installer, and feed must all
+validate. Releases newer than `0.3.0` always require Windows assets, even when
+all Windows files are missing. This preserves the already-built `0.3.0` draft;
+the first public Windows release must use a new desktop version/tag.
 Installer URLs remain version-pinned GitHub release URLs; desktop publication
 does not depend on server/CLI/mobile promotion or the marketing site's build.
 
@@ -372,14 +494,15 @@ publication step, explicitly dispatch this feed workflow too.
 
 The updater uses `electron-updater`'s generic provider. Mac channels separate
 arm64/x64; Linux's channel contains AppImage, `.deb`, and `.rpm`, selected by
-the installed format. Tar installs remain manual. Channel metadata includes
+the installed format. Windows x64 uses `stable.yml` with the NSIS EXE.
+Tar installs remain manual. Channel metadata includes
 `clientApiLevel`: main checks an exact match with the selected server before
 downloading and again before installation. Offline checks accept only the
 installed client's API level. A single stable feed does not retain an older
 API-compatible release once a newer release has replaced it.
 
 Before publishing, qualify an actual higher-version update on both signed Mac
-architectures and Linux formats: discovery without downloading, clicking to
+architectures, Linux formats, and Windows x64: discovery without downloading, clicking to
 download, progress, retry after a network interruption, postponing restart,
 explicit restart, saved login, and normal quit
 without installation. Check both newer/older server API mismatches, switching
@@ -435,6 +558,11 @@ desktop instance. Verify AppImage replacement and native package
 authentication separately. After qualification, publish the exact reviewed
 candidate and verify the public R2 feed workflow.
 
+For later releases, build a private lower-version baseline with the current
+client API contract and a loopback update URL. The qualification harness reads
+the candidate's API level and the baseline's version from their verified
+metadata; it does not assume the original `0.1.0` / API level 1 release.
+
 ## Mobile release
 
 `apps/mobile/app.json` is authoritative: `expo.version` is the public version,
@@ -463,6 +591,11 @@ configuration before uploading artifacts. A successful checkout-level check
 alone does not prove the file reached the native build.
 
 `.github/workflows/mobile-eas.yml` owns the Android release pipeline:
+
+It installs Temurin JDK 17 explicitly before running EAS local builds. Local
+release builds must also have JDK 17 selected in `JAVA_HOME`; keep the Gradle
+wrapper generated by Expo rather than patching ignored native files. This
+avoids React Native 0.85.3's incompatible Gradle 9 fallback JDK downloader.
 
 1. A manual dispatch builds the production AAB and APK and smoke-tests the APK
    on a clean hosted emulator. It uploads short-lived workflow artifacts but

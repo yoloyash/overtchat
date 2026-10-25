@@ -17,6 +17,7 @@ export type ProviderId = (typeof PROVIDER_IDS)[number];
 export const API_FORMAT_IDS = [
   "auto",
   "openai-chat",
+  "openai-images",
   "openai-responses",
   "anthropic-messages",
 ] as const;
@@ -126,6 +127,11 @@ export const API_FORMATS: Record<
   ExplicitApiFormat,
   { id: ExplicitApiFormat; label: string; description: string }
 > = {
+  "openai-images": {
+    id: "openai-images",
+    label: "OpenAI Images",
+    description: "For OpenAI-compatible /images/generations endpoints.",
+  },
   "openai-chat": {
     id: "openai-chat",
     label: "OpenAI Chat Completions",

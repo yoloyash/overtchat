@@ -12,8 +12,16 @@ import {
   SettingsRow,
   SettingsSection,
 } from "../SettingsRows";
+import { TwoFactorSection } from "./TwoFactorSection";
 
-export function AccountForm({ email }: { email: string }) {
+export function AccountForm({
+  email,
+  startTwoFactorSetup = false,
+}: {
+  email: string;
+  /** Opens two-factor setup right away, as when coming from the sign-in prompt. */
+  startTwoFactorSetup?: boolean;
+}) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [pwError, setPwError] = useState("");
@@ -124,6 +132,8 @@ export function AccountForm({ email }: { email: string }) {
           </Button>
         </SettingsActions>
       </form>
+
+      <TwoFactorSection email={email} startSetup={startTwoFactorSetup} />
     </SettingsPage>
   );
 }

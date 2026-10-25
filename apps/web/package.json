@@ -16,10 +16,15 @@
     "test:e2e:ui": "rm -f data/test.db* && playwright test --ui",
     "catalog:generate": "tsx scripts/generate-model-catalog.ts",
     "catalog:check": "tsx scripts/check-model-catalog.ts",
-    "auth:generate": "npx --yes auth@1.6.11 generate --config lib/auth/server.ts --output lib/db/schema.ts --y",
+    "auth:generate": "npx --yes auth@1.7.10 generate --config lib/auth/server.ts --output lib/db/schema.ts --y",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "mkdir -p data && drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "openui:build": "node scripts/build-openui.mjs",
+    "openui:generate": "tsx scripts/generate-openui-spec.ts",
+    "openui:check": "tsx scripts/generate-openui-spec.ts --check",
+    "prebuild": "npm run openui:build",
+    "predev": "npm run openui:build"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.16",
@@ -30,12 +35,17 @@
     "@ai-sdk/openai-compatible": "^3.0.12",
     "@ai-sdk/react": "^4.0.87",
     "@base-ui/react": "^1.4.1",
-    "@better-auth/expo": "1.6.23",
+    "@better-auth/expo": "1.7.10",
     "@dnd-kit/helpers": "^0.5.0",
     "@dnd-kit/react": "^0.5.0",
     "@openai/agents": "0.14.3",
+    "@openuidev/lang-core": "1.0.1",
+    "@openuidev/react-headless": "0.18.1",
+    "@openuidev/react-lang": "1.0.1",
+    "@openuidev/react-ui": "0.18.1",
     "@overtchat/agent-bridge": "*",
     "@overtchat/shared": "*",
+    "@overtchat/voice-client": "*",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",
@@ -44,9 +54,13 @@
     "@tanstack/react-query-devtools": "^5.100.10",
     "@tanstack/react-router": "^1.170.41",
     "@tanstack/react-virtual": "^3.14.10",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-search": "0.16.0",
+    "@xterm/addon-web-links": "0.12.0",
+    "@xterm/xterm": "6.0.0",
     "@yoloyash/web-basics": "0.5.0",
     "ai": "^7.0.84",
-    "better-auth": "1.6.23",
+    "better-auth": "1.7.10",
     "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
     "clipboard-polyfill": "^4.1.1",
@@ -79,8 +93,10 @@
     "tw-animate-css": "^1.4.0",
     "unpdf": "^1.6.2",
     "use-stick-to-bottom": "^1.1.6",
+    "ws": "^8.18.3",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "zustand": "^4.5.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -89,7 +105,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitest/ui": "^4.1.11",
+    "@types/ws": "^8.18.1",
+    "@vitest/ui": "4.1.11",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
@@ -97,6 +114,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
     "typescript": "^5",
-    "vitest": "^4.1.11"
+    "vitest": "4.1.11",
+    "esbuild": "0.25.12"
   }
 }

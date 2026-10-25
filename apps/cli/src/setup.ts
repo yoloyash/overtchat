@@ -1,5 +1,5 @@
 import { detectAppleSpeech, prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
-import { platformServices } from "./platform.js";
+import { platformServices, releaseAsset } from "./platform.js";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { confirm, isCancel, note, outro } from "@clack/prompts";
@@ -12,10 +12,12 @@ import {
   writeInstallationConfig,
   writeSecretsFile,
 } from "./config.js";
-import { completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
+import { assertAgentConnectionsComplete, completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
 import { installationSpinner as spinner } from "./install-progress.js";
 import { protectInstallationSecrets } from "./install-log.js";
 import {
+  CLOUD_PROXY_CONFIG,
+  CLOUD_TUNNEL_CONFIG,
   renderComposeFile,
   renderStackEnvironment,
   SEARXNG_SETTINGS,
@@ -48,6 +50,7 @@ import {
 import { createPreMigrationSnapshot } from "./snapshot.js";
 import type { ExistingInstallation, InstallationConfig } from "./types.js";
 import { accessSummary, connectionInstructions } from "./access.js";
+import { initialSetupLink } from "./initial-setup.js";
 import { finishAccess } from "./connection-check.js";
 import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
 import { startStack, recoverSpeech } from "./stack.js";
@@ -165,6 +168,21 @@ export async function prepareFiles(
       encoding: "utf8",
       mode: 0o600,
     });
+  }
+  const cloud = config.access?.mode === "cloud" ? config.access.cloud : undefined;
+  if (cloud) {
+    await mkdir(paths.cloudDirectory, { recursive: true, mode: 0o700 });
+    const files: Array<[string, string]> = [
+      ["frpc.toml", CLOUD_TUNNEL_CONFIG],
+      ["Caddyfile", CLOUD_PROXY_CONFIG],
+      ["relay-ca.pem", `${cloud.relayCaPem.trim()}\n`],
+    ];
+    for (const [file, contents] of files) {
+      await writeFile(path.join(paths.cloudDirectory, file), contents, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    }
   }
   await writeFile(paths.composeFile, renderComposeFile(config), {
     encoding: "utf8",
@@ -302,9 +320,10 @@ export async function setup(
   options: SetupOptions,
   productionManifest?: ReleaseManifest,
 ): Promise<void> {
-  if (process.platform !== "linux" && process.platform !== "darwin") {
-    throw new Error("The managed OvertChat installer supports Linux and macOS.");
+  if (process.platform !== "linux" && process.platform !== "darwin" && process.platform !== "win32") {
+    throw new Error("The managed OvertChat installer supports Linux, macOS, and Windows.");
   }
+  if (process.platform === "win32" && process.arch !== "x64") throw new Error("Managed OvertChat for Windows requires x64.");
   const sourceDirectory = path.resolve(
     process.env.OVERTCHAT_SOURCE_DIR || process.env.INIT_CWD || process.cwd(),
   );
@@ -316,7 +335,7 @@ export async function setup(
   }
   let docker = await detectDockerCommand();
   if (!docker) {
-    if (process.platform === "darwin") await installDockerEngine();
+    if (process.platform === "darwin" || process.platform === "win32") await installDockerEngine();
     if (options.defaults) {
       throw new Error("Docker Engine was not found.");
     }
@@ -405,6 +424,7 @@ export async function setup(
       gpus,
       adopting ? existing ?? undefined : undefined,
       appleChip,
+      { dryRun: options.dryRun },
     );
   } else if (gpus.length > 0 && config.stt.provider === "bundled") {
     const gpu = [...gpus].sort((left, right) => right.memoryMiB - left.memoryMiB)[0];
@@ -424,8 +444,9 @@ export async function setup(
     config.stt.provider === "bundled" &&
     (config.stt.accelerator === "auto" || config.stt.accelerator === "gpu");
   if (
+    !options.dryRun &&
     (ttsUsesGpu || sttUsesGpu) &&
-    !(await nvidiaContainerRuntimeAvailable(docker))
+    !(await nvidiaContainerRuntimeAvailable(docker, config.appImage))
   ) {
     if (options.defaults) {
       if (ttsUsesGpu) {
@@ -439,6 +460,8 @@ export async function setup(
       if (sttUsesGpu) {
         config.stt = { ...config.stt, accelerator: "cpu", gpuUuid: undefined };
       }
+    } else if (process.platform === "win32") {
+      throw new Error("Docker Desktop could not access the NVIDIA GPU. Update the Windows NVIDIA driver and WSL (wsl --update), enable Docker Desktop's WSL 2 engine, and retry. You can also rerun setup and select CPU speech.");
     } else {
       const installToolkit = await confirm({
         message:
@@ -483,6 +506,14 @@ export async function setup(
     existing,
     previousSecrets,
   );
+  const cloud = config.access?.mode === "cloud" ? config.access.cloud : undefined;
+  // A fresh link replaces the stored credential; leaving cloud mode drops it.
+  secrets.cloudCredential = cloud ? (cloud.credential ?? secrets.cloudCredential) : "";
+  if (cloud && !secrets.cloudCredential && !options.dryRun) {
+    throw new Error(
+      "This server has no OvertChat Cloud credential. Run overtchat setup, choose OvertChat Cloud, and link this server again.",
+    );
+  }
   protectInstallationSecrets(...Object.values(secrets), config.search.apiKey, config.tts.apiKey, config.stt.apiKey);
   note([
     accessSummary(config),
@@ -558,15 +589,16 @@ export async function setup(
       preparation.message("Building Agent Connections from this worktree");
       await requireSuccessful(
         "npm",
-        ["run", "build", "-w", "apps/connector", "--"],
+        ["run", "build:package", "-w", "apps/connector", "--"],
         { cwd: sourceDirectory, inherit: true },
       );
-      process.env.OVERTCHAT_CONNECTOR_BINARY = path.join(
+      process.env.OVERTCHAT_CONNECTOR_PACKAGE = path.join(
         sourceDirectory,
         "apps",
         "connector",
         "dist",
-        "overtchat-connector.mjs",
+        "release",
+        `${releaseAsset("overtchat-connector")}.tar.gz`,
       );
     }
     preparation.message("Downloading the selected service images");
@@ -632,8 +664,15 @@ export async function setup(
     await writeInstallationConfig(paths, config);
     reportPendingAgentConnections(config);
     outro(accessSummary(config));
-    if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
+    try {
+      const setupLink = await initialSetupLink(config, secrets.managementSecret);
+      if (setupLink) note(`Create your administrator account:\n${setupLink}\n\nThis private link works once. Run overtchat status to show it again.`, "Next steps");
+      else if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
+    } catch {
+      note("Could not retrieve the setup link. Run overtchat status to retry, or find the setup code with overtchat logs.", "Account setup");
+    }
     note("overtchat status\novertchat logs --follow\novertchat update --check", "Manage OvertChat");
+    assertAgentConnectionsComplete(config, !options.defaults && !!process.stdin.isTTY && !!process.stdout.isTTY);
   } catch (error) {
     if (speechChange) {
       try {

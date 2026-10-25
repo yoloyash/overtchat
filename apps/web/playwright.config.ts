@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import path from "node:path";
+import { promptedOrigins } from "./e2e/helpers/storage";
 
 dotenv.config({ path: path.resolve(__dirname, ".env.local") });
 
@@ -18,6 +19,8 @@ export default defineConfig({
   reporter: isCI ? [["line"], ["html", { open: "never" }]] : "line",
   use: {
     baseURL,
+    // The one-time two-factor prompt would cover pages in unrelated tests.
+    storageState: { cookies: [], origins: promptedOrigins() },
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
@@ -37,6 +40,7 @@ export default defineConfig({
       BETTER_AUTH_SECRET: "testsecret1234567890123456789012",
       BETTER_AUTH_URL: baseURL,
       OVERTCHAT_E2E_DISABLE_AUTH_RATE_LIMIT: "1",
+      OVERTCHAT_MANAGEMENT_SECRET: "e2e-management-secret-1234567890123456",
       ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     },
   },

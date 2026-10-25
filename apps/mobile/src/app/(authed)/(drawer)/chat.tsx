@@ -5,7 +5,7 @@ import {
   hasSuccessfulMemoryMutation,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
-  type ChatKind,
+  type OpenUIAction,
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
@@ -16,7 +16,7 @@ import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
-import { useNavigation } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
 import {
   useCallback,
@@ -40,7 +40,11 @@ import {
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
+import { ErrorNotice } from "@/components/ErrorNotice";
+import { VoiceControls } from "@/components/chat/VoiceControls";
+import { useMobileVoice } from "@/lib/voice/useMobileVoice";
 import { Composer } from "@/components/chat/Composer";
+import { ShareChatButton } from "@/components/chat/ShareChatButton";
 import { MessageList } from "@/components/chat/MessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import {
@@ -59,6 +63,7 @@ import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useOptionalProject } from "@/lib/queries/projects";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
 import { useSelectedModel } from "@/lib/modelPreferences";
@@ -66,7 +71,7 @@ import {
   setReasoningLevel,
   useReasoningLevels,
 } from "@/lib/reasoningPreferences";
-import { useWebSearchEnabled } from "@/lib/toolPreferences";
+import { useOpenUIEnabled, useWebSearchEnabled } from "@/lib/toolPreferences";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
@@ -158,7 +163,6 @@ function ChatGate({
       initialMessages={hydration?.messages}
       initialModelId={hydration?.modelConfigId}
       projectId={isNew ? newChatProjectId : (hydration?.projectId ?? null)}
-      chatKind={isNew ? "text" : (hydration?.kind ?? "text")}
     />
   );
 }
@@ -169,14 +173,12 @@ function ChatSurface({
   isNew,
   initialMessages,
   projectId,
-  chatKind,
 }: {
   chatId: string;
   isNew: boolean;
   initialMessages: UIMessage[] | undefined;
   initialModelId?: string | null;
   projectId: string | null;
-  chatKind: ChatKind;
 }) {
   const { colors, fonts } = useTheme();
   const navigation = useNavigation();
@@ -191,7 +193,6 @@ function ChatSurface({
     (session.data?.user as { role?: string | null } | undefined)?.role ===
     "admin";
   const speech = useSpeech();
-  const voiceReadOnly = !isNew && chatKind === "voice";
 
   const {
     data: models,
@@ -199,18 +200,24 @@ function ChatSurface({
     error: modelsError,
   } = useModelConfigs();
   const {
-    isFetching: hydrationFetching,
-    error: hydrationError,
-    refetch: refetchHydration,
+    refreshing: refreshingMessages,
+    refresh: refreshMessages,
   } = useChatMessages(isNew ? null : chatId);
 
-  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
+  const { data: project } = useOptionalProject(projectId);
+  const [selectedId, setSelectedId] = useSelectedModel(
+    models,
+    initialModelId,
+    projectId,
+  );
   const [searchRequested, setSearchRequested] = useState(false);
+  const [openuiRequested, setOpenuiRequested] = useState(false);
   const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
   const { data: capabilitiesData } = useCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
   const [chatPersisted, setChatPersisted] = useState(!isNew);
   const webSearchEnabled = useWebSearchEnabled();
+  const openuiEnabled = useOpenUIEnabled();
   const reasoningLevels = useReasoningLevels();
   const pickerRef = useRef<ModelPickerSheetRef>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
@@ -298,10 +305,21 @@ function ChatSurface({
     void qc.invalidateQueries({ queryKey: queryKeys.chats() });
     void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
   }, [chatId, qc]);
+  const voice = useMobileVoice({
+    chatId,
+    onMessage: message => setMessages(current => current.some(item => item.id === message.id)
+      ? current.map(item => item.id === message.id ? message : item)
+      : [...current, message]),
+    onRefresh: setMessages,
+    onPersisted: handleGenerationSettled,
+  });
+  const voiceBusyRef = useRef(voice.busy);
+  voiceBusyRef.current = voice.busy;
   const generation = useChatGenerationRecovery({
     baseURL,
     chatId,
-    enabled: chatPersisted,
+    enabled: chatPersisted && !voice.busy,
+    suspended: voice.busy,
     status,
     recoverOnMount: !isNew,
     stopLocalStream: stop,
@@ -314,7 +332,7 @@ function ChatSurface({
   const chatQueue = useChatQueue({
     chatId,
     userId: session.data?.user.id,
-    status,
+    status: voice.busy ? "submitted" : status,
     sendMessage: (message, options) => {
       setLocalAnchorRequestKey((key) => key + 1);
       return sendMessage(message, options);
@@ -356,6 +374,37 @@ function ChatSurface({
   const searchUnavailableReason = !webSearchEnabled
     ? "Web search is disabled in Settings → Tools"
     : "Unavailable for this model";
+  const openuiAvailable = modelSupportsToolCalling(selectedModel);
+  const openuiUnavailableReason = "Unavailable for this model";
+  const voiceCapability = capabilitiesData?.capabilities.voice;
+  const voiceInstalled = Boolean(voiceCapability?.installed);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const voiceEligible = Boolean(
+    !editingId &&
+      !imageOptions &&
+      !searchRequested &&
+      !openuiRequested &&
+      chatQueue.messages.length === 0,
+  );
+  const voiceAvailable = Boolean(
+    voice.available &&
+      voiceCapability?.available &&
+      configured &&
+      voiceEligible,
+  );
+  const voiceUnavailableReason = !voice.available
+    ? "Live voice requires an updated mobile app"
+    : !configured
+      ? modelLoading
+        ? "Loading model…"
+        : "Configure a model before starting voice"
+      : voiceCapability?.unavailableReason === "stt-unavailable"
+        ? "Speech-to-text is disabled"
+        : voiceCapability?.unavailableReason === "tts-unavailable"
+          ? "Text-to-speech is disabled"
+          : voiceCapability?.unavailableReason === "not-configured"
+            ? "Voice authentication is not configured"
+            : "Realtime voice is unavailable";
 
   const {
     attachments,
@@ -437,26 +486,68 @@ function ChatSurface({
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: "",
+      headerTitle: project
+        ? () => (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Open project ${project.name}`}
+              onPress={() => router.push(`/projects/${project.id}`)}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.projectChip,
+                { backgroundColor: pressed ? colors.muted : "transparent" },
+              ]}
+            >
+              <Ionicons
+                name="folder-outline"
+                size={15}
+                color={colors.mutedForeground}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.projectChipText,
+                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                ]}
+              >
+                {project.name}
+              </Text>
+            </Pressable>
+          )
+        : "",
       headerRight: () => (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onNewChat}
-          hitSlop={10}
-          style={styles.headerRight}
-        >
-          <Ionicons name="create-outline" size={22} color={colors.foreground} />
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {chatPersisted && (
+            <ShareChatButton chatId={chatId} disabled={streaming || voice.busy} />
+          )}
+          <Pressable
+            accessibilityRole="button"
+            onPress={onNewChat}
+            hitSlop={10}
+            style={styles.headerRight}
+          >
+            <Ionicons name="create-outline" size={22} color={colors.foreground} />
+          </Pressable>
+        </View>
       ),
     });
-  }, [navigation, colors, onNewChat]);
+  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy]);
 
-  function requestBody(action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) {
+  function requestBody(
+    action: ChatRequestAction,
+    forceSearch = false,
+    imageRequest?: ImageGenerationOptions,
+    forceOpenUI = false,
+  ) {
     const requested = searchAvailable && forceSearch;
+    const requestedOpenUI = openuiAvailable && forceOpenUI;
     return {
       modelConfigId: selectedId,
       webSearchEnabled,
       forceSearch: requested,
+      openuiSupported: true,
+      openuiEnabled,
+      forceOpenUI: requestedOpenUI,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
@@ -473,7 +564,6 @@ function ChatSurface({
 
   const isNewRef = useRef(isNew);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [localAnchorRequestKey, setLocalAnchorRequestKey] = useState(0);
 
   const lastErrorRef = useRef<Error | undefined>(undefined);
@@ -488,33 +578,19 @@ function ChatSurface({
     lastErrorRef.current = error;
   }, [error, generation]);
 
-  const userRefreshingMessages = useRef(false);
-  const wasFetchingMessages = useRef(false);
-  useEffect(() => {
-    if (
-      wasFetchingMessages.current &&
-      !hydrationFetching &&
-      userRefreshingMessages.current
-    ) {
-      if (hydrationError)
-        toastError("Couldn't refresh messages", hydrationError);
-      userRefreshingMessages.current = false;
-    }
-    wasFetchingMessages.current = hydrationFetching;
-  }, [hydrationFetching, hydrationError]);
-
-  function onRefreshMessages() {
-    if (isNew) return;
-    userRefreshingMessages.current = true;
-    refetchHydration().then((res) => {
-      if (res.data?.messages) setMessages(res.data.messages);
-    });
+  async function onRefreshMessages() {
+    if (isNew || voice.busy) return;
+    const res = await refreshMessages();
+    if (res?.error) toastError("Couldn't refresh messages", res.error);
+    else if (res?.data?.messages && !voiceBusyRef.current)
+      setMessages(res.data.messages);
   }
 
-  function handleSubmit(text: string, files: FileUIPart[]) {
+  function handleSubmit(text: string, files: FileUIPart[], openuiAction?: OpenUIAction) {
+    if (voice.busy) return files.length ? false : voice.sendMessage(text);
     Keyboard.dismiss();
-    if (text.trim().toLowerCase() === "/compact" && files.length === 0) {
-      if (streaming || !configured || messages.length === 0) return;
+    if (!openuiAction && text.trim().toLowerCase() === "/compact" && files.length === 0) {
+      if (voice.busy || streaming || !configured || messages.length === 0) return;
       setContextStatus(null);
       setLocalAnchorRequestKey((key) => key + 1);
       void sendMessage(undefined, { body: requestBody({ type: "compact" }) });
@@ -542,15 +618,26 @@ function ChatSurface({
       id: Crypto.randomUUID(),
       text,
       files,
-      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+      body: {
+        ...requestBody(
+          { type: "submit" },
+          openuiAction ? false : searchRequested,
+          openuiAction ? undefined : imageOptions,
+          !openuiAction && openuiRequested,
+        ),
+        ...(openuiAction ? { openuiAction } : {}),
+      },
     });
-    setSearchRequested(false);
-    setImageOptions(undefined);
-    clearAttachments();
+    if (!openuiAction) {
+      setSearchRequested(false);
+      setOpenuiRequested(false);
+      setImageOptions(undefined);
+      clearAttachments();
+    }
   }
 
   function handleContinue(messageId: string) {
-    if (streaming || !configured || voiceReadOnly || messages.at(-1)?.id !== messageId) return;
+    if (voice.busy || streaming || !configured || messages.at(-1)?.id !== messageId) return;
     setContextStatus(null);
     setLocalAnchorRequestKey((key) => key + 1);
     void sendMessage(undefined, {
@@ -559,7 +646,7 @@ function ChatSurface({
   }
 
   function handleRegenerate(messageId: string) {
-    if (streaming || !configured) return;
+    if (voice.busy || streaming || !configured) return;
     setLocalAnchorRequestKey((key) => key + 1);
     regenerate({
       messageId,
@@ -582,7 +669,7 @@ function ChatSurface({
     files: FileUIPart[],
   ) {
     setEditingId(null);
-    if (streaming || !configured) return;
+    if (voice.busy || streaming || !configured) return;
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
     Keyboard.dismiss();
@@ -607,7 +694,12 @@ function ChatSurface({
       <ChatUsageBar chatId={chatId} persisted={chatPersisted} streaming={streaming} messages={messages} contextWindow={selectedModel?.contextWindow} />
       <MiniSpeechPlayer speech={speech} />
       {messages.length === 0 ? (
-        <View style={styles.empty}>
+        <View
+          style={[
+            styles.empty,
+            (voice.busy || keyboardVisible) && styles.emptyCompact,
+          ]}
+        >
           <Text
             style={[
               styles.emptyTitle,
@@ -654,23 +746,30 @@ function ChatSurface({
           status={status}
           error={error}
           onReconnect={() => {
-            if (!streaming) void generation.reconcile().catch(() => undefined);
+            if (!voice.busy && !streaming) void generation.reconcile().catch(() => undefined);
           }}
           editingId={editingId}
-          speech={speech}
-          refreshing={!isNew && hydrationFetching && !streaming}
-          onRefresh={isNew ? undefined : onRefreshMessages}
-          onStartEdit={(id) => !streaming && setEditingId(id)}
+          speech={{ ...speech, play: async (id, text) => {
+            if (voice.busy) { toastError("End live voice before playing a message."); return; }
+            await speech.play(id, text);
+          } }}
+          refreshing={refreshingMessages}
+          onRefresh={isNew || voice.busy ? undefined : onRefreshMessages}
+          onStartEdit={(id) => !voice.busy && !streaming && setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
+          onOpenUIAction={
+            !voice.busy && !streaming && configured && chatQueue.messages.length === 0
+              ? (action) => handleSubmit(action.message, [], action)
+              : undefined
+          }
           onRegenerate={handleRegenerate}
-          onContinue={voiceReadOnly ? undefined : handleContinue}
-          onImageReference={imageAvailable ? (file) => {
+          onContinue={handleContinue}
+          onImageReference={!voice.busy && imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
             addReference(file);
             setImageOptions({ size: "auto", quality: "auto" });
           } : undefined}
           localAnchorRequestKey={localAnchorRequestKey}
-          readOnly={voiceReadOnly}
         />
       )}
 
@@ -680,41 +779,69 @@ function ChatSurface({
           { paddingBottom: keyboardVisible ? 8 : 12 + insets.bottom },
         ]}
       >
-        {voiceReadOnly ? (
-          <View
-            style={[
-              styles.voiceNotice,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Ionicons
-              name="pulse-outline"
-              size={18}
-              color={colors.mutedForeground}
+          {!voice.busy && voice.error && (
+            <ErrorNotice
+              message={voice.error}
+              onDismiss={voice.dismissError}
             />
-            <Text
-              style={[
-                styles.voiceNoticeText,
-                {
-                  color: colors.mutedForeground,
-                  fontFamily: fonts.sansRegular,
-                },
-              ]}
-            >
-              Resume this voice chat on the web.
-            </Text>
-          </View>
-        ) : (
+          )}
+          {!voice.busy && voice.warning && (
+            <ErrorNotice
+              message={voice.warning}
+              onDismiss={voice.dismissWarning}
+            />
+          )}
+          {voice.busy && (
+            <VoiceControls
+              voice={voice}
+              modelLabel={selectedModel?.label}
+            />
+          )}
           <Composer
+            voiceInstalled={voiceInstalled}
+            voiceEligible={voiceEligible}
+            voiceAvailable={voiceAvailable}
+            voiceActive={voice.busy}
+            voiceUnavailableReason={voiceUnavailableReason}
+            textInputDisabled={voice.status === "ending"}
+            endVoiceDisabled={voice.cleanupPending}
+            onStartVoice={() => {
+              if (
+                !selectedId ||
+                streaming ||
+                voice.busy ||
+                attachments.length ||
+                uploading ||
+                chatQueue.messages.length
+              ) {
+                return;
+              }
+              speech.stop();
+              Keyboard.dismiss();
+              void voice.start({
+                chatId,
+                projectId,
+                modelConfigId: selectedId,
+                webSearchEnabled: searchAvailable,
+                reasoningLevel,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              });
+            }}
+            onEndVoice={() => {
+              void voice.end();
+            }}
+            onBeforeDictate={() => speech.stop()}
             configured={configured}
             modelLoading={modelLoading}
             streaming={streaming}
             imageOptions={imageAvailable ? imageOptions : undefined}
             imageModel={imageCapability?.model}
-      imageSupportsQuality={imageCapability?.supportsQuality}
+            imageSupportsQuality={imageCapability?.supportsQuality}
+            imageConfiguredSize={imageCapability?.configuredSize}
             onImageOptions={setImageOptions}
-            searchAvailable={searchAvailable}
-            searchRequested={searchAvailable && searchRequested}
+            searchAvailable={searchAvailable && !voice.busy}
+            searchRequested={searchAvailable && !voice.busy && searchRequested}
+            openuiRequested={openuiAvailable && !voice.busy && openuiRequested}
             modelLabel={selectedModel?.label}
             modelIconId={
               selectedModel?.modelIconId ?? selectedModel?.providerIconId
@@ -726,6 +853,7 @@ function ChatSurface({
             uploadError={uploadError}
             isAdmin={isAdmin}
             onClearSearch={() => setSearchRequested(false)}
+            onClearOpenUI={() => setOpenuiRequested(false)}
             onOpenModelPicker={() => {
               Keyboard.dismiss();
               pickerRef.current?.present();
@@ -743,7 +871,6 @@ function ChatSurface({
             onSubmit={handleSubmit}
             onStop={handleStop}
           />
-        )}
       </View>
 
       <ModelPickerSheet
@@ -755,30 +882,73 @@ function ChatSurface({
         reasoningControls={reasoningControls}
         reasoningLevel={reasoningLevel}
         onSelect={(modelId) => {
+          if (voice.busy) {
+            void voice.end().then((ended) => {
+              if (!ended) return;
+              setSearchRequested(false);
+              setImageOptions(undefined);
+              setSelectedId(modelId);
+            });
+            return;
+          }
           setSearchRequested(false);
+          setOpenuiRequested(false);
           setImageOptions(undefined);
           setSelectedId(modelId);
         }}
         onSelectReasoningLevel={(level) => {
-          if (selectedId) setReasoningLevel(selectedId, level);
+          if (!selectedId) return;
+          if (voice.busy) {
+            void voice.end().then((ended) => {
+              if (ended) setReasoningLevel(selectedId, level);
+            });
+            return;
+          }
+          setReasoningLevel(selectedId, level);
         }}
       />
 
       <AddToChatSheet
         ref={addSheetRef}
-        imageAvailable={imageAvailable}
-        onCreateImage={() => { setImageOptions({ size: "auto", quality: "auto" }); addSheetRef.current?.dismiss(); }}
-        searchAvailable={searchAvailable}
-        searchUnavailableReason={searchUnavailableReason}
-        searchRequested={searchAvailable && searchRequested}
-        onToggleSearchRequested={setSearchRequested}
-        onPickTool={onPickTool}
+        imageAvailable={imageAvailable && !voice.busy}
+        onCreateImage={() => {
+          if (voice.busy) return;
+          setImageOptions({ size: "auto", quality: "auto" });
+          addSheetRef.current?.dismiss();
+        }}
+        searchAvailable={searchAvailable && !voice.busy}
+        searchUnavailableReason={
+          voice.busy
+            ? "End voice to require a web search. Voice can still search automatically."
+            : searchUnavailableReason
+        }
+        searchRequested={searchAvailable && !voice.busy && searchRequested}
+        onToggleSearchRequested={(next) => {
+          if (!voice.busy) setSearchRequested(next);
+        }}
+        onPickTool={voice.busy ? undefined : onPickTool}
+        openuiAvailable={openuiAvailable && !voice.busy}
+        openuiUnavailableReason={voice.busy ? "End voice to request an interactive UI." : openuiUnavailableReason}
+        openuiRequested={openuiAvailable && !voice.busy && openuiRequested}
+        onToggleOpenUIRequested={(next) => {
+          if (!voice.busy) setOpenuiRequested(next);
+        }}
       />
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  projectChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    maxWidth: 220,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  projectChipText: { fontSize: 14, flexShrink: 1 },
   root: { flex: 1 },
   headerRight: { paddingHorizontal: 12 },
   gate: {
@@ -803,23 +973,17 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 60,
   },
+  emptyCompact: {
+    paddingBottom: 12,
+  },
   emptyTitle: { fontSize: 24, textAlign: "center" },
   emptySub: { fontSize: 14, textAlign: "center" },
   composerWrap: {
     paddingHorizontal: 12,
     paddingTop: 8,
-  },
-  voiceNotice: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 20,
-    paddingHorizontal: 16,
   },
-  voiceNoticeText: { fontSize: 14 },
+
 });
 
 function assetToPickedFile(asset: ImagePicker.ImagePickerAsset): PickedFile {

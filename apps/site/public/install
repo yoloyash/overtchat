@@ -2,7 +2,7 @@
 set -eu
 
 repository="yoloyash/overtchat"
-cli_version="0.3.5"
+cli_version="0.5.0"
 
 say() {
   printf '%s\n' "$*"
@@ -16,6 +16,7 @@ fail() {
 case "$(uname -s)" in
   Linux) platform="linux"; checksum_command="sha256sum" ;;
   Darwin) platform="darwin"; checksum_command="shasum" ;;
+  MINGW*|MSYS*|CYGWIN*) fail "on Windows, run this in PowerShell instead: irm https://overtchat.com/install.ps1 | iex" ;;
   *) fail "the managed installer supports Linux and macOS" ;;
 esac
 

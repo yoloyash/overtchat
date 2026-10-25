@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { renderComposeFile, renderStackEnvironment } from "./compose.js";
+import {
+  CLOUD_PROXY_CONFIG,
+  CLOUD_TUNNEL_CONFIG,
+  renderComposeFile,
+  renderStackEnvironment,
+} from "./compose.js";
 import type { InstallationConfig, RuntimePaths } from "./types.js";
 
 const paths: RuntimePaths = {
@@ -11,6 +16,7 @@ const paths: RuntimePaths = {
   searxngDirectory: "/home/test/.local/share/overtchat/searxng",
   searxngSettingsFile:
     "/home/test/.local/share/overtchat/searxng/settings.yml",
+  cloudDirectory: "/home/test/.local/share/overtchat/cloud",
 };
 
 function config(): InstallationConfig {
@@ -27,6 +33,8 @@ function config(): InstallationConfig {
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
     kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
     kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+    cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+    cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
     appPort: 4718,
     bindAddress: "0.0.0.0",
     publicUrl: "http://192.168.1.10:4718",
@@ -58,12 +66,69 @@ function config(): InstallationConfig {
 }
 
 describe("managed Compose configuration", () => {
+  const cloudAccess = {
+    hostname: "smiths.overtchat.app",
+    relayHost: "relay.overtchat.app",
+    relayPort: 443,
+    relayServerName: "relay.overtchat.app",
+    relayCaPem: "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----",
+  };
+  const cloudSecrets = {
+    betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice",
+    cloudCredential: "oc_credential",
+  };
+
+  it("runs the cloud tunnel only when OvertChat Cloud is the access mode", () => {
+    const cloud = { ...config(), access: { mode: "cloud" as const, cloud: cloudAccess } };
+    const environment = renderStackEnvironment(cloud, cloudSecrets, paths);
+    expect(environment).toContain('COMPOSE_PROFILES="tts-cpu,stt-gpu,voice,cloud"');
+    expect(environment).toContain('OVERTCHAT_CLOUD_HOSTNAME="smiths.overtchat.app"');
+    expect(environment).toContain('OVERTCHAT_CLOUD_NAME="smiths"');
+    expect(environment).toContain('OVERTCHAT_CLOUD_RELAY_HOST="relay.overtchat.app"');
+    expect(environment).toContain('OVERTCHAT_CLOUD_RELAY_PORT="443"');
+    expect(environment).toContain('OVERTCHAT_CLOUD_CREDENTIAL="oc_credential"');
+    expect(environment).toContain('OVERTCHAT_CLOUD_DIR="/home/test/.local/share/overtchat/cloud"');
+    expect(environment).toContain('OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR="true"');
+
+    // A stored credential is not handed to Compose once cloud access is off.
+    const lan = { ...config(), access: { mode: "lan" as const, cloud: cloudAccess } };
+    const lanEnvironment = renderStackEnvironment(lan, cloudSecrets, paths);
+    expect(lanEnvironment).toContain('COMPOSE_PROFILES="tts-cpu,stt-gpu,voice"');
+    expect(lanEnvironment).toContain('OVERTCHAT_CLOUD_CREDENTIAL=""');
+    expect(lanEnvironment).toContain('OVERTCHAT_CLOUD_HOSTNAME=""');
+    expect(lanEnvironment).toContain('OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR="false"');
+  });
+
+  it("defines the cloud services behind their profile", () => {
+    const compose = renderComposeFile(config());
+    expect(compose).toMatch(/cloud-tunnel:\n {4}image: \$\{OVERTCHAT_CLOUD_TUNNEL_IMAGE\}[\s\S]*?profiles: \[cloud\]/u);
+    expect(compose).toMatch(/cloud-proxy:\n {4}image: \$\{OVERTCHAT_CLOUD_PROXY_IMAGE\}[\s\S]*?profiles: \[cloud\]/u);
+    expect(compose).toContain("- overtchat-cloud-certificates:/data");
+    // The proxy's port is never published; visitors only arrive via the tunnel.
+    expect(compose.slice(compose.indexOf("cloud-proxy:"), compose.indexOf("stt-cpu:"))).not.toContain("ports:");
+  });
+
+  it("points the tunnel at the proxy with the visitor address", () => {
+    expect(CLOUD_TUNNEL_CONFIG).toContain('type = "https"');
+    expect(CLOUD_TUNNEL_CONFIG).toContain('user = "{{ .Envs.OVERTCHAT_CLOUD_NAME }}"');
+    expect(CLOUD_TUNNEL_CONFIG).toContain('localIP = "cloud-proxy"');
+    expect(CLOUD_TUNNEL_CONFIG).toContain('transport.proxyProtocolVersion = "v2"');
+    expect(CLOUD_TUNNEL_CONFIG).toContain("transport.heartbeatInterval = 30");
+    expect(CLOUD_TUNNEL_CONFIG).toContain('transport.tls.trustedCaFile = "/etc/overtchat-cloud/relay-ca.pem"');
+    expect(CLOUD_PROXY_CONFIG).toContain("https://{$OVERTCHAT_CLOUD_HOSTNAME} {");
+    expect(CLOUD_PROXY_CONFIG).toContain("disable_http_challenge");
+    expect(CLOUD_PROXY_CONFIG).toContain(
+      "dir {$OVERTCHAT_CLOUD_ACME_DIRECTORY:https://acme-v02.api.letsencrypt.org/directory}",
+    );
+    expect(CLOUD_PROXY_CONFIG).toContain("reverse_proxy app:4717");
+  });
+
   it("keeps native routing available when the active provider changes", () => {
     const selected = config();
     selected.tts = { provider: "openai-compatible", bundledInstalled: true, accelerator: "apple", baseUrl: "https://external.example/v1" };
     selected.stt = { provider: "bundled", bundledInstalled: true, accelerator: "cpu" };
     const environment = renderStackEnvironment(selected, {
-      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice",
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", cloudCredential: "",
     }, paths);
     expect(environment).toContain('COMPOSE_PROFILES="stt-cpu,voice"');
     expect(environment).toContain('OVERTCHAT_BUNDLED_TTS_URL="http://host.docker.internal:5093"');
@@ -80,7 +145,7 @@ describe("managed Compose configuration", () => {
   ] as const)("coordinates binding and accepted login addresses for %s", (mode, bindAddress, publicUrl) => {
     const selected = { ...config(), access: { mode }, bindAddress, publicUrl };
     const environment = renderStackEnvironment(selected, {
-      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice",
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", cloudCredential: "",
     }, paths);
     expect(environment).toContain(`APP_BIND_ADDRESS="${bindAddress}"`);
     expect(environment).toContain(`BETTER_AUTH_URL="${publicUrl}"`);
@@ -98,6 +163,7 @@ describe("managed Compose configuration", () => {
         managementSecret: "management",
         searxngSecret: "search",
         voiceSharedSecret: "voice-secret",
+        cloudCredential: "",
       },
       paths,
     );
@@ -158,6 +224,9 @@ describe("managed Compose configuration", () => {
     expect(compose).toContain(
       "DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}",
     );
+    expect(compose).toContain(
+      "OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR: ${OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR:-false}",
+    );
     expect(compose).toContain("- overtchat-npm-cache:/app/npm-cache");
     expect(compose).toContain("\n  overtchat-npm-cache:\n");
     expect(compose).toContain("external: true");
@@ -187,7 +256,7 @@ describe("managed Compose configuration", () => {
         betterAuthSecret: "auth",
         managementSecret: "management",
         searxngSecret: "search",
-        voiceSharedSecret: "voice",
+        voiceSharedSecret: "voice", cloudCredential: "",
       },
       paths,
     );
@@ -220,7 +289,7 @@ describe("managed Compose configuration", () => {
         betterAuthSecret: "auth",
         managementSecret: "management",
         searxngSecret: "search",
-        voiceSharedSecret: "voice",
+        voiceSharedSecret: "voice", cloudCredential: "",
       },
       paths,
     );

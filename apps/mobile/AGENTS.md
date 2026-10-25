@@ -47,9 +47,10 @@ Advanced MCP and agent workspace setup can open the matching web settings page.
 ## Platform constraints
 
 Better Auth stores the mobile cookie in SecureStore. Use `authFetch` for
-authenticated requests; uploads must attach `getAuthCookie()` to the
-`expo/fetch` multipart request explicitly. Changing servers must also reset the
-cached auth client.
+authenticated requests; cookie reads are asynchronous. Authentication upgrade
+and native validation are documented in
+`docs/development.md#authentication-upgrade-validation`. Changing servers must
+also reset the cached auth client.
 
 `src/polyfills.js` must load before the AI SDK streaming stack. Test streaming
 on both Android and iOS after changing the transport or its polyfills.

@@ -88,6 +88,8 @@ export function AgentComposer({
   onSteerQueued,
   restoreDraftKey,
   restoredDraft,
+  appendedDraft,
+  onAppendedDraftConsumed,
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
@@ -113,6 +115,8 @@ export function AgentComposer({
   onSteerQueued: (id: string) => Promise<boolean>;
   restoreDraftKey?: string;
   restoredDraft?: { revision: number; text: string } | null;
+  appendedDraft?: { revision: number; text: string } | null;
+  onAppendedDraftConsumed?: () => void;
 }) {
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -120,6 +124,7 @@ export function AgentComposer({
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const appliedAppendRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     attachments,
@@ -145,13 +150,10 @@ export function AgentComposer({
     setActiveIndex(0);
     setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
   });
-  const composerContextUsage =
-    contextUsage?.tokens !== null && contextUsage?.tokens !== undefined
-      ? {
-          usedTokens: contextUsage.tokens,
-          contextWindow: contextUsage.contextWindow,
-        }
-      : undefined;
+  const composerContextUsage = {
+    usedTokens: contextUsage?.tokens ?? null,
+    contextWindow: contextUsage?.contextWindow,
+  };
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -159,6 +161,18 @@ export function AgentComposer({
     element.style.height = "auto";
     element.style.height = `${element.scrollHeight}px`;
   }, [input]);
+
+  useEffect(() => {
+    if (!appendedDraft || appliedAppendRef.current === appendedDraft.revision) return;
+    const frame = requestAnimationFrame(() => {
+      appliedAppendRef.current = appendedDraft.revision;
+      setInput((current) => `${current}${current && !current.endsWith("\n\n") ? "\n\n" : ""}${appendedDraft.text}`);
+      const element = textareaRef.current;
+      element?.focus({ preventScroll: true });
+      onAppendedDraftConsumed?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [appendedDraft, onAppendedDraftConsumed]);
 
   useEffect(() => {
     if (!restoreDraftKey) return;
@@ -663,21 +677,17 @@ export function AgentComposer({
             <AgentComposerControls {...controls} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {composerContextUsage && (
-              <>
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  compact
-                  side="top"
-                  className="@2xl:hidden"
-                />
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  side="top"
-                  className="hidden @2xl:inline-flex"
-                />
-              </>
-            )}
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              compact
+              side="top"
+              className="@2xl:hidden"
+            />
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              side="top"
+              className="hidden @2xl:inline-flex"
+            />
             <DictateButton
               dictation={dictation}
               disabled={disabled || pending || submitting}

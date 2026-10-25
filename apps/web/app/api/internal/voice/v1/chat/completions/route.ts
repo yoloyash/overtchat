@@ -1,309 +1,116 @@
-import {
-  dynamicTool,
-  convertToModelMessages,
-  jsonSchema,
-  streamText,
-  type ModelMessage,
-  type ToolSet,
-} from "ai";
-import { getModelConfig } from "@/lib/db/modelConfigs";
-import { getChat, getMessagesThroughRowId } from "@/lib/db/chats";
-import { getProject } from "@/lib/db/projects";
-import { getActivePersonalization } from "@/lib/db/personalization";
-import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
-import { currentDateSystemPrompt } from "@/lib/chat/current-date";
-import { projectSystemPrompt } from "@/lib/chat/project-prompt";
-import {
-  memorySystemPrompt,
-  userProfileSystemPrompt,
-} from "@/lib/personalization/prompt";
+import { readUIMessageStream } from "ai";
+import { z } from "zod";
+import { runChat, chatErrorResponse } from "@/lib/chat/run";
 import { verifyVoiceTicket } from "@/lib/voice/ticket";
 import { authorizeVoiceService } from "@/lib/voice/internal-auth";
-import { VOICE_CONVERSATION_PROMPT } from "@/lib/voice/prompt";
-import {
-  VOICE_WEB_SEARCH_PROMPT,
-  VOICE_WEB_TOOLS,
-} from "@/lib/voice/tools";
+import { getVoicePrincipal } from "@/lib/db/voiceSessions";
+import { publishVoiceEvent } from "@/lib/voice/events";
+import { SpeechTextFilter } from "@/lib/voice/speech-text";
 
 export const maxDuration = 300;
-
-type UnknownRecord = Record<string, unknown>;
-
-function record(value: unknown): UnknownRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
-
-function textContent(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (!Array.isArray(value)) return "";
-  return value
-    .map((part) => {
-      const item = record(part);
-      if (!item) return "";
-      return typeof item.text === "string" ? item.text : "";
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
-function parseToolInput(value: unknown): unknown {
-  if (typeof value !== "string") return value ?? {};
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
-}
-
-export function toModelMessages(value: unknown): ModelMessage[] {
-  if (!Array.isArray(value)) return [];
-  const messages: ModelMessage[] = [];
-  const toolNames = new Map<string, string>();
-
-  for (const raw of value) {
-    const message = record(raw);
-    if (!message || typeof message.role !== "string") continue;
-    // Realtime session instructions are browser-controlled. Only server-owned
-    // prompts may supply system instructions.
-    if (message.role === "system") continue;
-    if (message.role === "user") {
-      const content = textContent(message.content);
-      if (content) messages.push({ role: "user", content });
-      continue;
-    }
-    if (message.role === "assistant") {
-      const content: Extract<ModelMessage, { role: "assistant" }>["content"] = [];
-      const text = textContent(message.content);
-      if (text) content.push({ type: "text", text });
-      if (Array.isArray(message.tool_calls)) {
-        for (const rawCall of message.tool_calls) {
-          const call = record(rawCall);
-          const fn = record(call?.function);
-          const callId = typeof call?.id === "string" ? call.id : "";
-          const name = typeof fn?.name === "string" ? fn.name : "";
-          if (!callId || !name) continue;
-          toolNames.set(callId, name);
-          content.push({
-            type: "tool-call",
-            toolCallId: callId,
-            toolName: name,
-            input: parseToolInput(fn?.arguments),
-          });
-        }
-      }
-      if (content.length) messages.push({ role: "assistant", content });
-      continue;
-    }
-    if (message.role === "tool") {
-      const callId = typeof message.tool_call_id === "string" ? message.tool_call_id : "";
-      const toolName = toolNames.get(callId);
-      if (!callId || !toolName) continue;
-      messages.push({
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: callId,
-            toolName,
-            output: { type: "text", value: textContent(message.content) },
-          },
-        ],
-      });
-    }
-  }
-  return messages;
-}
-
-function voiceWebTools(): ToolSet {
-  const tools: ToolSet = {};
-  for (const definition of VOICE_WEB_TOOLS) {
-    tools[definition.name] = dynamicTool({
-      description: definition.description,
-      inputSchema: jsonSchema(definition.parameters),
-    });
-  }
-  return tools;
-}
-
-function warmupResponse() {
-  return Response.json({
-    id: `chatcmpl_${crypto.randomUUID()}`,
-    object: "chat.completion",
-    created: Math.floor(Date.now() / 1000),
-    model: "overtchat",
-    choices: [
-      {
-        index: 0,
-        message: { role: "assistant", content: "Ready." },
-        finish_reason: "stop",
-      },
-    ],
-    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-  });
-}
-
-function sse(value: unknown): Uint8Array {
-  return new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`);
-}
+const input = z.object({
+  model: z.string(),
+  overtchat_turn_id: z.string().min(1).max(200),
+  messages: z.array(z.object({ role: z.string(), content: z.unknown().optional() })).min(1),
+});
 
 export async function POST(request: Request) {
-  if (!authorizeVoiceService(request)) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  const body = record(await request.json().catch(() => null));
-  if (!body) return Response.json({ error: { message: "Invalid request." } }, { status: 400 });
-  if (body.model === "overtchat") return warmupResponse();
-  if (typeof body.model !== "string") {
-    return Response.json({ error: { message: "A voice ticket is required." } }, { status: 401 });
-  }
-  const ticket = verifyVoiceTicket(body.model);
-  if (!ticket) {
-    return Response.json({ error: { message: "Voice ticket expired or invalid." } }, { status: 401 });
-  }
-  const modelConfig = await getModelConfig(ticket.modelConfigId);
-  if (!modelConfig?.enabled || modelConfig.modelType === "image") {
-    return Response.json({ error: { message: "Model config not found." } }, { status: 404 });
-  }
-  const chat = await getChat(ticket.chatId, ticket.userId);
-  if ((!ticket.newChat && !chat) || chat?.kind === "text") {
-    return Response.json({ error: { message: "Voice chat not found." } }, { status: 404 });
-  }
-
-  const personalization = await getActivePersonalization(ticket.userId);
-  const project = ticket.projectId
-    ? await getProject(ticket.projectId, ticket.userId)
-    : null;
-  const system = [
-    modelConfig.systemPrompt,
-    personalization
-      ? userProfileSystemPrompt(personalization.personalization)
-      : null,
-    personalization ? memorySystemPrompt(personalization.memories) : null,
-    projectSystemPrompt(project),
-    ticket.webSearchEnabled ? VOICE_WEB_SEARCH_PROMPT : null,
-    currentDateSystemPrompt(ticket.timeZone),
-    VOICE_CONVERSATION_PROMPT,
-  ].filter((part): part is string => Boolean(part?.trim()));
-  const historyTools = voiceWebTools();
-  const persistedHistory = await convertToModelMessages(
-    await getMessagesThroughRowId(
-      ticket.chatId,
-      ticket.historyThroughRowId,
-    ),
-    { tools: historyTools, ignoreIncompleteToolCalls: true },
-  );
-  const messages = [...persistedHistory, ...toModelMessages(body.messages)];
-  const tools =
-    ticket.webSearchEnabled && modelConfig.toolCallingEnabled !== false
-      ? historyTools
-      : {};
-  const configured = createConfiguredLanguageModel({
-    providerId: modelConfig.providerId,
-    apiFormat: modelConfig.apiFormat,
-    baseUrl: modelConfig.baseUrl,
-    apiKey: modelConfig.apiKey,
-    model: modelConfig.model,
-    providerOptions: modelConfig.providerOptions,
-    toolCallingEnabled: modelConfig.toolCallingEnabled,
-    supportsImageInput: false,
+  if (!authorizeVoiceService(request)) return new Response("Unauthorized", { status: 401 });
+  const body = await request.json().catch(() => null);
+  // The pinned engine probes the bridge during pool warmup without a session.
+  if (body?.model === "overtchat") return Response.json({
+    id: "warmup", object: "chat.completion", created: 0, model: "overtchat",
+    choices: [{ index: 0, message: { role: "assistant", content: "Ready." }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
   });
-  const result = streamText({
-    model: configured.model,
-    instructions: system.join("\n\n"),
-    messages,
-    tools,
-    toolChoice: Object.keys(tools).length ? "auto" : undefined,
-    providerOptions: configured.providerOptions,
-    abortSignal: request.signal,
-    // The SDK's default error handler logs provider bodies and request context.
-    onError: () => console.warn("Voice model generation failed"),
-    ...(typeof body.max_tokens === "number" && body.max_tokens > 0
-      ? { maxOutputTokens: Math.floor(body.max_tokens) }
-      : {}),
-  });
-
-  const completionId = `chatcmpl_${crypto.randomUUID()}`;
-  const created = Math.floor(Date.now() / 1000);
-  const model = modelConfig.model;
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const chunk = (delta: UnknownRecord, finishReason: string | null = null) =>
-        controller.enqueue(
-          sse({
-            id: completionId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [{ index: 0, delta, finish_reason: finishReason }],
-          }),
-        );
-      let usedTools = false;
-      const toolCallIndexes = new Map<string, number>();
-      let finalUsage = { inputTokens: 0, outputTokens: 0 };
-      try {
-        chunk({ role: "assistant" });
-        for await (const part of result.fullStream) {
-          if (part.type === "text-delta") {
-            chunk({ content: part.text });
-          } else if (part.type === "tool-call") {
-            usedTools = true;
-            let index = toolCallIndexes.get(part.toolCallId);
-            if (index === undefined) {
-              index = toolCallIndexes.size;
-              toolCallIndexes.set(part.toolCallId, index);
-            }
-            chunk({
-              tool_calls: [
-                {
-                  index,
-                  id: part.toolCallId,
-                  type: "function",
-                  function: {
-                    name: part.toolName,
-                    arguments: JSON.stringify(part.input ?? {}),
-                  },
-                },
-              ],
-            });
-          } else if (part.type === "finish") {
-            finalUsage = {
-              inputTokens: part.totalUsage.inputTokens ?? 0,
-              outputTokens: part.totalUsage.outputTokens ?? 0,
+  const parsed = input.safeParse(body);
+  if (!parsed.success) return new Response("Invalid voice turn", { status: 400 });
+  const ticket = verifyVoiceTicket(parsed.data.model);
+  const principal = ticket && getVoicePrincipal(ticket.sessionId, ticket.chatId, ticket.userId);
+  if (!ticket || !principal) return new Response("Voice session expired or invalid", { status: 401 });
+  // Never replay engine-owned history, instructions or tools. The normal chat
+  // service reconstructs the complete canonical conversation from SQLite.
+  const last = parsed.data.messages.at(-1);
+  const text = typeof last?.content === "string" ? last.content : Array.isArray(last?.content)
+    ? last.content.map((part) => typeof part?.text === "string" ? part.text : "").join("\n") : "";
+  if (last?.role !== "user" || !text.trim() || text.length > 100_000) return new Response("Invalid voice input", { status: 400 });
+  const turnId = `voice:${ticket.sessionId}:${parsed.data.overtchat_turn_id}`;
+  const expired = new AbortController();
+  const interval = setInterval(() => {
+    if (!getVoicePrincipal(ticket.sessionId, ticket.chatId, ticket.userId) || ticket.expiresAt * 1000 < Date.now()) expired.abort();
+  }, 1000);
+  const turnRequest = new Request(request.url, { signal: AbortSignal.any([request.signal, expired.signal]) });
+  try {
+    const response = await runChat(turnRequest, principal, {
+      messages: [{ id: turnId, role: "user", parts: [{ type: "text", text }] }],
+      modelConfigId: ticket.modelConfigId, chatId: ticket.chatId, projectId: ticket.projectId,
+      clientRequestId: turnId, webSearchEnabled: ticket.webSearchEnabled, forceSearch: false,
+      timeZone: ticket.timeZone, reasoningLevel: ticket.reasoningLevel ?? "default",
+      action: { type: "submit" }, temporary: false, responseStyle: "voice",
+    }, {
+      voiceSessionId: ticket.sessionId,
+      onUserMessage(message) { publishVoiceEvent(ticket.sessionId, { type: "message", message }); },
+      async respond(uiStream) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            let disconnected = false;
+            const enqueue = (value: string) => {
+              if (disconnected) return;
+              try { controller.enqueue(encoder.encode(value)); } catch { disconnected = true; expired.abort(); }
             };
-          } else if (part.type === "error") {
-            throw part.error;
-          }
-        }
-        chunk({}, usedTools ? "tool_calls" : "stop");
-        controller.enqueue(
-          sse({
-            id: completionId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [],
-            usage: {
-              prompt_tokens: finalUsage.inputTokens,
-              completion_tokens: finalUsage.outputTokens,
-              total_tokens: finalUsage.inputTokens + finalUsage.outputTokens,
-            },
-          }),
-        );
-        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-        controller.close();
-      } catch {
-        controller.enqueue(sse({ error: { message: "Model request failed.", type: "voice_model_error" } }));
-        controller.close();
-      }
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-store",
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "X-Accel-Buffering": "no",
-    },
-  });
+            const chunk = (delta: Record<string, unknown>, finish: string | null = null) => enqueue(`data: ${JSON.stringify({
+              id: turnId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: "overtchat",
+              choices: [{ index: 0, delta, finish_reason: finish }],
+            })}\n\n`);
+            let forwardedText = "";
+            const speechText = new SpeechTextFilter();
+            let lastPublished = 0;
+            let latest: import("ai").UIMessage | undefined;
+            let publishTimer: ReturnType<typeof setTimeout> | undefined;
+            const flushMessage = () => {
+              clearTimeout(publishTimer);
+              publishTimer = undefined;
+              if (latest) publishVoiceEvent(ticket.sessionId, { type: "message", message: latest });
+              lastPublished = Date.now();
+            };
+            try {
+              chunk({ role: "assistant" });
+              for await (const message of readUIMessageStream({ stream: uiStream, terminateOnError: true })) {
+                latest = message;
+                if (Date.now() - lastPublished >= 40) flushMessage();
+                else publishTimer ??= setTimeout(flushMessage, 40 - (Date.now() - lastPublished));
+                const text = message.parts.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+                if (text.startsWith(forwardedText) && text.length > forwardedText.length) {
+                  const content = speechText.push(text.slice(forwardedText.length));
+                  if (content) chunk({ content });
+                }
+                forwardedText = text;
+              }
+              flushMessage();
+              const tail = speechText.finish();
+              if (tail) chunk({ content: tail });
+              chunk({}, "stop");
+              enqueue("data: [DONE]\n\n");
+            } catch {
+              publishVoiceEvent(ticket.sessionId, { type: "error", message: "The voice response failed. Please try again." });
+              enqueue(`data: ${JSON.stringify({ error: { message: "Voice generation failed." } })}\n\n`);
+            } finally {
+              clearInterval(interval);
+              clearTimeout(publishTimer);
+              publishVoiceEvent(ticket.sessionId, { type: "settled" });
+              try { controller.close(); } catch {}
+            }
+          },
+          cancel() { expired.abort(); },
+        });
+        return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store" } });
+      },
+    });
+    if (!response.headers.get("content-type")?.includes("text/event-stream")) clearInterval(interval);
+    return response;
+  } catch (error) {
+    clearInterval(interval);
+    return chatErrorResponse(error);
+  }
 }

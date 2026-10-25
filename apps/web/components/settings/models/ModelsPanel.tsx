@@ -109,6 +109,7 @@ export function ModelsPanel() {
           contextWindow: m.contextWindow,
           discoveredContextWindow: m.discoveredContextWindow,
           discoveredCapabilities: m.discoveredCapabilities,
+          reasoningOverride: m.reasoningOverride ?? null,
           systemPrompt: m.systemPrompt,
           providerOptions: m.providerOptions,
           toolCallingEnabled: m.toolCallingEnabled,

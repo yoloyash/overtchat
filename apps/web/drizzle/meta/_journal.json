@@ -141,6 +141,55 @@
       "when": 1791025431476,
       "tag": "0019_chat_pinning",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1791865711968,
+      "tag": "0020_dusty_shotgun",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1792137964716,
+      "tag": "0021_stiff_mongu",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1792233271119,
+      "tag": "0022_two_factor",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1792722686169,
+      "tag": "0023_chat_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1792798073627,
+      "tag": "0024_model_reasoning_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1792799328340,
+      "tag": "0025_project_default_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1792823579434,
+      "tag": "0026_agent_workspace_worktree_parent",
+      "breakpoints": true
     }
   ]
 }

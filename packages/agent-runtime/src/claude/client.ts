@@ -16,6 +16,7 @@ import type {
   AgentModel,
   AgentSessionStats,
   AgentSlashCommand,
+  AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import type {
   AgentRuntimeClient,
@@ -33,9 +34,11 @@ import {
 } from "@overtchat/agent-runtime/claude/models";
 import { spawnClaudeOnHost } from "@overtchat/agent-runtime/claude/process";
 import {
-  readClaudeSessionMessages,
+  readClaudeSessionForResume,
   renameClaudeSession,
 } from "@overtchat/agent-runtime/claude/sessions";
+import { forkClaudeSession } from "@overtchat/agent-runtime/claude/rewind";
+import { parseClaudeUsage } from "@overtchat/agent-runtime/claude/usage";
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -111,6 +114,10 @@ type AssistantProjection = {
   errorMessage?: string;
   overtchatProviderMessageId?: string;
 };
+
+const INTERRUPT_SETTLE_MS = 5_000;
+// Usage also scans local transcripts and calls the plan usage endpoint.
+const USAGE_TIMEOUT_MS = 20_000;
 
 const EMPTY_STATS: AgentSessionStats = {
   sessionFile: null,
@@ -254,13 +261,19 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private commands: AgentSlashCommand[] = [];
   private messages: unknown[] = [];
   private stats: AgentSessionStats = EMPTY_STATS;
-  private contextInputTokens?: number;
+  private contextInputUsage?: { input: number; cacheRead: number; cacheWrite: number; output: number };
+  private contextRevision = 0;
+  private contextBoundarySeen = false;
+  private contextQuerySupported = true;
   private contextTokens: number | null = null;
   private reportedContextWindow?: number;
+  private reportedContextModel?: string;
   private selectedModel?: string;
   private thinkingOptionId?: string;
   private modeId: PermissionMode;
   private active = false;
+  private backgroundTasks = new Set<string>();
+  private readonly turnEndWaiters = new Set<() => void>();
   private activeTurnHasAssistantText = false;
   private compacting = false;
   private stopped = false;
@@ -278,7 +291,6 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.modeId = isClaudePermissionMode(launch.modeId ?? "")
       ? launch.modeId as PermissionMode
       : "auto";
-    this.startQuery(launch.resume?.providerSessionId);
     this.readyPromise = this.initialize();
     void this.readyPromise.catch(() => {});
   }
@@ -301,6 +313,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       modeId: this.modeId,
       modes: this.modes,
       isStreaming: this.active,
+      hasPendingAsyncWork: this.backgroundTasks.size > 0,
       isCompacting: this.compacting,
     };
   }
@@ -375,12 +388,40 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     });
   }
 
+  async getUsage(): Promise<AgentUsageSnapshot> {
+    await this.readyPromise;
+    if (this.stopped) throw new Error("Claude session stopped.");
+    const query = this.sdkQuery;
+    // Experimental SDK control request; older CLIs may not answer it.
+    if (typeof query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET !== "function") {
+      throw new Error("This Claude Code version does not report account usage.");
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const usage = await Promise.race([
+        query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Claude Code did not report account usage in time.")),
+            USAGE_TIMEOUT_MS,
+          );
+          timer.unref?.();
+        }),
+      ]);
+      return parseClaudeUsage(usage);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async abort(): Promise<unknown> {
     return this.withLifecycle(async () => {
       await this.readyPromise;
       this.cancelInteractions(new Error("Claude interaction was cancelled."));
       const result = await this.sdkQuery.interrupt();
-      await this.restartQuery();
+      // The interrupt ends the main turn with a result and spares background
+      // tasks. Restart only when Claude does not end the turn.
+      if (!(await this.waitForTurnEnd(INTERRUPT_SETTLE_MS))) await this.restartQuery();
       return result;
     });
   }
@@ -394,8 +435,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       await this.sdkQuery.setModel(modelId);
       this.selectedModel = modelId;
       this.reportedContextWindow = undefined;
+      this.reportedContextModel = undefined;
       this.updateContextUsage(null);
       this.emitConfig();
+      await this.refreshContextUsage();
       return undefined;
     });
   }
@@ -434,7 +477,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     return this.withLifecycle(async () => {
       await this.readyPromise;
       this.compacting = true;
-      this.contextInputTokens = undefined;
+      this.contextBoundarySeen = true;
+      this.contextInputUsage = undefined;
       this.updateContextUsage(null);
       this.emit({ type: "compaction_start" });
       return this.submit("/compact", [], {}, false);
@@ -483,20 +527,24 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
           );
       }
       if (mode === "files") return;
-      const kept = this.messages.slice(0, index);
-      // Use the SDK's native resume/fork options so this also executes over SSH.
-      await this.restartQuery(
-        typeof resumeAt === "string"
-          ? { resume: this.sessionId, resumeAt }
-          : {},
+      // Materialize the native fork before changing the durable session identity.
+      // Query initialization alone does not persist a fork until another prompt.
+      const fork = await forkClaudeSession(
+        this.target, this.sessionId!,
+        this.launch.resume?.providerSessionPath ?? this.sessionId!,
+        this.launch.cwd, typeof resumeAt === "string" ? resumeAt : undefined,
       );
-      this.launch.resume = undefined;
-      this.messages = kept;
+      const saved = await readClaudeSessionForResume(this.target, fork.providerSessionPath);
+      await this.restartQuery({ ...fork, empty: saved.empty });
+      // The SDK remaps UUIDs while forking. Import those IDs so a second rewind
+      // targets the new native transcript rather than the old display IDs.
+      this.messages = saved.messages;
       this.assistantMessages.clear();
       this.toolNames.clear();
       this.currentStreamMessageId = undefined;
-      this.contextInputTokens = undefined;
+      this.contextInputUsage = undefined;
       this.updateContextUsage(null);
+      await this.refreshContextUsage();
     });
   }
 
@@ -587,11 +635,20 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.stopped = true;
     this.cancelInteractions(new Error("Claude session stopped."));
     this.input.close();
-    this.sdkQuery.close();
+    this.sdkQuery?.close();
     await this.consumePromise.catch(() => {});
+    this.resetActivity();
   }
 
   private async initialize(): Promise<void> {
+    let resume = this.launch.resume?.providerSessionId;
+    if (this.launch.resume) {
+      const saved = await readClaudeSessionForResume(this.target, this.launch.resume.providerSessionPath);
+      this.messages = saved.messages;
+      if (saved.empty) resume = undefined;
+    }
+    if (this.stopped) throw new Error("Claude session stopped.");
+    this.startQuery(resume);
     const [initialized, settingsModels] = await Promise.all([
       this.sdkQuery.initializationResult(),
       readClaudeSettingsModels(this.target),
@@ -610,17 +667,14 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     }
     this.selectedModel ??= this.models.find((model) => model.isDefault)?.id ?? this.models[0]?.id;
     this.thinkingOptionId ??= this.models.find((model) => model.id === this.selectedModel)?.defaultThinkingOptionId;
-    if (this.launch.resume?.providerSessionPath) {
-      this.messages = await readClaudeSessionMessages(
-        this.target,
-        this.launch.resume.providerSessionPath,
-      );
-    }
+    await this.refreshContextUsage();
   }
 
-  private startQuery(resume?: string, resumeAt?: string): void {
+  private startQuery(resume?: string): void {
     const generation = ++this.consumeGeneration;
-    this.activeTurnHasAssistantText = false;
+    this.contextRevision += 1;
+    this.contextQuerySupported = true;
+    this.resetActivity();
     this.input = new ClaudeInputQueue();
     this.sdkQuery = createSdkQuery({
       prompt: this.input,
@@ -629,18 +683,14 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         env: safeEnvironment(),
         pathToClaudeCodeExecutable: this.launch.executable,
         ...(resume ? { resume } : { sessionId: this.sessionId }),
-        ...(resumeAt
-          ? {
-              resumeSessionAt: resumeAt,
-              forkSession: true,
-              sessionId: this.sessionId,
-            }
-          : {}),
         enableFileCheckpointing: true,
         extraArgs: { "replay-user-messages": null },
         ...(this.selectedModel ? { model: this.selectedModel } : {}),
         ...thinkingOptions(this.thinkingOptionId),
         includePartialMessages: true,
+        // Stop ends only the main turn, as in Claude Code. Claude stops its own
+        // tasks with TaskStop, and /reload ends them all.
+        perTaskStopAffordance: true,
         settingSources: ["user", "project", "local"],
         systemPrompt: { type: "preset", preset: "claude_code" },
         permissionMode: this.modeId,
@@ -755,11 +805,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     };
     this.messages.push(user);
     this.emit({ type: "message_end", message: user });
-    if (!this.active) {
-      this.contextInputTokens = undefined;
-      this.active = true;
-      this.emit({ type: "turn_start" });
-    }
+    this.startTurn();
     this.input.push({
       type: "user",
       message: { role: "user", content } as SDKUserMessage["message"],
@@ -770,29 +816,55 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     });
   }
 
-  private async restartQuery(rewind?: { resume?: string; resumeAt?: string }): Promise<void> {
-    if (this.stopped) return;
+  private async restartQuery(fork?: {
+    providerSessionId: string;
+    providerSessionPath: string;
+    empty: boolean;
+  }): Promise<void> {
+    if (this.stopped) throw new Error("Claude session stopped.");
+    const previousId = this.sessionId;
+    const previousResume = this.launch.resume;
     this.restarting = true;
-    const oldInput = this.input;
-    const oldQuery = this.sdkQuery;
-    oldInput.close();
-    oldQuery.close();
+    this.input.close();
+    this.sdkQuery.close();
     await this.consumePromise.catch(() => {});
     this.restarting = false;
-    this.active = false;
-    this.compacting = false;
-    if (this.stopped) return;
-    if (rewind) this.sessionId = randomUUID();
-    this.startQuery(rewind ? rewind.resume : this.sessionId, rewind?.resumeAt);
-    const [initialized, settingsModels] = await Promise.all([
-      this.sdkQuery.initializationResult(),
-      readClaudeSettingsModels(this.target),
-    ]);
-    const models = initialized.models;
-    const commands = initialized.commands;
-    this.models = parseClaudeModels(models, settingsModels);
-    this.modes = claudeModesForModels(models);
-    this.commands = commandRows(commands);
+    if (this.stopped) throw new Error("Claude session stopped.");
+    if (fork) {
+      this.sessionId = fork.providerSessionId;
+      this.launch.resume = {
+        providerSessionId: fork.providerSessionId,
+        providerSessionPath: fork.providerSessionPath,
+      };
+    }
+    try {
+      this.startQuery((fork?.empty ?? this.messages.length === 0) ? undefined : this.sessionId);
+      const [initialized, settingsModels] = await Promise.all([
+        this.sdkQuery.initializationResult(),
+        readClaudeSettingsModels(this.target),
+      ]);
+      this.models = parseClaudeModels(initialized.models, settingsModels);
+      this.modes = claudeModesForModels(initialized.models);
+      this.commands = commandRows(initialized.commands);
+      if (this.stopped) throw new Error("Claude session stopped.");
+      if (!fork) await this.refreshContextUsage();
+    } catch (error) {
+      if (fork) {
+        // A failed reopen must not leave the live identity ahead of the journal.
+        this.restarting = true;
+        this.input.close();
+        this.sdkQuery.close();
+        await this.consumePromise.catch(() => {});
+        this.sessionId = previousId;
+        this.launch.resume = previousResume;
+        this.restarting = false;
+        if (!this.stopped) {
+          this.startQuery(this.messages.length === 0 ? undefined : previousId);
+          await this.sdkQuery.initializationResult().catch(() => {});
+        }
+      }
+      throw error;
+    }
   }
 
   private async consume(query: Query, generation: number): Promise<void> {
@@ -808,6 +880,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       if (this.stopped || this.restarting || generation !== this.consumeGeneration) return;
       const detail = this.recentStderr.trim();
       const message = `${errorText(error)}${detail ? `\n${detail}` : ""}`;
+      this.resetActivity();
       this.emit({ type: "rpc_error", error: message });
       this.emit({ type: "process_exit", error: message });
     }
@@ -838,8 +911,21 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleSystem(message: SDKMessage & Record<string, unknown>): void {
     const subtype = message.subtype;
     if (subtype === "init") {
+      // Claude brackets every main turn with init/result, including autonomous
+      // continuations after a background task finishes. A user prompt is not
+      // the only way a turn can start. Sidechain output is not a parent turn.
+      if (!message.parent_tool_use_id) this.startTurn();
       this.sessionId = String(message.session_id);
-      if (typeof message.model === "string") this.selectedModel = message.model;
+      if (typeof message.model === "string") {
+        // Native commands can change the model without going through setModel.
+        // Never carry a previous model's capacity into the new model's turn.
+        if (this.reportedContextModel && this.reportedContextModel !== message.model) {
+          this.reportedContextWindow = undefined;
+          this.reportedContextModel = undefined;
+          this.updateContextUsage(null);
+        }
+        this.selectedModel = message.model;
+      }
       if (isClaudePermissionMode(String(message.permissionMode ?? ""))) {
         this.modeId = message.permissionMode as PermissionMode;
       }
@@ -860,18 +946,25 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (subtype === "session_state_changed") {
-      if (message.state === "running" && !this.active) {
-        this.active = true;
-        this.emit({ type: "turn_start" });
-      } else if (message.state === "idle") {
-        this.finishTurn();
-      }
+      // This describes the whole CLI, including children. It cannot identify
+      // parent turn boundaries, and an idle from the prior turn can arrive
+      // after a new submission. Use init/result and the task roster instead.
+      return;
+    }
+    if (subtype === "background_tasks_changed" && Array.isArray(message.tasks)) {
+      // The SDK defines REPLACE semantics. Do not pair task_started and
+      // task_notification edges: the empty roster may precede the notification.
+      this.backgroundTasks = new Set(message.tasks.flatMap((task) => {
+        const id = record(task)?.task_id;
+        return typeof id === "string" ? [id] : [];
+      }));
       return;
     }
     if (subtype === "status") {
       if (message.status === "compacting" && !this.compacting) {
         this.compacting = true;
-        this.contextInputTokens = undefined;
+        this.contextBoundarySeen = true;
+        this.contextInputUsage = undefined;
         this.updateContextUsage(null);
         this.emit({ type: "compaction_start" });
       } else if (message.status === null && this.compacting) {
@@ -886,9 +979,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (subtype === "compact_boundary") {
+      this.contextBoundarySeen = true;
       const metadata = record(message.compact_metadata);
       const postTokens = metadata?.post_tokens ?? metadata?.postTokens;
-      this.contextInputTokens = undefined;
+      this.contextInputUsage = undefined;
       this.updateContextUsage(this.usageNumber(postTokens));
       if (this.compacting) {
         this.compacting = false;
@@ -902,11 +996,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     if (!event) return;
     if (!message.parent_tool_use_id) {
       if (event.type === "message_start") {
-        this.contextInputTokens = undefined;
+        this.contextInputUsage = undefined;
         this.readRequestUsage(record(record(event.message)?.usage));
-      } else if (event.type === "message_delta" && this.contextInputTokens !== undefined) {
-        const output = this.usageNumber(record(event.usage)?.output_tokens);
-        if (output !== null) this.updateRequestContextUsage(this.contextInputTokens + output);
+      } else if (event.type === "message_delta") {
+        this.readRequestUsage(record(event.usage), true);
       }
     }
     if (event.type === "message_start") {
@@ -953,7 +1046,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleAssistant(message: SDKMessage & Record<string, unknown>): void {
     const native = record(message.message);
     if (!native || typeof native.id !== "string") return;
-    if (!message.parent_tool_use_id) this.readRequestUsage(record(native.usage));
+    if (!message.parent_tool_use_id && native.model !== "<synthetic>") {
+      this.readRequestUsage(record(native.usage));
+    }
     const projection = this.ensureAssistant(native.id);
     if (typeof message.uuid === "string") projection.overtchatProviderMessageId = message.uuid;
     if (typeof message.error === "string") projection.errorMessage = message.error;
@@ -1051,56 +1146,118 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       : null;
   }
 
-  private readRequestUsage(usage: Record<string, unknown> | null): void {
-    const input = this.usageNumber(usage?.input_tokens);
-    if (input === null) return;
-    this.contextInputTokens =
-      input +
-      (this.usageNumber(usage?.cache_read_input_tokens) ?? 0) +
-      (this.usageNumber(usage?.cache_creation_input_tokens) ?? 0);
-    this.updateRequestContextUsage(
-      this.contextInputTokens + (this.usageNumber(usage?.output_tokens) ?? 0),
-    );
-  }
-
-  private updateRequestContextUsage(tokens: number): void {
-    // Empty request events after compaction must preserve the boundary's count.
-    // Explicit zero or unknown counts from compact boundaries remain valid.
-    if (tokens > 0) this.updateContextUsage(tokens);
+  private readRequestUsage(usage: Record<string, unknown> | null, delta = false): void {
+    const previous = delta ? this.contextInputUsage : undefined;
+    const input = this.usageNumber(usage?.input_tokens) ?? previous?.input;
+    if (input === undefined) return;
+    this.contextInputUsage = {
+      input,
+      cacheRead: this.usageNumber(usage?.cache_read_input_tokens) ?? previous?.cacheRead ?? 0,
+      cacheWrite: this.usageNumber(usage?.cache_creation_input_tokens) ?? previous?.cacheWrite ?? 0,
+      output: this.usageNumber(usage?.output_tokens) ?? previous?.output ?? 0,
+    };
+    const tokens = input + this.contextInputUsage.cacheRead + this.contextInputUsage.cacheWrite +
+      this.contextInputUsage.output;
+    // Synthetic/empty request events must not erase the compact boundary or
+    // last valid reading. Explicit zero from a boundary/native query is valid.
+    if (tokens > 0) {
+      this.contextBoundarySeen = false;
+      this.updateContextUsage(tokens);
+    }
   }
 
   private updateContextUsage(tokens: number | null): void {
+    this.contextRevision += 1;
     this.contextTokens = tokens;
-    const contextWindow =
-      this.reportedContextWindow ??
-      this.models.find(
-        (model) =>
-          model.id === this.selectedModel ||
-          model.metadata?.modelId === this.selectedModel,
-      )?.contextWindow;
-    if (!contextWindow) return;
+    const contextWindow = this.reportedContextWindow;
     this.stats = {
       ...this.stats,
-      contextUsage: {
+      contextUsage: contextWindow ? {
         tokens,
         contextWindow,
         percent: tokens === null ? null : (tokens / contextWindow) * 100,
-      },
+      } : undefined,
     };
     this.emit({
       type: "usage_update",
-      usage: { contextUsage: this.stats.contextUsage },
+      usage: { contextUsage: this.stats.contextUsage ?? null },
     });
+  }
+
+  private async refreshContextUsage(): Promise<void> {
+    if (this.stopped || this.active || this.compacting || !this.contextQuerySupported) return;
+    const query = this.sdkQuery;
+    const revision = this.contextRevision;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Older CLIs may reject or never answer this control request. Keep open,
+      // resume and model changes bounded; live request usage remains available.
+      const usage = await Promise.race([
+        query.getContextUsage(),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), 5_000);
+          timer.unref?.();
+        }),
+      ]);
+      if (!usage && query === this.sdkQuery) this.contextQuerySupported = false;
+      if (!usage || this.stopped || query !== this.sdkQuery ||
+          revision !== this.contextRevision || this.active || this.compacting) return;
+      const tokens = this.usageNumber(usage.totalTokens);
+      const contextWindow = this.usageNumber(usage.maxTokens);
+      if (tokens === null || !contextWindow) return;
+      this.reportedContextWindow = contextWindow;
+      this.reportedContextModel = typeof usage.model === "string" ? usage.model : undefined;
+      this.updateContextUsage(tokens);
+    } catch {
+      // Retry on the next query lifecycle, not on every turn of an older CLI.
+      if (query === this.sdkQuery) this.contextQuerySupported = false;
+      // Preserve the last reading on unsupported control requests/transient errors.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private normalizeModelId(id: string): string {
+    return id.toLowerCase().replace(/\[1m\]/gu, "");
+  }
+
+  private modelIds(selected: string | undefined): Set<string> {
+    const model = this.models.find((candidate) => candidate.id === selected ||
+      candidate.metadata?.modelId === selected);
+    return new Set([selected, model?.id, model?.metadata?.modelId]
+      .filter((id): id is string => typeof id === "string")
+      .map((id) => this.normalizeModelId(id)));
+  }
+
+  private resultModelUsage(modelUsage: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (!modelUsage) return null;
+    const exact = record(modelUsage[this.selectedModel ?? ""]);
+    if (exact) return exact;
+    const ids = this.modelIds(this.selectedModel);
+    const matches = Object.entries(modelUsage).filter(([id, value]) => {
+      const canonical = record(value)?.canonicalModel;
+      return ids.has(this.normalizeModelId(id)) ||
+        (typeof canonical === "string" && ids.has(this.normalizeModelId(canonical)));
+    });
+    return matches.length === 1 ? record(matches[0]![1]) : null;
   }
 
   private handleResult(message: SDKMessage & Record<string, unknown>): void {
     const usage = record(message.usage);
     const modelUsage = record(message.modelUsage);
-    const selectedUsage = record(modelUsage?.[this.selectedModel ?? ""]) ??
-      (modelUsage && Object.keys(modelUsage).length === 1 ? record(Object.values(modelUsage)[0]) : null);
+    // Result totals are cumulative. Only a final API iteration is a context
+    // reading, and only use it when live parent usage/boundary data is absent.
+    const hasRequestUsage = this.contextInputUsage &&
+      Object.values(this.contextInputUsage).some((count) => count > 0);
+    if (!hasRequestUsage && !this.contextBoundarySeen && Array.isArray(usage?.iterations)) {
+      const last = usage.iterations.findLast((value) => record(value) !== null);
+      this.readRequestUsage(record(last));
+    }
+    const selectedUsage = this.resultModelUsage(modelUsage);
     const contextWindow = this.usageNumber(selectedUsage?.contextWindow);
     if (contextWindow && contextWindow !== this.reportedContextWindow) {
       this.reportedContextWindow = contextWindow;
+      this.reportedContextModel = this.selectedModel;
       this.updateContextUsage(this.contextTokens);
     }
     const totals = modelUsage
@@ -1162,6 +1319,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       this.publishAssistant(projection, "message_end");
     }
     this.finishTurn();
+    void this.refreshContextUsage();
   }
 
   private ensureAssistant(id: string): AssistantProjection {
@@ -1204,8 +1362,44 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     }
     this.activeTurnHasAssistantText = false;
     if (!this.active) return;
-    this.active = false;
+    this.endActivity();
     this.emit({ type: "turn_end" });
+  }
+
+  private startTurn(): void {
+    if (this.active) return;
+    this.contextInputUsage = undefined;
+    this.contextRevision += 1;
+    this.contextBoundarySeen = false;
+    this.active = true;
+    this.emit({ type: "turn_start" });
+  }
+
+  private endActivity(): void {
+    this.active = false;
+    for (const notify of [...this.turnEndWaiters]) notify();
+  }
+
+  private waitForTurnEnd(timeoutMs: number): Promise<boolean> {
+    if (!this.active) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const finish = (ended: boolean) => {
+        clearTimeout(timer);
+        this.turnEndWaiters.delete(onEnd);
+        resolve(ended);
+      };
+      const onEnd = () => finish(true);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      this.turnEndWaiters.add(onEnd);
+    });
+  }
+
+  private resetActivity(): void {
+    this.endActivity();
+    this.backgroundTasks.clear();
+    this.compacting = false;
+    this.activeTurnHasAssistantText = false;
+    this.currentStreamMessageId = undefined;
   }
 
   private emitConfig(): void {

@@ -28,7 +28,8 @@ import {
   type WebSearchResult,
 } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
-import { getApiBase, getAuthCookie } from "@/lib/api";
+import { getApiBase } from "@/lib/api";
+import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { useTheme } from "@/lib/theme";
 import { MarkdownBody } from "./MarkdownBody";
 
@@ -531,6 +532,7 @@ function ResultRow({
 
 function FetchStep({ part }: { part: FetchUrlPart }) {
   const { colors, fonts } = useTheme();
+  const cookie = useAuthCookie();
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
   const running = !isToolSettled(part);
@@ -560,11 +562,10 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   }
 
   if (isFetchedImage(page)) {
-    const cookie = getAuthCookie();
-    const source = {
+    const source = cookie ? {
       uri: `${getApiBase()}${page.uploadUrl}`,
-      headers: cookie ? { Cookie: cookie } : undefined,
-    };
+      headers: { Cookie: cookie },
+    } : undefined;
     return (
       <Pressable
         onPress={() => Linking.openURL(page.url).catch(() => {})}

@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   listAgentConnections: vi.fn(),
   subscribeSessionDirectory: vi.fn(),
   unsubscribeDirectory: vi.fn(),
+  getOwnedAgentWorkspace: vi.fn(),
+  watchWorkspaceGit: vi.fn(),
+  unwatchGit: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,10 +21,12 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 vi.mock("@/lib/db/agentConnections", () => ({
   listAgentConnections: mocks.listAgentConnections,
+  getOwnedAgentWorkspace: mocks.getOwnedAgentWorkspace,
 }));
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: {
     subscribeSessionDirectory: mocks.subscribeSessionDirectory,
+    watchWorkspaceGit: mocks.watchWorkspaceGit,
   },
 }));
 
@@ -113,5 +118,51 @@ describe("agent connection session-directory stream", () => {
     expect(response.status).toBe(403);
     expect(mocks.listAgentConnections).not.toHaveBeenCalled();
     expect(mocks.subscribeSessionDirectory).not.toHaveBeenCalled();
+  });
+
+  it("streams Git watch events only for owned requested workspaces", async () => {
+    mocks.getOwnedAgentWorkspace.mockImplementation(async (id: string) =>
+      id === "owned"
+        ? {
+            host: { connectorId: "connector", transport: "ssh", sshAlias: "box" },
+            connection: { shellMode: "login" },
+            workspace: { id: "owned", path: "/srv/project" },
+          }
+        : null,
+    );
+    let gitListener:
+      | ((event: { type: "live"; live: boolean }) => void)
+      | undefined;
+    mocks.watchWorkspaceGit.mockImplementation((_target, listener) => {
+      gitListener = listener;
+      return mocks.unwatchGit;
+    });
+
+    const response = await GET(
+      new Request(
+        "http://server.test/api/agent-connections/events?git=owned,foreign,owned",
+      ),
+    );
+
+    expect(mocks.getOwnedAgentWorkspace).toHaveBeenCalledTimes(2);
+    expect(mocks.watchWorkspaceGit).toHaveBeenCalledOnce();
+    expect(mocks.watchWorkspaceGit).toHaveBeenCalledWith(
+      {
+        connectorId: "connector",
+        workspaceId: "owned",
+        target: { transport: "ssh", alias: "box", shellMode: "login" },
+        path: "/srv/project",
+      },
+      expect.any(Function),
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    gitListener?.({ type: "live", live: true });
+    const live = new TextDecoder().decode((await reader.read()).value);
+    expect(live).toBe(
+      `event: git\ndata: ${JSON.stringify({ workspaceId: "owned", live: true })}\n\n`,
+    );
+    await reader.cancel();
+    expect(mocks.unwatchGit).toHaveBeenCalledOnce();
   });
 });

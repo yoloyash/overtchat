@@ -1,11 +1,12 @@
+import { BinaryUpdate } from "./binary-update.js";
+import { ProcessLock } from "./process-lock.js";
 import { releaseAsset } from "./platform.js";
+import { executableName, installationBinDirectory } from "./paths.js";
 import { createHash } from "node:crypto";
 import {
   chmod,
-  copyFile,
   mkdtemp,
-  readFile,
-  rename,
+  readdir,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -32,6 +33,8 @@ export type ReleaseManifest = {
   kokoroImage: string;
   kokoroGpuImage: string;
   kokoroGpuBlackwellImage: string;
+  cloudTunnelImage: string;
+  cloudProxyImage: string;
 };
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
@@ -89,6 +92,8 @@ export function applyReleaseManifest(
     kokoroImage: manifest.kokoroImage,
     kokoroGpuImage: manifest.kokoroGpuImage,
     kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+    cloudTunnelImage: manifest.cloudTunnelImage,
+    cloudProxyImage: manifest.cloudProxyImage,
   };
 }
 
@@ -130,6 +135,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     value,
     "kokoroGpuBlackwellImage",
   );
+  const cloudTunnelImage = Reflect.get(value, "cloudTunnelImage");
+  const cloudProxyImage = Reflect.get(value, "cloudProxyImage");
   assertVersion(cliVersion, "CLI version");
   assertVersion(appVersion, "app version");
   assertVersion(voiceVersion, "voice version");
@@ -152,6 +159,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     "Kokoro Blackwell image",
     "ghcr.io/remsky/kokoro-fastapi-gpu",
   );
+  assertDigestImage(cloudTunnelImage, "OvertChat Cloud tunnel image", "ghcr.io/fatedier/frpc");
+  assertDigestImage(cloudProxyImage, "OvertChat Cloud proxy image", "docker.io/library/caddy");
   return {
     format: 1,
     cliVersion,
@@ -164,6 +173,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     kokoroImage,
     kokoroGpuImage,
     kokoroGpuBlackwellImage,
+    cloudTunnelImage,
+    cloudProxyImage,
   };
 }
 
@@ -203,9 +214,73 @@ async function download(url: string): Promise<Uint8Array> {
 function currentExecutable(): string | null {
   const executable = process.execPath;
   const basename = path.basename(executable);
-  return basename === "overtchat" || /^overtchat-(?:linux|darwin)-(?:amd64|arm64)$/u.test(basename)
+  return basename === "overtchat" || basename === "overtchat.exe" || /^overtchat-(?:(?:linux|darwin)-(?:amd64|arm64)|windows-amd64\.exe)$/u.test(basename)
     ? executable
     : null;
+}
+
+export async function recoverInterruptedCliUpdate(): Promise<string | null> {
+  const executable = currentExecutable();
+  if (!executable) return null;
+  const lock = await ProcessLock.acquire(`${executable}.update.lock`);
+  try {
+    const transaction = new BinaryUpdate(executable);
+    if (await transaction.pending()) {
+      if (!transaction.committed) {
+        await transaction.restore();
+        await transaction.finish();
+        return executable;
+      }
+      await transaction.finish();
+    }
+    if (process.platform === "win32") {
+      const directory = path.dirname(executable);
+      // Images that BinaryUpdate.restore renamed aside while they were running.
+      const prefix = `${path.basename(executable)}.abandoned-`;
+      for (const file of await readdir(directory)) {
+        if (!file.startsWith(prefix) || !/^[0-9a-f-]{36}$/u.test(file.slice(prefix.length))) continue;
+        await rm(path.join(directory, file)).catch((error: NodeJS.ErrnoException) => {
+          if (!["ENOENT", "EPERM", "EBUSY", "EACCES", "EFAULT"].includes(error.code || "")) throw error;
+        });
+      }
+    }
+    return null;
+  } finally { await lock.release(); }
+}
+
+// The bootstrap downloads and verifies this executable, then delegates the
+// installation to it. This also repairs a missing entry point after a killed
+// Windows self-update, using the same journal and locks as ordinary updates.
+export async function installDownloadedCli(): Promise<void> {
+  const executable = path.join(installationBinDirectory(), executableName("overtchat"));
+  if (path.resolve(executable) === path.resolve(process.execPath))
+    throw new Error("Run the installer to install the manager from a downloaded candidate.");
+  const lock = await ProcessLock.acquire(`${executable}.update.lock`);
+  const transaction = new BinaryUpdate(executable);
+  try {
+    if (await transaction.pending()) {
+      if (!transaction.committed) await transaction.restore();
+      await transaction.finish();
+      if (await transaction.pending()) throw new Error("The previous manager is still exiting. Retry the installer shortly.");
+    }
+    const installed = await runCommand(executable, ["version"]).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (installed?.exitCode === 0 && /^\d+\.\d+\.\d+$/u.test(installed.stdout.trim()) &&
+        compareVersions(installed.stdout.trim(), CLI_VERSION) > 0) return;
+    await transaction.prepare(process.execPath);
+    await transaction.replace();
+    await transaction.commit();
+  } catch (error) {
+    if (await transaction.pending() && !transaction.committed) {
+      try { await transaction.restore(); await transaction.finish(); }
+      catch (recoveryError) {
+        throw new AggregateError([error, recoveryError], `Manager installation and recovery failed. Preserve ${transaction.backup} and rerun the installer.`);
+      }
+    }
+    throw error;
+  } finally { await lock.release(); }
 }
 
 export async function updateCliIfNeeded(
@@ -216,13 +291,25 @@ export async function updateCliIfNeeded(
   // Source/development runs use node, tsx, or bun. Never overwrite those.
   if (!executable) return null;
 
+  const lock = await ProcessLock.acquire(`${executable}.update.lock`);
+  try { return await updateCliLocked(manifest, executable); }
+  finally { await lock.release(); }
+}
+
+async function updateCliLocked(manifest: ReleaseManifest, executable: string): Promise<string> {
+  const transaction = new BinaryUpdate(executable);
+  if (await transaction.pending()) {
+    if (!transaction.committed) await transaction.restore();
+    await transaction.finish();
+    // A locked committed backup belongs to a still-running previous CLI.
+    if (await transaction.pending()) throw new Error("The previous manager is still exiting. Retry the update shortly.");
+  }
   const asset = releaseAsset("overtchat");
   const releaseBase = `https://github.com/${CONNECTOR_REPOSITORY}/releases/download/cli-v${manifest.cliVersion}`;
   const temporaryDirectory = await mkdtemp(
     path.join(path.dirname(executable), ".overtchat-update-"),
   );
-  const replacement = path.join(temporaryDirectory, "overtchat");
-  const backup = `${executable}.previous`;
+  const replacement = path.join(temporaryDirectory, executableName("overtchat"));
   try {
     const [binary, checksums] = await Promise.all([
       download(`${releaseBase}/${asset}`),
@@ -242,17 +329,19 @@ export async function updateCliIfNeeded(
     ) {
       throw new Error("The downloaded OvertChat CLI failed its startup check.");
     }
-    await rm(backup, { force: true });
-    await copyFile(executable, backup);
-    await rename(replacement, executable);
+    await transaction.prepare(replacement);
+    await transaction.replace();
+    await transaction.commit();
     return executable;
   } catch (error) {
-    if (await readFile(backup).catch(() => null)) {
-      await copyFile(backup, executable).catch(() => {});
+    if (await transaction.pending() && !transaction.committed) {
+      try { await transaction.restore(); await transaction.finish(); }
+      catch (recoveryError) {
+        throw new AggregateError([error, recoveryError], `CLI update failed. Recovery state is retained at ${transaction.journal}. Rerun the installer to restore the CLI entry point, then retry.`);
+      }
     }
     throw error;
   } finally {
-    await rm(backup, { force: true });
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 }

@@ -1,3 +1,9 @@
+import {
+  collectOpenUIStates,
+  isOpenUIToolPart,
+  openUIStateKey,
+  type OpenUIAction,
+} from "@overtchat/shared";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
@@ -32,6 +38,21 @@ const CHAT_MAINTAIN_VISIBLE_POSITION = {
 
 const CHAT_BOTTOM_THRESHOLD_PX = 32;
 
+// Each live OpenUI card is a WebView. Older cards show text until opened.
+const LIVE_OPENUI_CARDS = 2;
+
+function recentOpenUICards(messages: UIMessage[]): Set<string> {
+  const keys = new Set<string>();
+  for (let i = messages.length - 1; i >= 0 && keys.size < LIVE_OPENUI_CARDS; i--) {
+    const message = messages[i];
+    for (let j = message.parts.length - 1; j >= 0 && keys.size < LIVE_OPENUI_CARDS; j--) {
+      const part = message.parts[j];
+      if (isOpenUIToolPart(part)) keys.add(openUIStateKey(message.id, part.toolCallId));
+    }
+  }
+  return keys;
+}
+
 export function MessageList({
   messages,
   streaming,
@@ -49,6 +70,7 @@ export function MessageList({
   onRegenerate,
   onContinue,
   onImageReference,
+  onOpenUIAction,
   localAnchorRequestKey,
   readOnly = false,
 }: {
@@ -68,9 +90,12 @@ export function MessageList({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onOpenUIAction?: (action: OpenUIAction) => void;
   localAnchorRequestKey: number;
   readOnly?: boolean;
 }) {
+  const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
+  const liveOpenUI = useMemo(() => recentOpenUICards(messages), [messages]);
   const { colors, fonts } = useTheme();
   const latestMessage = messages.at(-1);
   const latestMessageId = latestMessage?.id;
@@ -210,6 +235,9 @@ export function MessageList({
                       : undefined
                   }
                   onImageReference={onImageReference}
+                  onOpenUIAction={onOpenUIAction}
+                  openuiStates={openuiStates}
+                  liveOpenUI={liveOpenUI}
                   readOnly={readOnly}
                 />
               )}

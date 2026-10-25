@@ -10,6 +10,7 @@ import { getMainWindow, openMainWindow } from "./window";
 import { startUpdates } from "./updates";
 
 app.setName("overtchat");
+if (process.platform === "win32") app.setAppUserModelId("com.overtchat.desktop");
 // AppImage launchers can inject this switch when namespaces are unavailable.
 // Refuse it before creating any renderer; sandbox:true cannot override it.
 if (process.platform === "linux" && app.commandLine.hasSwitch("no-sandbox")) {

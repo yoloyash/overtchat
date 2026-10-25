@@ -7,11 +7,13 @@ on:
       - ".github/workflows/desktop-update-feed.yml"
       - ".github/scripts/*desktop-mac*"
       - ".github/scripts/*desktop-linux*"
+      - ".github/scripts/*desktop-windows*"
       - ".github/scripts/*desktop-update*"
       - ".github/scripts/smoke-desktop-local-discovery.mjs"
       - "apps/desktop/**"
       - "apps/web/**"
       - "packages/shared/**"
+      - "packages/voice-client/**"
       - "package.json"
       - "package-lock.json"
   push:
@@ -207,6 +209,76 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-windows:
+    if: '!inputs.qualification_candidate_run'
+    permissions:
+      contents: read
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm run typecheck -w apps/desktop --
+      - run: npm run test -w apps/desktop --
+      - run: node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.test.mjs
+      - run: npm run package:windows -w apps/desktop --
+      - name: Verify Windows window controls with an isolated source profile
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke-windows
+        run: node --import tsx .github/scripts/smoke-desktop-windows-chrome.mjs
+      - name: Verify Windows connection recovery with an isolated source profile
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke-windows
+        run: node --import tsx .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop --source
+      - name: Verify Windows bundle and prepare immutable update metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: node --import tsx .github/scripts/package-desktop-windows.mjs
+      - name: Build private loopback baseline for real update qualification
+        run: >-
+          node node_modules/electron-builder/out/cli/cli.js
+          --projectDir apps/desktop --config electron-builder.windows.yml --win --x64 --publish never
+          --config.extraMetadata.version=0.0.0
+          --config.publish.url=http://127.0.0.1:4931/
+          --config.directories.output=release-baseline
+      - name: Install, qualify update and saved login, and uninstall
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke-windows
+        run: |
+          $version = (Get-Content apps/desktop/package.json | ConvertFrom-Json).version
+          node --import tsx .github/scripts/smoke-desktop-windows.mjs apps/desktop/release-baseline/overtchat-0.0.0-windows-x64.exe apps/desktop/release $version
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: desktop-smoke-windows-x64
+          path: ${{ runner.temp }}/desktop-smoke-windows
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-windows-x64
+          path: |
+            apps/desktop/release/overtchat-*-windows-x64.exe
+            apps/desktop/release/stable.yml
+            apps/desktop/release/desktop-checksums-windows-x64.txt
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-windows-baseline
+          path: apps/desktop/release-baseline/overtchat-0.0.0-windows-x64.exe
+          if-no-files-found: error
+          retention-days: 7
+
   smoke-linux-ubuntu24:
     needs: build-linux
     permissions:
@@ -295,7 +367,8 @@ jobs:
           (cd baseline && shasum -a 256 --check "desktop-checksums-$ARCH.txt")
           (cd candidate && shasum -a 256 --check "desktop-checksums-$ARCH.txt")
           ditto -x -k baseline/overtchat-*-mac-"$ARCH".zip baseline/app
-          node .github/scripts/verify-desktop-mac.mjs baseline/app/overtchat.app "$ARCH" notarized 0.1.0
+          baseline_version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import {parse} from "yaml"; console.log(parse(readFileSync("baseline/stable-" + process.env.ARCH + "-mac.yml", "utf8")).version)')
+          node .github/scripts/verify-desktop-mac.mjs baseline/app/overtchat.app "$ARCH" notarized "$baseline_version"
       - name: Qualify real update and saved login
         shell: bash
         run: |
@@ -327,7 +400,7 @@ jobs:
 
   draft-release:
     if: github.event_name == 'push'
-    needs: [build, build-linux, smoke-linux-ubuntu24]
+    needs: [build, build-linux, smoke-linux-ubuntu24, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -341,6 +414,10 @@ jobs:
         with:
           name: desktop-linux-x64
           path: release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desktop-windows-x64
+          path: release
       - name: Create or resume a verified draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -349,15 +426,16 @@ jobs:
         run: |
           version="${TAG#desktop-v}"
           expected=$(printf '%s\n' \
-            desktop-checksums-arm64.txt desktop-checksums-x64.txt desktop-checksums-linux-x64.txt \
-            stable-arm64-mac.yml stable-x64-mac.yml stable-linux.yml \
+            desktop-checksums-arm64.txt desktop-checksums-x64.txt desktop-checksums-linux-x64.txt desktop-checksums-windows-x64.txt \
+            stable-arm64-mac.yml stable-x64-mac.yml stable-linux.yml stable.yml \
+            "overtchat-$version-windows-x64.exe" \
             "overtchat-$version-mac-arm64.dmg" "overtchat-$version-mac-arm64.zip" \
             "overtchat-$version-mac-x64.dmg" "overtchat-$version-mac-x64.zip" \
             overtchat-linux-x64.AppImage "overtchat-$version-linux-x64.deb" \
             "overtchat-$version-linux-x64.rpm" "overtchat-$version-linux-x64.tar.gz" | LC_ALL=C sort)
           actual=$(find release -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           test "$actual" = "$expected"
-          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt)
+          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt && sha256sum --check desktop-checksums-windows-x64.txt)
 
           if gh release view "$TAG" --json isDraft --jq '.isDraft' > release-draft; then
             test "$(cat release-draft)" = true || {
@@ -378,5 +456,5 @@ jobs:
           for asset in release/*; do
             cmp "$asset" "$verification_directory/$(basename "$asset")"
           done
-          (cd "$verification_directory" && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt)
+          (cd "$verification_directory" && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt && sha256sum --check desktop-checksums-windows-x64.txt)
           echo 'Verified draft ready. Complete the desktop install, restart, and upgrade checks in docs/release.md before publishing.' >> "$GITHUB_STEP_SUMMARY"

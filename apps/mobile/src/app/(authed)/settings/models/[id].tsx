@@ -4,12 +4,7 @@ import { Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import type { ModelCapabilities } from "@overtchat/shared";
 import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
-import {
-  PROVIDERS,
-  PROVIDER_IDS,
-  EXPLICIT_API_FORMAT_IDS,
-  API_FORMATS,
-} from "@overtchat/shared/provider-catalog";
+import { PROVIDERS, API_FORMATS } from "@overtchat/shared/provider-catalog";
 import { AdminGate } from "@/components/settings/AdminGate";
 import {
   SettingsPage,
@@ -32,6 +27,9 @@ import {
 import {
   modelDraft,
   changeModelProvider,
+  changeModelType,
+  customApiFormats,
+  modelProviders,
   parseModelDraft,
   type ModelDraft,
 } from "@/lib/settings-model";
@@ -140,18 +138,18 @@ function Editor({ model }: { model?: AdminModelConfig }) {
             { value: "image", label: "Image" },
           ]}
           onChange={(modelType) => {
-            patch({ modelType });
+            const next = changeModelType(draft, modelType);
+            if (next.providerId !== draft.providerId) setOptions("");
+            setDraft(next);
             setDiscovered([]);
+            setResult("");
           }}
         />
         <Choice
           disabled={busy}
           title="Provider"
           value={draft.providerId}
-          options={PROVIDER_IDS.filter(
-            (id) =>
-              draft.modelType !== "image" || id === "openai" || id === "google",
-          ).map((id) => ({
+          options={modelProviders(draft.modelType).map((id) => ({
             value: id,
             label: PROVIDERS[id].label,
             leading: <SettingsModelIcon provider={id} />,
@@ -168,7 +166,7 @@ function Editor({ model }: { model?: AdminModelConfig }) {
             disabled={busy}
             title="API format"
             value={draft.apiFormat}
-            options={EXPLICIT_API_FORMAT_IDS.map((id) => ({
+            options={customApiFormats(draft.modelType).map((id) => ({
               value: id,
               label: API_FORMATS[id].label,
             }))}
@@ -344,6 +342,21 @@ function Editor({ model }: { model?: AdminModelConfig }) {
                 )}
             </>
           )}
+        </Section>
+      )}
+      {draft.modelType === "image" && draft.providerId === "custom" && (
+        <Section
+          title="Image options"
+          description="Size, response format, editing support, and extra request fields."
+        >
+          <Field
+            editable={!busy}
+            label="Provider options (JSON)"
+            value={options}
+            onChangeText={setOptions}
+            multiline
+            placeholder='{ "size": "auto" }'
+          />
         </Section>
       )}
       {action.error && <Label error>{action.error}</Label>}

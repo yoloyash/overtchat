@@ -57,6 +57,20 @@ describe("agent directory route", () => {
     });
   });
 
+  it("browses Windows drive paths", async () => {
+    const response = await GET(
+      new Request(
+        `http://server.test/directories?path=${encodeURIComponent("C:\\Users\\owner")}`,
+      ),
+      context,
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.daemonRequest).toHaveBeenCalledWith(
+      "connector",
+      expect.objectContaining({ path: "C:\\Users\\owner" }),
+    );
+  });
+
   it("rejects cross-user and relative-path requests before execution", async () => {
     mocks.getOwnedAgentConnection.mockResolvedValueOnce(null);
     expect(

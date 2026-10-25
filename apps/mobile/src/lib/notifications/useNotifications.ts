@@ -4,7 +4,8 @@ import { router, usePathname } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { AppState } from "react-native";
 import { getAuthClient } from "@/lib/auth/client";
-import { getApiBase, getAuthCookie } from "@/lib/api";
+import { getApiBase } from "@/lib/api";
+import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import type { ChatSession } from "@/lib/chat/session";
 import {
   clearActiveNotificationScope,
@@ -19,9 +20,9 @@ export function useNotifications(chat: ChatSession) {
   const login = getAuthClient().useSession();
   const server = getApiBase();
   const userId = login.data?.user.id;
-  const cookie = getAuthCookie();
+  const cookie = useAuthCookie();
   const scope = useMemo(
-    () => (userId ? { server, userId, cookie } : undefined),
+    () => (userId && cookie ? { server, userId, cookie } : undefined),
     [server, userId, cookie],
   );
   const pathname = usePathname();

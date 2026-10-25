@@ -158,6 +158,7 @@ describe("public model configs", () => {
       null,
       "custom",
       "text-only",
+      undefined,
     );
     const body = await response.json();
     expect(body).toMatchObject({

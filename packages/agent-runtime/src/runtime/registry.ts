@@ -45,6 +45,7 @@ const MODEL_DISCOVERY_TIMEOUT_MS = 120_000;
 const IDLE_RUNTIME_TTL_MS = 5 * 60_000;
 const PROVIDER_IDLE_POLL_MS = 100;
 const PROVIDER_IDLE_TIMEOUT_MS = 30_000;
+const PROVIDER_BUSY_POLL_MS = 5_000;
 
 type Subscriber = (envelope: AgentRuntimeEnvelope) => void;
 
@@ -91,6 +92,8 @@ export type AgentRuntimeRegistryOptions = {
   resolveImages: (
     images: readonly AgentPromptImage[],
   ) => Promise<ResolvedAgentImage[]>;
+  /** The connector owns the display transcript across runtime restarts. */
+  loadTranscript?: (descriptor: AgentSessionDescriptor) => Promise<unknown[] | null>;
   updateSessionMetadata?: (
     sessionId: string,
     patch: AgentRuntimeMetadataPatch,
@@ -127,6 +130,13 @@ function emptyStats(): AgentSessionStats {
     },
     cost: 0,
   };
+}
+
+function runtimeCommands(adapter: AgentProviderAdapter, commands: readonly AgentSlashCommand[]): AgentSlashCommand[] {
+  return [
+    { name: "reload", description: "Reload conversation history from the agent", source: "builtin" },
+    ...adapter.mergeCommands(commands).filter((command) => command.name.toLowerCase() !== "reload"),
+  ];
 }
 
 function messageText(message: unknown): string {
@@ -268,6 +278,7 @@ export class AgentSessionRuntime {
   private sequence = 0;
   private status: AgentRuntimeSnapshot["status"] = "idle";
   private activeTurnStartedAt: number | null = null;
+  private activityRevision = 0;
   private state: Record<string, unknown>;
   private messages: unknown[];
   private models: AgentModel[];
@@ -287,6 +298,7 @@ export class AgentSessionRuntime {
   private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
+  private terminalDuringAbort = false;
   private readonly eventClassifier: AgentRuntimeEventClassifier;
   private pendingInteraction:
     | NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>
@@ -321,11 +333,20 @@ export class AgentSessionRuntime {
   ) {
     this.eventClassifier = adapter.createEventClassifier();
     this.state = initial.state;
-    this.messages = initial.messages;
+    // A newly started provider cannot still be executing a compaction from
+    // the previous process. Retain its position without a permanent spinner.
+    this.messages = initial.messages.map((message) => {
+      if (message && typeof message === "object" &&
+        Reflect.get(message, "role") === "compactionSummary" &&
+        Reflect.get(message, "status") === "running" && initial.state.isCompacting !== true) {
+        return { ...message, status: "interrupted" };
+      }
+      return message;
+    });
     this.models = initial.models;
     this.commands = initial.commands;
     this.stats = initial.stats;
-    this.status = initial.state.isStreaming === true ? "running" : "idle";
+    this.status = this.providerBusy(initial.state) ? "running" : "idle";
     if (adapter.pollUsage) {
       this.usagePoller = new AgentUsagePoller(
         () => client.getSessionStats(),
@@ -335,7 +356,7 @@ export class AgentSessionRuntime {
     }
     const restoredQueue = reconcileRestoredQueuedMessages(
       initialQueuedMessages,
-      initial.messages,
+      initial.submissionHistory ?? initial.messages,
     );
     this.queuedMessages = restoredQueue.messages;
     this.activeTurnStartedAt =
@@ -358,6 +379,13 @@ export class AgentSessionRuntime {
     }
 
     client.onEvent((event) => {
+      // Provider-native reset/branch commands explicitly replace history. This
+      // adapter signal stays internal; clients receive an ordinary full snapshot.
+      if (event.type === "overtchat_history_replace" && Array.isArray(event.messages)) {
+        this.messages = reconcileSubmittedUserMessages(this.messages, event.messages);
+        this.publishSnapshot();
+        return;
+      }
       event = {
         ...event,
         // Give reducer-created rows one identity before this event touches
@@ -387,6 +415,12 @@ export class AgentSessionRuntime {
       }
       let settleRejectedPrompt = false;
       const classification = this.eventClassifier.classify(event);
+      if (
+        classification.started || classification.terminal ||
+        event.type === "process_exit" || event.type === "compaction_start" || event.type === "compaction_end"
+      ) {
+        this.activityRevision += 1;
+      }
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
       const userMessages = eventUserMessages(event);
@@ -422,6 +456,10 @@ export class AgentSessionRuntime {
         return;
       }
       if (classification.started) {
+        this.terminalDuringAbort = false;
+        // A wake supersedes any state read settling the previous provider run.
+        this.turnGeneration += 1;
+        this.settlePromise = null;
         this.usagePoller?.start();
         this.promptAwaitingStart = false;
         this.status = "running";
@@ -495,7 +533,7 @@ export class AgentSessionRuntime {
       try {
         const commands = this.adapter.commandsFromEvent(event);
         if (commands) {
-          this.commands = this.adapter.mergeCommands(commands);
+          this.commands = runtimeCommands(this.adapter, commands);
           this.publishSnapshot();
         }
       } catch {
@@ -548,6 +586,7 @@ export class AgentSessionRuntime {
         this.publishSnapshot();
       }
       if (classification.terminal) {
+        if (this.abortPromise) this.terminalDuringAbort = true;
         this.promptAwaitingStart = false;
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
@@ -699,6 +738,7 @@ export class AgentSessionRuntime {
         );
       case "rewind":
       case "edit_message":
+      case "reload_history":
         return Promise.reject(
           new Error("Session history changes must go through the runtime registry."),
         );
@@ -737,13 +777,13 @@ export class AgentSessionRuntime {
         return this.client
           .setModel(command.modelId)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             await this.persistModelLaunchConfig(command.modelId);
             return value;
           });
       case "set_thinking_level":
         return this.client.setThinkingLevel(command.level).then(async (value) => {
-          await this.refresh();
+          await this.refreshState();
           await this.persistLaunchConfig({ thinkingOptionId: command.level });
           return value;
         });
@@ -758,7 +798,7 @@ export class AgentSessionRuntime {
         return this.client
           .setCollaborationMode(command.mode)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             return value;
           });
       case "set_fast_mode":
@@ -770,7 +810,7 @@ export class AgentSessionRuntime {
           );
         }
         return this.client.setFastMode(command.enabled).then(async (value) => {
-          await this.refresh();
+          await this.refreshState();
           return value;
         });
       case "set_mode":
@@ -783,7 +823,7 @@ export class AgentSessionRuntime {
         }
         return this.client.setMode(command.modeId).then(async (value) => {
           if (isAgentProviderNotice(value)) return value;
-          await this.refresh();
+          await this.refreshState();
           await this.persistLaunchConfig({ modeId: command.modeId });
           return value;
         });
@@ -798,7 +838,7 @@ export class AgentSessionRuntime {
         return this.client
           .updateGoal(command.action, command.objective)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             return value;
           });
       case "implement_plan":
@@ -833,12 +873,12 @@ export class AgentSessionRuntime {
         return this.client
           .setAutoCompaction(command.enabled)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             return value;
           });
       case "set_session_name":
         return this.client.setSessionName(command.name).then(async (value) => {
-          await this.refresh();
+          await this.refreshState();
           return value;
         });
       case "interaction_response": {
@@ -871,7 +911,7 @@ export class AgentSessionRuntime {
           );
         }
         return this.client.retryInteractive().then(async (value) => {
-          await this.refresh();
+          await this.hydrateHistory();
           return value;
         });
       case "show_usage":
@@ -962,7 +1002,8 @@ export class AgentSessionRuntime {
         this.clearPendingInteraction();
         this.eventClassifier.reset();
       }
-      await this.refresh();
+      if (mode === "files") await this.refreshState();
+      else await this.hydrateHistory();
       const identity = this.adapter.sessionIdentity(this.state);
       return {
         session: {
@@ -998,7 +1039,7 @@ export class AgentSessionRuntime {
       );
     }
     const result = await this.client.forkSession(messageId, mode);
-    if (result.replacesCurrentSession) await this.refresh();
+    if (result.replacesCurrentSession) await this.hydrateHistory();
     return result;
   }
 
@@ -1027,27 +1068,29 @@ export class AgentSessionRuntime {
     this.publish({ type: "runtime_event", data: event });
   }
 
-  async refresh(options: { messages?: boolean } = {}): Promise<void> {
+  /** Settings and lifecycle updates never replace the display transcript. */
+  async refreshState(): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       const usageRevisions = { ...this.usageRevisions };
-      const [state, messageData, stats, commands] =
+      const activityRevision = this.activityRevision;
+      const [state, stats, commands] =
         await Promise.all([
           this.client.getState(),
-          options.messages === false
-            ? Promise.resolve(null)
-            : this.client.getMessages(),
           this.client.getSessionStats().catch(() => this.stats),
           this.client.getCommands().catch(() => this.commands),
         ]);
-      this.state = state;
-      if (messageData) {
-        this.messages = reconcileSubmittedUserMessages(
-          this.messages,
-          messageData.messages,
-        );
-      }
-      // A transcript/command fetch can finish after a newer live usage event.
+      const activityIsCurrent = activityRevision === this.activityRevision;
+      // Metadata can refresh while a background result wakes the model. Keep
+      // the newer lifecycle projection when that read began before the event.
+      this.state = activityIsCurrent
+        ? state
+        : {
+            ...state,
+            isStreaming: this.state.isStreaming,
+            isCompacting: this.state.isCompacting,
+          };
+      // A state/command fetch can finish after a newer live usage event.
       this.stats = {
         ...stats,
         tokens: usageRevisions.tokens === this.usageRevisions.tokens
@@ -1058,19 +1101,14 @@ export class AgentSessionRuntime {
           usageRevisions.contextUsage === this.usageRevisions.contextUsage
             ? stats.contextUsage : this.stats.contextUsage,
       };
-      this.commands = this.adapter.mergeCommands(commands);
-      this.status = state.isStreaming === true ? "running" : "idle";
-      if (this.status === "running") this.usagePoller?.start();
-      else this.usagePoller?.stop();
-      const reconciledQueue = messageData
-        ? reconcileRestoredQueuedMessages(
-            this.queuedMessages,
-            messageData.messages,
-          )
-        : { messages: this.queuedMessages, changed: false };
-      if (reconciledQueue.changed) {
-        this.queuedMessages = reconciledQueue.messages;
-        await this.publishQueueUpdate();
+      this.commands = runtimeCommands(this.adapter, commands);
+      if (activityIsCurrent && !this.stopped) {
+        this.status = this.providerBusy(state) ? "running" : "idle";
+      }
+      if (this.status === "running") {
+        this.usagePoller?.start();
+      } else {
+        this.usagePoller?.stop();
       }
       this.activeTurnStartedAt =
         this.status === "running"
@@ -1092,9 +1130,32 @@ export class AgentSessionRuntime {
     return this.refreshPromise;
   }
 
+  /** Import a complete provider branch only when conversation history changes.
+   * Never splice old tool results or notices into a different provider context. */
+  private async hydrateHistory(): Promise<void> {
+    if (this.refreshPromise) await this.refreshPromise;
+    const { messages } = await this.client.getMessages();
+    this.messages = reconcileSubmittedUserMessages(this.messages, messages);
+    await this.refreshState();
+  }
+
+  private async reconcileQueuedSubmissions(): Promise<void> {
+    if (!this.queuedMessages.some((message) =>
+      message.status === "sending" || message.status === "uncertain"
+    )) return;
+    // Provider context can confirm delivery without becoming display history.
+    const { messages } = await this.client.getMessages();
+    const reconciled = reconcileRestoredQueuedMessages(this.queuedMessages, messages);
+    if (reconciled.changed) {
+      this.queuedMessages = reconciled.messages;
+      await this.publishQueueUpdate();
+    }
+  }
+
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    this.activityRevision += 1;
     this.usagePoller?.stop();
     this.turnGeneration += 1;
     this.clearIdleStop();
@@ -1124,6 +1185,13 @@ export class AgentSessionRuntime {
       if (this.subscribers.size > 0 || this.leaseCount > 0) return;
       if (this.status === "running") {
         this.scheduleIdleStop();
+        return;
+      }
+      // Stopping the process would cancel background work still running.
+      if (this.state.hasPendingAsyncWork === true) {
+        void this.refreshState().catch(() => {}).finally(() => {
+          if (!this.stopped) this.scheduleIdleStop();
+        });
         return;
       }
       void this.stop();
@@ -1207,6 +1275,7 @@ export class AgentSessionRuntime {
         ? await this.resolveImages(imageRefs)
         : [];
     this.turnGeneration += 1;
+    this.activityRevision += 1;
     this.eventClassifier.reset();
     this.status = "running";
     this.activeTurnStartedAt = Date.now();
@@ -1329,7 +1398,7 @@ export class AgentSessionRuntime {
       });
     };
     const operation = (
-      // Like Paseo's ACP fallback, finish cancellation before starting a replacement.
+      // Finish cancellation before starting a replacement turn.
       this.adapter.steering === "restart"
         ? this.abortActiveRun().then(() => {
             if (this.stopped) throw new Error(`${metadata.label} exited.`);
@@ -1380,8 +1449,22 @@ export class AgentSessionRuntime {
     if (this.status !== "running") {
       return Promise.resolve();
     }
-    const operation = this.client.abort().then((result) => {
-      this.completeAcknowledgedAbort();
+    const operation = this.client.abort().then(async (result) => {
+      // Abort is foreground-only: background work keeps running and a later
+      // wake starts a new turn.
+      let busy = false;
+      if (this.adapter.busyFromState) {
+        const revision = this.activityRevision;
+        const state = await this.client.getState();
+        if (revision === this.activityRevision) {
+          this.state = state;
+          busy = this.providerBusy(state);
+        } else {
+          busy = this.status === "running";
+        }
+      }
+      if (this.stopped || this.status === "exited") return result;
+      this.completeAcknowledgedAbort(busy);
       return result;
     });
     const settled = operation
@@ -1400,6 +1483,11 @@ export class AgentSessionRuntime {
       .finally(() => {
         if (this.abortPromise !== settled) return;
         this.abortPromise = null;
+        const terminalDuringAbort = this.terminalDuringAbort;
+        this.terminalDuringAbort = false;
+        if (terminalDuringAbort && this.status === "running") {
+          void this.settleAfterProviderTerminal();
+        }
         if (this.status === "idle") {
           void this.drainQueuedMessage();
         }
@@ -1408,7 +1496,8 @@ export class AgentSessionRuntime {
     return settled;
   }
 
-  private completeAcknowledgedAbort(): void {
+  private completeAcknowledgedAbort(busy = false): void {
+    this.activityRevision += 1;
     this.usagePoller?.stop();
     // An acknowledged abort supersedes settlement work for the canceled turn.
     this.turnGeneration += 1;
@@ -1416,15 +1505,18 @@ export class AgentSessionRuntime {
     this.promptAwaitingStart = false;
     this.promptSubmissionId = undefined;
     this.pendingSubmissions.clear();
-    this.clearPendingInteraction();
-    this.eventClassifier.reset();
-    this.status = "idle";
-    this.activeTurnStartedAt = null;
+    if (!busy) {
+      this.clearPendingInteraction();
+      this.eventClassifier.reset();
+    }
+    this.status = busy ? "running" : "idle";
+    this.activeTurnStartedAt = busy ? (this.activeTurnStartedAt ?? Date.now()) : null;
     this.state = {
       ...this.state,
-      isStreaming: false,
-      isCompacting: false,
+      isStreaming: busy,
+      isCompacting: busy && this.state.isCompacting === true,
     };
+    if (busy) this.usagePoller?.start();
     this.error = undefined;
     this.publishStatus();
   }
@@ -1461,11 +1553,18 @@ export class AgentSessionRuntime {
     timeoutMs: number,
     turnGeneration: number,
   ): Promise<void> {
-    const providerIdle = await this.waitForProviderIdle(
+    const settled = await this.waitForProviderIdle(
       timeoutMs,
       turnGeneration,
     );
-    if (!providerIdle) return;
+    if (!settled) return;
+    if (settled.error) {
+      this.error = errorMessage(settled.error);
+      this.publish({
+        type: "runtime_event",
+        data: { type: "rpc_error", command: "get_state", error: this.error },
+      });
+    }
     this.usagePoller?.stop();
     this.status = "idle";
     this.activeTurnStartedAt = null;
@@ -1475,9 +1574,8 @@ export class AgentSessionRuntime {
       isCompacting: false,
     };
     try {
-      await this.refresh({
-        messages: this.adapter.refreshMessagesAfterTerminal !== false,
-      });
+      await this.refreshState();
+      await this.reconcileQueuedSubmissions();
     } catch (error) {
       this.error = errorMessage(error);
       this.publish({
@@ -1492,37 +1590,46 @@ export class AgentSessionRuntime {
     }
   }
 
+  /** Resolves when the provider reports idle, or with an error once its state
+   * is unreadable past the timeout. Reported work keeps the turn open, so the
+   * provider's state rather than elapsed time decides when a turn ends. */
   private async waitForProviderIdle(
     timeoutMs: number,
     turnGeneration: number,
-  ): Promise<boolean> {
+  ): Promise<{ error?: Error } | null> {
     const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
     while (this.isProviderIdleWaitCurrent(turnGeneration)) {
       const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) break;
       try {
-        const state = await this.client.getState(remainingMs);
-        if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-          return false;
-        }
+        const state = await this.client.getState(
+          remainingMs > 0 ? remainingMs : undefined,
+        );
+        if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
         this.state = state;
-        if (state.isStreaming !== true && state.isCompacting !== true) {
-          return true;
+        if (state.isCompacting !== true && !this.providerBusy(state)) return {};
+        if (remainingMs <= 0 && this.status !== "running") {
+          this.status = "running";
+          this.activeTurnStartedAt ??= Date.now();
+          this.state = { ...this.state, isStreaming: true };
+          this.usagePoller?.start();
+          this.publishStatus();
         }
       } catch (error) {
         lastError = error;
+        if (Date.now() >= deadline) break;
       }
-      if (Date.now() >= deadline) break;
-      await wait(PROVIDER_IDLE_POLL_MS);
+      await wait(
+        Date.now() < deadline ? PROVIDER_IDLE_POLL_MS : PROVIDER_BUSY_POLL_MS,
+      );
     }
-    if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-      return false;
-    }
-    const detail = lastError ? ` ${errorMessage(lastError)}` : "";
-    throw new Error(
-      `${agentProviderMetadata(this.provider).label} still reports that it is working after ${Math.round(timeoutMs / 1_000)} seconds.${detail}`,
-    );
+    if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
+    const label = agentProviderMetadata(this.provider).label;
+    return {
+      error: new Error(
+        `${label} stopped reporting its state, so the turn was ended.${lastError ? ` ${errorMessage(lastError)}` : ""}`,
+      ),
+    };
   }
 
   private isProviderIdleWaitCurrent(turnGeneration: number): boolean {
@@ -1542,6 +1649,12 @@ export class AgentSessionRuntime {
         startedAt: this.activeTurnStartedAt,
       },
     });
+  }
+
+  private providerBusy(state: Record<string, unknown>): boolean {
+    return this.adapter.busyFromState
+      ? this.adapter.busyFromState(state)
+      : state.isStreaming === true;
   }
 
   private imageInputError(images: AgentPromptImage[]): Error | null {
@@ -1887,12 +2000,13 @@ export class AgentRuntimeRegistry {
 
   async getOrStart(
     descriptor: AgentSessionDescriptor,
+    options: { hydrateHistory?: boolean } = {},
   ): Promise<AgentSessionRuntime> {
     const existing = this.runtimes.get(descriptor.sessionId);
     if (existing) return existing;
     const starting = this.starts.get(descriptor.sessionId);
     if (starting) return starting.promise;
-    const promise = this.startExisting(descriptor).finally(() => {
+    const promise = this.startExisting(descriptor, options.hydrateHistory).finally(() => {
       this.starts.delete(descriptor.sessionId);
     });
     this.starts.set(descriptor.sessionId, {
@@ -1988,6 +2102,7 @@ export class AgentRuntimeRegistry {
 
   private async startExisting(
     descriptor: AgentSessionDescriptor,
+    hydrateHistory = false,
   ): Promise<AgentSessionRuntime> {
     const adapter = this.adapterFor(descriptor.provider);
     const client = adapter.startSession(descriptor.target, {
@@ -2001,7 +2116,12 @@ export class AgentRuntimeRegistry {
       },
     });
     try {
-      const initial = await this.loadInitial(adapter, client);
+      const transcript = await this.options.loadTranscript?.(descriptor);
+      const pendingSubmissions = this.options.loadQueuedMessages?.(descriptor.sessionId)
+        .some((message) => message.status === "sending" || message.status === "uncertain") ?? false;
+      const initial = await this.loadInitial(adapter, client, {
+        transcript, hydrateHistory, pendingSubmissions,
+      });
       const identity = adapter.sessionIdentity(initial.state);
       if (
         identity.providerSessionId !== descriptor.providerSessionId
@@ -2058,21 +2178,32 @@ export class AgentRuntimeRegistry {
   private async loadInitial(
     adapter: AgentProviderAdapter,
     client: AgentRuntimeClient,
+    options: {
+      transcript?: unknown[] | null;
+      hydrateHistory?: boolean;
+      pendingSubmissions?: boolean;
+    } = {},
   ): Promise<AgentRuntimeInitialState> {
+    const { transcript, hydrateHistory, pendingSubmissions } = options;
     const [state, messageData, models, stats, commands] =
       await Promise.all([
         client.getState(),
-        client.getMessages(),
+        transcript && !hydrateHistory && !pendingSubmissions
+          ? Promise.resolve({ messages: transcript })
+          : client.getMessages(),
         client.getAvailableModels(MODEL_DISCOVERY_TIMEOUT_MS),
         client.getSessionStats().catch(() => emptyStats()),
         client
           .getCommands()
-          .then((commands) => adapter.mergeCommands(commands))
-          .catch(() => adapter.mergeCommands([])),
+          .then((commands) => runtimeCommands(adapter, commands))
+          .catch(() => runtimeCommands(adapter, [])),
       ]);
     return {
       state,
-      messages: messageData.messages,
+      messages: transcript && !hydrateHistory
+        ? transcript
+        : reconcileSubmittedUserMessages(transcript ?? [], messageData.messages),
+      submissionHistory: messageData.messages,
       models,
       stats,
       commands,

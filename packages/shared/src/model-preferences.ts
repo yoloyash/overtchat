@@ -2,14 +2,17 @@ export interface ModelPreferences {
   defaultModelId: string | null;
 }
 
-/** Keep the current chat's model; otherwise use the default or configured order. */
+/**
+ * Keep the current chat's model; otherwise use the first available default
+ * (most specific first, such as project then account) or configured order.
+ */
 export function resolveChatModelId(
   models: readonly { id: string }[],
   selectedId: string | null | undefined,
-  defaultModelId?: string | null,
+  ...defaultModelIds: (string | null | undefined)[]
 ): string {
   return (
-    [selectedId, defaultModelId].find(
+    [selectedId, ...defaultModelIds].find(
       (id) => id && models.some((model) => model.id === id),
     ) ??
     models[0]?.id ??

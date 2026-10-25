@@ -107,7 +107,7 @@ export function installMenu(): void {
     {
       label: "View",
       submenu: [
-        { label: "Toggle Sidebar", accelerator: "Ctrl+Cmd+S", click: () => sendCommand("toggle-sidebar") },
+        { label: "Toggle Sidebar", accelerator: isMac ? "Ctrl+Cmd+S" : "Ctrl+Shift+S", click: () => sendCommand("toggle-sidebar") },
         {
           label: "Search Chats",
           accelerator: "CmdOrCtrl+K",

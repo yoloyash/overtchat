@@ -9,17 +9,27 @@ export function getApiBase(): string {
   return url;
 }
 
-export function getAuthCookie(): string {
-  return getAuthClient().getCookie();
+export async function getAuthCookie(): Promise<string> {
+  const server = getServerUrl();
+  const client = getAuthClient();
+  const cookie = await client.getCookie();
+  // A SecureStore read can finish after the user selects another server.
+  // Never attach that result to an in-flight request for the previous server.
+  if (server !== getServerUrl() || client !== getAuthClient()) {
+    throw new Error("Server changed while reading authentication.");
+  }
+  return cookie;
 }
 
-export function authFetch(
+export async function authFetch(
   input: Parameters<typeof expoFetch>[0],
   init: Parameters<typeof expoFetch>[1] = {},
 ) {
-  const cookie = getAuthCookie();
   const headers = new Headers(init.headers as HeadersInit | undefined);
-  if (cookie && !headers.has("Cookie")) headers.set("Cookie", cookie);
+  if (!headers.has("Cookie")) {
+    const cookie = await getAuthCookie();
+    if (cookie) headers.set("Cookie", cookie);
+  }
   // Better Auth owns the cookie in SecureStore. Letting NSURLSession also add
   // cookies from its shared jar can send duplicate (and stale) session tokens.
   return expoFetch(input, { ...init, credentials: "omit", headers });
@@ -50,7 +60,7 @@ export async function uploadFile(file: {
     method: "POST",
     body: form,
     credentials: "omit",
-    headers: { Cookie: getAuthCookie() },
+    headers: { Cookie: await getAuthCookie() },
   });
 
   const json = (await res.json().catch(() => ({}))) as Partial<UploadResponse> & {

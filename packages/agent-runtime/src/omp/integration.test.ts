@@ -8,6 +8,7 @@ import { startOmp } from "./client";
 import { probeOmpConnection } from "./probe";
 import { listOmpWorkspaceSessions } from "./sessions";
 import { configureLocalTestProcessSpawner } from "../runtime/local-process.test-helper";
+import { applyAgentRuntimeMessageEvent } from "@overtchat/agent-bridge";
 
 const runIntegration = process.env.RUN_OMP_INTEGRATION === "1";
 const executable = process.env.OMP_COMMAND ?? "omp";
@@ -16,6 +17,57 @@ const connectorId =
   "11111111-1111-4111-8111-111111111111";
 
 beforeAll(configureLocalTestProcessSpawner);
+
+// Explicit opt-in: uses the host's configured model credentials to summarize
+// synthetic history. Native session/config files belong only to this test.
+describe.runIf(process.env.RUN_OMP_COMPACTION_INTEGRATION === "1")("installed OMP compaction", () => {
+  it("compacts native history and leaves a completed display marker", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "overtchat-omp-compaction-"));
+    const sessionPath = path.join(root, "session.jsonl");
+    const config = path.join(root, "config.yml");
+    const probe = startOmp({ transport: "local" }, {
+      executable, cwd: root, noSession: true,
+      extraArgs: ["--no-extensions", "--no-skills", "--no-rules", "--no-tools"],
+    });
+    let model: string;
+    try {
+      const state = await probe.getState();
+      model = (state.model as { id: string }).id;
+    } finally {
+      await probe.stop();
+    }
+    const now = Date.now();
+    const nativeMessages = [
+      { role: "user", content: "Remember: the fictional project is called Atlas. " + "Synthetic context for compaction validation. ".repeat(1000), timestamp: now },
+      { role: "assistant", content: [{ type: "text", text: "The project is Atlas." }], api: "openai-responses", provider: "openai", model: "fixture", stopReason: "stop", timestamp: now + 1,
+        usage: { input: 6000, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 6010, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } },
+      { role: "user", content: "Keep the project name for later.", timestamp: now + 2 },
+    ];
+    fs.writeFileSync(config, "compaction:\n  methodOrder: [soft]\n  keepRecentTokens: 128\n  reserveTokens: 1024\n");
+    fs.writeFileSync(sessionPath, [
+      { type: "session", version: 3, id: crypto.randomUUID(), timestamp: new Date(now).toISOString(), cwd: root },
+      ...nativeMessages.map((message, i) => ({ type: "message", id: `entry-${i}`, parentId: i ? `entry-${i - 1}` : null, timestamp: new Date(now + i).toISOString(), message })),
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    const client = startOmp({ transport: "local" }, {
+      executable, cwd: root, sessionPath, model,
+      extraArgs: ["--no-extensions", "--no-skills", "--no-rules", "--no-tools", "--config", config],
+    });
+    let displayed: unknown[] = [...nativeMessages];
+    client.onEvent((event) => { displayed = applyAgentRuntimeMessageEvent(displayed, event); });
+    try {
+      await client.getState();
+      await client.compact("Keep the project name. This is synthetic test data; summarize briefly.");
+      expect(displayed.slice(0, nativeMessages.length)).toEqual(nativeMessages);
+      expect(displayed).toHaveLength(nativeMessages.length + 1);
+      expect(displayed.at(-1)).toMatchObject({ role: "compactionSummary", status: "completed", trigger: "manual", tokensBefore: expect.any(Number) });
+      const history = await client.getMessages();
+      expect(history.messages).toEqual(expect.arrayContaining([expect.objectContaining({ role: "compactionSummary" })]));
+    } finally {
+      await client.stop();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 180_000);
+});
 
 describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
   it(

@@ -6,8 +6,11 @@ import type { ImageGenerationOptions } from "@overtchat/shared";
 import { MAX_BYTES_IMAGE } from "@/lib/extract";
 import { assertFetchedImageContent } from "@/lib/image-content";
 
+import { runCustomImageProvider } from "./custom-image-generation";
+
 export interface ImageConnection {
-  providerId: "openai" | "google";
+  providerId: "openai" | "google" | "custom";
+  providerOptions?: Record<string, unknown> | null;
   baseUrl: string;
   apiKey: string | null;
   model: string;
@@ -56,6 +59,13 @@ export async function runImageProvider(
     AbortSignal.timeout(240_000),
   ]);
   try {
+    if (connection.providerId === "custom")
+      return await runCustomImageProvider(
+        connection,
+        input,
+        boundedFetch,
+        abortSignal,
+      );
     const result =
       connection.providerId === "google"
         ? await generateText({

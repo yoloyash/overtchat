@@ -1,0 +1,26 @@
+:root {
+  color-scheme: light;
+  --font-sans: system-ui, sans-serif;
+  --font-mono: monospace;
+}
+:root.dark {
+  color-scheme: dark;
+}
+body {
+  margin: 0;
+  padding: 4px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-wrap: anywhere;
+}
+fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+[data-openui-fallback] {
+  white-space: pre-wrap;
+  font-size: 14px;
+}

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -248,7 +248,7 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
   page,
 }) => {
   await test.step("create the admin and stream tracked usage", async () => {
-    await page.goto("/signup");
+    await page.goto(await setupUrl());
     await page.locator("#name").fill("Activity Admin");
     await page
       .locator("#email")

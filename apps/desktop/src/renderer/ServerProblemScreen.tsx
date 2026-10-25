@@ -35,13 +35,18 @@ export function ServerProblemScreen({
 
   const retry = useCallback(async () => {
     setChecking(true);
-    const { server } = await shell.boot();
-    if (!server?.problem) {
-      window.location.reload();
-      return;
+    try {
+      const { server } = await shell.boot();
+      if (!server?.problem) {
+        window.location.reload();
+        return;
+      }
+      setProblem(server.problem);
+    } catch {
+      setProblem({ kind: "unreachable", message: "Couldn't check the server. Try again or change the address." });
+    } finally {
+      setChecking(false);
     }
-    setProblem(server.problem);
-    setChecking(false);
   }, []);
 
   // A server that was offline is often back when the network is.

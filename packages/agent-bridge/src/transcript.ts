@@ -1,7 +1,7 @@
 import type { AgentRuntimeCursor, AgentRuntimeSnapshot } from "./agents";
 import { agentForkMessageId } from "./history";
 
-/** Paseo-style item windows: older transcript data is read separately from live sync. */
+/** Older transcript data is paged separately from live synchronization. */
 export const AGENT_HISTORY_PAGE_SIZE = 10;
 
 function pageStart(messages: unknown[], end: number): number {

@@ -105,6 +105,7 @@ export const AGENT_PROVIDERS: Record<
       rewindBoth: true,
       steer: true,
       forkMessages: true,
+      usage: true,
     },
   },
   hermes: {

@@ -25,21 +25,22 @@ function withRoot(callback: () => void): void {
   observer.observe(document, { childList: true });
 }
 
-/** Lets the UI draw under the macOS titlebar: marks `<html>` and tracks the inset. */
+/** Lets the UI draw under the desktop titlebar: marks `<html>` and tracks the inset. */
 function integrateTitlebar(): void {
   let fullscreen = false;
   const update = () => {
     const root = document.documentElement;
     if (!root) return;
-    const inset = fullscreen ? 0 : TRAFFIC_LIGHTS_INSET / webFrame.getZoomFactor();
+    const inset = fullscreen || process.platform !== "darwin" ? 0 : TRAFFIC_LIGHTS_INSET / webFrame.getZoomFactor();
     root.setAttribute(DESKTOP_SHELL_ATTRIBUTE, process.platform);
+    root.style.setProperty("--desktop-window-controls-width", !fullscreen && process.platform === "win32" ? "138px" : "0px");
     root.style.setProperty(DESKTOP_TITLEBAR_INSET_PROPERTY, `${Math.round(inset)}px`);
   };
   withRoot(update);
   // Zooming changes the page's viewport size, so it always fires a resize.
   window.addEventListener("resize", update);
-  ipcRenderer.on(IPC.fullscreen, (_event, value: boolean) => {
-    fullscreen = value;
+  ipcRenderer.on(IPC.windowStateChanged, (_event, state: ShellWindowState) => {
+    fullscreen = state.fullscreen;
     update();
   });
   // Main only answers the page once it has committed to the app's origin.
@@ -77,6 +78,19 @@ function exposeBridge(): void {
   });
   const bridge: DesktopShellBridge = {
     platform: process.platform,
+    ...(process.platform === "win32" ? {
+      windowControls: {
+        getState: () => ipcRenderer.invoke(IPC.windowState),
+        onState(listener: (state: ShellWindowState) => void) {
+          const onState = (_event: Electron.IpcRendererEvent, state: ShellWindowState) => listener(state);
+          ipcRenderer.on(IPC.windowStateChanged, onState);
+          return () => { ipcRenderer.removeListener(IPC.windowStateChanged, onState); };
+        },
+        minimize: () => ipcRenderer.invoke(IPC.minimize),
+        toggleMaximize: () => ipcRenderer.invoke(IPC.toggleMaximize),
+        close: () => ipcRenderer.invoke(IPC.close),
+      },
+    } : {}),
     onCommand(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -100,4 +114,4 @@ function exposeBridge(): void {
 
 exposeBridge();
 reportColorScheme();
-if (process.platform === "darwin") integrateTitlebar();
+if (process.platform === "darwin" || process.platform === "win32") integrateTitlebar();

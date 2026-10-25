@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstallationConfig } from "./types.js";
 
 const mocks = vi.hoisted(() => ({
@@ -36,6 +36,8 @@ function config(
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
     kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
     kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+    cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+    cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
     appPort: 4718,
     bindAddress: "127.0.0.1",
     publicUrl: "https://chat.example.com",
@@ -76,8 +78,10 @@ function inspectedContainer(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  vi.spyOn(process, "platform", "get").mockReturnValue("linux");
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("NVIDIA GPU discovery", () => {
   it("keeps stable UUIDs alongside the friendly index and memory", () => {
@@ -193,6 +197,44 @@ describe("managed sidecar reconciliation", () => {
     );
   });
 
+  it("takes the cloud address offline when another access mode is chosen", async () => {
+    mocks.runCommand.mockImplementation(
+      async (_command: string, args: string[]) => {
+        const name = args[1];
+        if (args[0] === "inspect" && (name === "overtchat-cloud-tunnel" || name === "overtchat-cloud-proxy")) {
+          return {
+            stdout: inspectedContainer(name, name.replace("overtchat-", "")),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        if (args[0] === "inspect") {
+          return { stdout: "", stderr: "No such container", exitCode: 1 };
+        }
+        return { stdout: name ?? "", stderr: "", exitCode: 0 };
+      },
+    );
+    const cloud = {
+      hostname: "smiths.overtchat.app",
+      relayHost: "relay.overtchat.app",
+      relayPort: 443,
+      relayServerName: "relay.overtchat.app",
+      relayCaPem: "ca",
+    };
+    const docker = { command: "docker", prefix: [] };
+
+    const kept = await reconcileManagedSidecars(docker, config({ access: { mode: "cloud", cloud } }));
+    expect(kept.removed).not.toContain("OvertChat Cloud tunnel");
+
+    const removed = await reconcileManagedSidecars(docker, config({ access: { mode: "lan" } }));
+    expect(removed.removed).toEqual(expect.arrayContaining(["OvertChat Cloud tunnel", "OvertChat Cloud proxy"]));
+    expect(mocks.runCommand).toHaveBeenCalledWith(
+      "docker",
+      ["container", "rm", "--force", "overtchat-cloud-tunnel"],
+      {},
+    );
+  });
+
   it("removes the old CPU container when managed STT moves to NVIDIA", async () => {
     mocks.runCommand.mockImplementation(
       async (_command: string, args: string[]) => {
@@ -221,7 +263,7 @@ describe("managed sidecar reconciliation", () => {
     );
 
     expect(result.removed).toEqual(["Parakeet (CPU)"]);
-    expect(mocks.runCommand).toHaveBeenLastCalledWith(
+    expect(mocks.runCommand).toHaveBeenCalledWith(
       "sudo",
       [
         "docker",
@@ -412,5 +454,45 @@ describe("macOS Docker discovery", () => {
     } finally {
       platform.mockRestore();
     }
+  });
+});
+
+describe("Windows Docker Desktop", () => {
+  beforeEach(() => vi.spyOn(process, "platform", "get").mockReturnValue("win32"));
+
+  it("rejects Windows containers before setup can change anything", async () => {
+    mocks.commandExists.mockResolvedValue(true);
+    mocks.runCommand.mockResolvedValueOnce({ exitCode: 0, stdout: "ready", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "windows\n", stderr: "" });
+    const { detectDockerCommand } = await import("./docker.js");
+    await expect(detectDockerCommand()).rejects.toThrow("Switch Docker Desktop to Linux containers");
+  });
+
+  it("uses a running Linux engine without sudo", async () => {
+    mocks.commandExists.mockResolvedValue(true);
+    mocks.runCommand.mockResolvedValue({ exitCode: 0, stdout: "linux\n", stderr: "" });
+    const { detectDockerCommand } = await import("./docker.js");
+    await expect(detectDockerCommand()).resolves.toEqual({ command: "docker", prefix: [] });
+    expect(mocks.commandExists).toHaveBeenCalledExactlyOnceWith("docker");
+  });
+
+  it("gives Windows prerequisites instead of running Linux installers", async () => {
+    const { installDockerEngine, installNvidiaContainerToolkit } = await import("./docker.js");
+    await expect(installDockerEngine()).rejects.toThrow("Docker Desktop for Windows");
+    await expect(installNvidiaContainerToolkit()).rejects.toThrow("Docker Desktop manages GPU support");
+    expect(mocks.runCommand).not.toHaveBeenCalled();
+    expect(mocks.requireSuccessful).not.toHaveBeenCalled();
+  });
+
+  it("requires an actual GPU result from the app container", async () => {
+    const { nvidiaContainerRuntimeAvailable } = await import("./docker.js");
+    mocks.runCommand.mockResolvedValueOnce({ exitCode: 0, stdout: "NVIDIA GeForce RTX 3090 Ti\n", stderr: "" });
+    const docker = { command: "docker", prefix: [] };
+    await expect(nvidiaContainerRuntimeAvailable(docker, "app:fixture")).resolves.toBe(true);
+    expect(mocks.runCommand).toHaveBeenCalledWith("docker", expect.arrayContaining([
+      "run", "--gpus", "all", "--entrypoint", "nvidia-smi", "app:fixture",
+    ]), expect.anything());
+    mocks.runCommand.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "GPU unavailable" });
+    await expect(nvidiaContainerRuntimeAvailable(docker, "app:fixture")).resolves.toBe(false);
   });
 });

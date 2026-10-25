@@ -33,6 +33,7 @@ const existing = {
   contextWindow: 16000,
   discoveredContextWindow: 32000,
   discoveredCapabilities: { toolCalling: true },
+  reasoningOverride: null as unknown,
   systemPrompt: "Keep this",
   providerOptions: { openai: { store: false } },
   toolCallingEnabled: true,
@@ -63,6 +64,26 @@ describe("model updates", () => {
     expect(mocks.update).toHaveBeenCalledWith("model", {
       ...fields,
       enabled: false,
+    });
+  });
+  it("keeps custom thinking levels when toggling availability", async () => {
+    const reasoningOverride = {
+      defaultLevel: "on",
+      requests: { on: { think: true }, off: { think: false } },
+    };
+    mocks.get.mockResolvedValue({
+      ...existing,
+      providerId: "vllm",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: null,
+      providerOptions: null,
+      reasoningOverride,
+    });
+    const response = await PATCH(request({ enabled: false }), params);
+    expect(response.status).toBe(200);
+    expect(mocks.update.mock.calls[0][1]).toMatchObject({
+      enabled: false,
+      reasoningOverride,
     });
   });
   it("retains the existing complete-editor request contract", async () => {

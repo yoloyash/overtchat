@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { expect, test, type Locator } from "@playwright/test";
+import { _electron, expect, test, type ElectronApplication, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
@@ -11,6 +13,7 @@ import type {
 import {
   openE2eDatabase,
   resetE2eDatabase,
+  setupUrl,
 } from "./helpers/database";
 
 const SESSION_ID = "runtime-session";
@@ -376,7 +379,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
 test("new chats, follow-up prompts, and fork drafts work without crypto.randomUUID", async ({
   page,
 }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("HTTP Agent Tester");
   await page.locator("#email").fill("http-agent@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -566,7 +569,7 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
 test("requires inspection before retrying an uncertain queued message", async ({
   page,
 }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Uncertain Queue E2E Admin");
   await page
     .locator("#email")
@@ -654,7 +657,7 @@ test("shows durable turn activity without changing completed tool status", async
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Runtime E2E Admin");
   await page.locator("#email").fill("runtime-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2301,7 +2304,7 @@ test("shows durable turn activity without changing completed tool status", async
 });
 
 test("folds long completed work smoothly, anchors disclosures, and respects reduced motion", async ({ page }, testInfo) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Motion Tester");
   await page.locator("#email").fill("motion@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2380,7 +2383,7 @@ test("preserves an OMP markdown answer through continuation, abort and reload", 
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Transcript E2E Admin");
   await page.locator("#email").fill("transcript-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2577,7 +2580,7 @@ test("drains an oversized connector backlog, pages history, and streams steer wi
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Transport E2E Admin");
   await page.locator("#email").fill("transport-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2714,6 +2717,820 @@ test("drains an oversized connector backlog, pages history, and streams steer wi
         });
       });
     }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps OMP history stable after compaction, model changes and connector restart", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Transcript Lifecycle Admin");
+  await page.locator("#email").fill("lifecycle-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-omp-lifecycle-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'").run();
+  } finally { db.close(); }
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-omp-lifecycle-"));
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({
+    directory, connectorId: "connector", token: `oct_connector.${secret}`,
+    serverUrl: String(testInfo.project.use.baseURL),
+  }));
+  let fixture: ChildProcess | undefined;
+  let output = "";
+  const start = async () => {
+    output = "";
+    fixture = spawn(process.execPath, ["--import", "tsx",
+      path.resolve(__dirname, "../../connector/scripts/omp-transcript-fixture.mjs"), configFile,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    fixture.stdout!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    fixture.stderr!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    await expect.poll(() => {
+      if (fixture!.exitCode !== null) throw new Error(output);
+      return output.includes("omp-transcript-fixture-ready");
+    }, { timeout: 20_000 }).toBe(true);
+  };
+  const stop = async () => {
+    if (!fixture || fixture.exitCode !== null) return;
+    const child = fixture;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, 5000);
+      child.once("exit", () => { clearTimeout(timeout); resolve(); });
+      child.kill("SIGTERM");
+    });
+  };
+  try {
+    await start();
+    await page.goto(`/agents/${SESSION_ID}`);
+    const composer = page.getByPlaceholder("Message Oh My Pi or type / for commands");
+    await expect(composer).toBeVisible();
+    await composer.fill("Measure startup times");
+    await composer.press("Enter");
+    await expect(page.getByRole("separator", { name: "Compacting context…", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "1 of 2 tasks complete", exact: true })).toBeVisible();
+    const marker = page.getByRole("separator", { name: "Context automatically compacted", exact: true });
+    await expect(marker).toContainText("From 120,000 tokens");
+    const answer = page.getByRole("heading", { name: "Measured timings", exact: true });
+    await expect(answer).toBeVisible();
+    await expect(page.getByText("The container is back up and healthy.", { exact: true })).toBeVisible();
+    const tasks = page.getByRole("button", { name: "2 of 2 tasks complete", exact: true });
+    await expect(tasks).toBeVisible();
+    await tasks.click();
+    await expect(page.getByTestId("agent-task-panel")).toContainText("Inspect startup");
+    await expect(page.getByTestId("agent-task-panel")).toContainText("Verify startup");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    const rows = () => page.locator("[data-transcript-row]").allTextContents();
+    await composer.fill("/compact");
+    await page.getByRole("button", { name: "Send message", exact: true }).click();
+    await expect(page.getByRole("separator", { name: "Compacting context…", exact: true })).toBeVisible();
+    const manualMarker = page.getByRole("separator", { name: "Context manually compacted", exact: true });
+    await expect(manualMarker).toContainText("From 42,000 tokens");
+    await expect(page.getByTestId("agent-compaction")).toHaveCount(2);
+    const before = await rows();
+    expect(before.join("\n")).toContain("Earlier work completed.");
+
+    await page.getByTestId("agent-model-effort-trigger").click();
+    const menu = page.getByRole("menu", { name: "Model and effort" });
+    await menu.getByRole("menuitem", { name: /Model.*Model A/u }).click();
+    await menu.getByRole("menuitem", { name: /Model B/u }).click();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect.poll(rows).toEqual(before);
+    await page.getByTestId("agent-model-effort-trigger").click();
+    await menu.getByRole("menuitem", { name: /Effort/u }).click();
+    await menu.getByRole("menuitem", { name: "Low", exact: true }).click();
+    await expect(page.getByTestId("agent-effort-label")).toContainText("Low");
+    await expect.poll(rows).toEqual(before);
+
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect.poll(rows).toEqual(before);
+    await stop();
+    await start();
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect(page.getByTestId("agent-effort-label")).toContainText("Low");
+    await expect.poll(rows).toEqual(before);
+    const requests = (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).trim().split("\n");
+    await expect(tasks).toBeVisible();
+    expect(requests.filter((request) => request === "get_messages")).toHaveLength(1);
+    await page.screenshot({ path: testInfo.outputPath("omp-transcript-after-model-and-restart.png"), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await tasks.click();
+    await expect(page.getByTestId("agent-task-panel")).toContainText("Verify startup");
+    await page.screenshot({ path: testInfo.outputPath("omp-tasks-narrow.png"), fullPage: true, animations: "disabled" });
+    await page.keyboard.press("Escape");
+    await manualMarker.scrollIntoViewIfNeeded();
+    await expect(manualMarker).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+    await page.screenshot({ path: testInfo.outputPath("omp-compaction-narrow.png"), fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await composer.fill("/reload");
+    await composer.press("Enter");
+    await expect.poll(async () => (await rows()).join("\n")).not.toContain("Earlier work completed.");
+    await expect(answer).toBeVisible();
+    await expect(page.getByText(/Background job bg_[1-4] completed/u)).toHaveCount(0);
+    await expect(page.getByRole("separator", { name: "Context compacted", exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-compaction")).toHaveCount(1);
+    await expect(tasks).toBeVisible();
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect.poll(async () => (await rows()).join("\n")).not.toContain("Earlier work completed.");
+  } catch (error) {
+    throw new Error(`${String(error)}\nConnector output:\n${output}`, { cause: error });
+  } finally {
+    await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("ends OMP turns when the agent yields to background work and starts a new turn on wake", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Background Lifecycle Admin");
+  await page.locator("#email").fill("background-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-omp-lifecycle-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'").run();
+  } finally { db.close(); }
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-omp-lifecycle-"));
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({
+    backgroundLifecycle: true, directory, connectorId: "connector", token: `oct_connector.${secret}`,
+    serverUrl: String(testInfo.project.use.baseURL),
+  }));
+  let fixture: ChildProcess | undefined;
+  let output = "";
+  const start = async () => {
+    output = "";
+    fixture = spawn(process.execPath, ["--import", "tsx",
+      path.resolve(__dirname, "../../connector/scripts/omp-transcript-fixture.mjs"), configFile,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    fixture.stdout!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    fixture.stderr!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    await expect.poll(() => {
+      if (fixture!.exitCode !== null) throw new Error(output);
+      return output.includes("omp-transcript-fixture-ready");
+    }, { timeout: 20_000 }).toBe(true);
+  };
+  const stop = async () => {
+    if (!fixture || fixture.exitCode !== null) return;
+    const child = fixture;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, 5000);
+      child.once("exit", () => { clearTimeout(timeout); resolve(); });
+      child.kill("SIGTERM");
+    });
+  };
+  try {
+    await start();
+    await page.goto(`/agents/${SESSION_ID}`);
+    const composer = page.getByPlaceholder("Message Oh My Pi or type / for commands");
+    const control = path.join(directory, "background-control");
+    const prompts = async () => (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8"))
+      .split("\n").filter((line) => line === "prompt").length;
+    const indicator = page.getByTestId("agent-run-activity");
+    const sidebarWorking = page.getByRole("status", { name: /is working$/ });
+    const stopButton = page.getByRole("button", { name: "Stop Oh My Pi", exact: true });
+    await composer.fill("Start background work");
+    await composer.press("Enter");
+    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    // The agent handed control back, so its background job does not hold the turn.
+    await expect(indicator).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    await expect(sidebarWorking).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    // Directory activity follows a wake without an open transcript stream.
+    await page.goto("/");
+    await writeFile(control, "wake");
+    await expect(sidebarWorking.first()).toBeVisible();
+    await writeFile(control, "wait");
+    await expect(sidebarWorking).toHaveCount(0);
+    await page.goto(`/agents/${SESSION_ID}`);
+    // A message sends right away while the job keeps running.
+    await composer.fill("Next");
+    await composer.press("Enter");
+    await expect(page.getByText("Queued message answered.", { exact: true })).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    expect(await prompts()).toBe(2);
+    // Stop ends a woken turn; the native abort leaves the job running.
+    await writeFile(control, "wake-2");
+    await expect(indicator).toContainText("Working");
+    await expect(sidebarWorking.first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("omp-background-wake.png"), fullPage: true });
+    await stopButton.click();
+    await expect.poll(async () => readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).toContain("abort");
+    await expect(indicator).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    // The surviving job's result wakes the agent into a new turn.
+    await writeFile(control, "wake-3");
+    await expect(indicator).toContainText("Working");
+    await writeFile(control, "settle");
+    await expect(indicator).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    await expect(sidebarWorking).toHaveCount(0);
+  } finally {
+    await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("agent context meter stays visible while unknown and renders a 1M reading after reload", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Context Tester");
+  await page.locator("#email").fill("context@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  snapshot.stats.contextUsage = undefined;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+  const composer = page.getByTestId("agent-composer");
+  const unknown = composer.getByRole("button", { name: "Usage: context usage unavailable. Show details" });
+  await expect(unknown).toBeVisible();
+  await unknown.click();
+  await expect(page.getByText("Context usage unavailable. Waiting for a reading from the agent.")).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Context used" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  snapshot.stats.contextUsage = { tokens: 516_000, contextWindow: 1_000_000, percent: 51.6 };
+  await page.reload();
+  const known = composer.getByRole("button", { name: "Usage: 52% context used. Show details" });
+  await expect(known).toBeVisible();
+  await known.click();
+  await expect(page.getByText("516,000 used", { exact: true })).toBeVisible();
+  await expect(page.getByText("484,000 remaining", { exact: true })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Context used" })).toHaveAttribute("aria-valuenow", "52");
+  await page.keyboard.press("Escape");
+
+  // Compaction can temporarily clear the count while retaining known capacity.
+  snapshot.stats.contextUsage = { tokens: null, contextWindow: 1_000_000, percent: null };
+  await page.reload();
+  await expect(unknown).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(unknown).toBeVisible();
+});
+
+test("header branch picker lists, creates, and switches branches with stash and busy outcomes", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Branch Tester");
+  await page.locator("#email").fill("branch@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  let currentBranch = "main";
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-status$"), (route) =>
+    route.fulfill({
+      json: {
+        status: {
+          isGit: true,
+          repositoryRoot: "/tmp/runtime-test",
+          branch: currentBranch,
+          upstream: null,
+          ahead: null,
+          behind: null,
+          dirty: true,
+          changedFiles: 1,
+          additions: 1,
+          deletions: 0,
+          lineStatsComplete: true,
+          files: [],
+        },
+      },
+    }),
+  );
+  const switchRequests: unknown[] = [];
+  const switchResults: unknown[] = [
+    { status: "changes_present", changedFiles: 3 },
+    { status: "switched", branch: "feature/login", stashed: true, restored: false, keptStash: null },
+    { status: "agent_running" },
+    { status: "switched", branch: "topic/new", stashed: false, restored: false, keptStash: null },
+  ];
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-branches$"), async (route) => {
+    if (route.request().method() === "POST") {
+      switchRequests.push(route.request().postDataJSON());
+      const result = switchResults.shift() as { status: string; branch?: string };
+      if (result.status === "switched" && result.branch) currentBranch = result.branch;
+      await route.fulfill({ json: { result } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        branches: {
+          isGit: true,
+          current: currentBranch,
+          truncated: false,
+          branches: [
+            { name: currentBranch, remote: null, current: true, worktreePath: null, committedAt: Date.now() },
+            { name: "feature/login", remote: null, current: false, worktreePath: null, committedAt: Date.now() - 3_600_000 },
+            { name: "elsewhere", remote: null, current: false, worktreePath: "/tmp/elsewhere", committedAt: null },
+            { name: "remote-only", remote: "origin", current: false, worktreePath: null, committedAt: null },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  const picker = page.getByTestId("agent-branch-picker");
+  await expect(picker).toHaveText("main");
+  await picker.click();
+  const menu = page.getByRole("menu", { name: "Switch branch" });
+  await expect(page.getByLabel("Search branches")).toBeFocused();
+  const options = menu.getByTestId("agent-branch-option");
+  await expect(options).toHaveCount(4);
+  await expect(menu.getByRole("group").nth(1)).toContainText("origin/remote-only");
+  await expect(options.filter({ hasText: "Checked out in /tmp/elsewhere" })).toHaveAttribute("aria-disabled", "true");
+  await expect(options.filter({ hasText: /^main/ })).toHaveAttribute("aria-disabled", "true");
+
+  // Uncommitted changes ask before stashing; the menu stays open.
+  await options.filter({ hasText: "feature/login" }).click();
+  await expect(menu.getByText("3 uncommitted changes")).toBeVisible();
+  await expect(menu.getByText("Stash them to switch to feature/login. Switching back to main restores them.")).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Stash changes and switch" }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.getByText("Switched to feature/login")).toBeVisible();
+  await expect(page.getByText("Your uncommitted changes on main were stashed. Switch back to main to restore them.")).toBeVisible();
+  await expect(picker).toHaveText("feature/login");
+  expect(switchRequests).toEqual([
+    { branch: { kind: "local", name: "feature/login" }, stash: false },
+    { branch: { kind: "local", name: "feature/login" }, stash: true },
+  ]);
+
+  // The connector refuses while an agent turn runs in this repository.
+  await picker.click();
+  await options.filter({ hasText: "origin/remote-only" }).click();
+  await expect(page.getByText("An agent is working in this repository").first()).toBeVisible();
+  expect(switchRequests.at(-1)).toEqual({ branch: { kind: "remote", remote: "origin", name: "remote-only" }, stash: false });
+
+  // Searching for a missing name offers to create it.
+  await picker.click();
+  await page.getByLabel("Search branches").fill("topic/new");
+  await expect(options).toHaveCount(0);
+  await menu.getByRole("menuitem", { name: "Create branch topic/new" }).click();
+  await expect(page.getByText("Switched to topic/new")).toBeVisible();
+  expect(switchRequests.at(-1)).toEqual({ branch: { kind: "new", name: "topic/new" }, stash: false });
+
+  // While this session's turn runs, every branch is disabled.
+  snapshot.status = "running";
+  snapshot.activeTurn = { startedAt: Date.now() };
+  await page.reload();
+  await picker.click();
+  await expect(menu.getByText("Switch branches after the agent's turn ends.")).toBeVisible();
+  for (const option of await options.all()) {
+    await expect(option).toHaveAttribute("aria-disabled", "true");
+  }
+});
+
+test("worktrees nest under their workspace and are created and removed from the header and sidebar", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Worktree Tester");
+  await page.locator("#email").fill("worktree@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const db = openE2eDatabase();
+  try {
+    db.prepare(`
+      INSERT INTO agent_workspaces (id, connection_id, path, name, worktree_parent_path)
+      VALUES ('worktree-workspace', 'connection', '/home/me/.overtchat/worktrees/runtime-1/topic', 'topic', '/tmp/runtime-test')
+    `).run();
+  } finally {
+    db.close();
+  }
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.route(new RegExp("/api/agent-workspaces/[^/]+/git-status$"), (route) =>
+    route.fulfill({
+      json: {
+        status: {
+          isGit: true,
+          repositoryRoot: "/tmp/runtime-test",
+          branch: route.request().url().includes("worktree-workspace") ? "topic" : "main",
+          upstream: null,
+          ahead: null,
+          behind: null,
+          dirty: false,
+          changedFiles: 0,
+          additions: 0,
+          deletions: 0,
+          lineStatsComplete: true,
+          files: [],
+        },
+      },
+    }),
+  );
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-branches$"), (route) =>
+    route.fulfill({
+      json: {
+        branches: {
+          isGit: true,
+          current: "main",
+          truncated: false,
+          branches: [
+            { name: "main", remote: null, current: true, worktreePath: null, committedAt: Date.now() },
+            { name: "topic", remote: null, current: false, worktreePath: "/home/me/.overtchat/worktrees/runtime-1/topic", committedAt: null },
+            { name: "release", remote: "origin", current: false, worktreePath: null, committedAt: null },
+          ],
+        },
+      },
+    }),
+  );
+  const createRequests: unknown[] = [];
+  await page.route(new RegExp("/api/agent-workspaces/workspace/worktrees$"), async (route) => {
+    createRequests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 201,
+      json: {
+        worktree: {
+          path: "/home/me/.overtchat/worktrees/runtime-1/release-fix",
+          worktreePath: "/home/me/.overtchat/worktrees/runtime-1/release-fix",
+          name: "release-fix",
+          branch: "release-fix",
+        },
+        workspaceId: "worktree-workspace",
+      },
+    });
+  });
+  const removalRequests: string[] = [];
+  await page.route(new RegExp("/api/agent-workspaces/worktree-workspace/worktree$"), async (route) => {
+    removalRequests.push(route.request().method());
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        inspection: {
+          exists: true,
+          worktreePath: "/home/me/.overtchat/worktrees/runtime-1/topic",
+          branch: "topic",
+          changedFiles: 2,
+        },
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  // The worktree is listed under the workspace it was created from.
+  const worktrees = page.getByRole("list", { name: "Worktrees of Runtime test" });
+  await expect(worktrees.getByRole("button", { name: "Expand topic" })).toBeVisible();
+
+  // The header branch picker opens the new worktree dialog for this workspace.
+  await page.getByTestId("agent-branch-picker").click();
+  await page.getByRole("menuitem", { name: "New worktree…" }).click();
+  const dialog = page.getByRole("dialog", { name: "New worktree" });
+  const base = dialog.getByRole("combobox", { name: "Start from" });
+  await expect(base).toContainText("main");
+  await base.click();
+  await page.getByRole("option", { name: "origin/release" }).click();
+  await dialog.getByLabel("New branch").fill("release-fix");
+  await dialog.getByRole("button", { name: "Create worktree" }).click();
+  await page.waitForURL(/\/agents\/new\?workspaceId=worktree-workspace&provider=codex$/);
+  await expect(page.getByText("Created worktree release-fix")).toBeVisible();
+  expect(createRequests).toEqual([
+    { base: { kind: "remote", remote: "origin", name: "release" }, branch: "release-fix" },
+  ]);
+
+  // Removing an OvertChat worktree warns about uncommitted changes and deletes it from the host.
+  await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await page.getByRole("menuitem", { name: "Organize workspaces" }).click();
+  await page.getByRole("button", { name: "Remove topic" }).click();
+  const removal = page.getByRole("alertdialog");
+  await expect(removal.getByRole("heading", { name: "Remove worktree?" })).toBeVisible();
+  await expect(removal.getByText("2 uncommitted changes will be lost.")).toBeVisible();
+  await expect(removal).toContainText("Its commits stay on the topic branch.");
+  await removal.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Worktree removed").first()).toBeVisible();
+  expect(removalRequests).toEqual(["GET", "DELETE"]);
+});
+
+test("workspace terminal streams a real shell, retains state, and reconnects under output load", async ({ page: browserPage }, testInfo) => {
+  test.setTimeout(120_000);
+  const windowsAlias = process.env.OVERTCHAT_TERMINAL_WINDOWS_SSH_ALIAS;
+  const windowsCwd = process.env.OVERTCHAT_TERMINAL_WINDOWS_CWD;
+  if (windowsAlias && !windowsCwd) throw new Error("OVERTCHAT_TERMINAL_WINDOWS_CWD is required for Windows terminal E2E");
+  let page = browserPage;
+  let desktop: ElectronApplication | undefined;
+  let savedClipboard: string | undefined;
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Terminal E2E Admin");
+  await page.locator("#email").fill("terminal-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-terminal-e2e-"));
+  const secret = "terminal-fixture-secret";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_workspaces SET path = ? WHERE id = 'workspace'").run(windowsAlias ? windowsCwd : directory);
+    if (windowsAlias) db.prepare("UPDATE agent_hosts SET transport = 'ssh', ssh_alias = ? WHERE id = 'host'").run(windowsAlias);
+  } finally { db.close(); }
+  const canonical = runtimeSnapshot(Date.now());
+  canonical.status = "idle";
+  canonical.activeTurn = null;
+  canonical.state = { ...canonical.state, isStreaming: false };
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({ snapshot: canonical, directory, connectorId: "connector", token: `oct_connector.${secret}`, serverUrl: String(testInfo.project.use.baseURL), eventBatches: {}, terminalTraffic: true }));
+  const connectorPackage = process.env.OVERTCHAT_TERMINAL_CONNECTOR_PACKAGE;
+  const child = spawn(connectorPackage ? path.join(connectorPackage, "bin/node") : process.execPath,
+    connectorPackage ? [path.join(connectorPackage, "test/transport-fixture.mjs"), configFile] : ["--import", "tsx", path.resolve(__dirname, "../../connector/scripts/transport-fixture.mjs"), configFile], {
+    stdio: ["ignore", "pipe", "pipe", "ipc"], env: { ...process.env, SHELL: "/bin/sh" },
+  });
+  let logs = "";
+  child.stdout!.on("data", (chunk) => { logs += chunk.toString(); });
+  child.stderr!.on("data", (chunk) => { logs += chunk.toString(); });
+  try {
+    await expect.poll(() => { if (child.exitCode !== null) throw new Error(`Terminal fixture exited: ${logs}`); return logs.includes("transport-fixture-ready"); }).toBe(true);
+    if (process.env.OVERTCHAT_TERMINAL_DESKTOP_E2E === "1") {
+      const appData = path.join(directory, "desktop-profile");
+      await mkdir(path.join(appData, "overtchat-dev"), { recursive: true });
+      await writeFile(path.join(appData, "overtchat-dev/settings.json"), JSON.stringify({ serverOrigin: testInfo.project.use.baseURL }));
+      const wrapper = path.join(directory, "desktop-main.mjs");
+      const main = pathToFileURL(path.resolve(__dirname, "../../desktop/out/main/index.js")).href;
+      await writeFile(wrapper, `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\nawait import(${JSON.stringify(main)});\n`);
+      const requireDesktop = createRequire(path.resolve(__dirname, "../../desktop/package.json"));
+      desktop = await _electron.launch({ executablePath: requireDesktop("electron"), args: [wrapper], chromiumSandbox: true });
+      savedClipboard = await desktop.evaluate(({ clipboard }) => clipboard.readText());
+      page = await desktop.firstWindow();
+      await page.context().addInitScript(() => localStorage.setItem("overtchat_two_factor_prompted", "e2e"));
+      await page.goto("overtchat://app/#/login");
+      await page.reload();
+      await page.locator("#email").fill("terminal-admin@overtchat-test.local");
+      await page.locator("#password").fill("test-password-123");
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await expect(page.locator("#password")).toBeHidden();
+    }
+    page.setDefaultTimeout(10_000);
+    await page.goto(desktop ? `overtchat://app/#/agents/${SESSION_ID}` : `/agents/${SESSION_ID}`);
+    await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+    const pane = page.getByRole("region", { name: "Workspace terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 20_000 });
+    const input = pane.locator(".xterm-helper-textarea");
+    const output = () => pane.locator(".xterm-rows").innerText();
+    const command = async (text: string) => {
+      await input.focus();
+      await page.keyboard.insertText(text);
+      await page.keyboard.press("Enter");
+    };
+    if (windowsAlias) await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+    await expect(pane.getByText(windowsAlias || "This machine", { exact: true })).toBeVisible();
+    const originalHeight = (await pane.boundingBox())!.height;
+    await pane.getByRole("button", { name: "Expand terminal", exact: true }).click();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBeGreaterThan(originalHeight);
+    await pane.getByRole("button", { name: "Restore terminal size", exact: true }).click();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBe(originalHeight);
+    await command(windowsAlias
+      ? "Write-Output ('polish-'+'needle one'); Write-Output ('polish-'+'needle two'); Write-Output 'https://example.com/overtchat-terminal'"
+      : "printf 'polish-%s one\\npolish-%s two\\nhttps://example.com/overtchat-terminal\\n' needle needle");
+    await expect.poll(output).toContain("polish-needle two");
+    await command(windowsAlias ? "Write-Host ('COLOR_'+'CHECK') -ForegroundColor Red" : "printf '\\033[31mCOLOR_%s\\033[0m\\n' CHECK");
+    await expect.poll(output).toContain("COLOR_CHECK");
+    const composer = page.getByPlaceholder("Message Codex or type / for commands");
+    await composer.fill("Please explain this:");
+    await pane.getByRole("button", { name: "Find in terminal", exact: true }).click();
+    const search = pane.getByRole("textbox", { name: "Find terminal output" });
+    await expect(search).toBeFocused();
+    await search.fill("polish-needle");
+    await expect(pane.getByText("1 / 2", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal-search.png"), animations: "disabled" });
+    await search.press("Enter");
+    await expect(pane.getByText("2 / 2", { exact: true })).toBeVisible();
+    await search.press("Shift+Enter");
+    await expect(pane.getByText("1 / 2", { exact: true })).toBeVisible();
+    await search.fill("POLISH-NEEDLE");
+    await pane.getByRole("button", { name: "Match case", exact: true }).click();
+    await expect(pane.getByText("No matches", { exact: true })).toBeVisible();
+    await pane.getByRole("button", { name: "Match case", exact: true }).click();
+    await search.press("Escape");
+    await expect(search).toBeHidden();
+    await expect(input).toBeFocused();
+    const findShortcut = await page.evaluate(() => /Mac|iPhone|iPad/.test(navigator.platform) ? "Meta+f" : "Control+Shift+f");
+    await page.keyboard.press(findShortcut);
+    await expect(search).toBeFocused();
+    await search.fill("polish-needle");
+    // Search selects the actual terminal text; the menu must preserve that selection.
+    await expect(pane.getByText("1 / 2", { exact: true })).toBeVisible();
+    await pane.getByRole("button", { name: "Terminal actions", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Add to chat", exact: true })).toBeEnabled();
+    await page.getByRole("menuitem", { name: "Add to chat", exact: true }).click();
+    await expect(composer).toHaveValue("Please explain this:\n\nTerminal output:\n> polish-needle\n\n");
+    await expect(composer).toBeFocused();
+    await pane.getByRole("button", { name: "Close terminal search" }).click();
+    await pane.locator(".xterm-screen").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Select all", exact: true }).click();
+    await pane.locator(".xterm-screen").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Copy selection", exact: true })).toBeEnabled();
+    if (!desktop) await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByRole("menuitem", { name: "Copy selection", exact: true }).click();
+    await expect.poll(() => desktop ? desktop.evaluate(({ clipboard }) => clipboard.readText()) : page.evaluate(() => navigator.clipboard.readText())).toContain("polish-needle");
+    const pasteCommand = windowsAlias ? "Write-Output ('__'+'MENU_PASTE__')" : "printf '__%s__\\n' MENU_PASTE";
+    if (desktop) await desktop.evaluate(({ clipboard }, text) => clipboard.writeText(text), pasteCommand);
+    else await page.evaluate((text) => navigator.clipboard.writeText(text), pasteCommand);
+    await pane.locator(".xterm-screen").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Paste", exact: true }).click();
+    await expect(input).toBeFocused();
+    await expect.poll(output).toContain("MENU_PASTE");
+    await page.keyboard.press("Enter");
+    await expect.poll(output).toContain("__MENU_PASTE__");
+    // Inspect link activation without opening an external page in the test.
+    await page.evaluate(() => { window.open = ((url: string) => { (window as unknown as { terminalOpenedUrl: string }).terminalOpenedUrl = url; return null; }) as typeof window.open; });
+    const urlRow = pane.locator(".xterm-rows > div").filter({ hasText: "https://example.com/overtchat-terminal" }).last();
+    const urlBounds = (await urlRow.boundingBox())!;
+    await page.mouse.move(urlBounds.x + 40, urlBounds.y + urlBounds.height / 2);
+    await expect(pane.locator(".xterm-screen")).toHaveClass(/xterm-cursor-pointer/);
+    await page.mouse.click(urlBounds.x + 40, urlBounds.y + urlBounds.height / 2);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { terminalOpenedUrl?: string }).terminalOpenedUrl)).toBe("https://example.com/overtchat-terminal");
+    const colorText = pane.locator(".xterm-rows span").filter({ hasText: /^COLOR_CHECK$/ }).last();
+    const lightColor = await colorText.evaluate((element) => getComputedStyle(element).color);
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal-polish-light.png"), animations: "disabled" });
+    await page.evaluate(() => { document.documentElement.classList.remove("light"); document.documentElement.classList.add("dark"); });
+    await expect.poll(() => colorText.evaluate((element) => getComputedStyle(element).color)).not.toBe(lightColor);
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal-polish-dark.png"), animations: "disabled" });
+    await page.evaluate(() => { document.documentElement.classList.remove("dark"); document.documentElement.classList.add("light"); });
+    await composer.fill("");
+    if (windowsAlias) {
+      await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+      await command("$env:TERMINAL_SAVED='retained'; Write-Output ('__'+'READY__')");
+      await expect.poll(output).toContain("__READY__");
+      await command("Write-Output ('__'+'café 日本語 雪__')");
+      await expect.poll(output).toContain("__café 日本語 雪__");
+      await page.getByRole("button", { name: "Close terminal panel", exact: true }).click();
+      await expect(pane).toBeHidden();
+      await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toHaveText("Connected");
+      await command("Write-Output ('__'+$env:TERMINAL_SAVED+'__')");
+      await expect.poll(output).toContain("__retained__");
+      const separator = page.getByRole("separator", { name: "Resize workspace terminal" });
+      await separator.focus();
+      await page.keyboard.press("ArrowUp");
+      await command("Write-Output ('__'+'RESIZED_'+$Host.UI.RawUI.WindowSize.Height+'__')");
+      await expect.poll(output).toMatch(/__RESIZED_\d+__/);
+      await command("Write-Output ('__'+'SLEEPING__'); Start-Sleep -Seconds 30");
+      await expect.poll(output).toContain("__SLEEPING__");
+      await page.keyboard.press("Control+c");
+      await expect.poll(async () => (await output()).trimEnd()).toMatch(/PS .+>$/);
+      await command("Write-Output ('x'*65536); Write-Output ('__'+'BURST_DONE__')");
+      await expect.poll(output, { timeout: 20_000 }).toContain("__BURST_DONE__");
+      child.send({ type: "disconnect-terminal" });
+      await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+      await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+      await page.reload();
+      await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+      await command("Write-Output ('__'+$env:TERMINAL_SAVED+'_AFTER_RELOAD__')");
+      await expect.poll(output).toContain("__retained_AFTER_RELOAD__");
+      await page.screenshot({ path: testInfo.outputPath("workspace-terminal-windows.png") });
+      await pane.getByRole("button", { name: "Terminal actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Stop terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toContainText("Exited");
+      await page.getByRole("button", { name: "Restart terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toHaveText("Connected");
+      await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+      await command("if (!$env:TERMINAL_SAVED) { Write-Output ('__'+'RESTARTED__') }");
+      await expect.poll(output).toContain("__RESTARTED__");
+      return;
+    }
+    await command("export TERMINAL_SAVED=retained; printf '__%s__\\n' READY");
+    await expect.poll(output).toContain("__READY__");
+    await page.getByRole("button", { name: "Close terminal panel", exact: true }).click();
+    await expect(pane).toBeHidden();
+    await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await command("stty -icanon -echo; printf '__%s__\\n' LATENCY_READY; cat");
+    await expect.poll(output).toContain("__LATENCY_READY__");
+    const latency: number[] = [];
+    for (const character of "abcdefghijklmnopqrst") {
+      const marker = `~${character}`;
+      await page.evaluate((marker) => {
+        const rows = document.querySelector(".xterm-rows")!;
+        const start = performance.now();
+        const state = window as typeof window & { terminalLatency?: Promise<number> };
+        state.terminalLatency = new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            if (!rows.textContent?.includes(marker)) return;
+            observer.disconnect();
+            resolve(performance.now() - start);
+          });
+          observer.observe(rows, { childList: true, characterData: true, subtree: true });
+        });
+      }, marker);
+      await page.keyboard.type(marker);
+      latency.push(await page.evaluate(() => (window as typeof window & { terminalLatency: Promise<number> }).terminalLatency));
+    }
+    latency.sort((a, b) => a - b);
+    await testInfo.attach("terminal-local-input-to-render-latency.json", {
+      body: JSON.stringify({ client: desktop ? "electron" : "chromium", samples: latency, medianMs: latency[10], p95Ms: latency[18], agentTrafficBytesPerSecond: 1_310_720 }),
+      contentType: "application/json",
+    });
+    expect(latency[18]).toBeLessThan(500);
+    await page.keyboard.press("Control+c");
+    await command("stty sane");
+    await command("head -c 1048576 /dev/zero | tr '\\0' x; printf '\\n__%s__\\n' BURST_DONE");
+    await expect.poll(output, { timeout: 20_000 }).toContain("__BURST_DONE__");
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    const separator = page.getByRole("separator", { name: "Resize workspace terminal" });
+    await separator.focus();
+    await page.keyboard.press("ArrowUp");
+    await command("stty size; printf '__%s__\\n' RESIZED");
+    await expect.poll(output).toContain("__RESIZED__");
+    child.send({ type: "disconnect-terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await page.reload();
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal.png") });
+    await pane.getByRole("button", { name: "Terminal actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Stop terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toContainText("Exited");
+    await page.getByRole("button", { name: "Restart terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    await command("printf '__%s__\\n' RESTARTED");
+    await expect.poll(output).toContain("__RESTARTED__");
+    await command("vi -u NONE -n terminal-edit.txt");
+    await expect.poll(output).toContain("terminal-edit.txt");
+    await page.keyboard.press("i");
+    await page.keyboard.insertText("terminal café 日本語");
+    await expect.poll(output).toContain("terminal café 日本語");
+    child.send({ type: "disconnect-terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await expect.poll(output).toContain("terminal café 日本語");
+    await page.keyboard.press("Escape");
+    await page.keyboard.type(":wq");
+    await page.keyboard.press("Enter");
+    await command("cat terminal-edit.txt; printf '__%s__\\n' EDITOR_DONE");
+    await expect.poll(output).toContain("__EDITOR_DONE__");
+    expect(await readFile(path.join(directory, "terminal-edit.txt"), "utf8")).toBe("terminal café 日本語\n");
+  } finally {
+    if (desktop && savedClipboard !== undefined) await desktop.evaluate(({ clipboard }, text) => clipboard.writeText(text), savedClipboard);
+    await desktop?.close();
+    child.kill("SIGTERM");
+    await new Promise<void>((resolve) => { if (child.exitCode !== null) resolve(); else child.once("exit", () => resolve()); });
     await rm(directory, { recursive: true, force: true });
   }
 });

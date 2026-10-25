@@ -1,3 +1,4 @@
+import { isAbsoluteAgentPath } from "@overtchat/agent-bridge";
 import { auth } from "@/lib/auth/server";
 import {
   connectionErrorMessage,
@@ -24,7 +25,7 @@ export async function GET(
   if (!owned) return new Response("Not found", { status: 404 });
 
   const path = new URL(req.url).searchParams.get("path")?.trim() || undefined;
-  if (path && (path.length > 4_096 || !path.startsWith("/"))) {
+  if (path && (path.length > 4_096 || !isAbsoluteAgentPath(path))) {
     return Response.json(
       { error: "Enter an absolute directory path." },
       { status: 400 },

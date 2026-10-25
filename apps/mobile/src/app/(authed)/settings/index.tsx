@@ -135,11 +135,11 @@ export default function SettingsIndex() {
           disabled={action.busy}
           onPress={() =>
             void action.run(async () => {
-              await revokeNotifications({
-                server,
-                userId: user?.id ?? "",
-                cookie: getAuthCookie(),
-              }).catch(() => {});
+              await getAuthCookie()
+                .then((cookie) =>
+                  revokeNotifications({ server, userId: user?.id ?? "", cookie }),
+                )
+                .catch(() => {});
               const result = await getAuthClient().signOut();
               if (result.error)
                 throw new Error(result.error.message ?? "Couldn’t sign out.");

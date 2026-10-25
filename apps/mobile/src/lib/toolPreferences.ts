@@ -3,6 +3,8 @@ import * as SecureStore from "expo-secure-store";
 import {
   DEFAULT_WEB_SEARCH_ENABLED,
   WEB_SEARCH_ENABLED_STORAGE_KEY,
+  DEFAULT_OPENUI_ENABLED,
+  OPENUI_ENABLED_STORAGE_KEY,
 } from "@overtchat/shared";
 
 const KEY = WEB_SEARCH_ENABLED_STORAGE_KEY;
@@ -44,4 +46,46 @@ export function setWebSearchEnabled(enabled: boolean) {
 
 export function getWebSearchEnabled(): boolean {
   return cached;
+}
+
+function readOpenUI(): boolean {
+  const v = SecureStore.getItem(OPENUI_ENABLED_STORAGE_KEY);
+  if (v === "1") return true;
+  if (v === "0") return false;
+  return DEFAULT_OPENUI_ENABLED;
+}
+
+const openuiListeners = new Set<() => void>();
+let cachedOpenUI: boolean = readOpenUI();
+
+function subscribeOpenUI(cb: () => void) {
+  openuiListeners.add(cb);
+  return () => openuiListeners.delete(cb);
+}
+
+function getOpenUISnapshot() {
+  return cachedOpenUI;
+}
+
+export function useOpenUIEnabled(): boolean {
+  return useSyncExternalStore(
+    subscribeOpenUI,
+    getOpenUISnapshot,
+    getOpenUISnapshot,
+  );
+}
+
+export function setOpenUIEnabled(enabled: boolean) {
+  if (enabled === cachedOpenUI) return;
+  cachedOpenUI = enabled;
+  if (enabled === DEFAULT_OPENUI_ENABLED) {
+    SecureStore.deleteItemAsync(OPENUI_ENABLED_STORAGE_KEY).catch(() => {});
+  } else {
+    SecureStore.setItem(OPENUI_ENABLED_STORAGE_KEY, enabled ? "1" : "0");
+  }
+  openuiListeners.forEach((cb) => cb());
+}
+
+export function getOpenUIEnabled(): boolean {
+  return cachedOpenUI;
 }

@@ -14,7 +14,7 @@ export interface WindowBounds {
 interface Settings {
   /** Origin of the server the app is connected to. */
   serverOrigin: string | null;
-  /** The address last entered on the connect screen. */
+  /** The last selected address, including any verified HTTPS upgrade. */
   lastAddress: string;
   /** The server's session token, encrypted with `safeStorage`, in base64. */
   sessionToken: string | null;

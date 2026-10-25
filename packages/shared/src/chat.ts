@@ -37,6 +37,11 @@ export interface ChatRequestBody {
   reasoningLevel?: ChatReasoningLevel;
   webSearchEnabled?: boolean;
   forceSearch?: boolean;
+  /** The client can render OpenUI and submit its interactions. */
+  openuiSupported?: boolean;
+  openuiEnabled?: boolean;
+  openuiAction?: import("./openui").OpenUIAction;
+  forceOpenUI?: boolean;
   /** Explicitly request an image on this turn; otherwise image tools remain automatic. */
   imageGeneration?: import("./images").ImageGenerationOptions;
   timeZone?: string;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -11,6 +11,7 @@ const feeds = [
   ["stable-arm64-mac.yml", "mac", "arm64", ["zip"]],
   ["stable-x64-mac.yml", "mac", "x64", ["zip"]],
   ["stable-linux.yml", "linux", "x64", ["AppImage", "deb", "rpm"]],
+  ["stable.yml", "windows", "x64", ["exe"]],
 ];
 
 function versionParts(version) {
@@ -26,6 +27,16 @@ function compareVersions(a, b) {
   return 0;
 }
 
+/** Existing releases through 0.3.0 were built before Windows support. */
+export async function desktopReleaseIncludesWindows(directory, version) {
+  if (compareVersions(version, "0.3.0") > 0) return true;
+  const assets = await readdir(directory);
+  // Any Windows artifact opts a legacy candidate into full validation. Never
+  // silently skip a partially uploaded Windows installer/feed/checksum set.
+  return ["stable.yml", "desktop-checksums-windows-x64.txt", `overtchat-${version}-windows-x64.exe`]
+    .some(name => assets.includes(name));
+}
+
 /** Validate every channel before making any public feed changes. */
 export async function publishDesktopUpdates({ directory, tag, client, bucket, publicUrl, fetchImpl = globalThis.fetch }) {
   assert(typeof tag === "string" && tag.startsWith("desktop-v"), "Expected a desktop release tag");
@@ -33,8 +44,10 @@ export async function publishDesktopUpdates({ directory, tag, client, bucket, pu
   versionParts(version);
   assert.equal(publicUrl.replace(/\/$/, ""), "https://updates.overtchat.com", "The public R2 URL must match the desktop client's feed host");
   const candidates = [];
+  const includesWindows = await desktopReleaseIncludesWindows(directory, version);
   let apiLevel;
   for (const [filename, platform, arch, extensions] of feeds) {
+    if (platform === "windows" && !includesWindows) continue;
     const body = await readFile(path.join(directory, filename), "utf8");
     const metadata = parse(body);
     assert.equal(metadata.version, version);

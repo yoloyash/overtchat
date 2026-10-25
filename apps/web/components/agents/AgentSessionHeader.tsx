@@ -12,8 +12,10 @@ import {
   PanelRight,
   Pencil,
   Sparkles,
+  SquareTerminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AgentBranchPicker } from "@/components/agents/AgentBranchPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import type {
   AgentProviderId,
@@ -42,6 +44,8 @@ export function AgentSessionHeader({
   onShowWorkspaceChanges,
   filesOpen,
   onToggleFiles,
+  terminalOpen,
+  onToggleTerminal,
 }: {
   provider: AgentProviderId;
   workspaceId: string;
@@ -58,6 +62,8 @@ export function AgentSessionHeader({
   onShowWorkspaceChanges: () => void;
   filesOpen: boolean;
   onToggleFiles: () => void;
+  terminalOpen: boolean;
+  onToggleTerminal: () => void;
 }) {
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
@@ -114,10 +120,32 @@ export function AgentSessionHeader({
         {workspacePath}
       </span>
       <WorkspaceGitSummary
+        provider={provider}
+        workspaceId={workspaceId}
+        workspacePath={workspacePath}
         status={gitStatus}
+        running={running}
         onShowChanges={onShowWorkspaceChanges}
       />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          title={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          aria-pressed={terminalOpen}
+          onClick={onToggleTerminal}
+        >
+          <SquareTerminal />
+        </Button>
         {accountUsageAvailable && (
           <Button
             variant="ghost"
@@ -221,10 +249,18 @@ export function AgentSessionHeader({
 }
 
 function WorkspaceGitSummary({
+  provider,
+  workspaceId,
+  workspacePath,
   status,
+  running,
   onShowChanges,
 }: {
+  provider: AgentProviderId;
+  workspaceId: string;
+  workspacePath: string;
   status: AgentWorkspaceGitStatus | undefined;
+  running: boolean;
   onShowChanges: () => void;
 }) {
   if (!status?.isGit) return null;
@@ -247,10 +283,13 @@ function WorkspaceGitSummary({
       title={title}
       className="hidden min-w-0 items-center gap-2 px-1 text-[11px] text-muted-foreground lg:flex"
     >
-      <span className="flex min-w-0 items-center gap-1">
-        <GitBranch className="size-3.5 shrink-0" />
-        <span className="max-w-28 truncate">{branch}</span>
-      </span>
+      <AgentBranchPicker
+        provider={provider}
+        workspaceId={workspaceId}
+        workspaceName={workspacePath.split(/[\\/]/).filter(Boolean).at(-1) ?? workspacePath}
+        branch={status.branch}
+        running={running}
+      />
       {status.dirty && (
         <button
           type="button"

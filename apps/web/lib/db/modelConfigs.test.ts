@@ -37,6 +37,7 @@ raw.exec(`
     context_window INTEGER,
     discovered_context_window INTEGER,
     discovered_capabilities TEXT,
+    reasoning_override TEXT,
     system_prompt TEXT,
     provider_options TEXT,
     tool_calling_enabled INTEGER DEFAULT true NOT NULL,
@@ -238,4 +239,59 @@ describe("image model selection", () => {
     expect(modelConfigDb.getTaskModelConfig()).toBeNull();
     expect(modelConfigDb.getImageModelConfig()?.id).toBe("chat-model");
   });
+});
+
+it("persists custom thinking separately from refreshed detection and resets to automatic", async () => {
+  const override = {
+    defaultLevel: "on" as const,
+    requests: {
+      on: { chat_template_kwargs: { thinking: true } },
+      off: { chat_template_kwargs: { thinking: false } },
+    },
+  };
+  const detected = {
+    reasoningControls: {
+      toggle: false,
+      defaultLevel: "high" as const,
+      efforts: ["high" as const],
+    },
+  };
+  const input = ModelConfigSchema.parse({
+    label: "Local",
+    providerId: "vllm",
+    apiFormat: "auto",
+    baseUrl: "http://local/v1",
+    model: "test",
+    reasoningOverride: override,
+  });
+  const created = await modelConfigDb.createModelConfig(input);
+  const updated = await modelConfigDb.updateModelConfig(created.id, {
+    ...input,
+    discoveredCapabilities: detected,
+  });
+  expect(updated?.reasoningOverride).toEqual(override);
+  expect(
+    modelConfigDb.toAdminModelConfig(updated!).resolvedCapabilities,
+  ).toEqual({
+    reasoning: true,
+    reasoningControls: { toggle: true, defaultLevel: "on" },
+  });
+  const automatic = await modelConfigDb.updateModelConfig(created.id, {
+    ...input,
+    reasoningOverride: null,
+    discoveredCapabilities: detected,
+  });
+  expect(
+    modelConfigDb.toAdminModelConfig(automatic!).resolvedCapabilities
+      ?.reasoningControls,
+  ).toEqual(detected.reasoningControls);
+  const hidden = await modelConfigDb.updateModelConfig(created.id, {
+    ...input,
+    reasoningOverride: { requests: {} },
+    discoveredCapabilities: detected,
+  });
+  expect(
+    modelConfigDb.toAdminModelConfig(hidden!).resolvedCapabilities
+      ?.reasoningControls,
+  ).toBeUndefined();
 });

@@ -220,10 +220,9 @@ export function AgentMessageList({
   const trailingItem = transcript.at(-1);
   const activeTurnStart = agentActiveTurnStart(transcript, streaming);
   const activityAlreadyVisible =
-    activity === "working" &&
-    streaming &&
-    trailingItem?.type === "activity" &&
-    describeAgentActivity(trailingItem.entries, true).status === "running";
+    (activity === "compacting" && transcript.some((item) => item.type === "compaction" && item.active)) ||
+    (activity === "working" && streaming && trailingItem?.type === "activity" &&
+      describeAgentActivity(trailingItem.entries, true).status === "running");
 
   return (
     <div
@@ -375,6 +374,23 @@ function AgentTranscriptRow({
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
+  if (item.type === "compaction") {
+    return (
+      <div role="separator" aria-label={item.label} data-testid="agent-compaction"
+        className="flex items-center gap-3 py-2 text-xs text-muted-foreground">
+        <span className="h-px min-w-4 flex-1 bg-border" />
+        <span className={cn("flex min-w-0 items-center gap-2", item.failed && "text-destructive")}>
+          {item.active ? <Loader2 className="size-3.5 shrink-0 motion-safe:animate-spin" />
+            : <Minimize2 className="size-3.5 shrink-0" />}
+          <span className="text-center">
+            {item.label}
+            {item.detail && <span className="mt-0.5 block tabular-nums">{item.detail}</span>}
+          </span>
+        </span>
+        <span className="h-px min-w-4 flex-1 bg-border" />
+      </div>
+    );
+  }
   if (item.type === "work_summary") {
     return (
       <div className="flex items-center border-b border-border/60 pb-2 pt-1">
@@ -723,8 +739,8 @@ function AgentMessage({
       />
     );
   }
-  if (role === "compactionSummary" || role === "branchSummary") {
-    return <SummaryMessage message={record} role={role} />;
+  if (role === "branchSummary") {
+    return <BranchSummaryMessage message={record} />;
   }
   if (role === "custom") {
     if (record.display === false) return null;
@@ -834,22 +850,9 @@ function Markdown({
   );
 }
 
-function SummaryMessage({
-  message,
-  role,
-}: {
-  message: UnknownRecord;
-  role: "compactionSummary" | "branchSummary";
-}) {
+function BranchSummaryMessage({ message }: { message: UnknownRecord }) {
   const [open, setOpen] = useState(false);
-  const summary =
-    typeof message.summary === "string" ? message.summary : "";
-  const compacted = role === "compactionSummary";
-  const tokens =
-    compacted && typeof message.tokensBefore === "number"
-      ? message.tokensBefore
-      : null;
-  const Icon = compacted ? Minimize2 : GitBranch;
+  const summary = typeof message.summary === "string" ? message.summary : "";
   return (
     <div className="overflow-hidden rounded-lg border bg-muted/10 text-xs">
       <button
@@ -858,16 +861,11 @@ function SummaryMessage({
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 text-left motion-colors hover:bg-muted/30"
       >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block font-medium">
-            {compacted ? "Conversation compacted" : "Branch summarized"}
+            Branch summarized
           </span>
-          {tokens !== null && (
-            <span className="block text-[11px] text-muted-foreground">
-              Compacted from {tokens.toLocaleString()} tokens
-            </span>
-          )}
         </span>
         <ChevronDown
           className={cn("size-3 motion-transform", open && "rotate-180")}

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentWorkspace: vi.fn(),
   daemonRequest: vi.fn(),
+  workspaceGitStatus: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -14,7 +15,10 @@ vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentWorkspace: mocks.getOwnedAgentWorkspace,
 }));
 vi.mock("@/lib/agents/connector/broker", () => ({
-  hostConnectorBroker: { request: mocks.daemonRequest },
+  hostConnectorBroker: {
+    request: mocks.daemonRequest,
+    workspaceGitStatus: mocks.workspaceGitStatus,
+  },
 }));
 
 import { GET } from "./route";
@@ -27,6 +31,7 @@ const request = new Request(
 describe("agent workspace Git status route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.workspaceGitStatus.mockReturnValue(null);
     mocks.getSession.mockResolvedValue({
       user: { id: "owner", role: "admin" },
     });
@@ -59,6 +64,30 @@ describe("agent workspace Git status route", () => {
         },
       ],
     });
+  });
+
+  it("answers from a live watch without asking the connector", async () => {
+    const live = {
+      isGit: true,
+      repositoryRoot: "/srv/project",
+      branch: "pushed",
+      upstream: null,
+      ahead: null,
+      behind: null,
+      dirty: false,
+      changedFiles: 0,
+      additions: 0,
+      deletions: 0,
+      lineStatsComplete: true,
+      files: [],
+    };
+    mocks.workspaceGitStatus.mockReturnValue(live);
+
+    const response = await GET(request, context);
+
+    expect(mocks.workspaceGitStatus).toHaveBeenCalledWith("connector", "workspace");
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ status: live });
   });
 
   it("returns fresh Git metadata through the owner-scoped stored host", async () => {

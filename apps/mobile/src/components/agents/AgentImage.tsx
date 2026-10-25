@@ -2,14 +2,17 @@ import { useState } from "react";
 import { Pressable } from "react-native";
 import { Image } from "expo-image";
 import ImageViewing from "react-native-image-viewing";
-import { getApiBase, getAuthCookie } from "@/lib/api";
+import { getApiBase } from "@/lib/api";
+import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { agentImageSource } from "@/lib/agents/model";
 import { AgentText } from "./AgentPrimitives";
 
 export function AgentImage({ url, label }: { url: string; label: string }) {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
-  const source = agentImageSource(url, getApiBase(), getAuthCookie());
+  const cookie = useAuthCookie();
+  const source = agentImageSource(url, getApiBase(), cookie ?? "");
+  if (source && "headers" in source && !cookie) return null;
   if (!source)
     return <AgentText muted>{label} (preview unavailable)</AgentText>;
   return (

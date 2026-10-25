@@ -1,7 +1,9 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { normalizeHostConnectorServerUrl } from "@overtchat/agent-bridge";
+import { protectWindowsDirectory } from "./windows-security.js";
 
 export type ConnectorConfig = {
   serverUrl: string;
@@ -12,7 +14,9 @@ export type ConnectorConfig = {
 export function connectorConfigPath(): string {
   return (
     process.env.OVERTCHAT_CONNECTOR_CONFIG ??
-    path.join(os.homedir(), ".config", "overtchat", "connector.json")
+    (process.platform === "win32"
+      ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "OvertChat", "config", "connector.json")
+      : path.join(os.homedir(), ".config", "overtchat", "connector.json"))
   );
 }
 
@@ -73,11 +77,33 @@ export async function writeConnectorConfig(
 ): Promise<void> {
   const file = connectorConfigPath();
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  await writeFile(file, `${JSON.stringify(config, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await chmod(file, 0o600);
+  await protectWindowsDirectory(path.dirname(file));
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    const handle = await open(temporary, "wx", 0o600);
+    try {
+      await handle.writeFile(`${JSON.stringify(config, null, 2)}\n`, "utf8");
+      await handle.sync();
+    } finally { await handle.close(); }
+    await renameWithRetry(temporary, file);
+    if (process.platform !== "win32") {
+      const directory = await open(path.dirname(file), "r");
+      try { await directory.sync(); } finally { await directory.close(); }
+    }
+  } finally { await rm(temporary, { force: true }); }
+}
+
+// Antivirus scanners and the search indexer briefly hold newly written files
+// open on Windows, which makes replacing them fail with a sharing violation.
+export async function renameWithRetry(source: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await rename(source, destination); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (process.platform !== "win32" || !["EBUSY", "EPERM", "EACCES"].includes(code) || attempt >= 20) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
 }
 
 export function normalizeServerUrl(value: string): string {

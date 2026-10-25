@@ -7,18 +7,17 @@ import {
   type AgentTcpTunnel,
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
+import { isAbsoluteAgentPath } from "@overtchat/agent-bridge";
 
 const STARTUP_TIMEOUT_MS = 30_000;
 const LISTENING_URL =
   /opencode server listening on http:\/\/127\.0\.0\.1:(\d{1,5})/iu;
 const PREPARE_SERVER_DIRECTORY = `
-set -eu
-base="\${XDG_STATE_HOME:-\${HOME}/.local/state}"
-directory="\${base}/overtchat/opencode-home"
-umask 077
-mkdir -p -- "\${directory}"
-cd -- "\${directory}"
-pwd -P
+const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+const base = process.env.XDG_STATE_HOME || (process.platform === "win32" ? process.env.LOCALAPPDATA : null) || path.join(os.homedir(), ".local", "state");
+const directory = path.join(base, "overtchat", "opencode-home");
+fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+process.stdout.write(fs.realpathSync(directory));
 `.trim();
 
 export type OpenCodeServerLease = {
@@ -54,11 +53,11 @@ function errorMessage(error: unknown): string {
 
 async function prepareServerDirectory(target: HostTarget): Promise<string> {
   const result = await executeOnHost(target, {
-    command: "/bin/sh",
-    args: ["-c", PREPARE_SERVER_DIRECTORY],
+    command: "node",
+    args: ["-e", PREPARE_SERVER_DIRECTORY],
   });
   const directory = result.stdout.trim();
-  if (!directory.startsWith("/")) {
+  if (!isAbsoluteAgentPath(directory)) {
     throw new Error("Unable to prepare a neutral OpenCode server directory.");
   }
   return directory;

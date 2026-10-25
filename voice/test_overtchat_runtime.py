@@ -24,7 +24,7 @@ class VoiceTicketTests(unittest.TestCase):
     def test_connect_window_is_enforced(self) -> None:
         secret = "voice-secret"
         payload = {
-            "version": 1,
+            "version": 2,
             "connectBy": 120,
             "expiresAt": 28_800,
             "userId": "user-1",
@@ -39,7 +39,7 @@ class VoiceTicketTests(unittest.TestCase):
 
     def test_signature_is_enforced(self) -> None:
         payload = {
-            "version": 1,
+            "version": 2,
             "connectBy": 120,
             "expiresAt": 28_800,
             "userId": "user-1",
@@ -94,7 +94,7 @@ class VoiceMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         calls = []
         for user in ("first", "second"):
             now = int(time.time())
-            token = ticket({"version": 1, "connectBy": now + 120, "expiresAt": now + 600,
+            token = ticket({"version": 2, "connectBy": now + 120, "expiresAt": now + 600,
                             "userId": user, "modelConfigId": "model"}, "secret")
             scope = {"type": "websocket", "path": "/v1/realtime", "expected": token,
                      "headers": [(b"sec-websocket-protocol", f"realtime, openai-insecure-api-key.{token}".encode())]}

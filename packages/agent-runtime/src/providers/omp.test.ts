@@ -6,6 +6,35 @@ vi.mock("@overtchat/agent-runtime/omp/client", () => ({ startOmp: mocks.startOmp
 import { ompProviderAdapter } from "./omp";
 
 describe("OMP provider adapter", () => {
+  it("ends the turn when the agent yields to background work but not on retries", () => {
+    const classifier = ompProviderAdapter.createEventClassifier();
+    const answer = { type: "message_end", message: { role: "assistant", content: "Started the job" } };
+    classifier.classify(answer);
+    expect(classifier.classify({ type: "agent_end", isTerminal: false, yielded: true, awaitingAsyncWork: true })).toMatchObject({ terminal: true });
+    classifier.classify(answer);
+    expect(classifier.classify({ type: "agent_end", isTerminal: false, yielded: false })).toMatchObject({ terminal: false });
+    expect(classifier.classify({ type: "session_settled" })).toMatchObject({ terminal: true });
+    expect(classifier.classify({ type: "prompt_result", agentInvoked: true, sessionSettled: true })).toMatchObject({ terminal: true });
+  });
+
+  it.each([
+    // Background work runs between turns; a wake starts a new one.
+    [{ isStreaming: false, hasPendingAsyncWork: true, isSettled: false }, false],
+    [{ isStreaming: true, hasPendingAsyncWork: true }, true],
+    [{ isCompacting: true, hasPendingAsyncWork: true }, true],
+    // Hidden next-turn context keeps isSettled false for an idle session.
+    [{
+      isStreaming: false, hasPendingAsyncWork: false, isSettled: false, queuedMessageCount: 1,
+      queuedMessages: { steering: [], followUp: [], liveSteered: 0 },
+    }, false],
+    [{ isStreaming: false, isSettled: false, queuedMessages: { steering: ["Next"], followUp: [] } }, true],
+    [{ isStreaming: false, isSettled: false, queuedMessages: { steering: [], followUp: ["Later"] } }, true],
+    [{ isStreaming: false, isSettled: true }, false],
+    [{ isStreaming: false }, false],
+  ])("reports provider activity %j", (state, expected) => {
+    expect(ompProviderAdapter.busyFromState!(state)).toBe(expected);
+  });
+
   beforeEach(() => vi.clearAllMocks());
 
   it("launches rpc-ui with an explicit approval mode", () => {

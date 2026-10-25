@@ -1,7 +1,11 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import {
+  openE2eDatabase,
+  resetE2eDatabase,
+  setupUrl,
+} from "./helpers/database";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=";
@@ -10,7 +14,14 @@ let baseUrl: string;
 let failure = false;
 let hold = false;
 let chatFailure = false;
-const requests: Array<{ url: string; body: string; contentType: string }> = [];
+let customImages = false;
+let customEditSizes = false;
+const requests: Array<{
+  url: string;
+  body: string;
+  contentType: string;
+  authorization?: string;
+}> = [];
 const chatRequests: Array<Record<string, unknown>> = [];
 
 test.beforeAll(async () => {
@@ -23,7 +34,76 @@ test.beforeAll(async () => {
         url: req.url,
         body,
         contentType: String(req.headers["content-type"]),
+        authorization: req.headers.authorization,
       });
+      if (customEditSizes) {
+        const editing = req.url === "/v1/images/edits";
+        const form = editing
+          ? await new Response(Buffer.concat(chunks), {
+              headers: { "Content-Type": String(req.headers["content-type"]) },
+            }).formData()
+          : undefined;
+        const payload = form ? Object.fromEntries(form) : JSON.parse(body);
+        const reference = form?.get("image[]");
+        const valid =
+          (editing || req.url === "/v1/images/generations") &&
+          payload.model === "local-images" &&
+          payload.size === (editing ? "512x512" : "1024x1024") &&
+          payload.prompt === (editing ? "Make the kite blue" : "A red kite") &&
+          payload.response_format === "b64_json" &&
+          (!editing ||
+            (reference instanceof File &&
+              Buffer.from(await reference.arrayBuffer()).equals(
+                Buffer.from(png, "base64"),
+              )));
+        res.writeHead(valid ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(
+          JSON.stringify(
+            valid
+              ? { data: [{ b64_json: png }] }
+              : { error: "Wrong size or reference for image operation" },
+          ),
+        );
+        return;
+      }
+      if (customImages) {
+        const payload = JSON.parse(body);
+        const expected = {
+          model: "flux2-klein-4b",
+          prompt: "A red kite",
+          n: 1,
+          size: "512x512",
+          seed: 7,
+          response_format: payload.response_format,
+        };
+        const valid =
+          req.url === "/v1/images/generations" &&
+          !req.headers.authorization &&
+          ["b64_json", "url"].includes(payload.response_format) &&
+          Object.keys(payload).length === Object.keys(expected).length &&
+          Object.entries(expected).every(
+            ([key, value]) => payload[key] === value,
+          );
+        res.writeHead(valid ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(
+          JSON.stringify(
+            valid
+              ? {
+                  data: [
+                    payload.response_format === "url"
+                      ? { url: `data:image/png;base64,${png}` }
+                      : { b64_json: png },
+                  ],
+                }
+              : { error: "Invalid Halogen-compatible request" },
+          ),
+        );
+        return;
+      }
       if (hold) return; // The client must abort this operation when Stop is pressed.
       res.writeHead(failure ? 503 : 200, {
         "Content-Type": "application/json",
@@ -55,6 +135,7 @@ test.beforeAll(async () => {
         url: req.url,
         body,
         contentType: String(req.headers["content-type"]),
+        authorization: req.headers.authorization,
       });
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -153,6 +234,9 @@ test.beforeAll(async () => {
                 name: edit ? "edit_image" : "generate_image",
                 arguments: JSON.stringify({
                   prompt: edit ? "Make the kite blue" : "A red kite",
+                  ...(customImages
+                    ? { size: "1024x1024", quality: "low" }
+                    : {}),
                   ...(edit ? { image_ids: [reference] } : {}),
                 }),
               },
@@ -183,7 +267,9 @@ test.beforeEach(async ({ page }) => {
   failure = false;
   hold = false;
   chatFailure = false;
-  await page.goto("/signup");
+  customImages = false;
+  customEditSizes = false;
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Image Admin");
   await page.locator("#email").fill("image@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -411,7 +497,9 @@ test("retains a completed image when the subsequent chat model step fails", asyn
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Couldn't complete the response. Please try again." }),
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Couldn't complete the response. Please try again." }),
   ).toBeVisible();
   await page.reload();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();
@@ -646,4 +734,287 @@ test("switches OpenAI to Gemini in Models, edits images, and removes tools when 
       }),
     );
   expect(requests).toHaveLength(2);
+});
+
+for (const responseFormat of ["b64_json", "url"] as const) {
+  test(`custom image provider saves settings and persists ${responseFormat} PNGs`, async ({
+    page,
+  }) => {
+    customImages = true;
+    if (responseFormat === "url")
+      await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/settings/models/new");
+    await page.locator("#p-model-type").click();
+    await page.getByRole("option", { name: "Image", exact: true }).click();
+    await page.locator("#p-provider").click();
+    await page
+      .getByRole("option", { name: "Custom (OpenAI-compatible)", exact: true })
+      .click();
+    await expect(page.locator("#p-api-format")).toHaveCount(0);
+    await page.locator("#p-base-url").fill(baseUrl);
+    await page.locator("#p-model").fill("flux2-klein-4b");
+    await page.locator("#p-label").fill("Local pictures");
+    await page.locator("#p-image-size").fill("512x512");
+    await page.locator("#p-image-response-format").selectOption(responseFormat);
+    await page.locator("#p-image-extra").fill('{"n": 5}');
+    await expect(
+      page.getByText("n cannot be set in extra image parameters."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Add model", exact: true }),
+    ).toBeDisabled();
+    await page.locator("#p-image-extra").fill('{"seed": 7}');
+    await expect(
+      page.getByRole("switch", { name: "Supports image editing", exact: true }),
+    ).not.toBeChecked();
+    await expect(page.locator("#p-api-key")).toHaveValue("");
+    await page.screenshot({
+      path: `/tmp/overtchat-custom-image-settings-${responseFormat}.png`,
+      fullPage: true,
+    });
+    const save = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/api/model-configs") &&
+        res.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Add model", exact: true }).click();
+    const response = await save;
+    expect(response.ok()).toBe(true);
+    const { modelConfig } = await response.json();
+    expect(modelConfig).toMatchObject({
+      providerId: "custom",
+      apiFormat: "openai-images",
+      apiKey: "",
+      providerOptions: {
+        size: "512x512",
+        responseFormat,
+        supportsEditing: false,
+        extraBody: { seed: 7 },
+      },
+    });
+    await page.goto(`/settings/models/${modelConfig.id}`);
+    await expect(page.locator("#p-image-size")).toHaveValue("512x512");
+    await expect(page.locator("#p-image-extra")).toHaveValue(/"seed": 7/);
+    const update = page.waitForResponse(
+      (res) =>
+        res.url().endsWith(`/api/model-configs/${modelConfig.id}`) &&
+        res.request().method() === "PATCH",
+    );
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    expect((await update).ok()).toBe(true);
+    const capabilities = await (
+      await page.request.get("/api/capabilities")
+    ).json();
+    expect(capabilities.capabilities.images).toEqual({
+      available: true,
+      model: "flux2-klein-4b",
+      supportsQuality: false,
+      supportsEditing: false,
+      configuredSize: "512x512",
+    });
+    expect(JSON.stringify(capabilities)).not.toContain('"seed"');
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Add to message", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: /Create image/ }).click();
+    await expect(
+      page.getByText("Size: 512x512", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Image size", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Image quality", { exact: true })).toHaveCount(
+      0,
+    );
+    await page.locator("textarea").fill("A red kite");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Edit / Use as reference" }),
+    ).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+    expect(JSON.parse(requests[0].body)).toEqual({
+      model: "flux2-klein-4b",
+      prompt: "A red kite",
+      n: 1,
+      size: "512x512",
+      seed: 7,
+      response_format: responseFormat,
+    });
+    expect(requests[0].authorization).toBeUndefined();
+    const tools = chatRequests[0].tools as Array<{
+      function: {
+        name: string;
+        parameters: { properties: Record<string, unknown> };
+      };
+    }>;
+    expect(tools.some((tool) => tool.function.name === "edit_image")).toBe(
+      false,
+    );
+    expect(
+      tools.find((tool) => tool.function.name === "generate_image")?.function
+        .parameters.properties,
+    ).not.toHaveProperty("size");
+    const imageUrl = (await page
+      .locator("[data-image-generation] img")
+      .getAttribute("src"))!;
+    expect(await (await page.request.get(imageUrl)).body()).toEqual(
+      Buffer.from(png, "base64"),
+    );
+    const download = page.waitForEvent("download");
+    await page.getByRole("link", { name: "Download", exact: true }).click();
+    expect((await download).suggestedFilename()).toBe("generated-image.png");
+    await page.reload();
+    await expect(page.locator("[data-image-generation] img")).toHaveAttribute(
+      "src",
+      imageUrl,
+    );
+    await page.locator("[data-image-generation] summary").click();
+    await expect(page.locator("[data-image-generation]")).toContainText(
+      "Requested format: 512x512",
+    );
+    expect(
+      JSON.stringify(await (await page.request.get("/api/library")).json()),
+    ).toContain(imageUrl);
+    await page.screenshot({
+      path: `/tmp/overtchat-custom-image-chat-${responseFormat}.png`,
+      fullPage: true,
+    });
+  });
+}
+
+test("custom editing size persists and routes generation and edits at different sizes", async ({
+  page,
+}) => {
+  customEditSizes = true;
+  await page.goto("/settings/models/new");
+  await page.locator("#p-model-type").click();
+  await page.getByRole("option", { name: "Image", exact: true }).click();
+  await page.locator("#p-provider").click();
+  await page
+    .getByRole("option", { name: "Custom (OpenAI-compatible)", exact: true })
+    .click();
+  await page.locator("#p-base-url").fill(baseUrl);
+  await page.locator("#p-model").fill("local-images");
+  await page.locator("#p-label").fill("Local edit sizes");
+  await page.getByLabel("Generation size", { exact: true }).fill("1024x1024");
+  const editing = page.getByRole("switch", {
+    name: "Supports image editing",
+    exact: true,
+  });
+  await expect(editing).not.toBeChecked();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveCount(0);
+  await editing.click();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "",
+  );
+  await expect(
+    page.getByLabel("Editing size", { exact: true }),
+  ).toHaveAttribute("placeholder", "Same as generation");
+  await page.getByLabel("Editing size", { exact: true }).fill("512x512");
+  // Disabling and re-enabling editing preserves the configured override.
+  await editing.click();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveCount(0);
+  await editing.click();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "512x512",
+  );
+  const save = page.waitForResponse(
+    (res) =>
+      res.url().endsWith("/api/model-configs") &&
+      res.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Add model", exact: true }).click();
+  const response = await save;
+  expect(response.ok()).toBe(true);
+  const { modelConfig } = await response.json();
+  expect(modelConfig.providerOptions).toMatchObject({
+    size: "1024x1024",
+    editSize: "512x512",
+    supportsEditing: true,
+  });
+  await page.goto(`/settings/models/${modelConfig.id}`);
+  await expect(page.getByLabel("Generation size", { exact: true })).toHaveValue(
+    "1024x1024",
+  );
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "512x512",
+  );
+  const imageSettings = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "Image API settings",
+        exact: true,
+      }),
+    });
+  await imageSettings.screenshot({
+    path: "/tmp/overtchat-edit-size-desktop.png",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await imageSettings.screenshot({
+    path: "/tmp/overtchat-edit-size-mobile.png",
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const update = page.waitForResponse(
+    (res) =>
+      res.url().endsWith(`/api/model-configs/${modelConfig.id}`) &&
+      res.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  expect((await update).ok()).toBe(true);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Add to message", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: /Create image/ }).click();
+  await page.locator("textarea").fill("A red kite");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator("[data-image-generation] img")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Stop generating", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit / Use as reference" }).click();
+  await page.locator("textarea").fill("Make it blue");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator("[data-image-generation] img")).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: "Stop generating", exact: true }),
+  ).toHaveCount(0);
+  expect(requests.map((request) => request.url)).toEqual([
+    "/v1/images/generations",
+    "/v1/images/edits",
+  ]);
+  await page.reload();
+  const cards = page.locator("[data-image-generation]");
+  await expect(cards).toHaveCount(2);
+  await cards.nth(0).locator("summary").click();
+  await cards.nth(1).locator("summary").click();
+  await expect(cards.nth(0)).toContainText("Requested format: 1024x1024");
+  await expect(cards.nth(1)).toContainText("Requested format: 512x512");
+  await page.goto(`/settings/models/${modelConfig.id}`);
+  await page.getByLabel("Editing size", { exact: true }).fill("");
+  const reset = page.waitForResponse(
+    (res) =>
+      res.url().endsWith(`/api/model-configs/${modelConfig.id}`) &&
+      res.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  const resetResponse = await reset;
+  expect(resetResponse.ok()).toBe(true);
+  expect(
+    (await resetResponse.json()).modelConfig.providerOptions,
+  ).not.toHaveProperty("editSize");
+  await page.goto(`/settings/models/${modelConfig.id}`);
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "",
+  );
 });

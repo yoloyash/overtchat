@@ -27,6 +27,8 @@ export type AgentRuntimeEvent = Extract<
 export type AgentRuntimeInitialState = {
   state: Record<string, unknown>;
   messages: unknown[];
+  /** Native context used only to reconcile uncertain submissions after recovery. */
+  submissionHistory?: unknown[];
   models: AgentModel[];
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
@@ -126,15 +128,11 @@ export interface AgentProviderAdapter {
   readonly provider: AgentProviderId;
   /** Restart-only providers steer by cancelling, then submitting a normal prompt. */
   readonly steering?: "restart";
-  /**
-   * Whether a normal provider-terminal transition should replace the live
-   * transcript with a freshly fetched history snapshot. Providers whose live
-   * event stream is the canonical display order should disable this and leave
-   * full history hydration to session startup and explicit refreshes.
-   */
-  readonly refreshMessagesAfterTerminal?: boolean;
   /** Providers without usage notifications need stats polling while active. */
   readonly pollUsage?: boolean;
+  /** Whether provider state shows the turn still running. Background work
+   * alone does not: it keeps running between turns and a wake starts a new one. */
+  busyFromState?(state: Record<string, unknown>): boolean;
   startSession(
     target: HostTarget,
     launch: AgentSessionLaunch,

@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import {
   openE2eDatabase,
   resetE2eDatabase,
+  setupUrl,
 } from "./helpers/database";
 
 const workspacePath = path.resolve(process.cwd(), "../..");
@@ -296,7 +297,7 @@ async function openAgentDraft(
 }
 
 test("explains agent access before setup", async ({ page }, testInfo) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Connections E2E Admin");
   await page
     .locator("#email")
@@ -387,7 +388,7 @@ test("shows the no-re-pair upgrade command for an older connector", async ({
       }),
     });
   });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Connector Upgrade Admin");
   await page.locator("#email").fill("connector-upgrade@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -412,7 +413,7 @@ test("shows the no-re-pair upgrade command for an older connector", async ({
 
 test("shows the consolidated Add workspace flow after setup", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Agent Setup E2E Admin");
   await page
     .locator("#email")
@@ -468,7 +469,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Workspace UX E2E Admin");
   await page
     .locator("#email")
@@ -723,7 +724,7 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
   });
 
   await test.step("create the administrator", async () => {
-    await page.goto("/signup");
+    await page.goto(await setupUrl());
     await page.locator("#name").fill("Pi E2E Admin");
     await page
       .locator("#email")
@@ -1027,7 +1028,7 @@ test("connect local Oh My Pi and use its native commands", async ({
     if (message.type() === "error") browserErrors.push(message.text());
   });
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("OMP E2E Admin");
   await page.locator("#email").fill("omp-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -1109,7 +1110,7 @@ test("connect local Codex and resume a native thread", async ({
     if (message.type() === "error") browserErrors.push(message.text());
   });
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Codex E2E Admin");
   await page
     .locator("#email")
@@ -1280,7 +1281,7 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
     if (message.type() === "error") browserErrors.push(message.text());
   });
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("OMP SSH E2E Admin");
   await page
     .locator("#email")

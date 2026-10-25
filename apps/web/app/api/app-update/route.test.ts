@@ -26,6 +26,7 @@ describe("GET /api/app-update", () => {
       currentVersion: "0.16.0",
       latestVersion: "0.17.0",
       updateAvailable: true,
+      updateMethod: "overtchat",
     });
   });
 
@@ -49,6 +50,7 @@ describe("GET /api/app-update", () => {
       currentVersion: "0.16.0",
       latestVersion: "0.17.0",
       updateAvailable: true,
+      updateMethod: "overtchat",
     });
   });
 });

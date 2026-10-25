@@ -25,9 +25,10 @@ chat delivery.
   owns cancellation and optional reconnectable-stream integration.
 - `lib/capabilities` validates search and speech configuration;
   `lib/db/serverCapabilities.ts` persists it.
-- `lib/voice` owns realtime-session tickets, browser transport, history
-  conversion, tool definitions, and service availability. Durable voice chats
-  remain ordinary chat records distinguished by their chat kind.
+- `lib/voice` owns realtime-session tickets, browser transport, audio
+  delivery, session leases, and service availability. Voice and text
+  turns share canonical messages and generation in `lib/chat/run.ts`. Chat kind
+  is legacy provenance; it does not restrict input mode.
 - `lib/agents` owns Agent Connections projections and access rules.
   `lib/agents/connector` owns the authorized web-side connector relay.
 - `lib/mcp` owns MCP configuration, connections, tool bindings, and lifecycle.
@@ -57,12 +58,15 @@ chat-bound tickets. Internal voice routes independently authenticate
 `VOICE_SHARED_SECRET` and verify the ticket; the sidecar must not become a
 trusted substitute for user authorization.
 
-The first created user becomes the administrator. Public signup closes after
-that; administrators create subsequent users through Better Auth's admin path.
+Initial administrator creation requires the operator's one-time setup code and
+atomically consumes setup authorization. Public signup cannot bypass this;
+administrators create subsequent users through Better Auth's admin path.
+See [initial setup](../../docs/deploy.md#install).
 
 ## Chat and persistence
 
-`app/api/chat/route.ts` is the streaming orchestration boundary. Validate and
+`lib/chat/run.ts` is the shared streaming orchestration boundary for text and
+voice; API routes authenticate and adapt transport. Validate and
 authorize the complete request, resolve the provider and project, inline
 uploads, and convert messages before mutating persistent state.
 

@@ -55,7 +55,10 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
   private modelId?: string;
   private modeId?: string;
   private commands: AgentSlashCommand[] = [];
-  private projection = new AcpProjection(() => this.sessionId);
+  // ACP replay has no durable message IDs. A fresh runtime must not reuse
+  // compacted context indexes as identities in the retained display timeline.
+  private readonly projectionId = randomUUID();
+  private projection = new AcpProjection(() => `${this.sessionId}:${this.projectionId}`);
   private loading = true;
   private streaming = false;
   private compacting = false;
@@ -469,6 +472,12 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
       throw error;
     } finally {
       this.loading = false;
+    }
+    if (refresh === "history") {
+      this.emit({
+        type: "overtchat_history_replace",
+        messages: structuredClone(this.projection.messages),
+      });
     }
     this.emitConfig();
   }

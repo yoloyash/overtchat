@@ -2,6 +2,7 @@
 
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { getErrorMessage } from "@/lib/errors";
+import { apiError, ApiError } from "@overtchat/shared";
 import {
   forwardRef,
   useEffect,
@@ -12,8 +13,7 @@ import {
 } from "react";
 import { Mic, MicOff, Square } from "lucide-react";
 import type {
-  ChatKind,
-  VoiceHistoryItem,
+  ChatReasoningLevel,
   VoiceSessionGrant,
 } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
@@ -21,23 +21,15 @@ import { cn } from "@/lib/utils";
 import {
   OvertChatVoiceClient,
   type VoiceClientStatus,
-  type VoiceToolActivityUpdate,
-  type VoiceTranscriptUpdate,
 } from "@/lib/voice/client";
 import { apiUrl } from "@/lib/api-url";
-import { VoiceHistorySaveError, VoiceHistorySync } from "@/lib/voice/history-sync";
+import type { UIMessage } from "ai";
+import { fetchChatMessagesPage } from "@/lib/queries/chats";
 
 export interface RealtimeVoiceSessionHandle {
-  sendMessage: (text: string) => void;
-}
-
-interface PersistedVoiceChat {
-  id: string;
-  title: string | null;
-  pinned?: boolean;
-  kind: ChatKind;
-  projectId: string | null;
-  updatedAt: number;
+  /** False keeps the text in the composer until voice can accept it. */
+  sendMessage: (text: string) => boolean;
+  end: () => Promise<void>;
 }
 
 interface Props {
@@ -46,9 +38,9 @@ interface Props {
   modelConfigId: string;
   modelLabel: string;
   webSearchEnabled: boolean;
-  onTranscript: (update: VoiceTranscriptUpdate) => void;
-  onHistoryItems: (items: VoiceHistoryItem[]) => void;
-  onPersisted: (chat: PersistedVoiceChat) => void;
+  reasoningLevel: ChatReasoningLevel;
+  onMessages: (messages: UIMessage[]) => void;
+  onPersisted: () => void;
 }
 
 function friendlyError(error: unknown): string {
@@ -63,9 +55,7 @@ function friendlyError(error: unknown): string {
 
 function statusLabel(
   status: VoiceClientStatus,
-  activity: VoiceToolActivityUpdate | null,
 ): string {
-  if (activity?.status === "running") return activity.label;
   switch (status) {
     case "connecting":
       return "Connecting";
@@ -92,132 +82,207 @@ export const RealtimeVoiceSession = forwardRef<
     modelConfigId,
     modelLabel,
     webSearchEnabled,
-    onTranscript,
-    onHistoryItems,
+    reasoningLevel,
+    onMessages,
     onPersisted,
   },
   ref,
 ) {
   const clientRef = useRef<OvertChatVoiceClient | null>(null);
-  const callbacksRef = useRef({
-    onTranscript,
-    onHistoryItems,
-    onPersisted,
-  });
-  useEffect(() => {
-    callbacksRef.current = {
-      onTranscript,
-      onHistoryItems,
-      onPersisted,
-    };
-  }, [onHistoryItems, onPersisted, onTranscript]);
-  const historySyncRef = useRef<VoiceHistorySync | null>(null);
+  const cleanupRef = useRef<Promise<void>>(Promise.resolve());
+  const callbacksRef = useRef({ onMessages, onPersisted });
+  useEffect(() => { callbacksRef.current = { onMessages, onPersisted }; }, [onMessages, onPersisted]);
+  const endRef = useRef<() => Promise<void>>(async () => {});
   const [status, setStatus] = useState<VoiceClientStatus>("connecting");
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
   const [muted, setMuted] = useState(false);
-  const [activity, setActivity] = useState<VoiceToolActivityUpdate | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [turnWarning, setTurnWarning] = useState<string | null>(null);
+  const [submissions, setSubmissions] = useState<{ id: string; text: string; failed: boolean }[]>([]);
 
   useImperativeHandle(ref, () => ({
+    end: () => endRef.current(),
     sendMessage(text) {
-      clientRef.current?.sendMessage(text);
+      const client = clientRef.current;
+      if (!client || status === "connecting" || status === "closed" || error || !text.trim()) return false;
+      const id = crypto.randomUUID();
+      setSubmissions(current => [...current, { id, text: text.trim(), failed: false }]);
+      void client.sendMessage(text).then(() => {
+        setSubmissions(current => current.filter(item => item.id !== id));
+      }).catch(() => {
+        setSubmissions(current => current.map(item => item.id === id ? { ...item, failed: true } : item));
+      });
+      return true;
     },
   }));
 
+  // Freeze model/search/reasoning for this connection. The parent ends voice
+  // before changing them, so the UI and signed ticket cannot silently diverge.
   useEffect(() => {
     let mounted = true;
-
+    let stopping = false;
+    let client: OvertChatVoiceClient | null = null;
+    const previousCleanup = cleanupRef.current;
+    const active = () => mounted && !stopping;
+    let releasePromise: Promise<void> | null = null;
+    let grant: VoiceSessionGrant | null = null;
+    const events = new AbortController();
+    const release = (): Promise<void> => {
+      if (!grant) return Promise.resolve();
+      // End, startup failure, and effect cleanup may all release this lease.
+      // Coalesce them without preventing a retry after a failed request.
+      return releasePromise ??= fetch(apiUrl("/api/voice/session"), {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: grant.sessionId }), keepalive: true,
+      }).then(response => {
+        if (!response.ok) throw new ApiError("Could not end the voice session.", response.status);
+      }).catch(error => { releasePromise = null; throw error; });
+    };
+    const close = async () => {
+      // An obsolete effect must never close a newer effect's client.
+      await client?.close();
+      if (clientRef.current === client) clientRef.current = null;
+    };
+    const refresh = async () => {
+      const page = await fetchChatMessagesPage(chatId);
+      if (page && mounted) {
+        callbacksRef.current.onMessages(page.messages);
+        callbacksRef.current.onPersisted();
+      }
+    };
+    endRef.current = async () => {
+      stopping = true;
+      events.abort();
+      await close();
+      await starting;
+      await release();
+      // Ending voice must settle the shared generation before text can submit.
+      const deadline = Date.now() + 15_000;
+      while (true) {
+        const response = await fetch(apiUrl(`/api/chat/${encodeURIComponent(chatId)}/stream/status`));
+        if (response.status === 404) break;
+        if (!response.ok) throw new Error("Could not finish the voice session. Try End again.");
+        if (!(await response.json()).active) break;
+        if (Date.now() >= deadline) throw new Error("The response is still stopping. Try End again.");
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      await refresh();
+      events.abort();
+    };
     async function start() {
       try {
+        // Strict Mode replays effects; config changes can also replace an
+        // in-flight grant. Finish the old cleanup before acquiring a new lease.
+        await previousCleanup;
+        if (!active()) return;
+        setStatus("connecting");
+        setError(null);
+        setTurnWarning(null);
         const response = await fetch(apiUrl("/api/voice/session"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatId,
-            projectId,
-            modelConfigId,
-            webSearchEnabled,
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          }),
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chatId, projectId, modelConfigId, webSearchEnabled, reasoningLevel,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
         });
-        const grant = (await response.json().catch(() => null)) as
-          | (VoiceSessionGrant & { error?: string })
-          | null;
-        if (!response.ok || !grant?.token) {
-          throw new Error(grant?.error || `Voice session failed (${response.status}).`);
-        }
-        if (!mounted) return;
-
-        // Capture this chat's completion callback; the parent survives End.
-        const onSaved = callbacksRef.current.onPersisted;
-        const historySync = new VoiceHistorySync(async (items) => {
-          const syncResponse = await fetch(apiUrl("/api/voice/history"), {
-            method: "POST",
-            headers: {
-              "X-OvertChat-Voice-Ticket": grant.token,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ items }),
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (!syncResponse.ok) {
-            throw new VoiceHistorySaveError(
-              syncResponse.status >= 500 || [408, 429].includes(syncResponse.status),
-            );
-          }
-          const body = await syncResponse.json() as { chat?: PersistedVoiceChat | null };
-          if (body.chat) onSaved(body.chat);
-        }, (message) => {
-          if (mounted) setSaveWarning(message);
+        const body = await response.json();
+        if (!response.ok || !body.token) throw apiError(response.status, body, "Could not start voice.");
+        grant = body as VoiceSessionGrant;
+        if (!active()) return;
+        // Subscribe before opening the microphone: no initial turn can race the
+        // canonical message stream. The realtime transcript is audio-only.
+        const eventResponse = await fetch(apiUrl("/api/voice/events"), {
+          headers: { "X-OvertChat-Voice-Ticket": grant.token }, signal: events.signal,
         });
-        historySyncRef.current = historySync;
-
-        const client = new OvertChatVoiceClient(grant, {
-          onStatus: (next) => mounted && setStatus(next),
-          onTranscript: (update) => {
-            if (mounted) callbacksRef.current.onTranscript(update);
+        if (!active()) return;
+        if (!eventResponse.ok || !eventResponse.body) throw new ApiError("Could not connect voice history.", eventResponse.status);
+        const reader = eventResponse.body.pipeThrough(new TextDecoderStream()).getReader();
+        void (async () => {
+          let pending = "";
+          try {
+            while (active()) {
+              const { value, done } = await reader.read();
+              if (!active()) break;
+              if (done) throw new ApiError("The voice connection ended. End voice and reconnect.", 503);
+              pending += value;
+              let boundary: number;
+              while ((boundary = pending.indexOf("\n\n")) !== -1) {
+                const frame = pending.slice(0, boundary);
+                pending = pending.slice(boundary + 2);
+                if (!frame.startsWith("data: ")) continue;
+                const event = JSON.parse(frame.slice(6));
+                if (event.type === "message") {
+                  callbacksRef.current.onMessages([event.message]);
+                  if (event.message.role === "user") {
+                    client?.setActiveTurn(event.message.id);
+                    callbacksRef.current.onPersisted();
+                  }
+                } else if (event.type === "settled") {
+                  client?.setActiveTurn(null);
+                  await refresh();
+                }
+                else if (event.type === "error") setTurnWarning(event.message);
+              }
+            }
+          } catch (reason) {
+            if (!events.signal.aborted && active()) {
+              setError(friendlyError(reason));
+              await close();
+              await release().catch(() => {});
+              await refresh().catch(() => {});
+            }
+          } finally { reader.releaseLock(); }
+        })();
+        client = new OvertChatVoiceClient(grant, {
+          onStatus: (next) => active() && setStatus(next),
+          onInputLevel: (level) => active() && setInputLevel(level),
+          onOutputLevel: (level) => active() && setOutputLevel(level),
+          onError: (nextError) => {
+            if (active()) setError(friendlyError(nextError));
+            void release().catch(() => {});
           },
-          onInputLevel: (level) => mounted && setInputLevel(level),
-          onOutputLevel: (level) => mounted && setOutputLevel(level),
-          onError: (nextError) => mounted && setError(friendlyError(nextError)),
-          onWarning: (message) => mounted && setTurnWarning(message),
-          onToolActivity: (nextActivity) => {
-            if (mounted) setActivity(nextActivity);
-          },
-          onHistoryItems: (items) => {
-            if (mounted) callbacksRef.current.onHistoryItems(items);
-            historySync.enqueue(items);
-          },
+          onWarning: (message) => active() && setTurnWarning(message),
         });
         clientRef.current = client;
         await client.connect();
       } catch (reason) {
-        const client = clientRef.current;
-        clientRef.current = null;
-        if (client) await client.close();
-        if (mounted) setError(friendlyError(reason));
+        await close();
+        await release().catch(() => {});
+        events.abort();
+        if (active()) setError(friendlyError(reason));
+      } finally {
+        if (!active()) {
+          await close();
+          await release().catch(() => {});
+        }
       }
     }
-
-    void start();
+    const starting = start();
     return () => {
       mounted = false;
-      // Pending, idempotent saves keep retrying after the audio session ends.
-      historySyncRef.current = null;
-      const client = clientRef.current;
-      clientRef.current = null;
-      if (client) void client.close();
+      events.abort();
+      void close();
+      // The POST cannot just be aborted: the server may already have granted
+      // the lease. Await its response and release it before the next setup.
+      cleanupRef.current = starting.then(async () => {
+        await close();
+        await release();
+      }).catch(() => {});
     };
-  }, [chatId, modelConfigId, projectId, webSearchEnabled]);
+  }, [chatId, modelConfigId, projectId, webSearchEnabled, reasoningLevel]);
 
   const connected = status !== "connecting" && status !== "closed" && !error;
-  const label = statusLabel(status, activity);
+  const label = statusLabel(status);
 
   return (
     <div className="mb-3 overflow-hidden rounded-3xl border bg-background/95 shadow-sm">
+      {submissions.map(item => (
+        <div key={item.id} className="border-b px-4 py-2 text-sm" role="status">
+          <p className="whitespace-pre-wrap">{item.text}</p>
+          <p className="text-xs text-muted-foreground">
+            {item.failed ? "Not confirmed sent. Check the conversation before sending again." : "Sending…"}
+          </p>
+        </div>
+      ))}
       <div className="flex min-h-28 items-center gap-3 px-3 py-2.5 sm:px-4">
         <VoiceOrb
           status={status}
@@ -231,17 +296,8 @@ export const RealtimeVoiceSession = forwardRef<
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {error
               ? "End the session and try again"
-              : activity?.status === "running" && activity.detail
-                ? activity.detail
-                : `${modelLabel} · ${muted ? "Microphone muted" : "Realtime voice"}`}
+              : `${modelLabel} · ${muted ? "Microphone muted" : "Realtime voice"}`}
           </p>
-          {saveWarning && (
-            <ErrorNotice className="mt-1" message={saveWarning} actions={
-              <Button variant="outline" size="sm" onClick={() => historySyncRef.current?.retry()}>
-                Retry saving
-              </Button>
-            } />
-          )}
           {turnWarning && (
             <ErrorNotice className="mt-1" message={turnWarning} onDismiss={() => setTurnWarning(null)} />
           )}
@@ -262,7 +318,7 @@ export const RealtimeVoiceSession = forwardRef<
           >
             {muted ? <MicOff /> : <Mic />}
           </Button>
-          {connected && status === "assistant-speaking" && (
+          {connected && (status === "assistant-speaking" || status === "thinking") && (
             <Button
               type="button"
               variant="ghost"

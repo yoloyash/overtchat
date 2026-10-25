@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   changeModelProvider,
+  changeModelType,
   modelDraft,
   parseModelDraft,
 } from "./settings-model";
@@ -16,6 +17,7 @@ const existing: AdminModelConfig = {
   contextWindow: 12345,
   discoveredContextWindow: 9999,
   discoveredCapabilities: { toolCalling: true },
+  reasoningOverride: { requests: { on: { think: true }, off: {} } },
   systemPrompt: "Keep me",
   providerOptions: { openai: { store: false } },
   catalogPricing: null,
@@ -43,9 +45,32 @@ describe("native model edits", () => {
       providerOptions: null,
       discoveredCapabilities: null,
       discoveredContextWindow: null,
+      reasoningOverride: null,
       providerId: "anthropic",
     });
     expect(next.systemPrompt).toBe("Keep me");
+  });
+  it("keeps thinking levels through simple edits", () => {
+    const input = parseModelDraft(
+      { ...modelDraft(existing), label: "Renamed" },
+      "",
+      "",
+    );
+    expect(input.reasoningOverride).toEqual(existing.reasoningOverride);
+  });
+  it("moves image models to a supported provider and format", () => {
+    const anthropic = changeModelProvider(modelDraft(existing), "anthropic");
+    expect(changeModelType(anthropic, "image")).toMatchObject({
+      modelType: "image",
+      providerId: "openai",
+      apiFormat: "auto",
+    });
+    const custom = changeModelProvider(modelDraft(existing), "custom");
+    expect(custom.apiFormat).toBe("openai-chat");
+    const image = changeModelType(custom, "image");
+    expect(image).toMatchObject({ providerId: "custom", apiFormat: "openai-images" });
+    expect(changeModelType(image, "chat").apiFormat).toBe("openai-chat");
+    expect(changeModelProvider(image, "custom").apiFormat).toBe("openai-images");
   });
   it.each(["[]", "null", '"string"', "{broken"])(
     "rejects invalid provider options %s",

@@ -85,6 +85,7 @@ const paths: RuntimePaths = {
   searxngDirectory: "/home/test/.local/share/overtchat/searxng",
   searxngSettingsFile:
     "/home/test/.local/share/overtchat/searxng/settings.yml",
+  cloudDirectory: "/home/test/.local/share/overtchat/cloud",
 };
 
 vi.mock("./paths.js", () => ({ runtimePaths: () => paths }));
@@ -116,6 +117,8 @@ const releaseImages = {
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 function config(
@@ -156,6 +159,7 @@ const secrets: InstallationSecrets = {
   managementSecret: "management-secret",
   searxngSecret: "searxng-secret",
   voiceSharedSecret: "voice-secret",
+  cloudCredential: "",
 };
 
 beforeEach(() => {
@@ -485,7 +489,7 @@ it("commits native speech and the updated app when the optional connector fails"
   const commit = vi.fn();
   vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit, rollback });
   mocks.installManagedConnector.mockRejectedValueOnce(new Error("connector failed"));
-  await update();
+  await expect(update()).rejects.toThrow("Agent Connections failed");
   expect(rollback).not.toHaveBeenCalled();
   expect(commit).toHaveBeenCalledOnce();
   expect(mocks.requireDocker.mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(1);
@@ -507,7 +511,7 @@ it("checks updates without Docker, credentials, self-update, or writes", async (
 it("updates the app when connector prerequisites are unavailable", async () => {
   mocks.readInstallationConfig.mockResolvedValue(config({ agents: { installed: true } }));
   mocks.checkManagedConnectorPrerequisites.mockRejectedValueOnce(new Error("No user session"));
-  await update();
+  await expect(update()).rejects.toThrow("Agent Connections failed");
   expect(mocks.installManagedConnector).not.toHaveBeenCalled();
   expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({ agents: { installed: true, pending: true } }));
   expect(mocks.checkManagedConnectorPrerequisites.mock.invocationCallOrder[0]).toBeLessThan(mocks.prepareFiles.mock.invocationCallOrder[0]);

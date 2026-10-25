@@ -184,6 +184,20 @@ export class ConnectorTimelineStore {
     return new ConnectorTimelineStore(directory);
   }
 
+  /** Restore the complete display transcript, never a window intended for UI paging. */
+  async readTranscript(
+    sessionId: string,
+    providerSessionId: string,
+  ): Promise<unknown[] | null> {
+    this.assertOpen();
+    await this.flushPending(sessionId);
+    return this.enqueue(sessionId, async () => {
+      const state = await this.load(sessionId);
+      if (!state || state.providerSessionId !== providerSessionId) return null;
+      return structuredClone(state.snapshot.messages);
+    });
+  }
+
   async openSession(
     sessionId: string,
     providerSessionId: string,
@@ -408,10 +422,9 @@ export class ConnectorTimelineStore {
             epoch: state.epoch,
             sequence: ++sequence,
             type: source.type,
-            data:
-              source.type === "snapshot"
-                ? reconcileAgentRuntimeSnapshot(snapshot, source.data)
-                : source.data,
+            // Runtime snapshots already own the complete display transcript.
+            // Re-merging missing rows here can resurrect compacted/rewound work.
+            data: source.data,
           } as AgentRuntimeEnvelope;
           const nextSnapshot = applyAgentRuntimeEnvelope(snapshot, envelope);
           if (!nextSnapshot) {

@@ -1,5 +1,12 @@
 import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
-import { PROVIDERS, type ProviderId } from "@overtchat/shared/provider-catalog";
+import {
+  EXPLICIT_API_FORMAT_IDS,
+  PROVIDERS,
+  PROVIDER_IDS,
+  type ApiFormat,
+  type ExplicitApiFormat,
+  type ProviderId,
+} from "@overtchat/shared/provider-catalog";
 export type ModelDraft = Pick<
   AdminModelConfig,
   | "modelType"
@@ -13,6 +20,7 @@ export type ModelDraft = Pick<
   | "contextWindow"
   | "discoveredContextWindow"
   | "discoveredCapabilities"
+  | "reasoningOverride"
   | "systemPrompt"
   | "providerOptions"
   | "toolCallingEnabled"
@@ -32,6 +40,7 @@ export function modelDraft(model?: AdminModelConfig): ModelDraft {
       contextWindow: null,
       discoveredContextWindow: null,
       discoveredCapabilities: null,
+      reasoningOverride: null,
       systemPrompt: null,
       providerOptions: null,
       toolCallingEnabled: true,
@@ -49,6 +58,7 @@ export function modelDraft(model?: AdminModelConfig): ModelDraft {
     contextWindow,
     discoveredContextWindow,
     discoveredCapabilities,
+    reasoningOverride,
     systemPrompt,
     providerOptions,
     toolCallingEnabled,
@@ -66,12 +76,55 @@ export function modelDraft(model?: AdminModelConfig): ModelDraft {
     contextWindow,
     discoveredContextWindow,
     discoveredCapabilities,
+    reasoningOverride,
     systemPrompt,
     providerOptions,
     toolCallingEnabled,
     enabled,
   };
 }
+/** Providers the server accepts for each model type. */
+export function modelProviders(modelType: ModelDraft["modelType"]) {
+  return modelType === "image"
+    ? (["openai", "google", "custom"] as const satisfies ProviderId[])
+    : PROVIDER_IDS;
+}
+
+/** API formats a custom provider can use for each model type. */
+export function customApiFormats(
+  modelType: ModelDraft["modelType"],
+): ExplicitApiFormat[] {
+  return modelType === "image"
+    ? ["openai-images"]
+    : EXPLICIT_API_FORMAT_IDS.filter((id) => id !== "openai-images");
+}
+
+function defaultApiFormat(
+  providerId: ProviderId,
+  modelType: ModelDraft["modelType"],
+): ApiFormat {
+  return providerId === "custom"
+    ? customApiFormats(modelType)[0]
+    : PROVIDERS[providerId].defaultApiFormat;
+}
+
+export function changeModelType(
+  draft: ModelDraft,
+  modelType: ModelDraft["modelType"],
+): ModelDraft {
+  if (!(modelProviders(modelType) as readonly ProviderId[]).includes(draft.providerId))
+    return changeModelProvider({ ...draft, modelType }, "openai");
+  return {
+    ...draft,
+    modelType,
+    apiFormat:
+      draft.providerId === "custom" &&
+      !customApiFormats(modelType).includes(draft.apiFormat as ExplicitApiFormat)
+        ? customApiFormats(modelType)[0]
+        : draft.apiFormat,
+  };
+}
+
 export function changeModelProvider(
   draft: ModelDraft,
   providerId: ProviderId,
@@ -79,13 +132,14 @@ export function changeModelProvider(
   return {
     ...draft,
     providerId,
-    apiFormat: PROVIDERS[providerId].defaultApiFormat,
+    apiFormat: defaultApiFormat(providerId, draft.modelType),
     baseUrl: PROVIDERS[providerId].defaultBaseUrl,
     apiKey: null,
     model: "",
     providerOptions: null,
     discoveredContextWindow: null,
     discoveredCapabilities: null,
+    reasoningOverride: null,
   };
 }
 export function parseModelDraft(

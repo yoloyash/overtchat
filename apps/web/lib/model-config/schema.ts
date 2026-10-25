@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { CustomImageOptionsSchema, customImageOptions } from "./image-options";
 import { REASONING_EFFORTS } from "@overtchat/shared";
+import { ReasoningOverrideSchema } from "./reasoning-override";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -53,6 +55,16 @@ const RuntimeModelFields = {
     .transform((value) => value ?? true),
 };
 
+export function supportsLocalReasoningConfig(
+  providerId: string,
+  apiFormat: string,
+): boolean {
+  return (
+    ["vllm", "llamacpp", "sglang"].includes(providerId) ||
+    (providerId === "custom" && apiFormat === "openai-chat")
+  );
+}
+
 const ModelCapabilitiesSchema = z
   .object({
     maxInputTokens: z.number().int().positive().optional(),
@@ -105,6 +117,9 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
   discoveredCapabilities: ModelCapabilitiesSchema.nullish().transform(
     (value) => value ?? null,
   ),
+  reasoningOverride: ReasoningOverrideSchema.nullish().transform(
+    (value) => value ?? null,
+  ),
   systemPrompt: z
     .string()
     .nullish()
@@ -119,13 +134,44 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
 })
   .superRefine((value, context) => {
     validateProviderConnection(value, context);
+    const override = value.reasoningOverride;
+    if (
+      override &&
+      !supportsLocalReasoningConfig(value.providerId, value.apiFormat)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["reasoningOverride"],
+        message:
+          "Custom thinking levels require a local or Chat Completions provider.",
+      });
+    }
     if (value.modelType === "image") {
-      if (value.providerId !== "openai" && value.providerId !== "google") {
+      if (!["openai", "google", "custom"].includes(value.providerId)) {
         context.addIssue({
           code: "custom",
           path: ["providerId"],
-          message: "Image models support OpenAI and Google Gemini.",
+          message:
+            "Image models support OpenAI, Google Gemini, and custom OpenAI-compatible providers.",
         });
+      }
+      if (value.providerId === "custom") {
+        if (value.apiFormat !== "openai-images")
+          context.addIssue({
+            code: "custom",
+            path: ["apiFormat"],
+            message:
+              "Custom image models require the OpenAI Images API format.",
+          });
+        const options = CustomImageOptionsSchema.safeParse(
+          value.providerOptions ?? {},
+        );
+        if (!options.success)
+          for (const issue of options.error.issues)
+            context.addIssue({
+              ...issue,
+              path: ["providerOptions", ...issue.path],
+            });
       }
       if (!isHttpEndpoint(value.baseUrl)) return;
       const endpoint = new URL(value.baseUrl);
@@ -142,6 +188,12 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
             "Use an endpoint without credentials, query parameters, or fragments.",
         });
       }
+    } else if (value.apiFormat === "openai-images") {
+      context.addIssue({
+        code: "custom",
+        path: ["apiFormat"],
+        message: "The Images API cannot be used for chat.",
+      });
     }
   })
   .transform((value) =>
@@ -150,10 +202,14 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
           ...value,
           toolCallingEnabled: false,
           systemPrompt: null,
-          providerOptions: null,
+          providerOptions:
+            value.providerId === "custom"
+              ? customImageOptions(value.providerOptions)
+              : null,
           contextWindow: null,
           discoveredContextWindow: null,
           discoveredCapabilities: null,
+          reasoningOverride: null,
           pricing: null,
         }
       : value,

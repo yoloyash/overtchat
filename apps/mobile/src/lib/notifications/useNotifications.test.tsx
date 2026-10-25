@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   userId: "alice" as string | undefined,
   server: "http://server",
   pathname: "/chat",
+  cookie: "cookie" as string | undefined,
   last: null as NotificationResponse | null,
   listener: undefined as ((response: NotificationResponse) => void) | undefined,
   push: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock("@/lib/api", () => ({
   getApiBase: () => mocks.server,
   getAuthCookie: () => "cookie",
 }));
+vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => mocks.cookie }));
 vi.mock("./client", () => ({
   notificationSettings: ({
     server,
@@ -111,6 +113,7 @@ function notification(
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.userId = "alice";
+  mocks.cookie = "cookie";
   mocks.server = "http://server";
   mocks.pathname = "/chat";
   mocks.last = null;
@@ -138,6 +141,17 @@ afterEach(async () => {
 async function render() {
   await act(async () => root.render(<Probe />));
 }
+it("waits for the asynchronous cookie before syncing or consuming a cold-start notification", async () => {
+  mocks.cookie = undefined;
+  mocks.last = notification();
+  await render();
+  expect(mocks.sync).not.toHaveBeenCalled();
+  expect(mocks.push).not.toHaveBeenCalled();
+  mocks.cookie = "cookie";
+  await render();
+  expect(mocks.sync).toHaveBeenCalled();
+  expect(mocks.push).toHaveBeenCalledTimes(1);
+});
 it("opens the persisted chat on a cold notification launch and consumes it once", async () => {
   mocks.last = notification();
   await render();

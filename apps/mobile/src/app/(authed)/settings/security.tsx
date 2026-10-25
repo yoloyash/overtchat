@@ -9,7 +9,9 @@ import {
   Action,
   useAction,
   useUnsavedChanges,
+  WebRow,
 } from "@/components/settings/SettingsUI";
+import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { toastSuccess } from "@/lib/toast";
 export default function Security() {
   const session = getAuthClient().useSession();
@@ -17,6 +19,7 @@ export default function Security() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const action = useAction();
+  const twoFactor = useTwoFactorStatus();
   useUnsavedChanges(!!(current || password || confirm));
   return (
     <SettingsPage title="Security">
@@ -78,6 +81,19 @@ export default function Security() {
           })
         }
       />
+      <Section title="Two-factor authentication">
+        <Row
+          title="Status"
+          value={
+            twoFactor.data ? (twoFactor.data.enabled ? "On" : "Off") : "—"
+          }
+        />
+        <WebRow
+          title="Manage two-factor"
+          path="/settings/account"
+          detail="Set up or turn off an authenticator app in your browser."
+        />
+      </Section>
     </SettingsPage>
   );
 }

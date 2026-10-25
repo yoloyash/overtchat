@@ -11,6 +11,9 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "public/openui/**",
+    "test-results/**",
+    "playwright-report/**",
     "next-env.d.ts",
     // Gitignored local-only tooling dirs — never lint these.
     ".gemini/**",

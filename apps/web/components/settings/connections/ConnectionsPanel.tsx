@@ -55,6 +55,8 @@ import {
   SettingsPageHeader,
   SettingsSection,
 } from "../SettingsRows";
+import { AgentWorktreeRemovalDetails } from "@/components/agents/AgentWorktreeRemovalDetails";
+import { useAgentWorktreeInspection } from "@/lib/queries/agentWorkspaces";
 import { AddAgentWorkspaceDialog } from "./AddAgentWorkspaceDialog";
 
 type PendingDetach =
@@ -161,6 +163,15 @@ export function ConnectionsPanel({
     await navigator.clipboard.writeText(connector.upgrade.command);
     setUpgradeCopied(true);
   }
+
+  const pendingWorktree =
+    pendingDetach?.type === "workspace-group"
+      ? (pendingDetach.group.targets.find(
+          ({ workspace }) => workspace.worktreeParentPath,
+        )?.workspace ?? null)
+      : null;
+  // Removal waits until the dialog can say what would be lost.
+  const worktreeInspection = useAgentWorktreeInspection(pendingWorktree?.id ?? "");
 
   function setAddDialogOpen(open: boolean) {
     setAddOpen(open);
@@ -334,7 +345,8 @@ export function ConnectionsPanel({
               <HostConnectorInfo />
             </div>
             <p className="mb-3 text-xs text-muted-foreground">
-              Run this command in a terminal on the computer running OvertChat.
+              Run this command in a terminal on the computer with your coding agents
+              and projects. It can be a different computer from the server.
             </p>
             <div className="flex items-center gap-2">
               <code
@@ -444,7 +456,9 @@ export function ConnectionsPanel({
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               {pendingDetach?.type === "workspace-group"
-                ? "Remove workspace?"
+                ? pendingWorktree
+                  ? "Remove worktree?"
+                  : "Remove workspace?"
                 : "Remove Host Connector?"}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
@@ -456,6 +470,11 @@ export function ConnectionsPanel({
                   and every agent that uses it will be removed from OvertChat.
                   Files and native agent sessions remain on their machines.
                 </>
+              ) : pendingWorktree && pendingDetach?.type === "workspace-group" ? (
+                <AgentWorktreeRemovalDetails
+                  workspaceId={pendingWorktree.id}
+                  name={pendingDetach.group.name}
+                />
               ) : pendingDetach?.type === "workspace-group" ? (
                 <>
                   <span className="font-medium text-foreground">
@@ -482,7 +501,7 @@ export function ConnectionsPanel({
               <Button
                 variant="destructive"
                 size="sm"
-                disabled={detaching}
+                disabled={detaching || worktreeInspection.isLoading}
                 onClick={() => void confirmDetach()}
               >
                 {detaching && (
@@ -532,8 +551,9 @@ function HostConnectorInfo() {
               Host Connector
             </Popover.Title>
             <p className="mt-1 text-muted-foreground">
-              Lets OvertChat use agent binaries and SSH hosts available on this
-              server. For Docker installs, run it on the Docker host.
+              Lets OvertChat use the agent binaries, projects, and SSH hosts on
+              the computer where it runs: this server or your own computer. It
+              only makes outbound connections to OvertChat.
             </p>
             <a
               href="https://github.com/yoloyash/overtchat/blob/main/scripts/install-connector.sh"

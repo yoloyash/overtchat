@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 type Deferred = {
   promise: Promise<void>;
@@ -141,7 +141,7 @@ function seedModel() {
 }
 
 test("new chats submit without crypto.randomUUID on HTTP origins", async ({ page }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("HTTP Chat Tester");
   await page.locator("#email").fill("http-chat@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -182,7 +182,7 @@ test("new chats submit without crypto.randomUUID on HTTP origins", async ({ page
 test("a new chat keeps streaming when its URL moves to the saved chat", async ({
   page,
 }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Draft Handoff Tester");
   await page.locator("#email").fill("draft-handoff@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -225,7 +225,7 @@ test("a new chat keeps streaming when its URL moves to the saved chat", async ({
 test("sidebar tracks generation after leaving the active chat", async ({
   page,
 }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Sidebar Generation Tester");
   await page.locator("#email").fill("sidebar-generation@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -271,7 +271,7 @@ test("sidebar tracks generation after leaving the active chat", async ({
 test("reload resumes an active chat stream through Redis", async ({ page }) => {
   test.skip(!process.env.REDIS_URL, "REDIS_URL is required for resumption.");
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Resumption Tester");
   await page
     .locator("#email")
@@ -311,7 +311,7 @@ test("network restoration reconciles the same generation without restarting it",
 }) => {
   test.skip(!process.env.REDIS_URL, "REDIS_URL is required for resumption.");
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Foreground Tester");
   await page.locator("#email").fill("foreground@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { OpenUIAction } from "@overtchat/shared";
+
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,14 +13,13 @@ import {
   modelSupportsToolCalling,
   imageOptionsFromMetadata,
   type ImageGenerationOptions,
-  type ChatKind,
   type ChatReasoningLevel,
   type ChatRequestAction,
-  type VoiceHistoryItem,
 } from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useOptionalProject } from "@/lib/queries/projects";
 import {
   activityKeys,
   chatKeys,
@@ -39,6 +40,8 @@ import { motionClasses } from "@/lib/motion";
 import {
   DEFAULT_WEB_SEARCH_ENABLED,
   WEB_SEARCH_ENABLED_STORAGE_KEY,
+  DEFAULT_OPENUI_ENABLED,
+  OPENUI_ENABLED_STORAGE_KEY,
 } from "@/lib/tool-preferences";
 import { authClient } from "@/lib/auth/client";
 import {
@@ -47,11 +50,12 @@ import {
   writeStoredMessageStats,
   type StoredMessageStats,
 } from "@/lib/chat/stats";
-import { messagesForChatRequest } from "@/lib/chat/history";
+import {
+  CHAT_MESSAGE_MAX_PAGE_SIZE,
+  messagesForChatRequest,
+} from "@/lib/chat/history";
 import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
-import { stripCitationMarkers } from "@/lib/citations";
-import { voiceHistoryToUiMessages } from "@/lib/voice/history";
 import {
   CONTEXT_METER_STORAGE_KEY,
   DEFAULT_CONTEXT_METER_ENABLED,
@@ -89,7 +93,6 @@ import {
   RealtimeVoiceSession,
   type RealtimeVoiceSessionHandle,
 } from "./RealtimeVoiceSession";
-import type { VoiceTranscriptUpdate } from "@/lib/voice/client";
 import { apiUrl } from "@/lib/api-url";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
@@ -101,7 +104,6 @@ function shouldAutofocusComposer() {
 
 interface Props {
   chatId: string;
-  chatKind?: ChatKind;
   initialMessages?: UIMessage[];
   initialMessageCursor?: string | null;
   initialModelId?: string | null;
@@ -110,11 +112,15 @@ interface Props {
   initialQuery?: string;
   /** Called once when a new chat is first saved, so its URL can move to `/chat/:id`. */
   onPersisted?: () => void;
+  /** Replaces the new-chat greeting, for example with a project's home page. */
+  renderEmptyState?: (
+    composer: ReactNode,
+    actions: { selectModel: (id: string) => void },
+  ) => ReactNode;
 }
 
 export function ChatArea({
   chatId,
-  chatKind,
   initialMessages,
   initialMessageCursor,
   initialModelId,
@@ -122,15 +128,21 @@ export function ChatArea({
   projectId,
   initialQuery,
   onPersisted,
+  renderEmptyState,
 }: Props) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { openPalette } = useSidebar();
   const { data: chats } = useChats();
+  const { data: project } = useOptionalProject(projectId);
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : (modelsData ?? null);
-  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
+  const [selectedId, setSelectedId] = useSelectedModel(
+    models,
+    initialModelId,
+    projectId,
+  );
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
   const modelLoading = models === null || (models.length > 0 && !selectedId);
@@ -159,14 +171,18 @@ export function ChatArea({
     : "Web search is unavailable for this model";
 
   const [searchRequested, setSearchRequested] = useState(false);
+  const [openuiEnabled] = useLocalStorage<boolean>(
+    OPENUI_ENABLED_STORAGE_KEY,
+    DEFAULT_OPENUI_ENABLED,
+  );
+  const openuiAvailable = modelSupportsSearch;
+  const openuiUnavailableReason = "Interactive UI is unavailable for this model";
+  const [openuiRequested, setOpenuiRequested] = useState(false);
   const { data: capabilitiesData } = usePublicCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
   const imageAvailable = Boolean(imageCapability?.available && modelSupportsSearch);
   const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
   const voiceCapability = capabilitiesData?.capabilities.voice;
-  const [resolvedChatKind, setResolvedChatKind] = useState<ChatKind | null>(
-    chatKind ?? null,
-  );
   const [voiceActive, setVoiceActive] = useState(false);
   const [messageStatsEnabled] = useLocalStorage<boolean>(
     MESSAGE_STATS_STORAGE_KEY,
@@ -358,7 +374,7 @@ export function ChatArea({
   const generation = useChatGenerationRecovery({
     chatId,
     temporary,
-    enabled: !temporary && chatPersisted,
+    enabled: !temporary && chatPersisted && !voiceActive,
     status,
     recoverOnMount: !isNew,
     stopLocalStream: stop,
@@ -375,28 +391,53 @@ export function ChatArea({
     isPending: loadingOlderMessages,
   } = useLoadOlderChatMessages(chatId);
   const loadingOlderMessagesRef = useRef(false);
-  const handleLoadOlderMessages = useCallback(async () => {
+  // Set when the whole history is wanted, including while a single page is
+  // already loading, so that load carries on to the end.
+  const loadAllOlderMessagesRef = useRef(false);
+  const [olderMessagesFailed, setOlderMessagesFailed] = useState(false);
+  const loadOlderPages = useCallback(async (all: boolean) => {
+    if (all) loadAllOlderMessagesRef.current = true;
     if (!olderMessageCursor || loadingOlderMessagesRef.current) return;
     loadingOlderMessagesRef.current = true;
+    setOlderMessagesFailed(false);
+    let cursor: string | null = olderMessageCursor;
     try {
-      const page = await loadOlderMessages(olderMessageCursor);
-      setMessages((current) => {
-        const currentIds = new Set(current.map(({ id }) => id));
-        return [
-          ...page.messages.filter(({ id }) => !currentIds.has(id)),
-          ...current,
-        ];
-      });
-      setOlderMessageCursor(page.nextCursor);
+      do {
+        const page = await loadOlderMessages({
+          cursor,
+          limit: loadAllOlderMessagesRef.current
+            ? CHAT_MESSAGE_MAX_PAGE_SIZE
+            : undefined,
+        });
+        setMessages((current) => {
+          const currentIds = new Set(current.map(({ id }) => id));
+          return [
+            ...page.messages.filter(({ id }) => !currentIds.has(id)),
+            ...current,
+          ];
+        });
+        setOlderMessageCursor(page.nextCursor);
+        cursor = page.nextCursor;
+      } while (loadAllOlderMessagesRef.current && cursor);
     } catch {
+      setOlderMessagesFailed(true);
       toast.error({
         title: "Could not load older messages",
         description: "Check your connection and try again.",
       });
     } finally {
       loadingOlderMessagesRef.current = false;
+      loadAllOlderMessagesRef.current = false;
     }
   }, [loadOlderMessages, olderMessageCursor, setMessages]);
+  const handleLoadOlderMessages = useCallback(
+    () => loadOlderPages(false),
+    [loadOlderPages],
+  );
+  const handleLoadAllOlderMessages = useCallback(
+    () => loadOlderPages(true),
+    [loadOlderPages],
+  );
 
   const speech = useSpeech();
   const { data: session } = authClient.useSession();
@@ -409,11 +450,19 @@ export function ChatArea({
     !onboardingDismissed &&
     models?.length === 0;
 
-  const requestBody = (action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) => ({
+  const requestBody = (
+    action: ChatRequestAction,
+    forceSearch = false,
+    imageRequest?: ImageGenerationOptions,
+    forceOpenUI = false,
+  ) => ({
     ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
     modelConfigId: selectedId,
     webSearchEnabled,
     forceSearch: searchAvailable && forceSearch,
+    openuiSupported: true,
+    openuiEnabled,
+    forceOpenUI: openuiAvailable && forceOpenUI,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
     clientRequestId: generateId(),
@@ -459,7 +508,7 @@ export function ChatArea({
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
-    if (resolvedChatKind === "voice" || voiceActive) return;
+    if (voiceActive) return;
     if (!hasDataTransferFiles(e.dataTransfer)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -495,10 +544,14 @@ export function ChatArea({
     }
   }, [chatId, qc]);
 
-  function handleSubmit(text: string, attachments: FileUIPart[]) {
+  function handleSubmit(
+    text: string,
+    attachments: FileUIPart[],
+    openuiAction?: OpenUIAction,
+  ) {
     if (
       !voiceActive &&
-      resolvedChatKind !== "voice" &&
+      !openuiAction &&
       text.trim().toLowerCase() === "/compact" &&
       attachments.length === 0
     ) {
@@ -506,10 +559,8 @@ export function ChatArea({
       return;
     }
     if (voiceActive) {
-      voiceSessionRef.current?.sendMessage(text);
-      return;
+      return voiceSessionRef.current?.sendMessage(text) ?? false;
     }
-    if (resolvedChatKind === "voice") return;
     setInferenceActivity(null);
     setContextStatus(null);
     const wasNew = !temporary && markNewChatPersisted();
@@ -532,10 +583,21 @@ export function ChatArea({
       id: generateId(),
       text,
       files: attachments,
-      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+      body: {
+        ...requestBody(
+          { type: "submit" },
+          openuiAction ? false : searchRequested,
+          openuiAction ? undefined : imageOptions,
+          !openuiAction && openuiRequested,
+        ),
+        ...(openuiAction ? { openuiAction } : {}),
+      },
     });
-    setSearchRequested(false);
-    setImageOptions(undefined);
+    if (!openuiAction) {
+      setSearchRequested(false);
+      setOpenuiRequested(false);
+      setImageOptions(undefined);
+    }
   }
 
   const initialQueryFiredRef = useRef(false);
@@ -614,7 +676,16 @@ export function ChatArea({
   // A per-message search request is scoped to the model that supports it, so
   // switching models drops it.
   function handleSelectModel(modelId: string) {
+    if (voiceActive) {
+      void endVoice().then((ended) => { if (ended) handleSelectModelAfterVoice(modelId); });
+      return;
+    }
+    handleSelectModelAfterVoice(modelId);
+  }
+
+  function handleSelectModelAfterVoice(modelId: string) {
     setSearchRequested(false);
+    setOpenuiRequested(false);
     setImageOptions(undefined);
     setSelectedId(modelId);
   }
@@ -642,49 +713,35 @@ export function ChatArea({
     [setMessages],
   );
 
-  const handleVoiceTranscript = useCallback(
-    (update: VoiceTranscriptUpdate) => {
-      const text = stripCitationMarkers(update.text).trim();
-      if (!text) return;
-      mergeVoiceMessages([
-        {
-          id: `voice:${chatId}:${update.id}`,
-          role: update.role,
-          parts: [{ type: "text", text }],
-        },
-      ]);
-    },
-    [chatId, mergeVoiceMessages],
-  );
+  const handleVoicePersisted = useCallback(() => {
+    setChatPersisted(true);
+    markNewChatPersisted();
+    void Promise.all([
+      qc.invalidateQueries({ queryKey: chatKeys.list() }),
+      qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
+      qc.invalidateQueries({ queryKey: activityKeys.all() }),
+    ]);
+  }, [chatId, markNewChatPersisted, qc]);
 
-  const handleVoiceHistory = useCallback(
-    (items: VoiceHistoryItem[]) => {
-      mergeVoiceMessages(voiceHistoryToUiMessages(chatId, items));
-    },
-    [chatId, mergeVoiceMessages],
-  );
-
-  const handleVoicePersisted = useCallback(
-    (chat: ChatListItem) => {
-      setResolvedChatKind("voice");
-      setChatPersisted(true);
-      markNewChatPersisted();
-      qc.setQueryData<ChatListItem[]>(chatKeys.list(), (current) => {
-        const withoutChat = (current ?? []).filter((item) => item.id !== chat.id);
-        return [chat, ...withoutChat];
-      });
-      void Promise.all([
-        qc.invalidateQueries({ queryKey: chatKeys.list() }),
-        qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
-        qc.invalidateQueries({ queryKey: activityKeys.all() }),
-      ]);
-    },
-    [chatId, markNewChatPersisted, qc],
-  );
+  const [voiceEnding, setVoiceEnding] = useState(false);
+  async function endVoice() {
+    if (voiceEnding) return;
+    setVoiceEnding(true);
+    try {
+      await voiceSessionRef.current?.end();
+      setVoiceActive(false);
+      return true;
+    } catch (error) {
+      toast.error({ title: "Could not end voice", description: error instanceof Error ? error.message : "Try again." });
+      return false;
+    } finally { setVoiceEnding(false); }
+  }
 
   // Temporary mode is only switchable before the first message, matching the
   // header toggle's visibility rule.
-  const canToggleTemporary = Boolean(isNew) && messages.length === 0;
+  const canToggleTemporary =
+    Boolean(isNew) && messages.length === 0 && !voiceActive && !renderEmptyState;
+  const showEmptyState = messages.length === 0 && !voiceActive;
   let contextUsage: { usedTokens: number; contextWindow?: number } | undefined;
   if (contextMeterEnabled) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -709,12 +766,22 @@ export function ChatArea({
       ref={composerRef}
       configured={configured}
       streaming={streaming}
-      searchAvailable={searchAvailable}
-      searchUnavailableReason={searchUnavailableReason}
-      searchRequested={searchAvailable && searchRequested}
+      searchAvailable={searchAvailable && !voiceActive}
+      searchUnavailableReason={voiceActive
+        ? "End voice to require a web search. Voice can still search automatically."
+        : searchUnavailableReason}
+      searchRequested={searchAvailable && !voiceActive && searchRequested}
+      openuiAvailable={openuiAvailable && !voiceActive}
+      openuiUnavailableReason={
+        voiceActive
+          ? "End voice to request an interactive UI."
+          : openuiUnavailableReason
+      }
+      openuiRequested={openuiAvailable && !voiceActive && openuiRequested}
       imageAvailable={imageAvailable}
       imageModel={imageCapability?.model}
       imageSupportsQuality={imageCapability?.supportsQuality}
+      imageConfiguredSize={imageCapability?.configuredSize}
       imageOptions={imageAvailable ? imageOptions : undefined}
       onImageOptions={setImageOptions}
       dropActive={dropActive}
@@ -723,10 +790,7 @@ export function ChatArea({
       reasoningControls={reasoningControls}
       reasoningLevel={reasoningLevel}
       voiceInstalled={voiceCapability?.installed ?? false}
-      voiceEligible={
-        resolvedChatKind === "voice" ||
-        (Boolean(isNew) && messages.length === 0 && !temporary)
-      }
+      voiceEligible={!temporary}
       voiceAvailable={Boolean(voiceCapability?.available && configured)}
       voiceActive={voiceActive}
       voiceUnavailableReason={
@@ -742,11 +806,11 @@ export function ChatArea({
                 ? "Voice authentication is not configured"
                 : "Realtime voice is unavailable"
       }
-      attachmentsEnabled={resolvedChatKind !== "voice" && !voiceActive}
-      textInputDisabled={resolvedChatKind === "voice" && !voiceActive}
+      attachmentsEnabled={!voiceActive}
+      textInputDisabled={voiceEnding}
       commandActions={{
         compact:
-          resolvedChatKind !== "voice" && !voiceActive
+          !voiceActive
             ? {
                 onCompact: handleCompact,
                 unavailableReason: streaming
@@ -768,17 +832,25 @@ export function ChatArea({
         onOpenSettings: () => void navigate({ to: "/settings" }),
         onSelectModel: handleSelectModel,
       }}
-      onSelectReasoningLevel={(level) =>
-        setReasoningLevels({ ...reasoningLevels, [selectedId]: level })
-      }
+      onSelectReasoningLevel={(level) => {
+        if (voiceActive) void endVoice().then((ended) => {
+          if (ended) setReasoningLevels({ ...reasoningLevels, [selectedId]: level });
+        });
+        else setReasoningLevels({ ...reasoningLevels, [selectedId]: level });
+      }}
       onToggleSearch={() => {
-        if (searchAvailable) setSearchRequested((selected) => !selected);
+        if (searchAvailable && !voiceActive) setSearchRequested((selected) => !selected);
+      }}
+      onToggleOpenUI={() => {
+        if (openuiAvailable && !voiceActive) {
+          setOpenuiRequested((selected) => !selected);
+        }
       }}
       chatQueue={chatQueue}
       onSubmit={handleSubmit}
       onStop={handleStop}
       onStartVoice={() => setVoiceActive(true)}
-      onEndVoice={() => setVoiceActive(false)}
+      onEndVoice={() => void endVoice()}
       onBeforeDictate={() => speech.stop()}
       isAdmin={isAdmin}
       draftUserId={session?.user.id}
@@ -796,7 +868,14 @@ export function ChatArea({
       onDrop={handleDrop}
     >
       <ChatHeader
+        shareChatId={chatPersisted && !temporary ? chatId : undefined}
+        sharingDisabled={streaming || voiceActive}
         title={headerTitle}
+        project={
+          project && !(renderEmptyState && showEmptyState)
+            ? { id: project.id, name: project.name }
+            : undefined
+        }
         contextUsage={contextUsage}
         sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}
@@ -824,7 +903,9 @@ export function ChatArea({
         </div>
       )}
 
-      {messages.length === 0 && !voiceActive ? (
+      {showEmptyState && renderEmptyState && !showOnboarding ? (
+        renderEmptyState(composer, { selectModel: handleSelectModel })
+      ) : showEmptyState ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {showOnboarding ? (
             <AdminOnboardingCard
@@ -860,19 +941,26 @@ export function ChatArea({
             inferenceActivity={inferenceActivity}
             contextStatus={contextStatus}
             error={error}
-            configured={configured && resolvedChatKind !== "voice"}
+            configured={configured && !voiceActive}
             speech={speech}
             showStats={messageStatsEnabled}
             storedStats={storedStats}
             hasOlderMessages={olderMessageCursor !== null}
             loadingOlderMessages={loadingOlderMessages}
+            olderMessagesFailed={olderMessagesFailed}
             onLoadOlderMessages={handleLoadOlderMessages}
+            onLoadAllOlderMessages={handleLoadAllOlderMessages}
             onRegenerate={handleRegenerate}
-            onContinue={resolvedChatKind === "voice" ? undefined : handleContinue}
-                onImageReference={imageAvailable ? (file) => {
+            onContinue={voiceActive ? undefined : handleContinue}
+                onImageReference={imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
                   composerRef.current?.addReference(file);
                   setImageOptions({ size: "auto", quality: "auto" });
                 } : undefined}
+            onOpenUIAction={
+              !voiceActive && configured && !streaming && chatQueue.messages.length === 0
+                ? (action) => handleSubmit(action.message, [], action)
+                : undefined
+            }
             onEdit={handleEdit}
             onReconnect={handleReconnect}
           />
@@ -887,8 +975,8 @@ export function ChatArea({
                   modelConfigId={selectedId}
                   modelLabel={selectedModel.label}
                   webSearchEnabled={searchAvailable}
-                  onTranscript={handleVoiceTranscript}
-                  onHistoryItems={handleVoiceHistory}
+                  reasoningLevel={reasoningLevel}
+                  onMessages={mergeVoiceMessages}
                   onPersisted={handleVoicePersisted}
                 />
               )}

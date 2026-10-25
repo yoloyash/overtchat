@@ -7,7 +7,7 @@ import {
   primaryKey,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { UIMessagePart, UIDataTypes, UITools } from "ai";
+import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import {
   CHAT_GENERATION_STATUSES,
   CHAT_KINDS,
@@ -20,7 +20,14 @@ import {
   PROVIDER_IDS,
 } from "@/lib/providers/catalog";
 import type { ModelPricing } from "@/lib/model-config/schema";
+import type { ReasoningOverride } from "@/lib/model-config/reasoning-override";
 import type { McpServerConfig } from "@/lib/mcp/schema";
+
+// One durable bootstrap record. A null nonce means setup is permanently closed.
+export const initialSetup = sqliteTable("initial_setup", {
+  id: integer("id").primaryKey(),
+  nonce: text("nonce"),
+});
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -41,7 +48,31 @@ export const user = sqliteTable("user", {
   banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("ban_reason"),
   banExpires: integer("ban_expires", { mode: "timestamp_ms" }),
+  twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" }).default(
+    false,
+  ),
 });
+
+// Better Auth's twoFactor plugin. The secret and backup codes are encrypted
+// with BETTER_AUTH_SECRET; `verified` stays false until the first code checks.
+export const twoFactor = sqliteTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verified: integer("verified", { mode: "boolean" }).default(true),
+    failedVerificationCount: integer("failed_verification_count").default(0),
+    lockedUntil: integer("locked_until", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("twoFactor_secret_idx").on(table.secret),
+    index("twoFactor_userId_idx").on(table.userId),
+  ],
+);
 
 export const session = sqliteTable(
   "session",
@@ -142,6 +173,10 @@ export const projects = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     instructions: text("instructions"),
+    defaultModelConfigId: text("default_model_config_id").references(
+      () => modelConfigs.id,
+      { onDelete: "set null" },
+    ),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -309,6 +344,8 @@ export const agentWorkspaces = sqliteTable(
       .references(() => agentConnections.id, { onDelete: "cascade" }),
     path: text("path").notNull(),
     name: text("name").notNull(),
+    /** Path of the workspace this Git worktree was created from, on the same host. */
+    worktreeParentPath: text("worktree_parent_path"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -763,6 +800,9 @@ export const modelConfigs = sqliteTable(
     discoveredCapabilities: text("discovered_capabilities", {
       mode: "json",
     }).$type<ModelCapabilities>(),
+    reasoningOverride: text("reasoning_override", {
+      mode: "json",
+    }).$type<ReasoningOverride>(),
     systemPrompt: text("system_prompt"),
     providerOptions: text("provider_options", { mode: "json" }).$type<
       Record<string, unknown>
@@ -855,3 +895,33 @@ export const serverCapabilities = sqliteTable("server_capabilities", {
     .$onUpdate(() => new Date())
     .notNull(),
 });
+
+// A voice connection leases a chat; messages and generations use the ordinary
+// chat tables. No chat FK: starting the microphone must not create an empty chat.
+export const voiceSessions = sqliteTable("voice_sessions", {
+  chatId: text("chat_id").primaryKey(),
+  id: text("id").notNull().unique(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  authSessionId: text("auth_session_id").notNull().references(() => session.id, { onDelete: "cascade" }),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+// Frozen UIMessage snapshots: edits and later turns never change a public link.
+export const chatShares = sqliteTable("chat_shares", {
+  id: text("id").primaryKey(),
+  chatId: text("chat_id").notNull().unique().references(() => chats.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  messages: text("messages", { mode: "json" }).$type<UIMessage[]>().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [index("chat_shares_user_idx").on(table.userId)]);
+
+// Keeps immutable uploads alive even after editing them out of the source chat.
+export const chatShareUploads = sqliteTable("chat_share_uploads", {
+  shareId: text("share_id").notNull().references(() => chatShares.id, { onDelete: "cascade" }),
+  uploadId: text("upload_id").notNull().references(() => uploads.id, { onDelete: "cascade" }),
+}, (table) => [
+  primaryKey({ columns: [table.shareId, table.uploadId] }),
+  index("chat_share_uploads_upload_idx").on(table.uploadId),
+]);

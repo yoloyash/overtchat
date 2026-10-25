@@ -1,4 +1,5 @@
 import "server-only";
+import { readOpenUIAction } from "@overtchat/shared";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
@@ -88,15 +89,28 @@ function writeChats(
       })
       .run();
 
+    const messageIds = new Map<string, string>();
     for (const msg of chat.messages) {
-      const msgId = crypto.randomUUID();
+      if (!msg.sourceId) continue;
+      if (messageIds.has(msg.sourceId)) throw new ImportError("Duplicate message IDs in imported chat.");
+      messageIds.set(msg.sourceId, crypto.randomUUID());
+    }
+    for (const msg of chat.messages) {
+      const msgId = (msg.sourceId && messageIds.get(msg.sourceId)) || crypto.randomUUID();
+      const metadata = { ...msg.metadata };
+      const action = readOpenUIAction(metadata.openuiAction);
+      if (action && messageIds.has(action.messageId)) {
+        metadata.openuiAction = { ...action, messageId: messageIds.get(action.messageId)! };
+      } else {
+        delete metadata.openuiAction;
+      }
       tx.insert(messages)
         .values({
           id: msgId,
           chatId,
           role: msg.role,
           parts: msg.parts,
-          metadata: msg.metadata,
+          metadata: msg.metadata ? metadata : undefined,
           createdAt: msg.createdAt,
         })
         .run();

@@ -11,6 +11,13 @@ export const chatKeys = {
   usage: (id: string) => [...chatKeys.detail(id), "usage"] as const,
 };
 
+export const shareKeys = {
+  all: () => ["shares"] as const,
+  chat: (id: string) => [...shareKeys.all(), "chat", id] as const,
+  preview: (id: string) => [...shareKeys.all(), "preview", id] as const,
+  public: (id: string) => ["publicShare", id] as const,
+};
+
 export const projectKeys = {
   all: () => ["projects"] as const,
   list: () => [...projectKeys.all(), "list"] as const,
@@ -75,6 +82,10 @@ export const agentWorkspaceKeys = {
   all: () => ["agentWorkspaces"] as const,
   gitStatus: (id: string) =>
     [...agentWorkspaceKeys.all(), "gitStatus", id] as const,
+  gitBranches: (id: string) =>
+    [...agentWorkspaceKeys.all(), "gitBranches", id] as const,
+  worktree: (id: string) =>
+    [...agentWorkspaceKeys.all(), "worktree", id] as const,
   directories: (id: string) =>
     [...agentWorkspaceKeys.all(), "directory", id] as const,
   directory: (id: string, path: string) =>
@@ -137,4 +148,5 @@ export const appUpdateKeys = {
 export const authKeys = {
   all: () => ["auth"] as const,
   session: () => [...authKeys.all(), "session"] as const,
+  twoFactor: () => [...authKeys.all(), "two-factor"] as const,
 };

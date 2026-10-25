@@ -31,6 +31,7 @@ function profileList(config: InstallationConfig): string[] {
     );
   }
   if (config.voice.installed) profiles.push("voice");
+  if (config.access?.mode === "cloud" && config.access.cloud) profiles.push("cloud");
   return profiles;
 }
 
@@ -42,6 +43,23 @@ function capabilityUrl(
   if (provider === "bundled") return bundledUrl;
   if (provider === "disabled") return "";
   return configuredUrl ?? "";
+}
+
+function cloudEnvironment(
+  config: InstallationConfig,
+  secrets: InstallationSecrets,
+): Array<[string, string | number]> {
+  const cloud = config.access?.mode === "cloud" ? config.access.cloud : undefined;
+  return [
+    ["OVERTCHAT_CLOUD_HOSTNAME", cloud?.hostname ?? ""],
+    ["OVERTCHAT_CLOUD_NAME", cloud?.hostname.split(".")[0] ?? ""],
+    ["OVERTCHAT_CLOUD_RELAY_HOST", cloud?.relayHost ?? ""],
+    ["OVERTCHAT_CLOUD_RELAY_PORT", cloud?.relayPort ?? ""],
+    ["OVERTCHAT_CLOUD_RELAY_SERVER_NAME", cloud?.relayServerName ?? ""],
+    ["OVERTCHAT_CLOUD_CREDENTIAL", cloud ? secrets.cloudCredential : ""],
+    // A public address makes administrator accounts reachable from anywhere.
+    ["OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR", cloud ? "true" : "false"],
+  ];
 }
 
 export function renderStackEnvironment(
@@ -132,6 +150,10 @@ export function renderStackEnvironment(
     ],
     ["STT_MODEL", config.stt.model ?? "parakeet-tdt-0.6b-v3"],
     ["STT_GPU_DEVICE_ID", config.stt.gpuUuid ?? "0"],
+    ["OVERTCHAT_CLOUD_TUNNEL_IMAGE", config.cloudTunnelImage],
+    ["OVERTCHAT_CLOUD_PROXY_IMAGE", config.cloudProxyImage],
+    ["OVERTCHAT_CLOUD_DIR", paths.cloudDirectory],
+    ...cloudEnvironment(config, secrets),
   ];
   return `${values
     .map(([key, value]) => `${key}=${envValue(String(value))}`)
@@ -168,6 +190,7 @@ services:
       EXTRA_TRUSTED_ORIGINS: \${EXTRA_TRUSTED_ORIGINS:-}
       HOST_CONNECTOR_URL: \${HOST_CONNECTOR_URL}
       DISABLE_UPDATE_CHECK: \${DISABLE_UPDATE_CHECK:-false}
+      OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR: \${OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR:-false}
       OVERTCHAT_MANAGEMENT_SECRET: \${OVERTCHAT_MANAGEMENT_SECRET}
       OVERTCHAT_INSTALLED_CAPABILITIES: \${OVERTCHAT_INSTALLED_CAPABILITIES:-}
       VOICE_SHARED_SECRET: \${VOICE_SHARED_SECRET}
@@ -286,6 +309,40 @@ ${appDataMount}
               device_ids: ["\${TTS_GPU_DEVICE_ID}"]
               capabilities: [gpu]
 
+  # OvertChat Cloud: the tunnel forwards visitor TLS from the relay, unopened,
+  # to the proxy, which holds this installation's certificate.
+  cloud-tunnel:
+    image: \${OVERTCHAT_CLOUD_TUNNEL_IMAGE}
+    container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-cloud-tunnel
+    restart: unless-stopped
+    profiles: [cloud]
+    command: [-c, /etc/overtchat-cloud/frpc.toml]
+    environment:
+      OVERTCHAT_CLOUD_NAME: \${OVERTCHAT_CLOUD_NAME:-}
+      OVERTCHAT_CLOUD_CREDENTIAL: \${OVERTCHAT_CLOUD_CREDENTIAL:-}
+      OVERTCHAT_CLOUD_RELAY_HOST: \${OVERTCHAT_CLOUD_RELAY_HOST:-}
+      OVERTCHAT_CLOUD_RELAY_PORT: \${OVERTCHAT_CLOUD_RELAY_PORT:-}
+      OVERTCHAT_CLOUD_RELAY_SERVER_NAME: \${OVERTCHAT_CLOUD_RELAY_SERVER_NAME:-}
+    volumes:
+      - \${OVERTCHAT_CLOUD_DIR}:/etc/overtchat-cloud:ro
+
+  cloud-proxy:
+    image: \${OVERTCHAT_CLOUD_PROXY_IMAGE}
+    container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-cloud-proxy
+    restart: unless-stopped
+    profiles: [cloud]
+    environment:
+      OVERTCHAT_CLOUD_HOSTNAME: \${OVERTCHAT_CLOUD_HOSTNAME:-}
+    volumes:
+      - \${OVERTCHAT_CLOUD_DIR}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - overtchat-cloud-certificates:/data
+    # Start after the tunnel so the first certificate challenge can reach it.
+    depends_on:
+      cloud-tunnel:
+        condition: service_started
+      app:
+        condition: service_started
+
   stt-cpu:
     image: ghcr.io/yoloyash/overtchat-stt-cpu:\${STT_VERSION}
     container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-stt-cpu
@@ -317,10 +374,69 @@ ${appDataMount}
 
 volumes:
 ${appDataVolume}  overtchat-npm-cache:
+  overtchat-cloud-certificates:
   overtchat-stt-models:
     name: overtchat-stt-models
 `;
 }
+
+// frpc and Caddy read the installation's values from their environment, so
+// these files only change with the OvertChat release.
+export const CLOUD_TUNNEL_CONFIG = `# Managed by overtchat setup: connects this installation to OvertChat Cloud.
+serverAddr = "{{ .Envs.OVERTCHAT_CLOUD_RELAY_HOST }}"
+serverPort = {{ .Envs.OVERTCHAT_CLOUD_RELAY_PORT }}
+loginFailExit = false
+# Required by frp; the relay authorizes the credential below instead.
+auth.token = "overtchat"
+# The relay requires the user to be this installation's name.
+user = "{{ .Envs.OVERTCHAT_CLOUD_NAME }}"
+metadatas.credential = "{{ .Envs.OVERTCHAT_CLOUD_CREDENTIAL }}"
+
+# frp turns heartbeats off when multiplexing; the relay rejects them to
+# disconnect a server that was unlinked, which frees its name.
+transport.heartbeatInterval = 30
+
+# The tunnel shares the relay's HTTPS port and pins the relay's own CA.
+transport.tls.disableCustomTLSFirstByte = false
+transport.tls.trustedCaFile = "/etc/overtchat-cloud/relay-ca.pem"
+transport.tls.serverName = "{{ .Envs.OVERTCHAT_CLOUD_RELAY_SERVER_NAME }}"
+
+[[proxies]]
+name = "overtchat"
+type = "https"
+subdomain = "{{ .Envs.OVERTCHAT_CLOUD_NAME }}"
+localIP = "cloud-proxy"
+localPort = 443
+transport.proxyProtocolVersion = "v2"
+`;
+
+export const CLOUD_PROXY_CONFIG = `# Managed by overtchat setup: HTTPS for OvertChat Cloud visitors.
+{
+	auto_https disable_redirects
+	servers {
+		listener_wrappers {
+			# Only the tunnel reaches this port. It sends each visitor's address in a
+			# PROXY header, which Caddy passes on as X-Forwarded-For.
+			proxy_protocol {
+				allow 0.0.0.0/0 ::/0
+			}
+			tls
+		}
+	}
+}
+
+https://{$OVERTCHAT_CLOUD_HOSTNAME} {
+	# The certificate is issued through the relay with TLS-ALPN-01.
+	tls {
+		issuer acme {
+			# Set only by tests, to use a staging or local ACME server.
+			dir {$OVERTCHAT_CLOUD_ACME_DIRECTORY:https://acme-v02.api.letsencrypt.org/directory}
+			disable_http_challenge
+		}
+	}
+	reverse_proxy app:4717
+}
+`;
 
 export const SEARXNG_SETTINGS = `use_default_settings: true
 

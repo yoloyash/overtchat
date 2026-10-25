@@ -93,3 +93,8 @@ export function reportPendingAgentConnections(config: InstallationConfig): void 
     installationLogHint(),
   ].filter(Boolean).join("\n"), "Completed with a warning");
 }
+
+export function assertAgentConnectionsComplete(config: InstallationConfig, interactive: boolean): void {
+  if (!interactive && config.agents.installed && config.agents.pending)
+    throw new Error("OvertChat is running, but Agent Connections failed. Run overtchat setup or update to retry; see overtchat logs install.");
+}

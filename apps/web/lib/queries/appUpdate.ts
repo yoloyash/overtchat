@@ -10,6 +10,8 @@ export type AppUpdateStatus = {
   currentVersion: string;
   latestVersion: string | null;
   updateAvailable: boolean;
+  /** Absent from servers that predate plain Compose installs. */
+  updateMethod?: "overtchat" | "compose";
 };
 
 export function useAppUpdate(enabled: boolean) {

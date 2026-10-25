@@ -2,7 +2,10 @@ export const queryKeys = {
   chatUsage: (id: string) => ["chat", id, "usage"] as const,
   settingsRoot: () => ["settings"] as const,
   settings: (path: string) => ["settings", path] as const,
+  authCookie: (server: string, sessionId?: string, updatedAt?: string) =>
+    ["authCookie", server, sessionId, updatedAt] as const,
   capabilities: () => ["capabilities", "public"] as const,
+  twoFactor: () => ["two-factor"] as const,
   agentConnections: (server: string) =>
     ["agents", server, "connections"] as const,
   agentSession: (server: string, id: string) =>
@@ -14,6 +17,8 @@ export const queryKeys = {
   modelConfigs: () => ["modelConfigs"] as const,
   modelPreferences: (server: string, userId: string) => ["modelPreferences", server, userId] as const,
   chats: () => ["chats"] as const,
+  chatShare: (server: string, id: string) => ["chatShare", server, id] as const,
+  sharePreview: (server: string, id: string) => ["sharePreview", server, id] as const,
   chatMessages: (id: string) => ["chat", id, "messages"] as const,
   search: (q: string) => ["search", q] as const,
   projects: () => ["projects"] as const,

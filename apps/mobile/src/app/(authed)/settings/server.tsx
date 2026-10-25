@@ -36,11 +36,11 @@ export default function Server() {
                   text: "Continue",
                   onPress: () =>
                     void action.run(async () => {
-                      await revokeNotifications({
-                        server,
-                        userId: session.data?.user.id ?? "",
-                        cookie: getAuthCookie(),
-                      }).catch(() => {});
+                      await getAuthCookie()
+                        .then((cookie) =>
+                          revokeNotifications({ server, userId: session.data?.user.id ?? "", cookie }),
+                        )
+                        .catch(() => {});
                       const result = await getAuthClient().signOut();
                       if (result.error)
                         throw new Error(

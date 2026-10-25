@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { APP_ORIGIN, originOf } from "./protocol";
 
-/** Browser permissions the UI uses: dictation and voice, notifications, copy. */
-const GRANTED = new Set(["media", "notifications", "clipboard-sanitized-write", "fullscreen"]);
+/** Browser permissions the bundled UI uses, including explicit Copy/Paste actions. */
+const GRANTED = new Set(["media", "notifications", "clipboard-read", "clipboard-sanitized-write", "fullscreen"]);
 
 function fromApp(url: string | undefined): boolean {
   return !!url && originOf(url) === APP_ORIGIN;

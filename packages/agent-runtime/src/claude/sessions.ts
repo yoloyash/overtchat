@@ -80,6 +80,7 @@ async function files(directory) {
 }
 
 async function readEntries(file) {
+  if (!fs.existsSync(file) && fs.existsSync(file + ".overtchat-empty")) file += ".overtchat-empty";
   const entries = [];
   const lines = readline.createInterface({
     input: fs.createReadStream(file, { encoding: "utf8" }),
@@ -178,13 +179,21 @@ async function metadata(file, requestedCwd) {
 }
 
 (async () => {
-  if (mode === "history") {
+  if (mode === "history" || mode === "resume") {
     let file = input;
     if (!file.endsWith(".jsonl")) {
       file = (await files(root)).find((candidate) => path.basename(candidate, ".jsonl") === input);
       if (!file) throw new Error("Claude session history is not available yet.");
     }
-    process.stdout.write(JSON.stringify(boundedHistory(normalized(await readEntries(file)))));
+    const entries = await readEntries(file);
+    // Once native history exists, the empty checkpoint must never mask its loss.
+    if (entries.some((entry) => entry.type === "user" || entry.type === "assistant")) {
+      await fsp.rm(file + ".overtchat-empty", { force: true });
+    }
+    const messages = boundedHistory(normalized(entries));
+    const empty = entries.some((entry) => entry.type === "overtchat-empty-session")
+      && !entries.some((entry) => entry.type === "user" || entry.type === "assistant");
+    process.stdout.write(JSON.stringify(mode === "resume" ? { messages, empty } : messages));
     return;
   }
   let requestedCwd;
@@ -231,6 +240,16 @@ export async function readClaudeSessionMessages(
   return historySchema.parse(JSON.parse(result.stdout));
 }
 
+export async function readClaudeSessionForResume(
+  target: HostTarget,
+  providerSessionPath: string,
+): Promise<{ messages: unknown[]; empty: boolean }> {
+  const result = await executeOnHost(target, {
+    command: "node", args: ["-e", CLAUDE_SESSION_SCRIPT, "resume", providerSessionPath],
+  }, { timeoutMs: SESSION_TIMEOUT_MS });
+  return z.object({ messages: historySchema, empty: z.boolean() }).parse(JSON.parse(result.stdout));
+}
+
 export async function renameClaudeSession(
   target: HostTarget,
   providerSessionPath: string,
@@ -255,6 +274,7 @@ if (!file.endsWith(".jsonl")) {
   }
 }
 if (!file.endsWith(".jsonl")) throw new Error("Claude session history is not available for rename yet.");
+if (!fs.existsSync(file) && fs.existsSync(file + ".overtchat-empty")) file += ".overtchat-empty";
 fs.appendFileSync(file, JSON.stringify(entry) + "\n");
 `;
   await executeOnHost(target, {

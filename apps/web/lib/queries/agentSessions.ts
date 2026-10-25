@@ -457,6 +457,7 @@ export function useAgentSessionCommand(id: string) {
       }
       if (
         command.type === "rewind" ||
+        command.type === "reload_history" ||
         command.type === "set_model" ||
         command.type === "set_thinking_level" ||
         command.type === "set_collaboration_mode" ||

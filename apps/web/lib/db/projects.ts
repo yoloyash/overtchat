@@ -1,9 +1,21 @@
 import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { isSelectableChatModel } from "@/lib/db/modelPreferences";
 import { chats, projects } from "@/lib/db/schema";
+import type { ProjectListItem } from "@/lib/queries/projects";
 
 export type ProjectRow = typeof projects.$inferSelect;
+
+export function toProjectListItem(row: ProjectRow): ProjectListItem {
+  return {
+    id: row.id,
+    name: row.name,
+    instructions: row.instructions,
+    defaultModelId: row.defaultModelConfigId,
+    updatedAt: row.updatedAt.getTime(),
+  };
+}
 
 export async function listProjects(userId: string): Promise<ProjectRow[]> {
   return db
@@ -49,11 +61,19 @@ export async function createProject(
   return row;
 }
 
+/**
+ * Null when the project is missing or the name is blank;
+ * "model-unavailable" when the default model is not an enabled chat model.
+ */
 export async function updateProject(
   id: string,
   userId: string,
-  input: { name?: string; instructions?: string | null },
-): Promise<ProjectRow | null> {
+  input: {
+    name?: string;
+    instructions?: string | null;
+    defaultModelId?: string | null;
+  },
+): Promise<ProjectRow | null | "model-unavailable"> {
   const patch: Partial<typeof projects.$inferInsert> = { updatedAt: new Date() };
   if (input.name !== undefined) {
     const name = input.name.trim().slice(0, 120);
@@ -63,12 +83,25 @@ export async function updateProject(
   if (input.instructions !== undefined) {
     patch.instructions = normalizeInstructions(input.instructions);
   }
-  const [row] = await db
-    .update(projects)
-    .set(patch)
-    .where(and(eq(projects.id, id), eq(projects.userId, userId)))
-    .returning();
-  return row ?? null;
+  return db.transaction((tx) => {
+    if (input.defaultModelId !== undefined) {
+      if (
+        input.defaultModelId !== null &&
+        !isSelectableChatModel(tx, input.defaultModelId)
+      ) {
+        return "model-unavailable";
+      }
+      patch.defaultModelConfigId = input.defaultModelId;
+    }
+    return (
+      tx
+        .update(projects)
+        .set(patch)
+        .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+        .returning()
+        .get() ?? null
+    );
+  });
 }
 
 export async function deleteProject(id: string, userId: string): Promise<void> {

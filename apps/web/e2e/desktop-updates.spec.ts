@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { DesktopUpdateState } from "@overtchat/shared/desktop";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -50,7 +50,7 @@ async function setup(page: Page) {
   await page.route("**/api/app-update", (route) => route.fulfill({ json: {
     currentVersion: "0.23.0", latestVersion: "0.24.0", updateAvailable: true,
   } }));
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Desktop Tester");
   await page.locator("#email").fill("desktop-updates@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

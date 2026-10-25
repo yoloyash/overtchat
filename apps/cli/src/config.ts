@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { atomicWrite } from "./atomic-file.js";
+import { protectWindowsDirectory } from "./windows.js";
 import type {
   ExistingInstallation,
   InstallationConfig,
@@ -22,6 +24,8 @@ export type InstallationSecrets = {
   managementSecret: string;
   searxngSecret: string;
   voiceSharedSecret: string;
+  // Issued by OvertChat Cloud when this server is linked; empty otherwise.
+  cloudCredential: string;
 };
 
 function generatedSecret(): string {
@@ -65,6 +69,8 @@ export function defaultInstallationConfig(
     kokoroImage: manifest.kokoroImage,
     kokoroGpuImage: manifest.kokoroGpuImage,
     kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+    cloudTunnelImage: manifest.cloudTunnelImage,
+    cloudProxyImage: manifest.cloudProxyImage,
     appPort: existing?.appPort ?? DEFAULT_APP_PORT,
     bindAddress: existing?.bindAddress ?? "0.0.0.0",
     publicUrl:
@@ -235,12 +241,18 @@ function withoutApiKey<T extends { apiKey?: string }>(
 export function withoutProviderKeys(
   config: InstallationConfig,
 ): InstallationConfig {
-  return {
+  const persisted = {
     ...config,
     search: withoutApiKey(config.search),
     tts: withoutApiKey(config.tts),
     stt: withoutApiKey(config.stt),
   };
+  if (config.access?.cloud?.credential) {
+    const cloud = { ...config.access.cloud };
+    delete cloud.credential;
+    persisted.access = { ...config.access, cloud };
+  }
+  return persisted;
 }
 
 export function initialSecrets(
@@ -258,6 +270,7 @@ export function initialSecrets(
       existing?.environment.get("SEARXNG_SECRET") ||
       generatedSecret(),
     voiceSharedSecret: previous.voiceSharedSecret || generatedSecret(),
+    cloudCredential: previous.cloudCredential ?? "",
   };
 }
 
@@ -289,6 +302,7 @@ export async function readInstallationSecrets(
       managementSecret: values.get("OVERTCHAT_MANAGEMENT_SECRET"),
       searxngSecret: values.get("SEARXNG_SECRET"),
       voiceSharedSecret: values.get("VOICE_SHARED_SECRET"),
+      cloudCredential: values.get("OVERTCHAT_CLOUD_CREDENTIAL"),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
@@ -302,10 +316,8 @@ async function writeAtomic(
   mode: number,
 ): Promise<void> {
   await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
-  const temporary = `${destination}.new-${process.pid}`;
-  await writeFile(temporary, contents, { encoding: "utf8", mode });
-  await chmod(temporary, mode);
-  await rename(temporary, destination);
+  await protectWindowsDirectory(path.dirname(destination));
+  await atomicWrite(destination, contents, mode);
 }
 
 export async function writeInstallationConfig(

@@ -11,7 +11,9 @@ import {
 } from "@/components/settings/SettingsUI";
 import { getAuthClient } from "@/lib/auth/client";
 import {
+  setOpenUIEnabled,
   setWebSearchEnabled,
+  useOpenUIEnabled,
   useWebSearchEnabled,
 } from "@/lib/toolPreferences";
 import { useSettingsQuery, useSettingsMutation } from "@/lib/queries/settings";
@@ -19,6 +21,7 @@ import type { AvailableMcpServer } from "@overtchat/shared/admin-settings";
 export default function ChatSettings() {
   const prefs = useChatPreferences();
   const web = useWebSearchEnabled();
+  const openui = useOpenUIEnabled();
   const session = getAuthClient().useSession();
   const query = useSettingsQuery<{ mcpServers: AvailableMcpServer[] }>(
     "/mcp-server-preferences",
@@ -56,6 +59,12 @@ export default function ChatSettings() {
           detail="Allow supported models to search the web and fetch pages."
           value={web}
           onChange={setWebSearchEnabled}
+        />
+        <Toggle
+          title="Interactive UI (OpenUI)"
+          detail="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI. You can also request it per message from the + menu. When active, it adds about 6,800 tokens to the system prompt, so responses may start a little slower and use more context."
+          value={openui}
+          onChange={setOpenUIEnabled}
         />
       </Section>
       <Section

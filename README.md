@@ -53,14 +53,17 @@ overtchat status    # check the app and its services
 overtchat update    # update the managed installation
 ```
 
+Prefer a plain Compose file with nothing installed on the host? Docker and
+rootless Podman can run [`compose.minimal.yml`](compose.minimal.yml); see
+[Minimal Compose](docs/deploy.md#minimal-compose).
+
 [Installation, existing Compose adoption, backups, and troubleshooting →](docs/deploy.md)
 
 Use the server in your browser, on mobile, or with the desktop app for macOS
-(Apple Silicon/Intel) and Linux x64. Published desktop downloads appear in the
+(Apple Silicon/Intel), Windows x64, and Linux x64. Published desktop downloads appear in the
 [release log](https://overtchat.com/releases/); see
-[desktop installation and updates](docs/deploy.md#desktop). Desktop 0.1.0 needs
-server 0.23.0's API contract. The desktop app connects to your server; it does
-not install one.
+[desktop installation and updates](docs/deploy.md#desktop). The desktop app
+connects to your server; it does not install one.
 
 ## The useful parts, together
 

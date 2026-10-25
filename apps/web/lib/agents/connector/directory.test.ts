@@ -58,7 +58,6 @@ describe("connector session directory", () => {
 
   it("overlays connector-projected status without mutating database data", () => {
     const result = withConnectorSessionDirectory(connections);
-
     expect(result[0]!.workspaces[0]!.sessions[0]!.runtimeStatus).toBe(
       "running",
     );

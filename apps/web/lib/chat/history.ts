@@ -2,6 +2,8 @@ import type { UIMessage } from "ai";
 import type { ChatRequestAction } from "@overtchat/shared";
 
 export const CHAT_MESSAGE_PAGE_SIZE = 32;
+/** The largest page the messages API serves, used to load a whole history. */
+export const CHAT_MESSAGE_MAX_PAGE_SIZE = 100;
 
 export type ChatMessagePage = {
   messages: UIMessage[];

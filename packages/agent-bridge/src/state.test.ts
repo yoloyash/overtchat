@@ -47,6 +47,14 @@ function event(
 }
 
 describe("agent runtime event reducer", () => {
+  it("treats a retired waiting status from an older connector as a running turn", () => {
+    const running = applyAgentRuntimeEnvelope(snapshot(), event({ type: "agent_start", overtchatRecordedAt: 123 }))!;
+    const legacy = applyAgentRuntimeEnvelope(running, event({ type: "overtchat_status", status: "running", phase: "waiting" }))!;
+    expect(legacy).toMatchObject({ status: "running", activeTurn: { startedAt: 123 }, state: { isStreaming: true } });
+    const idle = applyAgentRuntimeEnvelope(legacy, event({ type: "overtchat_status", status: "idle" }))!;
+    expect(idle).toMatchObject({ status: "idle", activeTurn: null });
+  });
+
   it("uses a connector-recorded timestamp for replay-derived state", () => {
     const started = applyAgentRuntimeEnvelope(
       snapshot(),
@@ -79,7 +87,7 @@ describe("agent runtime event reducer", () => {
     expect(tool.messages.at(-1)).toMatchObject({ timestamp: 3_456 });
   });
 
-  it("reconciles resumed provider history without dropping connector-only messages", () => {
+  it("imports provider history as a whole instead of retaining rows by role", () => {
     const durable = {
       ...snapshot(),
       status: "exited" as const,
@@ -129,7 +137,6 @@ describe("agent runtime event reducer", () => {
       messages: [
         expect.objectContaining({ id: "provider-user" }),
         expect.objectContaining({ id: "provider-assistant" }),
-        { role: "custom", content: "connector command output" },
       ],
     });
     expect(reconciled).not.toHaveProperty("error");

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { createPageMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Privacy Policy",
   description:
-    "How the OvertChat app and project website handle data, permissions, and diagnostics.",
+    "How the OvertChat app, OvertChat Cloud, and the project website handle data, permissions, and diagnostics.",
   path: "/privacy/",
 });
 
@@ -19,11 +20,13 @@ export default function PrivacyPage() {
         <header className="legal-header">
           <p className="eyebrow">Legal</p>
           <h1 className="page-title">Privacy Policy</h1>
-          <p className="legal-updated">Last updated 15 September 2026</p>
+          <p className="legal-updated">Last updated 18 October 2026</p>
           <p className="page-lede">
             OvertChat is open-source software that runs on a server you choose.
             The short version: we do not operate a hosted chat service, and the
             server you use is governed by whoever operates it—which may be you.
+            If you use the optional OvertChat Cloud, we also hold a small
+            account record, described below.
           </p>
         </header>
 
@@ -102,13 +105,73 @@ export default function PrivacyPage() {
             <h2>What we collect</h2>
             <p>
               We—the publisher of the app—do not operate a hosted OvertChat
-              backend. The app and project website do not include usage analytics
+              backend, and your chats never pass through our servers in readable
+              form. The app and project website do not include usage analytics
               or advertising SDKs.
             </p>
             <p>
               We receive limited crash diagnostics through Sentry when crash
-              reporting is configured in the distributed app, as described
-              next.
+              reporting is configured in the distributed app, and hold an
+              account record if you use OvertChat Cloud, as described next.
+            </p>
+          </section>
+
+          <section>
+            <h2>OvertChat Cloud</h2>
+            <p>
+              OvertChat Cloud is an optional service that gives your server a
+              public address such as <code>name.overtchat.app</code>. It has two
+              parts: an account site at account.overtchat.com, and a relay that
+              forwards visitors to your server. Using it is subject to our{" "}
+              <Link href="/terms/">Terms of Service</Link>.
+            </p>
+            <p>When you create an account, we store:</p>
+            <ul>
+              <li>
+                the name, email address, and profile picture link from your
+                Google account. We do not keep Google&apos;s access tokens.
+              </li>
+              <li>
+                your sign-in sessions, with the IP address and browser they
+                came from. A session ends when you sign out or after 30 days
+                without use.
+              </li>
+              <li>
+                your server&apos;s name, a hashed connection credential, and when
+                it was linked, first connected, and last connected.
+              </li>
+            </ul>
+            <p>
+              The relay forwards encrypted connections to your server without
+              decrypting them, so it cannot read pages, chats, passwords, or
+              files. It sees your server&apos;s name, visitors&apos; IP addresses
+              (which it passes on to your server), and when connections happen
+              and how much data they carry. It does not log visitors&apos; IP
+              addresses. The relay&apos;s code is public at{" "}
+              <a href="https://github.com/yoloyash/overtchat-relay">
+                github.com/yoloyash/overtchat-relay
+              </a>
+              , with instructions for checking this yourself.
+            </p>
+            <p>
+              Your server&apos;s address is public. Its HTTPS certificate is
+              issued by Let&apos;s Encrypt and, like every public certificate,
+              recorded in public Certificate Transparency logs.
+            </p>
+            <p>
+              The account site runs on{" "}
+              <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>,
+              which keeps short-lived request logs we use for troubleshooting.
+              The relay runs on a server rented from{" "}
+              <a href="https://www.hetzner.com/legal/privacy-policy/">Hetzner</a>.
+              We do not sell or share account data with anyone else.
+            </p>
+            <p>
+              You can delete your account at any time from account.overtchat.com.
+              Deleting it removes your account and turns off your address. If
+              your server ever connected, we keep its name and your Google
+              account identifier for 7 days so no one else can take over the
+              address straight away, then delete them.
             </p>
           </section>
 
@@ -279,7 +342,9 @@ export default function PrivacyPage() {
           <section>
             <h2>Contact</h2>
             <p>
-              Questions or concerns? Open an issue at{" "}
+              Questions or concerns? Email{" "}
+              <a href="mailto:support@overtchat.com">support@overtchat.com</a>{" "}
+              or open an issue at{" "}
               <a href="https://github.com/yoloyash/overtchat/issues">
                 github.com/yoloyash/overtchat/issues
               </a>.

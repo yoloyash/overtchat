@@ -115,10 +115,19 @@ export const generalSettingsRoute = createRoute({
 export const accountSettingsRoute = createRoute({
   ...settingsPage,
   path: "account",
+  validateSearch: (search: Record<string, unknown>): { setup?: string } => ({
+    setup: optionalString(search.setup),
+  }),
   component: withPages(
     function AccountPage() {
       const { session } = accountSettingsRoute.useRouteContext();
-      return <AccountForm email={session.user.email} />;
+      const { setup } = accountSettingsRoute.useSearch();
+      return (
+        <AccountForm
+          email={session.user.email}
+          startTwoFactorSetup={setup === "two-factor"}
+        />
+      );
     },
     AccountForm,
   ),

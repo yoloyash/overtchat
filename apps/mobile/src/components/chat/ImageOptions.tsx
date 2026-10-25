@@ -11,12 +11,14 @@ export function ImageOptions({
   value,
   model,
   supportsQuality = true,
+  configuredSize,
   onChange,
   onClose,
 }: {
   value: ImageGenerationOptions;
   model?: string | null;
   supportsQuality?: boolean;
+  configuredSize?: string;
   onChange: (value: ImageGenerationOptions) => void;
   onClose: () => void;
 }) {
@@ -49,27 +51,33 @@ export function ImageOptions({
           <Text style={{ color: colors.primary }}>Close</Text>
         </Pressable>
       </View>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {IMAGE_SIZES.map((size) => (
-          <Pressable
-            key={size}
-            accessibilityRole="button"
-            accessibilityLabel={`Image size: ${IMAGE_SIZE_LABELS[size]}`}
-            accessibilityState={{ selected: value.size === size }}
-            onPress={() => onChange({ ...value, size })}
-            style={{
-              padding: 8,
-              borderRadius: 8,
-              backgroundColor:
-                value.size === size ? colors.accent : colors.background,
-            }}
-          >
-            <Text style={{ color: colors.foreground }}>
-              {IMAGE_SIZE_LABELS[size]}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {configuredSize ? (
+        <Text style={{ color: colors.mutedForeground }}>
+          Size: {configuredSize === "auto" ? "Backend default" : configuredSize}
+        </Text>
+      ) : (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {IMAGE_SIZES.map((size) => (
+            <Pressable
+              key={size}
+              accessibilityRole="button"
+              accessibilityLabel={`Image size: ${IMAGE_SIZE_LABELS[size]}`}
+              accessibilityState={{ selected: value.size === size }}
+              onPress={() => onChange({ ...value, size })}
+              style={{
+                padding: 8,
+                borderRadius: 8,
+                backgroundColor:
+                  value.size === size ? colors.accent : colors.background,
+              }}
+            >
+              <Text style={{ color: colors.foreground }}>
+                {IMAGE_SIZE_LABELS[size]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
       {supportsQuality && (
         <>
           <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>

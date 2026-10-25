@@ -1,9 +1,10 @@
 "use client";
 
 import { ErrorNotice } from "@/components/ui/error-notice";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
+import { collectOpenUIStates, type OpenUIAction } from "@overtchat/shared";
 import {
   ChevronDown,
   LoaderCircle,
@@ -27,7 +28,9 @@ import {
 } from "@/lib/chat/stats";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
+import { ChatFindBar } from "./ChatFindBar";
 import { MessageBubble } from "./MessageBubble";
+import { useChatFind } from "./useChatFind";
 
 export function MessageList({
   messages,
@@ -42,10 +45,13 @@ export function MessageList({
   storedStats,
   hasOlderMessages,
   loadingOlderMessages,
+  olderMessagesFailed,
   onLoadOlderMessages,
+  onLoadAllOlderMessages,
   onRegenerate,
   onContinue,
   onImageReference,
+  onOpenUIAction,
   onEdit,
   onReconnect,
 }: {
@@ -61,13 +67,17 @@ export function MessageList({
   storedStats: StoredMessageStats;
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
+  olderMessagesFailed: boolean;
   onLoadOlderMessages: () => void;
+  onLoadAllOlderMessages: () => void;
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onOpenUIAction?: (action: OpenUIAction) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onReconnect: () => void;
 }) {
+  const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScrollCompleteRef = useRef(false);
   const latestMessageIdRef = useRef(messages.at(-1)?.id);
@@ -119,6 +129,25 @@ export function MessageList({
         onLoadOlderMessages();
       }
     },
+  });
+
+  const liveMessage = streaming ? messages.at(-1) : undefined;
+  const find = useChatFind({
+    messages,
+    liveMessageId:
+      liveMessage?.role === "assistant" ? liveMessage.id : undefined,
+    historyComplete: !hasOlderMessages,
+    scrollRef,
+    // Positions the list directly rather than through scrollToIndex, whose
+    // own correction loop would keep moving the list after the reader scrolls.
+    jumpToIndex: (index) => {
+      const offset = virtualizer.getOffsetForIndex(index, "center")?.[0];
+      if (offset !== undefined && scrollRef.current) {
+        scrollRef.current.scrollTop = offset;
+      }
+    },
+    // Find covers the whole chat, so fetch the history that is not loaded yet.
+    onOpen: hasOlderMessages ? onLoadAllOlderMessages : undefined,
   });
 
   useLayoutEffect(() => {
@@ -203,6 +232,8 @@ export function MessageList({
                       onRegenerate={onRegenerate}
                       onContinue={isLast && canContinueMessage(message) ? onContinue : undefined}
                       onImageReference={onImageReference}
+                      onOpenUIAction={onOpenUIAction}
+                      openuiStates={openuiStates}
                       onEdit={onEdit}
                       speech={speech}
                       showStats={showStats}
@@ -247,6 +278,23 @@ export function MessageList({
           })}
         </div>
       </div>
+
+      {find.open && (
+        <ChatFindBar
+          inputRef={find.inputRef}
+          query={find.query}
+          total={find.total}
+          activeIndex={find.activeIndex}
+          pending={find.pending}
+          counting={hasOlderMessages && !olderMessagesFailed}
+          historyIncomplete={hasOlderMessages && olderMessagesFailed}
+          onQueryChange={find.setQuery}
+          onNext={find.next}
+          onPrevious={find.previous}
+          onRetryHistory={onLoadAllOlderMessages}
+          onClose={find.close}
+        />
+      )}
 
       {(loadingOlderMessages || (hasOlderMessages && isAtTop)) && (
         <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">

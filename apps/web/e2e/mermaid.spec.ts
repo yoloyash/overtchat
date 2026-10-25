@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
   await page.emulateMedia({ colorScheme: "light" });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Diagram Tester");
   await page.locator("#email").fill("diagrams@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

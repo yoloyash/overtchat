@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const section = (page: Page, title: string) =>
   page.locator("section").filter({
@@ -14,7 +14,7 @@ async function selectProvider(page: Page, title: string, provider: string) {
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Speech Tester");
   await page.locator("#email").fill("speech@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

@@ -9,6 +9,13 @@ import type {
   AgentSessionSync,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
+  AgentWorkspaceGitBaseRef,
+  AgentWorkspaceGitBranches,
+  AgentWorkspaceGitStatus,
+  AgentWorkspaceGitSwitchResult,
+  AgentWorkspaceGitSwitchTarget,
+  AgentWorkspaceGitWorktree,
+  AgentWorkspaceGitWorktreeInspection,
   ConnectorShellMode,
 } from "./agents";
 import {
@@ -24,7 +31,7 @@ import {
 /** Increment only for a breaking web-to-connector wire contract change. */
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 6;
 /** Published connector artifact version; independent of wire compatibility. */
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.13.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.15.1";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 /** Headroom below Next.js's default 10 MiB proxy buffer. */
 export const HOST_CONNECTOR_EVENT_BATCH_BYTES = 8 * 1024 * 1024;
@@ -35,6 +42,10 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
   "command-wal-v1",
   "workspace-files-v1",
+  "workspace-terminal-v1",
+  "workspace-git-watch-v1",
+  "workspace-git-branch-v1",
+  "workspace-git-worktree-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -45,6 +56,7 @@ export type HostConnectorServerInfo = {
 };
 
 export * from "./agents";
+export * from "./paths";
 export * from "./catalog";
 export * from "./history";
 export * from "./commands";
@@ -109,6 +121,38 @@ export type AgentDaemonRequest =
   | { type: "list_directories"; target: AgentDaemonTarget; path?: string }
   | { type: "probe_workspace"; target: AgentDaemonTarget; path: string }
   | { type: "git_status"; target: AgentDaemonTarget; path: string }
+  /** Starts pushed status updates; responds with `{ status, revision }`. */
+  | {
+      type: "watch_git_status";
+      watchId: string;
+      target: AgentDaemonTarget;
+      path: string;
+    }
+  | { type: "unwatch_git_status"; watchId: string }
+  | { type: "list_git_branches"; target: AgentDaemonTarget; path: string }
+  /** Responds with an `AgentWorkspaceGitSwitchResult`. */
+  | {
+      type: "switch_git_branch";
+      target: AgentDaemonTarget;
+      path: string;
+      branch: AgentWorkspaceGitSwitchTarget;
+      /** Stash uncommitted changes instead of reporting them. */
+      stash: boolean;
+    }
+  /** Responds with an `AgentWorkspaceGitWorktree`. */
+  | {
+      type: "create_git_worktree";
+      target: AgentDaemonTarget;
+      /** Workspace the worktree is created from. */
+      path: string;
+      base: AgentWorkspaceGitBaseRef;
+      /** New branch checked out in the worktree. */
+      branch: string;
+    }
+  /** Responds with an `AgentWorkspaceGitWorktreeInspection`. */
+  | { type: "inspect_git_worktree"; target: AgentDaemonTarget; path: string }
+  /** Deletes a worktree OvertChat created; the branch is kept. */
+  | { type: "remove_git_worktree"; target: AgentDaemonTarget; path: string }
   | {
       type: "list_workspace_directory";
       target: AgentDaemonTarget;
@@ -196,7 +240,17 @@ export type HostConnectorEventPayload =
       };
     }
   | { type: "session_directory"; sessions: AgentSessionDirectoryEntry[] }
-  | { type: "session_update"; session: AgentSessionDirectoryEntry };
+  | { type: "session_update"; session: AgentSessionDirectoryEntry }
+  /**
+   * Live and coalesced: only the latest status per watch is delivered.
+   * Revisions order pushes against the watch response, which may arrive later.
+   */
+  | {
+      type: "workspace_git_status";
+      watchId: string;
+      revision: number;
+      status: AgentWorkspaceGitStatus;
+    };
 
 export type HostConnectorEvent = {
   sequence: number;
@@ -361,6 +415,33 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
       return isAgentDaemonTarget(value.target) && typeof value.path === "string";
     case "git_status":
       return isAgentDaemonTarget(value.target) && typeof value.path === "string";
+    case "watch_git_status":
+      return (
+        isNonEmptyString(value.watchId) &&
+        isAgentDaemonTarget(value.target) &&
+        typeof value.path === "string"
+      );
+    case "unwatch_git_status":
+      return isNonEmptyString(value.watchId);
+    case "list_git_branches":
+      return isAgentDaemonTarget(value.target) && isNonEmptyString(value.path);
+    case "switch_git_branch":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        isNonEmptyString(value.path) &&
+        isAgentWorkspaceGitSwitchTarget(value.branch) &&
+        typeof value.stash === "boolean"
+      );
+    case "create_git_worktree":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        isNonEmptyString(value.path) &&
+        isAgentWorkspaceGitBaseRef(value.base) &&
+        isAgentWorkspaceGitRefName(value.branch)
+      );
+    case "inspect_git_worktree":
+    case "remove_git_worktree":
+      return isAgentDaemonTarget(value.target) && isNonEmptyString(value.path);
     case "list_workspace_directory":
     case "read_workspace_file":
       return (
@@ -600,5 +681,158 @@ export function isHostConnectorEvent(
   if (payload.type === "session_update") {
     return isAgentSessionDirectoryEntry(payload.session);
   }
+  if (payload.type === "workspace_git_status") {
+    return (
+      isNonEmptyString(payload.watchId) &&
+      Number.isSafeInteger(payload.revision) &&
+      Number(payload.revision) >= 0 &&
+      isAgentWorkspaceGitStatus(payload.status)
+    );
+  }
   return false;
 }
+
+function isNullableGitString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isGitCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+export function isAgentWorkspaceGitStatus(
+  value: unknown,
+): value is AgentWorkspaceGitStatus {
+  return (
+    isRecord(value) &&
+    typeof value.isGit === "boolean" &&
+    isNullableGitString(value.repositoryRoot) &&
+    isNullableGitString(value.branch) &&
+    isNullableGitString(value.upstream) &&
+    (value.ahead === null || isGitCount(value.ahead)) &&
+    (value.behind === null || isGitCount(value.behind)) &&
+    typeof value.dirty === "boolean" &&
+    isGitCount(value.changedFiles) &&
+    isGitCount(value.additions) &&
+    isGitCount(value.deletions) &&
+    typeof value.lineStatsComplete === "boolean" &&
+    (value.files === undefined ||
+      (Array.isArray(value.files) &&
+        value.files.every(
+          (file) =>
+            isRecord(file) &&
+            typeof file.path === "string" &&
+            isNullableGitString(file.originalPath) &&
+            isNullableGitString(file.indexStatus) &&
+            isNullableGitString(file.worktreeStatus),
+        )))
+  );
+}
+
+const MAX_GIT_REF_NAME_LENGTH = 255;
+
+/** Shape check only; the workspace host validates names with Git itself. */
+export function isAgentWorkspaceGitRefName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_GIT_REF_NAME_LENGTH &&
+    !value.startsWith("-") &&
+    !/[\u0000-\u001f\u007f]/u.test(value)
+  );
+}
+
+export function isAgentWorkspaceGitSwitchTarget(
+  value: unknown,
+): value is AgentWorkspaceGitSwitchTarget {
+  if (!isRecord(value) || !isAgentWorkspaceGitRefName(value.name)) return false;
+  switch (value.kind) {
+    case "local":
+    case "new":
+      return Object.keys(value).length === 2;
+    case "remote":
+      return (
+        isAgentWorkspaceGitRefName(value.remote) &&
+        Object.keys(value).length === 3
+      );
+    default:
+      return false;
+  }
+}
+
+export function isAgentWorkspaceGitBaseRef(
+  value: unknown,
+): value is AgentWorkspaceGitBaseRef {
+  return (
+    isAgentWorkspaceGitSwitchTarget(value) &&
+    (value.kind === "local" || value.kind === "remote")
+  );
+}
+
+export function isAgentWorkspaceGitBranches(
+  value: unknown,
+): value is AgentWorkspaceGitBranches {
+  return (
+    isRecord(value) &&
+    typeof value.isGit === "boolean" &&
+    isNullableGitString(value.current) &&
+    typeof value.truncated === "boolean" &&
+    Array.isArray(value.branches) &&
+    value.branches.every(
+      (branch) =>
+        isRecord(branch) &&
+        isNonEmptyString(branch.name) &&
+        isNullableGitString(branch.remote) &&
+        typeof branch.current === "boolean" &&
+        isNullableGitString(branch.worktreePath) &&
+        (branch.committedAt === null || isGitCount(branch.committedAt)),
+    )
+  );
+}
+
+export function isAgentWorkspaceGitSwitchResult(
+  value: unknown,
+): value is AgentWorkspaceGitSwitchResult {
+  if (!isRecord(value)) return false;
+  switch (value.status) {
+    case "switched":
+      return (
+        isNonEmptyString(value.branch) &&
+        typeof value.stashed === "boolean" &&
+        typeof value.restored === "boolean" &&
+        isNullableGitString(value.keptStash)
+      );
+    case "changes_present":
+      return isGitCount(value.changedFiles);
+    case "agent_running":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function isAgentWorkspaceGitWorktree(
+  value: unknown,
+): value is AgentWorkspaceGitWorktree {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.path) &&
+    isNonEmptyString(value.worktreePath) &&
+    isNonEmptyString(value.name) &&
+    isNonEmptyString(value.branch)
+  );
+}
+
+export function isAgentWorkspaceGitWorktreeInspection(
+  value: unknown,
+): value is AgentWorkspaceGitWorktreeInspection {
+  return (
+    isRecord(value) &&
+    typeof value.exists === "boolean" &&
+    isNullableGitString(value.worktreePath) &&
+    isNullableGitString(value.branch) &&
+    isGitCount(value.changedFiles)
+  );
+}
+
+export * from "./terminal";

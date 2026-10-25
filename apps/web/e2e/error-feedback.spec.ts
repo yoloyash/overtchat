@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 let provider: Server;
 let baseUrl: string;
@@ -77,7 +77,7 @@ test("configured speech outage stays actionable and recovers without losing the 
       value: Recorder,
     });
   });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Error Tester");
   await page.locator("#email").fill("errors@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

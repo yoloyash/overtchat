@@ -111,6 +111,14 @@ export type AgentTranscriptItem = {
       error: AgentErrorPresentation;
     }
   | {
+      type: "compaction";
+      key: string;
+      label: string;
+      detail: string | null;
+      active: boolean;
+      failed: boolean;
+    }
+  | {
       type: "notification";
       key: string;
       notification: AgentNotificationPresentation;
@@ -515,6 +523,16 @@ function taskListSnapshot(
   };
 }
 
+function taskListFromResult(value: unknown): AgentTaskListSnapshot | null {
+  const result = recordOf(value);
+  if (result?.isError === true || !Array.isArray(result?.content)) return null;
+  for (const part of result.content) {
+    const tasks = taskListSnapshot(part, `tasks:${String(result.toolCallId)}`);
+    if (tasks) return tasks;
+  }
+  return null;
+}
+
 export function latestAgentTaskList(
   messages: readonly unknown[],
 ): AgentTaskListSnapshot | null {
@@ -524,7 +542,11 @@ export function latestAgentTaskList(
     messageIndex -= 1
   ) {
     const message = recordOf(messages[messageIndex]);
-    if (message?.role !== "assistant" || !Array.isArray(message.content)) {
+    if (
+      (message?.role !== "assistant" && message?.role !== "toolResult") ||
+      message.isError === true ||
+      !Array.isArray(message.content)
+    ) {
       continue;
     }
     for (
@@ -816,6 +838,29 @@ export function projectAgentTranscript(
     const role = roleOf(message);
     const identity = messageIdentity(message, messageIndex);
 
+    if (role === "compactionSummary") {
+      const active = record.status === "running";
+      const failed = record.status === "failed";
+      const label = active ? "Compacting context…"
+        : failed ? "Context compaction failed"
+        : record.status === "interrupted" ? "Context compaction stopped"
+        : record.status === "skipped" ? "Context compaction skipped"
+        : record.trigger === "auto" ? "Context automatically compacted"
+        : record.trigger === "manual" ? "Context manually compacted"
+        : "Context compacted";
+      const tokens = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0
+        ? value.toLocaleString("en-US") : null;
+      const before = tokens(record.tokensBefore);
+      const after = tokens(record.tokensAfter);
+      items.push({
+        type: "compaction", key: `compaction:${identity}`, active, failed, label,
+        detail: active || failed || record.status === "interrupted" || record.status === "skipped" ? null
+          : before !== null && after !== null ? `${before} → ${after} tokens`
+          : before !== null ? `From ${before} tokens` : null,
+      });
+      return;
+    }
+
     if (role === "assistant") {
       const content = Array.isArray(record.content) ? record.content : [];
       const messageId =
@@ -980,6 +1025,9 @@ export function projectAgentTranscript(
             typeof partRecord.id === "string"
               ? partRecord.id
               : `tool:${partIdentity}`;
+          // Structured tool results render at their own position, after the
+          // operation completes. Unknown and failed tools retain raw activity.
+          if (taskListFromResult(results.get(id))) return;
           pushActivity({
             type: "tool",
             id: `tool:${id}`,
@@ -1051,6 +1099,11 @@ export function projectAgentTranscript(
     }
 
     if (role === "toolResult") {
+      const tasks = taskListFromResult(record);
+      if (tasks) {
+        if (tasks.tasks.length) items.push({ type: "task_list", key: `task-list:${tasks.id}`, snapshot: tasks });
+        return;
+      }
       const id = resultId(message);
       if (!id || callIds.has(id)) return;
       pushActivity({

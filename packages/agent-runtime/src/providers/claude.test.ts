@@ -70,4 +70,19 @@ describe("Claude provider adapter", () => {
       ),
     ).toThrow("manages context compaction automatically");
   });
+
+  it("routes bare /usage to account usage instead of the model", () => {
+    expect(
+      claudeProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/usage" },
+        {},
+      ),
+    ).toEqual({ type: "show_usage" });
+    expect(
+      claudeProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/usage extra" },
+        {},
+      ),
+    ).toEqual({ type: "prompt", message: "/usage extra" });
+  });
 });

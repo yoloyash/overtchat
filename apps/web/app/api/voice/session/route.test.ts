@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  claim: vi.fn(),
+  end: vi.fn(),
   getSession: vi.fn(),
   getChat: vi.fn(),
   getLatestMessageRowId: vi.fn(),
@@ -32,6 +34,8 @@ vi.mock("@/lib/voice/ticket", () => ({
   issueVoiceTicket: mocks.issueVoiceTicket,
 }));
 
+vi.mock("@/lib/db/voiceSessions", () => ({ claimVoiceSession: mocks.claim, endVoiceSession: mocks.end }));
+
 import { POST } from "./route";
 
 function request() {
@@ -51,7 +55,8 @@ function request() {
 describe("voice session", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    mocks.getSession.mockResolvedValue({ user: { id: "user-1" }, session: { id: "auth-1" } });
+    mocks.claim.mockReturnValue("voice-1");
     mocks.getVoiceCapability.mockReturnValue({
       available: true,
       installed: true,
@@ -81,8 +86,7 @@ describe("voice session", () => {
         userId: "user-1",
         chatId: "chat-1",
         projectId: null,
-        newChat: true,
-        historyThroughRowId: null,
+        sessionId: "voice-1",
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
@@ -92,7 +96,7 @@ describe("voice session", () => {
     });
   });
 
-  it("snapshots resumable voice history", async () => {
+  it("binds existing voice chats to their project", async () => {
     mocks.getChat.mockResolvedValue({
       id: "chat-1",
       userId: "user-1",
@@ -105,13 +109,12 @@ describe("voice session", () => {
     expect(mocks.issueVoiceTicket).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "project-1",
-        newChat: false,
-        historyThroughRowId: 42,
+        sessionId: "voice-1",
       }),
     );
   });
 
-  it("does not add voice to an existing text chat", async () => {
+  it("allows voice in existing text chats", async () => {
     mocks.getChat.mockResolvedValue({
       id: "chat-1",
       userId: "user-1",
@@ -121,7 +124,14 @@ describe("voice session", () => {
 
     const response = await POST(request());
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
+    expect(mocks.claim).toHaveBeenCalledWith("chat-1", "user-1", "auth-1");
+    expect((await response.json()).tools).toBeUndefined();
+  });
+  it("rejects a competing session before issuing a ticket", async () => {
+    mocks.claim.mockReturnValue(null);
+    expect((await POST(request())).status).toBe(409);
     expect(mocks.issueVoiceTicket).not.toHaveBeenCalled();
   });
+
 });

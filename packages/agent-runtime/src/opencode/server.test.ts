@@ -141,7 +141,7 @@ describe("OpenCode server pool", () => {
 
     expect(mocks.executeOnHost).toHaveBeenCalledWith(
       target,
-      expect.objectContaining({ command: "/bin/sh" }),
+      expect.objectContaining({ command: "node" }),
     );
     expect(mocks.spawnManagedOnHost).toHaveBeenCalledWith(
       target,

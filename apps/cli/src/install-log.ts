@@ -3,6 +3,7 @@ import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync } from "node
 import path from "node:path";
 import { CLI_VERSION } from "./constants.js";
 import { runtimePaths } from "./paths.js";
+import { protectWindowsDirectory } from "./windows.js";
 
 type LogContext = { file?: string; secrets: Set<string>; cleanup: Set<() => void> };
 const context = new AsyncLocalStorage<LogContext>();
@@ -54,6 +55,7 @@ export async function withInstallationLog<T>(operation: string, run: () => Promi
   try {
     const file = installationLogPath();
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    await protectWindowsDirectory(path.dirname(file));
     if ((statSync(file, { throwIfNoEntry: false })?.size ?? 0) > 5 * 1024 * 1024) {
       renameSync(file, `${file}.previous`);
       chmodSync(`${file}.previous`, 0o600);

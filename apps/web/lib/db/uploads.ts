@@ -5,7 +5,7 @@ import path from "node:path";
 import { and, eq, lt, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
-import { messages, uploads } from "@/lib/db/schema";
+import { messages, uploads, chatShareUploads } from "@/lib/db/schema";
 import { MAX_BYTES_IMAGE } from "@/lib/extract";
 import { assertFetchedImageContent } from "@/lib/image-content";
 
@@ -120,15 +120,18 @@ export async function sweepOrphanedUploads(): Promise<void> {
     .where(lt(uploads.createdAt, cutoff));
 
   for (const { id } of candidates) {
-    const needle = `%${UPLOAD_URL_PREFIX}${id}%`;
-    const [referenced] = await db
-      .select({ id: messages.id })
-      .from(messages)
-      .where(sql`${messages.parts} LIKE ${needle}`)
-      .limit(1);
-    if (referenced) continue;
-    await db.delete(uploads).where(eq(uploads.id, id));
-    await fsp.rm(uploadPath(id), { force: true });
+    // Serialize eligibility and deletion with snapshot publication. Otherwise a
+    // share created between the reference check and DELETE can lose its bytes.
+    const deleted = db.transaction((tx) => {
+      const needle = `%${UPLOAD_URL_PREFIX}${id}%`;
+      const referenced = tx.select({ id: messages.id }).from(messages)
+        .where(sql`${messages.parts} LIKE ${needle}`).get();
+      const shared = tx.select({ id: chatShareUploads.uploadId }).from(chatShareUploads)
+        .where(eq(chatShareUploads.uploadId, id)).get();
+      if (referenced || shared) return false;
+      return tx.delete(uploads).where(eq(uploads.id, id)).run().changes > 0;
+    }, { behavior: "immediate" });
+    if (deleted) await fsp.rm(uploadPath(id), { force: true });
   }
 }
 

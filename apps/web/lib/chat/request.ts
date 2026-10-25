@@ -1,6 +1,8 @@
 import { safeValidateUIMessages, type UIMessage } from "ai";
 import {
   REASONING_EFFORTS,
+  readOpenUIAction,
+  type OpenUIAction,
   IMAGE_SIZES, IMAGE_QUALITIES, type ImageGenerationOptions,
   type ChatReasoningLevel,
   type ChatRequestAction,
@@ -39,6 +41,10 @@ const ChatRequestEnvelopeSchema = z.object({
   clientRequestId: z.string().trim().min(1).max(200).optional(),
   webSearchEnabled: z.boolean().optional().default(true),
   forceSearch: z.boolean().optional(),
+  openuiSupported: z.boolean().optional().default(false),
+  openuiEnabled: z.boolean().optional().default(false),
+  openuiAction: z.unknown().optional(),
+  forceOpenUI: z.boolean().optional(),
   imageGeneration: z.object({
     size: z.enum(IMAGE_SIZES).default("auto"),
     quality: z.enum(IMAGE_QUALITIES).default("auto"),
@@ -61,6 +67,7 @@ const ChatRequestEnvelopeSchema = z.object({
     .default("submit-message"),
   messageId: z.string().optional(),
   temporary: z.boolean().optional().default(false),
+  responseStyle: z.enum(["text", "voice"]).optional().default("text"),
 });
 
 export interface ParsedChatRequest {
@@ -70,12 +77,17 @@ export interface ParsedChatRequest {
   clientRequestId: string;
   webSearchEnabled: boolean;
   forceSearch: boolean;
+  openuiSupported?: boolean;
+  openuiEnabled?: boolean;
+  openuiAction?: OpenUIAction;
+  forceOpenUI?: boolean;
   imageGeneration?: ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
   action: ChatRequestAction;
   reasoningLevel: ChatReasoningLevel;
   temporary: boolean;
+  responseStyle?: "text" | "voice";
 }
 
 export class ChatRequestError extends Error {
@@ -94,12 +106,17 @@ export function chatRequestFingerprint({
   chatId,
   webSearchEnabled,
   forceSearch,
+  openuiSupported = false,
+  openuiEnabled = false,
+  openuiAction,
+  forceOpenUI = false,
   imageGeneration,
   timeZone,
   projectId,
   action,
   reasoningLevel,
   temporary,
+  responseStyle = "text",
 }: ParsedChatRequest): string {
   return createHash("sha256")
     .update(
@@ -109,12 +126,17 @@ export function chatRequestFingerprint({
         chatId,
         webSearchEnabled,
         forceSearch,
+        openuiSupported,
+        openuiEnabled,
+        openuiAction,
+        forceOpenUI,
         imageGeneration,
         timeZone: timeZone ?? null,
         projectId: projectId ?? null,
         action,
         reasoningLevel,
         temporary,
+        responseStyle,
       }),
     )
     .digest("hex");
@@ -176,6 +198,10 @@ export async function parseChatRequest(
     throw new ChatRequestError("Chat action does not match the user message");
   }
 
+  const openuiAction = readOpenUIAction(envelope.data.openuiAction);
+  if (envelope.data.openuiAction !== undefined && (!openuiAction || action.type !== "submit" || !envelope.data.openuiSupported)) {
+    throw new ChatRequestError("Invalid interactive UI action");
+  }
   const { searchEnabled } = envelope.data;
   const forceSearch = envelope.data.forceSearch ?? searchEnabled ?? false;
   return {
@@ -185,12 +211,17 @@ export async function parseChatRequest(
     clientRequestId: envelope.data.clientRequestId ?? crypto.randomUUID(),
     webSearchEnabled: envelope.data.webSearchEnabled,
     forceSearch: envelope.data.webSearchEnabled && forceSearch,
+    openuiSupported: envelope.data.openuiSupported,
+    openuiEnabled: envelope.data.openuiSupported && envelope.data.openuiEnabled,
+    openuiAction,
+    forceOpenUI: envelope.data.openuiSupported && Boolean(envelope.data.forceOpenUI),
     imageGeneration: envelope.data.imageGeneration,
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,
     action,
     reasoningLevel: envelope.data.reasoningLevel,
     temporary: envelope.data.temporary,
+    responseStyle: envelope.data.responseStyle,
   };
 }
 
