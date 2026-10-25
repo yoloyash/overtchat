@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   openURL: vi.fn(async () => true),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  alert: vi.fn(),
+  authFetch: vi.fn(),
   webViews: [] as Array<Record<string, unknown>>,
 }));
 
@@ -31,6 +33,7 @@ vi.mock("react-native-webview", () => ({
   },
 }));
 vi.mock("@/lib/toast", () => ({ toastSuccess: mocks.toastSuccess, toastError: mocks.toastError }));
+vi.mock("@/lib/api", () => ({ authFetch: mocks.authFetch, getApiBase: () => "https://server.test" }));
 vi.mock("./MarkdownBody", () => ({ MarkdownBody: ({ text }: { text: string }) => <article>{text}</article> }));
 vi.mock("./CodeBlock", () => ({
   CodeBlock: ({ code, language }: { code: string; language: string }) => (
@@ -62,6 +65,7 @@ vi.mock("react-native", () => {
     Text: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
     ActivityIndicator: () => <span data-testid="spinner" />,
     Linking: { openURL: mocks.openURL },
+    Alert: { alert: mocks.alert },
     Share: { share: mocks.share },
     StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
     Pressable: ({
@@ -200,14 +204,60 @@ it("copies, shares and saves the shown version", async () => {
   expect(mocks.setString).toHaveBeenCalledWith("# Plan\nBeta in June");
   await press("Share document");
   expect(mocks.share).toHaveBeenCalledWith({ title: "Launch plan", message: "# Plan\nBeta in June" });
-  await press("Save document");
+  type Choice = { text: string; onPress?: () => void };
+  const choose = async (text: string) => {
+    await press("Save document");
+    const buttons = mocks.alert.mock.calls.at(-1)![2] as Choice[];
+    expect(buttons.map((choice) => choice.text)).toEqual(["Markdown (.md)", "Word (.docx)", "Cancel"]);
+    await act(async () => {
+      buttons.find((choice) => choice.text === text)!.onPress!();
+    });
+  };
+  await choose("Markdown (.md)");
   expect(createFile).toHaveBeenCalledWith("Launch plan.md", "text/markdown");
   expect(write).toHaveBeenCalledWith("# Plan\nBeta in June");
   expect(mocks.toastSuccess).toHaveBeenCalledWith("Document saved");
 
+  mocks.authFetch.mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([0x50, 0x4b]).buffer });
+  await choose("Word (.docx)");
+  expect(mocks.authFetch).toHaveBeenCalledWith("https://server.test/api/documents/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Launch plan", type: "markdown", content: "# Plan\nBeta in June", format: "docx" }),
+  });
+  expect(createFile).toHaveBeenLastCalledWith(
+    "Launch plan.docx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  expect(write).toHaveBeenLastCalledWith(new Uint8Array([0x50, 0x4b]));
+
+  // A failed export reports an error before asking for a folder.
+  mocks.pickDirectory.mockClear();
+  mocks.authFetch.mockResolvedValue({ ok: false, status: 500 });
+  await choose("Word (.docx)");
+  expect(mocks.pickDirectory).not.toHaveBeenCalled();
+  expect(mocks.toastError).toHaveBeenCalledWith("Could not save document", expect.any(Error));
+
+  mocks.toastError.mockClear();
   mocks.pickDirectory.mockRejectedValue(new Error("User cancelled"));
-  await press("Save document");
+  await choose("Markdown (.md)");
   expect(mocks.toastError).not.toHaveBeenCalled();
+});
+
+it("saves other document types directly", async () => {
+  const write = vi.fn();
+  mocks.pickDirectory.mockResolvedValue({ createFile: vi.fn(() => ({ write })) });
+  const code = [
+    assistant("a", [
+      { ...version("k", 1, "print(1)"), output: { id: "s", title: "Script", type: "code", language: "python", version: 1, content: "print(1)" } },
+    ]),
+  ];
+  await act(async () => {
+    root.render(<DocumentViewer messages={code} toolCallId="k" streaming={false} onSelect={vi.fn()} onClose={vi.fn()} />);
+  });
+  await press("Save document");
+  expect(mocks.alert).not.toHaveBeenCalled();
+  expect(write).toHaveBeenCalledWith("print(1)");
 });
 
 it("previews HTML and SVG in a locked-down web view", async () => {

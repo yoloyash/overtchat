@@ -315,9 +315,18 @@ export function documentMediaType(
   }
 }
 
+export const WORD_MEDIA_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** Markdown documents can also be exported as Word files. */
+export function canExportToWord(document: Pick<DocumentOutput, "type">): boolean {
+  return document.type === "markdown";
+}
+
 /** A download name from the title, safe on common filesystems. */
 export function documentFilename(
   document: Pick<DocumentOutput, "title" | "type" | "language">,
+  extension = documentExtension(document),
 ): string {
   const base =
     document.title
@@ -327,5 +336,5 @@ export function documentFilename(
       .replace(/^\.+/, "")
       .slice(0, 80)
       .trim() || "document";
-  return `${base}.${documentExtension(document)}`;
+  return `${base}.${extension}`;
 }

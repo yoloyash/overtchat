@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import mammoth from "mammoth";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test, type Page } from "@playwright/test";
@@ -206,8 +207,9 @@ test("creates, revises, versions, downloads and shares a document", async ({ pag
   );
   await page.screenshot({ path: testInfo.outputPath("document-created.png") });
 
-  const download = page.waitForEvent("download");
   await documentPanel.getByRole("button", { name: "Download document" }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Markdown (.md)" }).click();
   expect((await download).suggestedFilename()).toBe("Launch plan.md");
   expect(await readFile((await (await download).path())!, "utf8")).toBe(plan);
 
@@ -268,6 +270,47 @@ test("creates, revises, versions, downloads and shares a document", async ({ pag
     await panel(reader).getByRole("button", { name: "Previous version" }).click();
     await expect(panel(reader)).toContainText("Beta in June");
     await reader.screenshot({ path: testInfo.outputPath("document-shared.png") });
+  } finally {
+    await anonymous.close();
+  }
+});
+
+test("downloads Markdown documents as Markdown or Word", async ({ page, browser }) => {
+  await send(page, "Write a launch plan");
+  await expect(page.getByText("I created the launch plan.", { exact: true })).toBeVisible();
+  const download = panel(page).getByRole("button", { name: "Download document" });
+
+  await download.click();
+  const markdown = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Markdown (.md)" }).click();
+  expect((await markdown).suggestedFilename()).toBe("Launch plan.md");
+
+  await download.click();
+  const word = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Word (.docx)" }).click();
+  expect((await word).suggestedFilename()).toBe("Launch plan.docx");
+  const { value } = await mammoth.convertToHtml({ path: (await (await word).path())! });
+  expect(value).toBe(
+    "<h1>Launch plan</h1><ul><li>Kickoff in <strong>May</strong></li><li>Beta in June</li><li>Launch in September</li></ul>",
+  );
+
+  // Public readers download the Markdown directly; Word export needs a session.
+  const chatId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const { share } = await (await page.request.post(`/api/chat/${chatId}/share`)).json();
+  const anonymous = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const reader = await anonymous.newPage();
+    await reader.goto(`/share/${share.id}`);
+    await reader.getByRole("button", { name: /Launch plan.*Created · Version 1/ }).click();
+    const shared = reader.waitForEvent("download");
+    await panel(reader).getByRole("button", { name: "Download document" }).click();
+    expect((await shared).suggestedFilename()).toBe("Launch plan.md");
+    await expect(reader.getByRole("menuitem")).toHaveCount(0);
+    expect(
+      (await anonymous.request.post("/api/documents/export", {
+        data: { title: "x", type: "markdown", content: "x", format: "docx" },
+      })).status(),
+    ).toBe(401);
   } finally {
     await anonymous.close();
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Menu } from "@base-ui/react/menu";
 import type { UIMessage } from "ai";
 import { useTheme } from "next-themes";
 import { writeText } from "clipboard-polyfill";
@@ -12,10 +13,13 @@ import {
   Copy,
   Download,
   Eye,
+  FileDown,
+  FileText,
   Loader2,
   X,
 } from "lucide-react";
 import {
+  canExportToWord,
   DOCUMENT_TYPE_LABELS,
   documentFilename,
   documentMediaType,
@@ -25,6 +29,7 @@ import {
 } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { apiUrl } from "@/lib/api-url";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import { MESSAGE_MARKDOWN_PLUGINS } from "@/lib/chat/markdown";
@@ -47,6 +52,7 @@ export function DocumentPanel({
   toolCallId,
   streaming,
   variant = "docked",
+  wordExport = true,
   onSelect,
   onClose,
 }: {
@@ -54,6 +60,8 @@ export function DocumentPanel({
   toolCallId: string;
   streaming: boolean;
   variant?: "docked" | "overlay";
+  /** Word export converts on the server and needs a signed-in session. */
+  wordExport?: boolean;
   onSelect: (toolCallId: string) => void;
   onClose: () => void;
 }) {
@@ -62,6 +70,7 @@ export function DocumentPanel({
     [messages, toolCallId],
   );
   const [showSource, setShowSource] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const missing = !view;
   useEffect(() => {
     // The tool call can disappear when history is edited or regenerated.
@@ -103,15 +112,46 @@ export function DocumentPanel({
       ? `Version ${saved.version} · Updating…`
       : `Version ${saved.version} of ${view.versions.at(-1)!.version}`;
 
-  function download() {
-    const url = URL.createObjectURL(
-      new Blob([document!.content], { type: documentMediaType(document!) }),
-    );
+  function save(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
     const anchor = window.document.createElement("a");
     anchor.href = url;
-    anchor.download = documentFilename(document!);
+    anchor.download = filename;
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+
+  function download() {
+    save(
+      new Blob([document!.content], { type: documentMediaType(document!) }),
+      documentFilename(document!),
+    );
+  }
+
+  async function exportWord() {
+    const shown = document!;
+    setExporting(true);
+    try {
+      const response = await fetch(apiUrl("/api/documents/export"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: shown.title,
+          type: shown.type,
+          content: shown.content,
+          format: "docx",
+        }),
+      });
+      if (!response.ok) throw new Error(`Export failed (${response.status})`);
+      save(await response.blob(), documentFilename(shown, "docx"));
+    } catch {
+      toast.error({
+        title: "Could not export the document",
+        description: "Check your connection and try again.",
+      });
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -198,16 +238,63 @@ export function DocumentPanel({
             >
               <Copy />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Download document"
-              title={`Download ${documentFilename(document)}`}
-              disabled={writing}
-              onClick={download}
-            >
-              <Download />
-            </Button>
+            {wordExport && canExportToWord(document) ? (
+              <Menu.Root>
+                <Menu.Trigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Download document"
+                      title="Download"
+                      disabled={writing || exporting}
+                    />
+                  }
+                >
+                  {exporting ? (
+                    <Loader2 className={motionClasses.spinner} />
+                  ) : (
+                    <Download />
+                  )}
+                </Menu.Trigger>
+                <Menu.Portal>
+                  <Menu.Positioner side="bottom" align="end" sideOffset={4}>
+                    <Menu.Popup
+                      className={cn(
+                        "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                        motionClasses.popup,
+                      )}
+                    >
+                      <Menu.Item
+                        onClick={download}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <FileDown className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span>Markdown (.md)</span>
+                      </Menu.Item>
+                      <Menu.Item
+                        onClick={() => void exportWord()}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span>Word (.docx)</span>
+                      </Menu.Item>
+                    </Menu.Popup>
+                  </Menu.Positioner>
+                </Menu.Portal>
+              </Menu.Root>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Download document"
+                title={`Download ${documentFilename(document)}`}
+                disabled={writing}
+                onClick={download}
+              >
+                <Download />
+              </Button>
+            )}
           </div>
         </div>
         <Button

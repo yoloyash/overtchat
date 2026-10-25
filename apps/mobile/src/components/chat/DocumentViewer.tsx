@@ -4,6 +4,7 @@ import { Directory } from "expo-file-system";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Modal,
   Pressable,
@@ -17,13 +18,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import type { UIMessage } from "ai";
 import {
+  canExportToWord,
   DOCUMENT_TYPE_LABELS,
   documentFilename,
   documentMediaType,
   documentView,
   htmlPreviewDocument,
+  WORD_MEDIA_TYPE,
   type DocumentDraft,
 } from "@overtchat/shared";
+import { authFetch, getApiBase } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { toastError, toastSuccess } from "@/lib/toast";
 import { CodeBlock } from "./CodeBlock";
@@ -76,13 +80,34 @@ export function DocumentViewer({
       ? `Version ${saved.version} · Updating…`
       : `Version ${saved.version} of ${view.versions.at(-1)!.version}`;
 
-  async function save() {
+  async function save(format: "source" | "docx") {
+    const shown = document!;
     setSaving(true);
     try {
+      // Convert first, so a failed export does not leave the folder picker open.
+      let bytes: Uint8Array | undefined;
+      if (format === "docx") {
+        const response = await authFetch(`${getApiBase()}/api/documents/export`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: shown.title,
+            type: shown.type,
+            content: shown.content,
+            format: "docx",
+          }),
+        });
+        if (!response.ok) throw new Error(`Export failed (${response.status})`);
+        bytes = new Uint8Array(await response.arrayBuffer());
+      }
       const directory = await Directory.pickDirectoryAsync();
-      directory
-        .createFile(documentFilename(document!), documentMediaType(document!))
-        .write(document!.content);
+      if (bytes) {
+        directory.createFile(documentFilename(shown, "docx"), WORD_MEDIA_TYPE).write(bytes);
+      } else {
+        directory
+          .createFile(documentFilename(shown), documentMediaType(shown))
+          .write(shown.content);
+      }
       toastSuccess("Document saved");
     } catch (error) {
       if (!(error instanceof Error && /cancel/i.test(error.message)))
@@ -90,6 +115,18 @@ export function DocumentViewer({
     } finally {
       setSaving(false);
     }
+  }
+
+  function chooseSave() {
+    if (!canExportToWord(document!)) {
+      void save("source");
+      return;
+    }
+    Alert.alert("Save document", undefined, [
+      { text: "Markdown (.md)", onPress: () => void save("source") },
+      { text: "Word (.docx)", onPress: () => void save("docx") },
+      { text: "Cancel", style: "cancel" },
+    ]);
   }
 
   const iconButton = (
@@ -165,7 +202,7 @@ export function DocumentViewer({
               {iconButton("Share document", "share", () => {
                 void Share.share({ title: document.title, message: document.content }).catch(() => {});
               }, writing)}
-              {iconButton("Save document", "download", () => void save(), writing || saving)}
+              {iconButton("Save document", "download", chooseSave, writing || saving)}
             </View>
           </View>
         </View>

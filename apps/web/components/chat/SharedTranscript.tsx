@@ -67,6 +67,7 @@ export function SharedTranscript({
         toolCallId={documentTarget}
         streaming={false}
         variant="overlay"
+        wordExport={false}
         onSelect={setDocumentTarget}
         onClose={closeDocument}
       />

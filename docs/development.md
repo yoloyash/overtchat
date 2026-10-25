@@ -424,14 +424,20 @@ itself while it is written on wide screens, and the open document follows its
 revisions. HTML previews run scripts only inside a sandboxed frame without
 same-origin access. Shared chats show documents read-only.
 
+Markdown documents also download as Word files. `POST /api/documents/export`
+converts the Markdown the client sends (signed-in users only; nothing is
+stored) to native Word headings, lists, tables, links and character
+formatting. Images appear as their alt text, and public share readers get the
+Markdown file.
+
 Mobile opens a card's version full screen, with version navigation, source
-view, copy, the share sheet, and saving to a chosen folder. Markdown and code
+view, copy, the share sheet, and saving to a chosen folder as Markdown or Word. Markdown and code
 render natively. HTML and SVG render in a WebView without cookies, file
 access, a native bridge or navigation; links open in the system browser.
 Mermaid documents show their source on mobile.
 
 ```sh
-npm run test -w apps/web -- lib/documents lib/chat/request.test.ts lib/search/extract.test.ts lib/sharing.test.ts app/api/chat/route.test.ts
+npm run test -w apps/web -- lib/documents app/api/documents lib/chat/request.test.ts lib/search/extract.test.ts lib/sharing.test.ts app/api/chat/route.test.ts
 npm run test -w apps/mobile -- src/components/chat/DocumentViewer.test.tsx
 E2E_PORT=4791 npm run test:e2e -w apps/web -- documents.spec.ts
 ```
