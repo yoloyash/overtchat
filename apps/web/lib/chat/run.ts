@@ -103,6 +103,13 @@ import {
   type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
+import {
+  attachmentTokenBudget,
+  isDocumentFile,
+  listChatFiles,
+  readChunkTokens,
+} from "@/lib/chat/chat-files";
+import { createFileTools, FILE_TOOL_ORDER } from "@/lib/chat/file-tools";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
@@ -388,18 +395,47 @@ export async function runChat(
   const openuiToolsEnabled = openuiEligible && openuiPromptFits;
   // History decoding is independent of whether this turn offers the tool.
   const openuiTools = createOpenUITools();
+  const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
+  // Names come from the whole conversation, so they stay stable when a
+  // checkpoint hides the message that attached a file.
+  const chatFiles = listChatFiles(messages);
+  const partialUploadIds = new Set<string>();
   const inlined = await inlineUploads(
     imageToolsEnabled
       ? withImageReferences(restoredContext.messages, supportsImageInput)
       : restoredContext.messages,
     userId,
+    {
+      tokenBudget: attachmentTokenBudget(contextBudget?.inputTokens),
+      fileNames: new Map(chatFiles.map((file) => [file.uploadId, file.name])),
+      readerAvailable: toolCallingEnabled,
+      onPartial: (uploadId) => partialUploadIds.add(uploadId),
+    },
   );
+  // Offer file tools only when some attached document is not entirely in the
+  // model's context: cut to its budget, or attached before a checkpoint.
+  const contextUploadIds = new Set(
+    listChatFiles(restoredContext.messages).map((file) => file.uploadId),
+  );
+  const fileToolsEnabled =
+    toolCallingEnabled &&
+    chatFiles.some(
+      (file) =>
+        isDocumentFile(file) &&
+        (partialUploadIds.has(file.uploadId) ||
+          !contextUploadIds.has(file.uploadId)),
+    );
+  const fileTools = createFileTools({
+    userId,
+    files: chatFiles,
+    chunkTokens: readChunkTokens(contextBudget?.inputTokens),
+  });
   const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withRecentOpenUIPrograms(withResponseStyle(inlined))).map((message) =>
     message.role === "assistant"
       ? { ...message, parts: joinContinuationTextParts(message.parts) }
       : message,
   ), {
-    tools: { ...chatTools, ...imageTools, ...openuiTools },
+    tools: { ...chatTools, ...imageTools, ...openuiTools, ...fileTools },
     // An intentional stop can persist a tool call before its result arrives.
     // Keep partial text/reasoning, but do not replay an unmatched call.
     ignoreIncompleteToolCalls: true,
@@ -426,7 +462,6 @@ export async function runChat(
     promptCacheStrategy?.kind === "openai"
       ? withOpenAIPromptCacheKey(providerOptions, promptCacheKeyForChat(chatId))
       : providerOptions;
-  const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
   const webSearchAvailable =
     getServerCapability("search").provider !== "disabled";
   const webToolsEnabled =
@@ -562,6 +597,7 @@ export async function runChat(
     const memoryTools = memoryToolsEnabled ? createMemoryTools(userId) : {};
     const toolSources: ToolSet[] = [
       ...(webToolsEnabled ? [chatTools] : []),
+      ...(fileToolsEnabled ? [fileTools] : []),
       ...(imageToolsEnabled ? [imageTools] : []),
       ...(openuiToolsEnabled ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
@@ -575,11 +611,13 @@ export async function runChat(
     const toolsEnabled = agentToolNames.length > 0;
     const toolOrder = [
       ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
+      ...(fileToolsEnabled ? FILE_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
       ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
         (name) =>
           !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(FILE_TOOL_ORDER as readonly string[]).includes(name) &&
           !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
           !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),

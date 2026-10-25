@@ -371,6 +371,41 @@ produce some. `THINKING_LIVE_REPORT` writes a small JSON report without
 credentials or transcripts. The test does not modify saved models or chats,
 and ordinary unit runs skip it.
 
+## Chat attachment reading validation
+
+Uploads keep up to 5,000,000 extracted characters. Each message includes 30% of
+the model's input budget for its documents (1,000 to 100,000 tokens; 16,000 when
+the window is unknown), split so documents below an equal share stay whole. A
+longer document is cut at a line break, followed by a note with the offset where
+reading resumes. The share depends only on the model, so a saved message renders
+identically on every turn and stays in provider prompt caches.
+
+When an attached document is cut, or was attached before a compaction
+checkpoint, tool-calling models also get `read_file` and `search_files`.
+`read_file` returns about 15% of the input budget per call (1,000 to 50,000
+tokens) and the next offset. `search_files` matches the whole query, then
+passages containing most of its words. Results store character ranges, not
+text; replay reads the same range from the immutable upload.
+
+```sh
+npm run test -w apps/web -- lib/chat/chat-files.test.ts lib/chat/document-text.test.ts lib/chat/file-tools.test.ts lib/db/uploads-inline.test.ts app/api/chat/route.test.ts
+npm run test -w apps/mobile -- src/components/chat/ChainOfThought.test.tsx
+E2E_PORT=4791 npm run test:e2e -w apps/web -- attachment-reading.spec.ts
+```
+
+The browser test uses a scripted provider to check the budgeted prefix and
+resume note, search then read then answer, the activity timeline, reload, small
+message rows, and an unchanged attachment prompt with replayed reads on the next
+turn. To include a live tool-calling model, which must find a fact beyond the
+included prefix, set `ATTACHMENT_READING_LIVE_URL` to its `/v1` endpoint:
+
+```sh
+ATTACHMENT_READING_LIVE_URL=http://127.0.0.1:8000/v1 E2E_PORT=4791 npm run test:e2e -w apps/web -- attachment-reading.spec.ts
+```
+
+On Android and iOS, expand a message's activity and check the file read and
+search steps.
+
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,

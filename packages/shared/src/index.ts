@@ -5,6 +5,7 @@ export * from "./model-preferences";
 export * from "./chat";
 export * from "./context-status";
 export * from "./tools";
+export * from "./chat-files";
 export * from "./tool-preferences";
 export * from "./citations";
 export * from "./search";

@@ -598,6 +598,7 @@ describe("chat route setup boundary", () => {
     expect(mocks.inlineUploads).toHaveBeenCalledWith(
       [...storedMessages, ...messages],
       "user",
+      expect.objectContaining({ tokenBudget: 30_720, readerAvailable: true }),
     );
     expect(mocks.uiStreamOptions?.originalMessages).toEqual([
       ...storedMessages,
@@ -629,7 +630,11 @@ describe("chat route setup boundary", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(200);
-    expect(mocks.inlineUploads).toHaveBeenCalledWith([storedUser], "user");
+    expect(mocks.inlineUploads).toHaveBeenCalledWith(
+      [storedUser],
+      "user",
+      expect.objectContaining({ tokenBudget: 30_720 }),
+    );
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         truncateFromMessageId: "assistant-message",
@@ -1336,6 +1341,144 @@ describe("chat route setup boundary", () => {
       "Reasoning level low is unavailable for this model",
     );
     expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
+  });
+
+  describe("attached document reading", () => {
+    const documentMessage = {
+      id: "user-message",
+      role: "user" as const,
+      parts: [
+        {
+          type: "file" as const,
+          url: "/api/uploads/doc",
+          mediaType: "application/pdf",
+          filename: "report.pdf",
+        },
+        { type: "text" as const, text: "Summarize the report" },
+      ],
+    };
+
+    it("offers file tools when a document is only partly included", async () => {
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        messages: [documentMessage],
+      });
+      mocks.inlineUploads.mockImplementation(
+        async (value: unknown, _userId: string, options: { onPartial?: (id: string) => void }) => {
+          options.onPartial?.("doc");
+          return value;
+        },
+      );
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.inlineUploads).toHaveBeenCalledWith(
+        [documentMessage],
+        "user",
+        expect.objectContaining({
+          tokenBudget: 30_720,
+          readerAvailable: true,
+          fileNames: new Map([["doc", "report.pdf"]]),
+        }),
+      );
+      expect(Object.keys(mocks.agentSettings[0].tools as object)).toEqual([
+        "web_search",
+        "fetch_url",
+        "read_file",
+        "search_files",
+      ]);
+      expect(mocks.agentSettings[0].toolOrder).toEqual([
+        "web_search",
+        "fetch_url",
+        "read_file",
+        "search_files",
+      ]);
+    });
+
+    it("keeps file tools out when every document fits", async () => {
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        webSearchEnabled: false,
+        messages: [documentMessage],
+      });
+      mocks.inlineUploads.mockImplementation(async (value: unknown) => value);
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+      // Earlier reads in history still convert while the tools are not offered.
+      expect(
+        Object.keys(mocks.convertToModelMessages.mock.calls[0][1].tools),
+      ).toEqual(expect.arrayContaining(["read_file", "search_files"]));
+    });
+
+    it("offers file tools for documents attached before a checkpoint", async () => {
+      const history = [
+        documentMessage,
+        { id: "a1", role: "assistant" as const, parts: [{ type: "text" as const, text: "It covers Q3." }] },
+        { id: "u2", role: "user" as const, parts: [{ type: "text" as const, text: "Thanks" }] },
+      ];
+      const checkpoint = createContextCheckpoint(history, "u2", "The user shared report.pdf.");
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        webSearchEnabled: false,
+        temporary: true,
+        messages: [
+          ...history,
+          {
+            id: "a2",
+            role: "assistant" as const,
+            parts: [{ type: "text" as const, text: "Anytime" }],
+            metadata: { contextCheckpoint: checkpoint },
+          },
+          { id: "u3", role: "user" as const, parts: [{ type: "text" as const, text: "What was the net revenue?" }] },
+        ],
+      });
+      mocks.inlineUploads.mockImplementation(async (value: unknown) => value);
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.inlineUploads.mock.calls[0][0].map((m: { id: string }) => m.id)).not.toContain(
+        "user-message",
+      );
+      expect(Object.keys(mocks.agentSettings[0].tools as object)).toEqual([
+        "read_file",
+        "search_files",
+      ]);
+    });
+
+    it("keeps file tools out when the model cannot call tools", async () => {
+      mocks.getModelConfig.mockResolvedValue({ ...modelConfig, toolCallingEnabled: false });
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        messages: [documentMessage],
+      });
+      mocks.inlineUploads.mockImplementation(
+        async (value: unknown, _userId: string, options: { onPartial?: (id: string) => void }) => {
+          options.onPartial?.("doc");
+          return value;
+        },
+      );
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.inlineUploads).toHaveBeenCalledWith(
+        [documentMessage],
+        "user",
+        expect.objectContaining({ readerAvailable: false }),
+      );
+      expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    });
+
+    it("budgets attachments for models with unknown context windows", async () => {
+      mocks.resolveModelContextWindow.mockReturnValue(undefined);
+      expect((await POST(request())).status).toBe(200);
+      expect(mocks.inlineUploads).toHaveBeenCalledWith(
+        messages,
+        "user",
+        expect.objectContaining({ tokenBudget: 16_000 }),
+      );
+    });
   });
 
   it("removes web tools when the capability is disabled", async () => {

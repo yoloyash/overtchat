@@ -7,6 +7,8 @@ import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
 import { messages, uploads, chatShareUploads } from "@/lib/db/schema";
 import { MAX_BYTES_IMAGE } from "@/lib/extract";
+import { allocateTokenBudget } from "@/lib/chat/chat-files";
+import { measureTokens, rangeEnd } from "@/lib/chat/document-text";
 import { assertFetchedImageContent } from "@/lib/image-content";
 
 type Part = UIMessagePart<UIDataTypes, UITools>;
@@ -135,6 +137,20 @@ export async function sweepOrphanedUploads(): Promise<void> {
   }
 }
 
+export interface InlineUploadOptions {
+  /**
+   * Tokens of document text included up front in one message, shared across
+   * its documents. Omit to include every document in full.
+   */
+  tokenBudget?: number;
+  /** Conversation-wide file names, so prompts match file-tool references. */
+  fileNames?: ReadonlyMap<string, string>;
+  /** Whether the model can read the remainder of a document with file tools. */
+  readerAvailable?: boolean;
+  /** Reports each document that was included only in part. */
+  onPartial?: (uploadId: string) => void;
+}
+
 /**
  * Rewrites `file` parts that reference our uploads route:
  *   - image uploads → inline `data:` URL so upstream providers can fetch bytes
@@ -142,16 +158,18 @@ export async function sweepOrphanedUploads(): Promise<void> {
  *   - document uploads with extracted text → wrapped in Anthropic-style
  *     <documents>…</documents> XML, prepended before the user's text on the
  *     same message (Anthropic docs: "queries at the end can improve response
- *     quality by up to 30%")
+ *     quality by up to 30%"). A document beyond its share of `tokenBudget`
+ *     is cut at a line break, with a note saying where reading resumes.
  * Missing/unauthorized uploads are dropped.
  */
 export async function inlineUploads(
   uiMessages: UIMessage[],
   userId: string,
+  options: InlineUploadOptions = {},
 ): Promise<UIMessage[]> {
   return Promise.all(
     uiMessages.map(async (m) => {
-      const docs: Array<{ source: string; text: string; truncated: boolean }> = [];
+      const docs: InlineDocument[] = [];
       const rest: Part[] = [];
 
       for (const part of m.parts) {
@@ -164,7 +182,13 @@ export async function inlineUploads(
             const dataUrl = `data:${row.mediaType};base64,${bytes.toString("base64")}`;
             rest.push({ ...part, url: dataUrl });
           } else if (row.extractedText) {
-            docs.push({ source: row.filename, text: row.extractedText, truncated: row.truncated });
+            docs.push({
+              uploadId: id,
+              source: options.fileNames?.get(id) ?? row.filename,
+              text: row.extractedText,
+              truncated: row.truncated,
+              end: row.extractedText.length,
+            });
           }
           continue;
         }
@@ -173,7 +197,19 @@ export async function inlineUploads(
 
       if (docs.length === 0) return { ...m, parts: rest };
 
-      const docsXml = renderDocuments(docs);
+      if (options.tokenBudget !== undefined) {
+        const allocations = allocateTokenBudget(
+          docs.length,
+          options.tokenBudget,
+          (index, limit) => measureTokens(docs[index].text, limit, docs[index].uploadId),
+        );
+        docs.forEach((doc, index) => {
+          doc.end = rangeEnd(doc.text, 0, allocations[index], doc.uploadId);
+          if (doc.end < doc.text.length) options.onPartial?.(doc.uploadId);
+        });
+      }
+
+      const docsXml = renderDocuments(docs, options.readerAvailable === true);
       const textIdx = rest.findIndex((p) => p.type === "text");
       if (textIdx >= 0) {
         const t = rest[textIdx] as Extract<Part, { type: "text" }>;
@@ -186,16 +222,35 @@ export async function inlineUploads(
   );
 }
 
-function renderDocuments(
-  docs: Array<{ source: string; text: string; truncated: boolean }>,
-): string {
+interface InlineDocument {
+  uploadId: string;
+  source: string;
+  text: string;
+  truncated: boolean;
+  /** End of the included prefix. */
+  end: number;
+}
+
+function renderDocuments(docs: InlineDocument[], readerAvailable: boolean): string {
   const items = docs
     .map((d, i) => {
       const src = d.truncated ? `${d.source} (truncated)` : d.source;
-      return `<document index="${i + 1}">\n<source>${escapeXml(src)}</source>\n<document_content>\n${d.text}\n</document_content>\n</document>`;
+      const partial = d.end < d.text.length;
+      const content = partial ? d.text.slice(0, d.end) : d.text;
+      const status = partial
+        ? `\n<document_status>${escapeXml(partialStatus(d, readerAvailable))}</document_status>`
+        : "";
+      return `<document index="${i + 1}">\n<source>${escapeXml(src)}</source>\n<document_content>\n${content}\n</document_content>${status}\n</document>`;
     })
     .join("\n");
   return `<documents>\n${items}\n</documents>`;
+}
+
+function partialStatus(doc: InlineDocument, readerAvailable: boolean): string {
+  const included = `Included the first ${doc.end} of ${doc.text.length} characters.`;
+  return readerAvailable
+    ? `${included} Use read_file with file ${JSON.stringify(doc.source)} and offset ${doc.end} to read further, or search_files to find specific passages.`
+    : `${included} The rest of this document is not available in this conversation.`;
 }
 
 function escapeXml(s: string): string {

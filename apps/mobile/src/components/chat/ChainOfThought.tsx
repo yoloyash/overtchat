@@ -20,8 +20,13 @@ import {
   faviconUrl,
   type FetchedImage,
   type FetchUrlPart,
+  isReadFilePart,
+  isSearchFilesPart,
   isToolSettled,
   parseMcpToolName,
+  readFileRangeLabel,
+  type ReadFilePart,
+  type SearchFilesPart,
   webSearchProviderLabel,
   webSearchResults,
   type WebSearchPart,
@@ -37,6 +42,8 @@ type ReasoningPart = { type: "reasoning"; text: string; state?: string };
 export type ActivityPart =
   | WebSearchPart
   | FetchUrlPart
+  | ReadFilePart
+  | SearchFilesPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -51,6 +58,14 @@ function isReasoning(p: ActivityPart): p is ReasoningPart {
 }
 function isMcpTool(p: ActivityPart): p is DynamicToolUIPart {
   return p.type === "dynamic-tool" && parseMcpToolName(p.toolName) !== null;
+}
+function isFileTool(p: ActivityPart): p is ReadFilePart | SearchFilesPart {
+  return isReadFilePart(p) || isSearchFilesPart(p);
+}
+function isTool(
+  p: ActivityPart,
+): p is Exclude<ActivityPart, ReasoningPart> {
+  return isWebSearch(p) || isFetchUrl(p) || isFileTool(p) || isMcpTool(p);
 }
 
 /**
@@ -94,14 +109,8 @@ export function ChainOfThought({
     }
   }, [active]);
 
-  const hasTools = parts.some(
-    (p) => isWebSearch(p) || isFetchUrl(p) || isMcpTool(p),
-  );
-  const lastTool = [...parts]
-    .reverse()
-    .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
-    );
+  const lastTool = [...parts].reverse().find(isTool);
+  const toolKind = lastTool ? (isFileTool(lastTool) ? "file" : "web") : null;
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
@@ -120,7 +129,7 @@ export function ChainOfThought({
       >
         <StatusIcon
           active={active}
-          hasTools={hasTools}
+          toolKind={toolKind}
           failed={lastToolFailed}
           color={colors.mutedForeground}
         />
@@ -154,15 +163,15 @@ export function ChainOfThought({
   );
 }
 
-/** Leading status glyph: spinner while active, else globe (tools) / brain. */
+/** Leading status glyph: spinner while active, else the tool kind / brain. */
 function StatusIcon({
   active,
-  hasTools,
+  toolKind,
   failed,
   color,
 }: {
   active: boolean;
-  hasTools: boolean;
+  toolKind: "web" | "file" | null;
   failed: boolean;
   color: string;
 }) {
@@ -179,7 +188,17 @@ function StatusIcon({
       />
     );
   }
-  if (hasTools) {
+  if (toolKind === "file") {
+    return (
+      <Ionicons
+        name="document-text-outline"
+        size={15}
+        color={color}
+        style={styles.statusIcon}
+      />
+    );
+  }
+  if (toolKind === "web") {
     return (
       <Ionicons name="globe-outline" size={15} color={color} style={styles.statusIcon} />
     );
@@ -234,17 +253,20 @@ function ShimmerLabel({
 
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
-  const icon =
-    (isWebSearch(part) || isFetchUrl(part) || isMcpTool(part)) &&
-    part.state === "output-error"
-        ? "failed"
+  const icon: RailIcon =
+    isTool(part) && part.state === "output-error"
+      ? "failed"
       : isWebSearch(part)
-          ? "search"
-          : isFetchUrl(part)
-            ? "globe"
-            : isMcpTool(part)
-              ? "tool"
-            : "brain";
+        ? "search"
+        : isFetchUrl(part)
+          ? "globe"
+          : isReadFilePart(part)
+            ? "file"
+            : isSearchFilesPart(part)
+              ? "file-search"
+              : isMcpTool(part)
+                ? "tool"
+                : "brain";
 
   return (
     <View style={styles.step}>
@@ -254,6 +276,10 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isReadFilePart(part) ? (
+          <ReadFileStep part={part} />
+        ) : isSearchFilesPart(part) ? (
+          <SearchFilesStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -264,7 +290,14 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   );
 }
 
-type RailIcon = "search" | "globe" | "tool" | "brain" | "failed";
+type RailIcon =
+  | "search"
+  | "globe"
+  | "file"
+  | "file-search"
+  | "tool"
+  | "brain"
+  | "failed";
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
 function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
@@ -278,6 +311,10 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <Ionicons name="search" size={11} color={colors.mutedForeground} />
         ) : icon === "globe" ? (
           <Ionicons name="globe-outline" size={11} color={colors.mutedForeground} />
+        ) : icon === "file" ? (
+          <Ionicons name="document-text-outline" size={11} color={colors.mutedForeground} />
+        ) : icon === "file-search" ? (
+          <MaterialCommunityIcons name="file-search-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
@@ -650,6 +687,130 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   );
 }
 
+function ReadFileStep({ part }: { part: ReadFilePart }) {
+  const { colors, fonts } = useTheme();
+  const output = part.output;
+  return (
+    <View style={styles.searchStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {output?.file ?? part.input?.file ?? "file"}
+        </Text>
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.state === "output-error"
+            ? "Failed"
+            : output
+              ? readFileRangeLabel(output)
+              : "Reading…"}
+        </Text>
+      </View>
+      {part.state === "output-error" ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function SearchFilesStep({ part }: { part: SearchFilesPart }) {
+  const { colors, fonts } = useTheme();
+  const query = part.input?.query?.trim();
+  const output = part.output;
+  return (
+    <View style={styles.searchStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {query || "Searching files…"}
+        </Text>
+        {output ? (
+          <Text
+            style={[
+              styles.metaText,
+              { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+            ]}
+          >
+            {output.totalMatches === 0
+              ? "no matches"
+              : `${output.totalMatches} ${output.totalMatches === 1 ? "match" : "matches"}`}
+          </Text>
+        ) : null}
+      </View>
+      {part.state === "output-error" ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : output && output.matches.length > 0 ? (
+        <View
+          style={[
+            styles.resultList,
+            { borderColor: colors.border, backgroundColor: colors.muted },
+          ]}
+        >
+          {output.matches.map((match, i) => (
+            <View
+              key={i}
+              style={[
+                styles.matchRow,
+                i > 0 && {
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.resultTitle,
+                  { color: colors.foreground, fontFamily: fonts.sansMedium },
+                ]}
+              >
+                {match.file}
+              </Text>
+              <Text
+                numberOfLines={2}
+                style={[
+                  styles.metaText,
+                  { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                ]}
+              >
+                {match.snippet}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function isFetchedImage(value: unknown): value is FetchedImage {
   return (
     Boolean(value && typeof value === "object") &&
@@ -699,6 +860,14 @@ function activeLabel(last: ActivityPart | undefined): string {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
+  if (isReadFilePart(last)) {
+    const file = last.input?.file;
+    return file ? `Reading ${file}` : "Reading file…";
+  }
+  if (isSearchFilesPart(last)) {
+    const query = last.input?.query?.trim();
+    return query ? `Searching files for "${query}"` : "Searching files…";
+  }
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -709,11 +878,7 @@ function activeLabel(last: ActivityPart | undefined): string {
 }
 
 function settledLabel(parts: ActivityPart[], duration: number): string {
-  const lastTool = [...parts]
-    .reverse()
-    .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
-    );
+  const lastTool = [...parts].reverse().find(isTool);
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
     if (lastTool.state === "output-available") return "Searched the web";
@@ -725,6 +890,18 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
       return isFetchedImage(lastTool.output) ? "Viewed image" : "Read page";
     }
     return "Page fetch did not complete";
+  }
+  if (lastTool && isReadFilePart(lastTool)) {
+    if (lastTool.state === "output-error") return "File read failed";
+    if (lastTool.state === "output-available") {
+      return `Read ${lastTool.output?.file ?? lastTool.input?.file ?? "file"}`;
+    }
+    return "File read did not complete";
+  }
+  if (lastTool && isSearchFilesPart(lastTool)) {
+    if (lastTool.state === "output-error") return "File search failed";
+    if (lastTool.state === "output-available") return "Searched files";
+    return "File search did not complete";
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);
@@ -805,6 +982,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   showAllText: { fontSize: 12 },
+  matchRow: { gap: 2, paddingHorizontal: 10, paddingVertical: 8 },
 
   fetchRow: {
     flexDirection: "row",
