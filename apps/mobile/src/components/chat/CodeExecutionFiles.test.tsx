@@ -94,14 +94,23 @@ async function press(label: string) {
   await act(async () => button.click());
 }
 
-it("previews images large and shows other files as cards", async () => {
-  await act(async () => root.render(<CodeExecutionFiles files={files} />));
-  const chips = [...container.querySelectorAll("figure")].map((chip) => [
+function chips() {
+  return [...container.querySelectorAll("figure")].map((chip) => [
     chip.textContent,
     chip.getAttribute("data-category"),
     chip.getAttribute("data-large"),
   ]);
-  expect(chips).toEqual([
+}
+
+it("shows images small in a run and large in a reply, and other files as cards", async () => {
+  await act(async () => root.render(<CodeExecutionFiles files={files} />));
+  expect(chips()).toEqual([
+    ["totals.png", "image", "false"],
+    ["totals.csv", "spreadsheet", "false"],
+    ["report.docx", "document", "false"],
+  ]);
+  await act(async () => root.render(<CodeExecutionFiles files={files} large />));
+  expect(chips()).toEqual([
     ["totals.png", "image", "true"],
     ["totals.csv", "spreadsheet", "false"],
     ["report.docx", "document", "false"],

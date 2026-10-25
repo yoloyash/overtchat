@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
-import { groupMessageParts, imageOptionsFromMetadata, type MessageSegment } from "@overtchat/shared";
+import {
+  codeExecutionFiles,
+  groupMessageParts,
+  imageOptionsFromMetadata,
+  type CodeExecutionPart,
+  type MessageSegment,
+} from "@overtchat/shared";
 
 type Part = UIMessage["parts"][number];
 
@@ -150,24 +156,26 @@ describe("groupMessageParts", () => {
     ).toHaveLength(2);
   });
 
-  it("shows files from code runs after the activity that made them", () => {
+  it("keeps code runs and the files they return in their activity", () => {
     const shared = "/api/share/00000000-0000-0000-0000-000000000000/files/c";
+    const one = codeRun("one", [runFile("a"), { id: "bad", url: "https://example.com/x", name: "x", mediaType: "image/png", size: 1 }]);
+    const two = codeRun("two", [runFile("b"), runFile("c", shared)]);
     const segs = groupMessageParts([
       reasoning("plan"),
-      codeRun("one", [runFile("a"), { id: "bad", url: "https://example.com/x", name: "x", mediaType: "image/png", size: 1 }]),
+      one,
       search("context"),
-      codeRun("two", [runFile("b"), runFile("c", shared)]),
+      two,
       codeRun("three", [], "input-available"),
       text("Here is the chart."),
       codeRun("four", []),
     ]);
 
-    expect(segs.map((segment) => segment.kind)).toEqual(["activity", "files", "text", "activity"]);
-    const activity = segs[0] as Extract<MessageSegment, { kind: "activity" }>;
-    expect(activity.parts).toHaveLength(5);
-    const files = segs[1] as Extract<MessageSegment, { kind: "files" }>;
-    expect(files.index).toBe(activity.startIndex);
-    expect(files.files.map((file) => file.url)).toEqual(["/api/uploads/a", "/api/uploads/b", shared]);
+    expect(segs.map((segment) => segment.kind)).toEqual(["activity", "text", "activity"]);
+    expect((segs[0] as Extract<MessageSegment, { kind: "activity" }>).parts).toHaveLength(5);
+    // Only saved uploads, or their copies in a share snapshot, are run files.
+    expect(
+      [one, two].flatMap((part) => codeExecutionFiles(part as CodeExecutionPart)).map((file) => file.url),
+    ).toEqual(["/api/uploads/a", "/api/uploads/b", shared]);
   });
 
   it("renders memory tools as persistent artifacts outside the work timeline", () => {

@@ -306,9 +306,6 @@ function AssistantBubble({
             if (seg.kind === "memory") {
               return <MemoryArtifact key={seg.startIndex} parts={seg.parts} />;
             }
-            // Run files show inside their run's step; the reply shows the
-            // ones it links.
-            if (seg.kind === "files") return null;
             const trailing = seg.parts[seg.parts.length - 1];
             const trailingDone =
               trailing.type === "reasoning"

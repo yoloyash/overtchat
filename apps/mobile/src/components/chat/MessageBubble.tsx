@@ -1,6 +1,12 @@
 import { useChatPreferences } from "@/lib/chatPreferences";
 import { readMessageStats } from "@overtchat/shared/message-stats";
-import { openUIStateKey, type OpenUIAction, type OpenUIFormState } from "@overtchat/shared";
+import {
+  codeExecutionFileIndex,
+  openUIStateKey,
+  type CodeExecutionFile,
+  type OpenUIAction,
+  type OpenUIFormState,
+} from "@overtchat/shared";
 import type { FileUIPart, UIMessage } from "ai";
 import { groupMessageParts, isToolSettled } from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
@@ -14,7 +20,6 @@ import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
 import { AttachmentChip } from "./AttachmentChip";
 import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
-import { CodeExecutionFiles } from "./CodeExecutionFiles";
 import { DocumentCard } from "./DocumentCard";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
@@ -39,6 +44,7 @@ export function MessageBubble({
   onOpenUIAction,
   openuiStates,
   liveOpenUI,
+  codeFiles,
   readOnly = false,
 }: {
   message: UIMessage;
@@ -54,6 +60,8 @@ export function MessageBubble({
   onOpenUIAction?: (action: OpenUIAction) => void;
   openuiStates?: Map<string, OpenUIFormState>;
   liveOpenUI?: ReadonlySet<string>;
+  /** Files the conversation's runs returned, which replies link by name. */
+  codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -63,6 +71,10 @@ export function MessageBubble({
   const menu = useMeasuredPopoverAnchor();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
+  const ownFiles = useMemo(
+    () => (codeFiles ? undefined : codeExecutionFileIndex([message])),
+    [codeFiles, message],
+  );
 
   useEffect(() => {
     return () => {
@@ -202,6 +214,7 @@ export function MessageBubble({
                 key={`t-${seg.index}`}
                 text={(seg.part as { text: string }).text}
                 sourceLookup={sourceLookup}
+                codeFiles={codeFiles ?? ownFiles}
               />
             );
           }
@@ -244,9 +257,6 @@ export function MessageBubble({
                 streaming={streaming}
               />
             );
-          }
-          if (seg.kind === "files") {
-            return <CodeExecutionFiles key={`f-${seg.index}`} files={seg.files} />;
           }
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =

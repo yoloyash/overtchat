@@ -15,6 +15,15 @@ vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => null }));
 vi.mock("./MarkdownBody", () => ({
   MarkdownBody: ({ text }: { text: string }) => <p>{text}</p>,
 }));
+vi.mock("./CodeExecutionFiles", () => ({
+  CodeExecutionFiles: ({ files, large }: { files: Array<{ name: string }>; large?: boolean }) => (
+    <ul data-run-files="" data-large={String(Boolean(large))}>
+      {files.map((file) => (
+        <li key={file.name}>{file.name}</li>
+      ))}
+    </ul>
+  ),
+}));
 vi.mock("./CodeBlock", () => ({
   CodeBlock: ({ code, language }: { code: string; language: string }) => (
     <pre data-language={language}>{code}</pre>
@@ -197,6 +206,7 @@ it("shows code runs with their code, status and output", async () => {
     root.render(<ChainOfThought parts={[run]} active={false} />);
   });
   expect(container.textContent).toContain("Ran code");
+  expect(container.textContent).not.toContain("file");
   expect(container.querySelector('[data-icon="code-slash-outline"]')).not.toBeNull();
 
   await act(async () => {
@@ -232,6 +242,30 @@ it("shows code runs with their code, status and output", async () => {
   expect(container.textContent).toContain("Exit code 1");
   expect(container.textContent).toContain("ERRORS (TRUNCATED)");
   expect(container.textContent).toContain("ZeroDivisionError: division by zero");
+});
+
+it("keeps the files runs returned inside their steps", async () => {
+  const file = (name: string) => {
+    const id = name.replace(".", "-");
+    return { id, url: `/api/uploads/${id}`, name, mediaType: "image/png", size: 1 };
+  };
+  const parts: CodeExecutionPart[] = [
+    { ...run, toolCallId: "one", output: { ...run.output!, files: [file("crop.png")] } },
+    { ...run, toolCallId: "two", output: { ...run.output!, files: [file("final.png"), file("check.png")] } },
+  ];
+  await act(async () => {
+    root.render(<ChainOfThought parts={parts} active={false} />);
+  });
+  expect(container.textContent).toContain("Ran code · 3 files");
+
+  await act(async () => {
+    (container.querySelector("button") as unknown as { click(): void }).click();
+  });
+  const lists = [...container.querySelectorAll("[data-run-files]")];
+  expect(lists.map((list) => [list.textContent, list.getAttribute("data-large")])).toEqual([
+    ["crop.png", "false"],
+    ["final.pngcheck.png", "false"],
+  ]);
 });
 
 it("labels running, failed and unfinished code runs", async () => {

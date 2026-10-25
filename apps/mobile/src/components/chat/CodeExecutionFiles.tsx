@@ -1,7 +1,7 @@
 import { isPreviewableImage, type CodeExecutionFile } from "@overtchat/shared";
 import { Directory } from "expo-file-system";
-import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useState, type ReactNode } from "react";
+import { Pressable, Text, View, type StyleProp, type TextStyle } from "react-native";
 import { authFetch, getApiBase } from "@/lib/api";
 import type { AttachmentCategory } from "@/lib/chat/attachments";
 import { useTheme } from "@/lib/theme";
@@ -19,9 +19,8 @@ function categoryOf(file: CodeExecutionFile): AttachmentCategory {
   return "document";
 }
 
-/** Files code runs returned: images preview inline, and any file saves to a chosen folder. */
-export function CodeExecutionFiles({ files }: { files: CodeExecutionFile[] }) {
-  const { colors } = useTheme();
+/** Saves a run's file to a folder the user picks. */
+function useSaveFile() {
   const [saving, setSaving] = useState<string | null>(null);
 
   async function save(file: CodeExecutionFile) {
@@ -42,8 +41,25 @@ export function CodeExecutionFiles({ files }: { files: CodeExecutionFile[] }) {
     }
   }
 
+  return { saving, save };
+}
+
+/**
+ * Files code runs returned, each with a save action. Images open full screen
+ * when tapped; `large` shows them at full width, as replies do.
+ */
+export function CodeExecutionFiles({
+  files,
+  large = false,
+}: {
+  files: CodeExecutionFile[];
+  large?: boolean;
+}) {
+  const { colors } = useTheme();
+  const { saving, save } = useSaveFile();
+
   return (
-    <View style={{ gap: 10, marginVertical: 8 }}>
+    <View style={{ gap: 10, marginVertical: large ? 8 : 4 }}>
       {files.map((file) => (
         <View key={file.id} style={{ gap: 2 }}>
           <AttachmentChip
@@ -54,7 +70,7 @@ export function CodeExecutionFiles({ files }: { files: CodeExecutionFile[] }) {
               filename: file.name,
             }}
             meta={{ category: categoryOf(file), size: file.size }}
-            large={isPreviewableImage(file)}
+            large={large && isPreviewableImage(file)}
           />
           <Pressable
             disabled={saving !== null}
@@ -70,5 +86,28 @@ export function CodeExecutionFiles({ files }: { files: CodeExecutionFile[] }) {
         </View>
       ))}
     </View>
+  );
+}
+
+/** A reply's link to a run's file inside a sentence: tapping saves the file. */
+export function CodeFileLinkText({
+  file,
+  style,
+  children,
+}: {
+  file: CodeExecutionFile;
+  style?: StyleProp<TextStyle>;
+  children?: ReactNode;
+}) {
+  const { saving, save } = useSaveFile();
+  return (
+    <Text
+      style={style}
+      accessibilityRole="link"
+      accessibilityHint={`Saves ${file.name}`}
+      onPress={saving === null ? () => void save(file) : undefined}
+    >
+      {children}
+    </Text>
   );
 }

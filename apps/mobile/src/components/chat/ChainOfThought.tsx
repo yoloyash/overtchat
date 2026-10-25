@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import {
   cleanDomain,
+  codeExecutionFiles,
   codeRunStatus,
   faviconUrl,
   type CodeExecutionPart,
@@ -40,6 +41,7 @@ import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { useTheme } from "@/lib/theme";
 import { CodeBlock } from "./CodeBlock";
+import { CodeExecutionFiles } from "./CodeExecutionFiles";
 import { MarkdownBody } from "./MarkdownBody";
 
 type ReasoningPart = { type: "reasoning"; text: string; state?: string };
@@ -410,6 +412,7 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
   const { colors, fonts } = useTheme();
   const output = part.output;
   const code = part.input?.code ?? "";
+  const files = codeExecutionFiles(part);
   return (
     <View style={styles.searchStep}>
       <View style={styles.searchHeader}>
@@ -448,6 +451,7 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
       {output?.stderr ? (
         <ToolValue label="Errors" value={output.stderr} truncated={output.stderrTruncated} mono />
       ) : null}
+      {files.length ? <CodeExecutionFiles files={files} /> : null}
     </View>
   );
 }
@@ -993,7 +997,10 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   if (lastTool && isCodeExecutionPart(lastTool)) {
     if (lastTool.state === "output-error") return "Code run failed";
     if (lastTool.state !== "output-available") return "Code run did not complete";
-    return lastTool.output?.exitCode === 0 ? "Ran code" : "Code ended with an error";
+    const label = lastTool.output?.exitCode === 0 ? "Ran code" : "Code ended with an error";
+    // Run files show inside the steps, so the summary says they are there.
+    const files = parts.filter(isCodeExecutionPart).flatMap(codeExecutionFiles).length;
+    return files ? `${label} · ${files} ${files === 1 ? "file" : "files"}` : label;
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

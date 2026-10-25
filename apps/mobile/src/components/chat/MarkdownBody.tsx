@@ -1,10 +1,19 @@
 import { useMemo } from "react";
 import { Linking, StyleSheet, Text } from "react-native";
-import Markdown, { type ASTNode, type RenderRules } from "react-native-markdown-display";
+import Markdown, {
+  renderRules,
+  type ASTNode,
+  type RenderRules,
+} from "react-native-markdown-display";
 import MarkdownIt from "markdown-it";
+import { codeFileLinkName, type CodeExecutionFile } from "@overtchat/shared";
 import { useTheme } from "@/lib/theme";
 import { applyCitationsToMarkdown, type SourceLookup } from "@/lib/chat/citations";
+import { codeFileLinksPlugin } from "@/lib/chat/code-file-links";
 import { CodeBlock } from "./CodeBlock";
+import { CodeExecutionFiles, CodeFileLinkText } from "./CodeExecutionFiles";
+
+const NO_FILES: ReadonlyMap<string, CodeExecutionFile> = new Map();
 
 type Variant = "body" | "thinking";
 
@@ -13,12 +22,15 @@ export function MarkdownBody({
   variant = "body",
   sourceLookup,
   fuzzyLinks = true,
+  codeFiles = NO_FILES,
 }: {
   text: string;
   variant?: Variant;
   sourceLookup?: SourceLookup;
   /** Link bare domains. Disable where file names like notes.md are common. */
   fuzzyLinks?: boolean;
+  /** Files the conversation's runs returned, which replies link by name. */
+  codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
 }) {
   const { colors, fonts, radii } = useTheme();
 
@@ -34,7 +46,7 @@ export function MarkdownBody({
   );
 
   const markdownit = useMemo(() => {
-    const parser = MarkdownIt({ typographer: true, linkify: true, breaks: true });
+    const parser = MarkdownIt({ typographer: true, linkify: true, breaks: true }).use(codeFileLinksPlugin);
     if (!fuzzyLinks) parser.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
     return parser;
   }, [fuzzyLinks]);
@@ -55,9 +67,43 @@ export function MarkdownBody({
           language=""
         />
       ),
+      // Images and lines of only links that name a run's file show the file;
+      // names no run returned keep their text.
+      image: (node, children, parent, ruleStyles, allowedImageHandlers, defaultImageHandler) => {
+        const { src = "", alt = "" } =
+          (node as ASTNode & { attributes?: { src?: string; alt?: string } }).attributes ?? {};
+        const name = codeFileLinkName(src);
+        if (name === null) {
+          return renderRules.image!(
+            node,
+            children,
+            parent,
+            ruleStyles,
+            allowedImageHandlers,
+            defaultImageHandler,
+          );
+        }
+        const file = codeFiles.get(name.toLowerCase());
+        return file ? (
+          <CodeExecutionFiles key={node.key} files={[file]} large />
+        ) : (
+          <Text key={node.key}>{alt}</Text>
+        );
+      },
       link: (node, children, _parent, ruleStyles, onLinkPress) => {
         const href = (node as ASTNode & { attributes?: { href?: string } }).attributes
           ?.href;
+        const name = href ? codeFileLinkName(href) : null;
+        if (name !== null) {
+          const file = codeFiles.get(name.toLowerCase());
+          return file ? (
+            <CodeFileLinkText key={node.key} file={file} style={ruleStyles.link}>
+              {children}
+            </CodeFileLinkText>
+          ) : (
+            <Text key={node.key}>{children}</Text>
+          );
+        }
         const isCitation = href ? citationUrls.has(href) : false;
         if (isCitation) {
           return (
@@ -89,7 +135,7 @@ export function MarkdownBody({
         );
       },
     }),
-    [citationUrls],
+    [citationUrls, codeFiles],
   );
 
   return (
