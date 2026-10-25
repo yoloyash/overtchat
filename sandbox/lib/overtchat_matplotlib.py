@@ -2,7 +2,7 @@
 
 Selected with MPLBACKEND=module://overtchat_matplotlib, so ``plt.show()``
 produces images instead of opening a window. Figures still open when the
-program ends are saved too.
+program ends are saved too, unless the code already saved them itself.
 """
 
 import atexit
@@ -10,6 +10,20 @@ import os
 
 from matplotlib.backend_bases import FigureManagerBase, _Backend
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
+
+_savefig = Figure.savefig
+
+
+def _savefig_and_remember(self, *args, **kwargs):
+    result = _savefig(self, *args, **kwargs)
+    self._overtchat_saved = True
+    return result
+
+
+# A figure the code saved with savefig() is already an output; saving it again
+# as figure-N.png would return the same chart twice.
+Figure.savefig = _savefig_and_remember
 
 
 def save_open_figures() -> None:
@@ -20,6 +34,9 @@ def save_open_figures() -> None:
         return
     for number in plt.get_fignums():
         figure = plt.figure(number)
+        if getattr(figure, "_overtchat_saved", False):
+            plt.close(figure)
+            continue
         index = 1
         while os.path.exists(os.path.join(directory, f"figure-{index}.png")):
             index += 1

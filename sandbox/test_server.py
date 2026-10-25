@@ -95,6 +95,13 @@ class SandboxTests(unittest.TestCase):
         self.assertEqual(sorted(files), ["outputs/figure-1.png", "outputs/figure-2.png"])
         for data in files.values():
             self.assertTrue(data.startswith(b"\x89PNG"))
+        # Charts the code saved itself are returned once, under its name.
+        result = run(
+            "import matplotlib.pyplot as plt\n"
+            "plt.plot([1, 2]); plt.savefig('outputs/line.png')\n"
+            "plt.figure(); plt.bar(['a'], [1]); plt.savefig('outputs/bar.png'); plt.show()\n"
+        )
+        self.assertEqual(sorted(outputs(result)), ["outputs/bar.png", "outputs/line.png"])
 
     def test_builds_documents_with_the_bundled_libraries(self):
         result = run(
