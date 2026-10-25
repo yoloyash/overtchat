@@ -95,6 +95,43 @@ export function codeExecutionFiles(part: CodeExecutionPart): CodeExecutionFile[]
     : [];
 }
 
+/**
+ * Files the conversation's runs returned, keyed by lower-cased name. Saved
+ * names are unique within a conversation, so a reply can link a file by name.
+ */
+export function codeExecutionFileIndex(
+  messages: readonly { parts: readonly { type: string }[] }[],
+): Map<string, CodeExecutionFile> {
+  const index = new Map<string, CodeExecutionFile>();
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (!isCodeExecutionPart(part)) continue;
+      for (const file of codeExecutionFiles(part)) index.set(file.name.toLowerCase(), file);
+    }
+  }
+  return index;
+}
+
+/**
+ * The file name a reply's link target names, for targets such as
+ * `chart.png`, `outputs/chart.png`, `/mnt/data/outputs/chart.png` or
+ * `sandbox:/mnt/data/outputs/chart.png`. Web URLs, other absolute paths and
+ * in-page anchors are not file links.
+ */
+export function codeFileLinkName(target: string): string | null {
+  let path = target.trim();
+  if (/^sandbox:/i.test(path)) path = path.slice("sandbox:".length);
+  else if (/^[a-z][a-z\d+.-]*:/i.test(path)) return null;
+  if (!path || /^[#?]/.test(path) || path.startsWith("//")) return null;
+  if (path.startsWith("/") && !path.startsWith("/mnt/")) return null;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // A stray % keeps the name as written.
+  }
+  return path.slice(path.lastIndexOf("/") + 1) || null;
+}
+
 const PREVIEWABLE_IMAGES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 export function isPreviewableImage(file: Pick<CodeExecutionFile, "mediaType">): boolean {

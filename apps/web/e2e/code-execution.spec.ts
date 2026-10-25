@@ -80,7 +80,10 @@ const addShare = [
 const divide = "print(1 / 0)";
 
 const scripts: Record<string, { code: string; reply: string }> = {
-  "total by region": { code: analyze, reply: "North leads with 7." },
+  "total by region": {
+    code: analyze,
+    reply: "North leads with 7.\n\n![Totals by region](totals.png)\n\n[Totals](sandbox:/mnt/data/outputs/totals.csv)",
+  },
   "share of the total": { code: addShare, reply: "North has 58% of the total." },
   "divide by zero": { code: divide, reply: "That calculation fails." },
 };
@@ -358,25 +361,26 @@ test("runs code on an attachment, returns its files, and reuses them in a later 
   const shown = afterRun.messages.slice(toolIndex + 1).find((message) => message.role === "user");
   expect(Array.isArray(shown?.content) && shown.content.some((part) => part.type === "image_url")).toBe(true);
 
-  // The chart displays inline and the table downloads.
-  const files = page.locator("[data-code-files]");
-  const chart = files.getByRole("img", { name: "totals.png" });
+  // The reply shows the chart it links in full and the table as a download.
+  const chart = page.locator("[data-code-file-image]").getByRole("img", { name: "totals.png" });
   await expect(chart).toBeVisible();
   await expect.poll(() => chart.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
-  const table = page.locator("[data-code-file]", { hasText: "totals.csv" });
+  const table = page.locator("[data-code-file-card]", { hasText: "totals.csv" });
   await expect(table).toContainText(`CSV · ${Buffer.byteLength(totalsCsv)} B`);
   const download = page.waitForEvent("download");
   await table.click();
   expect((await download).suggestedFilename()).toBe("totals.csv");
   expect(await readFile((await (await download).path())!, "utf8")).toBe(totalsCsv);
 
-  // The activity shows the code and what it printed.
-  await expandRun(page, "Ran code");
+  // The activity shows the code, what it printed, and every file it saved.
+  await expandRun(page, "Ran code · 2 files");
   const run = page.locator("[data-code-run]");
   await expect(run).toContainText("Python");
   await expect(run).toContainText(/Done · \d+\.\ds/);
   await expect(run).toContainText('groupby("region")');
   await expect(run).toContainText(/north +7/);
+  await expect(run.locator("[data-code-run-files]").getByRole("img", { name: "totals.png" })).toBeVisible();
+  await expect(run.locator("[data-code-run-file]", { hasText: "totals.csv" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("code-run.png") });
 
   // A later run reads the files earlier runs saved, newest first, and a
@@ -388,12 +392,15 @@ test("runs code on an attachment, returns its files, and reuses them in a later 
     expect(sandboxRuns[1].files.get("totals.csv")).toBe(totalsCsv);
   }
   expect(toolResult(chatRequests.at(-1)!)).toContain("- totals (2).csv (text/csv, ");
-  await expect(page.locator("[data-code-file]", { hasText: "totals (2).csv" })).toBeVisible();
+  // That reply links nothing, so its file stays in its run.
+  await expect(page.locator("[data-code-file-card]", { hasText: "totals (2).csv" })).toHaveCount(0);
+  await expandRun(page, "Ran code · 1 file");
+  await expect(page.locator("[data-code-run-file]", { hasText: "totals (2).csv" })).toBeVisible();
 
   // Everything survives a reload, and the files are in the library.
   await page.reload();
-  await expect(page.locator("[data-code-files]").getByRole("img", { name: "totals.png" })).toBeVisible();
-  await expect(page.locator("[data-code-file]", { hasText: "totals (2).csv" })).toBeVisible();
+  await expect(page.locator("[data-code-file-image]").getByRole("img", { name: "totals.png" })).toBeVisible();
+  await expect(page.locator("[data-code-file-card]", { hasText: "totals.csv" })).toBeVisible();
   const library = await (await page.request.get("/api/library")).json();
   expect(library.items.map((item: { filename: string }) => item.filename).sort()).toEqual([
     "sales.csv",
@@ -409,12 +416,12 @@ test("runs code on an attachment, returns its files, and reuses them in a later 
   try {
     const reader = await anonymous.newPage();
     await reader.goto(`/share/${share.id}`);
-    const sharedChart = reader.locator("[data-code-files]").getByRole("img", { name: "totals.png" });
+    const sharedChart = reader.locator("[data-code-file-image]").getByRole("img", { name: "totals.png" });
     await expect(sharedChart).toBeVisible();
     await expect.poll(() => sharedChart.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     expect(await sharedChart.getAttribute("src")).toMatch(/^\/api\/share\/[0-9a-f-]{36}\/files\/[\w-]+$/);
     const sharedDownload = reader.waitForEvent("download");
-    await reader.locator("[data-code-file]", { hasText: "totals.csv" }).click();
+    await reader.locator("[data-code-file-card]", { hasText: "totals.csv" }).click();
     expect(await readFile((await (await sharedDownload).path())!, "utf8")).toBe(totalsCsv);
     await reader.screenshot({ path: testInfo.outputPath("code-run-shared.png") });
   } finally {
@@ -432,7 +439,7 @@ test("shows a failed run with its error output", async ({ page }) => {
   const run = page.locator("[data-code-run]");
   await expect(run).toContainText("Exit code 1");
   await expect(run).toContainText("ZeroDivisionError: division by zero");
-  await expect(page.locator("[data-code-files]")).toHaveCount(0);
+  await expect(page.locator("[data-code-run-files]")).toHaveCount(0);
 });
 
 test("offers code execution only to clients that render it while the sandbox is up", async ({ page }) => {
@@ -534,7 +541,8 @@ test("a live tool-calling model analyzes data, edits an image and writes a Word 
   const answer = (await page.locator("[data-chat-find-text]").last().innerText()).replace(/[,\s]/g, "");
   expect(answer).toContain(String(northTotal));
   expect(analysis.files.some((file) => file.mediaType === "image/png")).toBe(true);
-  await expect(page.locator("[data-code-files] img").first()).toBeVisible();
+  // The prompt has the model link its finished chart into the reply.
+  await expect(page.locator("[data-chat-find-text] [data-code-file-image] img").first()).toBeVisible();
 
   const photo = png(64, 64, (x, y) => (x < 32 ? ((x + y) % 2 ? [255, 255, 255] : [0, 0, 0]) : [200, 40, 40]));
   const edit = await turn(chatId, "Blur the left half of the attached image and give me the result as a PNG file.", {
@@ -554,7 +562,7 @@ test("a live tool-calling model analyzes data, edits an image and writes a Word 
   );
   const word = writing.files.find((file) => file.name.endsWith(".docx"));
   expect(word).toBeTruthy();
-  await expect(page.locator("[data-code-file]", { hasText: word!.name })).toBeVisible();
+  await expect(page.locator("[data-chat-find-text]").last().locator(`a[download="${word!.name}"]`).first()).toBeVisible();
   const { value } = await mammoth.extractRawText({
     buffer: Buffer.from(await (await page.request.get(word!.url)).body()),
   });

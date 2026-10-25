@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import type { UIMessage } from "ai";
-import { collectOpenUIStates, type OpenUIFormState } from "@overtchat/shared";
+import {
+  codeExecutionFileIndex,
+  collectOpenUIStates,
+  type OpenUIFormState,
+} from "@overtchat/shared";
 import { DocumentPanel } from "./DocumentPanel";
 import { DocumentPanelProvider } from "./DocumentPanelContext";
 import { MessageBubble } from "./MessageBubble";
@@ -30,6 +34,7 @@ export function SharedTranscript({
     () => new Map([...collectOpenUIStates(messages), ...(formStates ?? [])]),
     [messages, formStates],
   );
+  const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
   return (
     <DocumentPanelProvider value={documentPanel}>
     <div className="space-y-8" data-shared-transcript="">
@@ -48,6 +53,7 @@ export function SharedTranscript({
             showStats={false}
             stats={null}
             openuiStates={openuiStates}
+            codeFiles={codeFiles}
           />
         </article>
       ))}

@@ -19,6 +19,7 @@ import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import { CodeBlock } from "streamdown";
 import {
+  codeExecutionFiles,
   codeRunStatus,
   type CodeExecutionPart,
   type FetchedImage,
@@ -37,6 +38,7 @@ import {
 } from "@overtchat/shared";
 import { parseMcpToolName } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
+import { CodeRunFiles } from "./CodeExecutionFiles";
 import { ThinkingContent } from "./ThinkingContent";
 import { serverUrl } from "@/lib/api-url";
 
@@ -497,6 +499,7 @@ const STEP_CODE_BLOCK = [
 function CodeStep({ part }: { part: CodeExecutionPart }) {
   const output = part.output;
   const code = part.input?.code ?? "";
+  const files = codeExecutionFiles(part);
   return (
     <div className="space-y-1.5" data-code-run="">
       <div className="flex items-baseline justify-between gap-3">
@@ -517,6 +520,7 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
       {output?.stderr && (
         <RunOutput label="Errors" text={output.stderr} truncated={output.stderrTruncated} />
       )}
+      {files.length > 0 && <CodeRunFiles files={files} />}
     </div>
   );
 }
@@ -647,7 +651,10 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   if (lastTool && isCodeExecutionPart(lastTool)) {
     if (lastTool.state === "output-error") return "Code run failed";
     if (lastTool.state !== "output-available") return "Code run did not complete";
-    return lastTool.output?.exitCode === 0 ? "Ran code" : "Code ended with an error";
+    const label = lastTool.output?.exitCode === 0 ? "Ran code" : "Code ended with an error";
+    // Run files show inside the steps, so the summary says they are there.
+    const files = parts.filter(isCodeExecutionPart).flatMap(codeExecutionFiles).length;
+    return files ? `${label} · ${files} ${files === 1 ? "file" : "files"}` : label;
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

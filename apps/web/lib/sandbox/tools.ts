@@ -73,7 +73,7 @@ export function codeExecutionPrompt(info: SandboxInfo): string {
     .map((skill) => `${skill.name} (${skill.path}): ${skill.description}`)
     .join("\n");
   return `Code execution:
-Use run_python to compute exact numbers, analyze data files, edit images, and create or convert files such as charts, spreadsheets, Word documents, PDFs and presentations. Report results from the code's output instead of estimating, and mention only files a run actually returned.${
+Use run_python to compute exact numbers, analyze data files, edit images, and create or convert files such as charts, spreadsheets, Word documents, PDFs and presentations. Report results from the code's output instead of estimating. The user sees a file in your reply only when you link it by name, such as ![Chart](chart.png) to show an image or [Report](report.docx) to offer a download; write spaces as %20. Link only finished files a run returned, not intermediate ones.${
     skills
       ? `\nBefore working with one of these file types, read its guide with run_python, for example print(open(path).read()):\n${skills}`
       : ""
@@ -83,7 +83,7 @@ Use run_python to compute exact numbers, analyze data files, edit images, and cr
 function toolDescription(info: SandboxInfo | undefined): string {
   const packages = info ? Object.keys(info.packages).join(", ") : "";
   const tools = info?.tools.length ? ` Command-line tools: ${info.tools.join(", ")}.` : "";
-  return `Run Python 3 in an isolated sandbox without network access. Files from this conversation are read-only in ${SANDBOX_UPLOADS_DIR}/<name>. Save files for the user to ${SANDBOX_OUTPUTS_DIR}/: they are returned as downloads, images display in the chat, and plt.show() saves charts there. Each call starts fresh, so re-read files instead of relying on earlier variables; files saved by earlier calls are in ${SANDBOX_UPLOADS_DIR}. Print what you need to see.${
+  return `Run Python 3 in an isolated sandbox without network access. Files from this conversation are read-only in ${SANDBOX_UPLOADS_DIR}/<name>. Save files to ${SANDBOX_OUTPUTS_DIR}/ to keep them; plt.show() saves charts there. Each call starts fresh, so re-read files instead of relying on earlier variables; files saved by earlier calls are in ${SANDBOX_UPLOADS_DIR}. Print what you need to see.${
     packages ? ` Installed packages: ${packages}.` : ""
   }${tools}`;
 }
@@ -304,7 +304,7 @@ export function formatRun(output: CodeExecutionOutput, outputChars = Infinity): 
       ? `Stopped by ${output.signal} after ${seconds}.`
       : `Exit code ${output.exitCode} after ${seconds}.`;
   const files = output.files.length
-    ? `Files returned to the user (later runs read them from ${SANDBOX_UPLOADS_DIR}/<name>):\n${output.files
+    ? `Saved files (later runs read them from ${SANDBOX_UPLOADS_DIR}/<name>; link finished ones in your reply):\n${output.files
         .map((file) => `- ${file.name} (${file.mediaType}, ${formatSize(file.size)})`)
         .join("\n")}`
     : "";

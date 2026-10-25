@@ -268,7 +268,7 @@ describe("run_python", () => {
         "Exit code 1 after 2.5s.",
         "stdout:\nrows: 3",
         "stderr (truncated):\nTraceback ...\nKeyError: 'total'",
-        "Files returned to the user (later runs read them from /mnt/data/uploads/<name>):\n- summary.csv (text/csv, 2.0 KB)",
+        "Saved files (later runs read them from /mnt/data/uploads/<name>; link finished ones in your reply):\n- summary.csv (text/csv, 2.0 KB)",
         "Not returned: outputs/link (not a regular file)",
         "Left out of this run because of size limits: huge.csv",
       ].join("\n\n"),
@@ -376,6 +376,10 @@ describe("run_python", () => {
       "spreadsheets (/opt/skills/spreadsheets/SKILL.md): Read and write Excel files.",
     );
     expect(codeExecutionPrompt({ ...info, skills: [] })).not.toContain("guide");
+    // Saved files reach the reply only through links the model writes.
+    expect(codeExecutionPrompt(info)).toContain(
+      "The user sees a file in your reply only when you link it by name, such as ![Chart](chart.png)",
+    );
     expect(mediaTypeFor("Report.XLSX")).toBe(
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
