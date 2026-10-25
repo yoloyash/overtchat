@@ -1,7 +1,15 @@
 import type { UIMessage } from "ai";
+import {
+  codeExecutionFiles,
+  isCodeExecutionPart,
+  isGeneratedImage,
+  isImageToolPart,
+} from "@overtchat/shared";
 
 const UPLOAD_URL = /^\/api\/uploads\/([a-zA-Z0-9_-]+)$/;
 const MAX_NAME_LENGTH = 180;
+/** Names become sandbox paths, and file systems allow 255 bytes per name. */
+const MAX_NAME_BYTES = 200;
 
 /** An upload attached somewhere in a conversation, under a name unique to it. */
 export interface ChatFile {
@@ -15,28 +23,46 @@ export function uploadIdFromUrl(url: string): string | null {
 }
 
 /**
- * Lists the conversation's uploads in order of first attachment. Names come
- * from the attachment filename; repeated names get a numbered suffix so the
- * model can refer to every file unambiguously. The same history always yields
- * the same names, which keeps tool references and prompts stable across turns.
+ * Lists the conversation's files in order of first appearance: attachments,
+ * files written by code runs, and generated images. Names come from the
+ * filename; repeated names get a numbered suffix so the model can refer to
+ * every file unambiguously. The same history always yields the same names,
+ * which keeps tool references and prompts stable across turns.
  */
 export function listChatFiles(messages: readonly UIMessage[]): ChatFile[] {
   const files: ChatFile[] = [];
   const seenIds = new Set<string>();
   const usedNames = new Set<string>();
+  const add = (uploadId: string | null, filename: string | undefined, mediaType: string) => {
+    if (!uploadId || seenIds.has(uploadId)) return;
+    seenIds.add(uploadId);
+    const base = safeFilename(filename, mediaType);
+    let name = base;
+    for (let n = 2; usedNames.has(name.toLowerCase()); n++) {
+      name = numberedName(base, n);
+    }
+    usedNames.add(name.toLowerCase());
+    files.push({ uploadId, name, mediaType });
+  };
   for (const message of messages) {
     for (const part of message.parts) {
-      if (part.type !== "file") continue;
-      const uploadId = uploadIdFromUrl(part.url);
-      if (!uploadId || seenIds.has(uploadId)) continue;
-      seenIds.add(uploadId);
-      const base = safeFilename(part.filename, part.mediaType);
-      let name = base;
-      for (let n = 2; usedNames.has(name.toLowerCase()); n++) {
-        name = numberedName(base, n);
+      if (part.type === "file") {
+        add(uploadIdFromUrl(part.url), part.filename, part.mediaType);
+      } else if (isCodeExecutionPart(part)) {
+        for (const file of codeExecutionFiles(part)) {
+          add(uploadIdFromUrl(file.url), file.name, file.mediaType);
+        }
+      } else if (
+        isImageToolPart(part) &&
+        part.state === "output-available" &&
+        Array.isArray(part.output?.images)
+      ) {
+        for (const image of part.output.images) {
+          if (isGeneratedImage(image)) {
+            add(uploadIdFromUrl(image.url), image.filename, image.mediaType);
+          }
+        }
       }
-      usedNames.add(name.toLowerCase());
-      files.push({ uploadId, name, mediaType: part.mediaType });
     }
   }
   return files;
@@ -60,22 +86,45 @@ export function findChatFile(
   );
 }
 
-function safeFilename(filename: string | undefined, mediaType: string): string {
+/**
+ * A file name usable as a sandbox path and a tool reference. Applying it to
+ * its own result changes nothing, so a saved name lists back unchanged.
+ * `reserve` leaves that many characters and bytes free for a numbered suffix.
+ */
+export function safeFilename(
+  filename: string | undefined,
+  mediaType: string,
+  reserve = 0,
+): string {
   let cleaned = (filename ?? "")
-    .replace(/[\u0000-\u001f\u007f/\\]/g, "_")
+    .replace(/[\u0000-\u001f\u007f/\\]|\p{Surrogate}/gu, "_")
     .trim();
-  if (cleaned.length > MAX_NAME_LENGTH) {
+  const maxLength = MAX_NAME_LENGTH - reserve;
+  const maxBytes = MAX_NAME_BYTES - reserve;
+  if (cleaned.length > maxLength || Buffer.byteLength(cleaned) > maxBytes) {
     // Keep a short extension so the type stays recognizable.
     const dot = cleaned.lastIndexOf(".");
     const extension =
       dot > 0 && cleaned.length - dot <= 16 ? cleaned.slice(dot) : "";
-    cleaned = cleaned.slice(0, MAX_NAME_LENGTH - extension.length) + extension;
+    let stem = "";
+    // Whole code points only, so no surrogate pair is split.
+    for (const character of cleaned.slice(0, cleaned.length - extension.length)) {
+      const next = stem + character;
+      if (
+        next.length + extension.length > maxLength ||
+        Buffer.byteLength(next + extension) > maxBytes
+      ) {
+        break;
+      }
+      stem = next;
+    }
+    cleaned = stem.trim() + extension;
   }
   if (cleaned && cleaned !== "." && cleaned !== "..") return cleaned;
   return mediaType.startsWith("image/") ? "image" : "file";
 }
 
-function numberedName(name: string, n: number): string {
+export function numberedName(name: string, n: number): string {
   const dot = name.lastIndexOf(".");
   return dot > 0
     ? `${name.slice(0, dot)} (${n})${name.slice(dot)}`

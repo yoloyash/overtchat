@@ -9,6 +9,7 @@ import {
   type ASTNode,
 } from "@openuidev/lang-core";
 import {
+  isCodeExecutionPart,
   isImageToolPart,
   isOpenUIToolPart,
   normalizeOpenUILang,
@@ -277,6 +278,22 @@ export function mapUploadReferences(
             images: part.output.images.map((image) => ({
               ...image,
               url: uploadUrl(image.url, replace),
+            })),
+          },
+        };
+      }
+      if (
+        isCodeExecutionPart(part) &&
+        part.output &&
+        Array.isArray(part.output.files)
+      ) {
+        return {
+          ...part,
+          output: {
+            ...part.output,
+            files: part.output.files.map((file) => ({
+              ...file,
+              url: typeof file?.url === "string" ? uploadUrl(file.url, replace) : file?.url,
             })),
           },
         };

@@ -136,6 +136,18 @@ describe("file tools", () => {
     );
   });
 
+  it("says when a file has no readable text", async () => {
+    mocks.rows.set("archive", { extractedText: null, truncated: false, userId: "user" });
+    const archive = createFileTools({
+      userId: "user",
+      files: [{ uploadId: "archive", name: "results.zip", mediaType: "application/zip" }],
+      chunkTokens: 1_000,
+    });
+    await expect(
+      archive.read_file.execute!({ file: "results.zip" }, options),
+    ).rejects.toThrow('"results.zip" has no readable text.');
+  });
+
   it("reads the end exactly at the document length", async () => {
     const { output, model } = await read({ file: "notes.md", offset: 57 });
     expect(output).toMatchObject({ offset: 57, end: 57 });

@@ -79,8 +79,11 @@ export function createFileTools({
     file: ChatFile,
   ): Promise<{ text: string; incomplete: boolean }> {
     const row = await load(file.uploadId);
-    if (!row || row.extractedText === null) {
+    if (!row) {
       throw new Error(`${JSON.stringify(file.name)} is no longer available.`);
+    }
+    if (row.extractedText === null) {
+      throw new Error(`${JSON.stringify(file.name)} has no readable text.`);
     }
     return { text: row.extractedText, incomplete: row.truncated };
   }

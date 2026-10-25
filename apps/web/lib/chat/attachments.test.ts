@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getDataTransferFiles,
   hasDataTransferFiles,
+  humanMediaLabel,
   isSupportedAttachment,
 } from "./attachments";
 
@@ -54,5 +55,33 @@ describe("attachment helpers", () => {
     } as unknown as DataTransfer;
 
     expect(getDataTransferFiles(data)).toEqual([]);
+  });
+
+  it("names common file types for people", () => {
+    expect(
+      [
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/json",
+        "application/zip",
+        "application/octet-stream",
+        "image/png",
+        "image/svg+xml",
+        "text/x-python",
+        "text/csv",
+        "application/x-unknown",
+        undefined,
+      ].map(humanMediaLabel),
+    ).toEqual([
+      "PowerPoint presentation",
+      "JSON",
+      "ZIP archive",
+      "File",
+      "PNG image",
+      "SVG image",
+      "PYTHON",
+      "CSV",
+      "application/x-unknown",
+      "File",
+    ]);
   });
 });

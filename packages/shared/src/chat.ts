@@ -44,6 +44,8 @@ export interface ChatRequestBody {
   forceOpenUI?: boolean;
   /** The client can render model-created documents. */
   documentsSupported?: boolean;
+  /** The client can render code runs and the files they return. */
+  codeExecutionSupported?: boolean;
   /** Explicitly request an image on this turn; otherwise image tools remain automatic. */
   imageGeneration?: import("./images").ImageGenerationOptions;
   timeZone?: string;

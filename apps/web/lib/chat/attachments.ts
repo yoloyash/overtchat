@@ -105,7 +105,14 @@ export function humanMediaLabel(mediaType: string | undefined): string {
   if (mediaType === "application/pdf") return "PDF";
   if (mediaType.includes("wordprocessingml")) return "Word document";
   if (mediaType.includes("spreadsheetml")) return "Excel spreadsheet";
+  if (mediaType.includes("presentationml")) return "PowerPoint presentation";
   if (mediaType === "text/csv") return "CSV";
-  if (mediaType.startsWith("text/")) return mediaType.replace(/^text\//, "").toUpperCase();
+  if (mediaType === "application/json") return "JSON";
+  if (mediaType === "application/zip") return "ZIP archive";
+  if (mediaType === "application/octet-stream") return "File";
+  if (mediaType.startsWith("image/")) {
+    return `${mediaType.slice(6).replace(/\+xml$/, "").toUpperCase()} image`;
+  }
+  if (mediaType.startsWith("text/")) return mediaType.replace(/^text\/(x-)?/, "").toUpperCase();
   return mediaType;
 }

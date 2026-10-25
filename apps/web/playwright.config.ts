@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import path from "node:path";
+import { e2eSandboxToken, e2eSandboxUrl } from "./e2e/helpers/sandbox";
 import { promptedOrigins } from "./e2e/helpers/storage";
 
 dotenv.config({ path: path.resolve(__dirname, ".env.local") });
@@ -41,6 +42,8 @@ export default defineConfig({
       BETTER_AUTH_URL: baseURL,
       OVERTCHAT_E2E_DISABLE_AUTH_RATE_LIMIT: "1",
       OVERTCHAT_MANAGEMENT_SECRET: "e2e-management-secret-1234567890123456",
+      SANDBOX_URL: e2eSandboxUrl,
+      SANDBOX_TOKEN: e2eSandboxToken,
       ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     },
   },

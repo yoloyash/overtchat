@@ -244,6 +244,8 @@ export function MessageBubble({
               />
             );
           }
+          // This client does not request code execution yet.
+          if (seg.kind === "files") return null;
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =
             trailing.type === "reasoning"

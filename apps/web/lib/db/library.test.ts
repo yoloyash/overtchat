@@ -57,6 +57,20 @@ describe("library membership", () => {
     expect((await listLibrary("alice")).items.map((item) => item.id)).toEqual(["generated"]);
   });
 
+  it("includes owned files returned by finished code runs", async () => {
+    const chart = upload("chart");
+    const pending = upload("pending");
+    const foreign = upload("theirs", "bob");
+    const runPart = (state: string, files: unknown) => ({ type: "tool-run_python", state, output: { files } });
+    message("chat-a", [
+      runPart("output-available", [{ url: chart.url }, { url: foreign.url }, "malformed"]),
+      runPart("input-available", [{ url: pending.url }]),
+      runPart("output-available", "not an array"),
+    ], "assistant");
+    message("chat-a", [runPart("output-available", [{ url: pending.url }])], "user");
+    expect((await listLibrary("alice")).items.map((item) => item.id)).toEqual(["chart"]);
+  });
+
   it("lists saved owned file parts once, excluding drafts, tool results and URL mentions", async () => {
     const shared = upload("shared");
     const fetched = upload("fetched");

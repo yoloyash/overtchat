@@ -71,6 +71,19 @@ describe("chat request parsing", () => {
     ).rejects.toBeInstanceOf(ChatRequestError);
   });
 
+  it("accepts code execution rendering support only when advertised and fingerprints it", async () => {
+    const legacy = await parseChatRequest(request(validBody));
+    expect(legacy.codeExecutionSupported).toBe(false);
+    const current = await parseChatRequest(request({ ...validBody, codeExecutionSupported: true }));
+    expect(current.codeExecutionSupported).toBe(true);
+    expect(chatRequestFingerprint(current)).not.toBe(
+      chatRequestFingerprint({ ...current, codeExecutionSupported: false }),
+    );
+    await expect(
+      parseChatRequest(request({ ...validBody, codeExecutionSupported: 1 })),
+    ).rejects.toBeInstanceOf(ChatRequestError);
+  });
+
   it("validates and normalizes an explicit submit request", async () => {
     await expect(
       parseChatRequest(

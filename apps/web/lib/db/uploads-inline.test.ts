@@ -223,6 +223,62 @@ describe("attachment inlining", () => {
     expect(result[0].parts).toEqual([{ type: "text", text: "hi" }]);
   });
 
+  it("lists a message's files at their sandbox paths before the question when code can run", async () => {
+    addRow({ id: "doc", filename: "notes.txt", extractedText: "short note" });
+    addRow({ id: "img", category: "image", mediaType: "image/png", filename: "a.png", extractedText: null });
+    mocks.readFile.mockResolvedValue(Buffer.from("png-bytes"));
+    const parts: UIMessage["parts"] = [
+      attachment("doc", "notes.txt"),
+      { type: "file", url: "/api/uploads/img", mediaType: "image/png", filename: "a.png" },
+      { type: "text", text: "Blur the face" },
+    ];
+    const fileNames = new Map([["doc", "notes (2).txt"]]);
+    const [withCode] = await inlineUploads([message(parts)], "user", {
+      tokenBudget: 1_000,
+      fileNames,
+      codeExecution: true,
+    });
+    expect(withCode.parts.map((part) => part.type)).toEqual(["text", "file", "text"]);
+    const first = (withCode.parts[0] as { text: string }).text;
+    expect(first.endsWith(
+      "</documents>\n\nFiles from this message are available to run_python at: /mnt/data/uploads/notes (2).txt, /mnt/data/uploads/a.png",
+    )).toBe(true);
+    expect(withCode.parts[2]).toEqual({ type: "text", text: "Blur the face" });
+
+    const [withoutCode] = await inlineUploads([message(parts)], "user", { tokenBudget: 1_000, fileNames });
+    expect(textOf([withoutCode])).not.toContain("run_python");
+  });
+
+  it("includes only a preview of spreadsheets when code can run", async () => {
+    const csv = `region,month,total\n${"north,2026-01,1234.5\n".repeat(5_000)}`;
+    addRow({ id: "sheet", filename: "sales.csv", category: "spreadsheet", mediaType: "text/csv", extractedText: csv });
+    const onPartial = vi.fn();
+    const rendered = textOf(
+      await inlineUploads([message([attachment("sheet", "sales.csv")])], "user", {
+        tokenBudget: 50_000,
+        readerAvailable: true,
+        codeExecution: true,
+        onPartial,
+      }),
+    );
+    const content = /<document_content>\n([\s\S]*)\n<\/document_content>/.exec(rendered)![1];
+    expect(csv.startsWith(content)).toBe(true);
+    expect(countTextTokens(content)).toBeLessThanOrEqual(2_010);
+    expect(rendered).toContain(
+      `<document_status>Included the first ${content.length} of ${csv.length} characters. Analyze the whole file with run_python at /mnt/data/uploads/sales.csv.</document_status>`,
+    );
+    expect(onPartial).toHaveBeenCalledWith("sheet");
+
+    // Without code execution the same budget includes the whole spreadsheet.
+    const whole = textOf(
+      await inlineUploads([message([attachment("sheet", "sales.csv")])], "user", {
+        tokenBudget: 1_000_000,
+        readerAvailable: true,
+      }),
+    );
+    expect(whole).not.toContain("<document_status>");
+  });
+
   it("keeps the truncated marker for text cut at extraction", async () => {
     addRow({
       id: "cut",

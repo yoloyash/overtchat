@@ -7,7 +7,9 @@ import {
   findChatFile,
   isDocumentFile,
   listChatFiles,
+  numberedName,
   readChunkTokens,
+  safeFilename,
   uploadIdFromUrl,
 } from "./chat-files";
 
@@ -22,6 +24,14 @@ function file(id: string, filename: string | undefined, mediaType = "application
 
 function user(id: string, parts: UIMessage["parts"]): UIMessage {
   return { id, role: "user", parts };
+}
+
+function assistant(id: string, parts: unknown[]): UIMessage {
+  return { id, role: "assistant", parts: parts as UIMessage["parts"] };
+}
+
+function runOutput(id: string, name: string, mediaType = "text/csv", url = `/api/uploads/${id}`) {
+  return { id, url, name, mediaType, size: 10 };
 }
 
 describe("conversation files", () => {
@@ -86,6 +96,88 @@ describe("conversation files", () => {
     expect(entry.name).toHaveLength(180);
     expect(entry.name.endsWith("x.pdf")).toBe(true);
     expect(other.name).toBe("y".repeat(180));
+  });
+
+  it("limits names by bytes without splitting characters", () => {
+    const [accented, emoji, unpaired] = listChatFiles([
+      user("1", [
+        file("a", `${"\u00e9".repeat(150)}.csv`),
+        file("b", `${"\u{1F600}".repeat(60)}.txt`),
+        file("c", "half\ud800.txt"),
+      ]),
+    ]);
+    expect(accented.name).toBe(`${"\u00e9".repeat(98)}.csv`);
+    expect(Buffer.byteLength(accented.name)).toBe(200);
+    expect(emoji.name).toBe(`${"\u{1F600}".repeat(49)}.txt`);
+    expect(unpaired.name).toBe("half_.txt");
+  });
+
+  it("keeps saved names stable when they are listed again", () => {
+    for (const original of [
+      `${"x".repeat(300)}.pdf`,
+      `${"\u00e9".repeat(150)}.csv`,
+      `${"word ".repeat(60)}.md`,
+      "chart.png",
+    ]) {
+      const saved = numberedName(safeFilename(original, "text/plain", 20), 12);
+      expect(safeFilename(saved, "text/plain")).toBe(saved);
+    }
+  });
+
+  it("lists files from code runs and generated images after earlier attachments", () => {
+    const files = listChatFiles([
+      user("1", [file("a", "sales.csv", "text/csv")]),
+      assistant("2", [
+        {
+          type: "tool-run_python",
+          toolCallId: "run1",
+          state: "output-available",
+          input: { code: "..." },
+          output: {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 5,
+            stdout: "",
+            stderr: "",
+            files: [
+              runOutput("b", "sales.csv"),
+              runOutput("c", "chart.png", "image/png"),
+              runOutput("x", "shared.csv", "text/csv", "/api/share/00000000-0000-0000-0000-000000000000/files/x"),
+            ],
+          },
+        },
+        {
+          type: "tool-run_python",
+          toolCallId: "run2",
+          state: "output-error",
+          input: { code: "..." },
+          errorText: "boom",
+        },
+        {
+          type: "tool-generate_image",
+          toolCallId: "image1",
+          state: "output-available",
+          input: { prompt: "a cat" },
+          output: {
+            model: "m",
+            prompt: "a cat",
+            size: "auto",
+            quality: "auto",
+            images: [
+              { id: "d", url: "/api/uploads/d", mediaType: "image/png", filename: "cat.png" },
+            ],
+          },
+        },
+      ]),
+      user("3", [file("e", "chart.png", "image/png")]),
+    ]);
+    expect(files.map(({ uploadId, name }) => [uploadId, name])).toEqual([
+      ["a", "sales.csv"],
+      ["b", "sales (2).csv"],
+      ["c", "chart.png"],
+      ["d", "cat.png"],
+      ["e", "chart (2).png"],
+    ]);
   });
 
   it("resolves names case-insensitively and falls back to upload IDs", () => {

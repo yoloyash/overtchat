@@ -36,6 +36,8 @@ import {
   withSummaryOutputBudget,
 } from "@/lib/providers/server/output-budget";
 import {
+  codeExecutionFiles,
+  isCodeExecutionPart,
   isDocumentOutput,
   isDocumentToolPart,
   isImageToolPart,
@@ -117,6 +119,12 @@ import {
   DOCUMENT_TOOL_ORDER,
   DOCUMENT_TOOL_PROMPT,
 } from "@/lib/documents/tools";
+import { getSandboxStatus } from "@/lib/sandbox/client";
+import {
+  CODE_EXECUTION_TOOL_ORDER,
+  codeExecutionPrompt,
+  createCodeExecutionTools,
+} from "@/lib/sandbox/tools";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
@@ -407,6 +415,17 @@ export async function runChat(
   // checkpoint hides the message that attached a file.
   const chatFiles = listChatFiles(messages);
   const partialUploadIds = new Set<string>();
+  // Clients advertise a renderer for runs and their files; voice answers stay
+  // spoken. The sandbox must also be healthy.
+  const sandboxStatus =
+    parsedRequest.codeExecutionSupported === true &&
+    toolCallingEnabled &&
+    parsedRequest.responseStyle !== "voice"
+      ? await getSandboxStatus()
+      : null;
+  const sandboxInfo =
+    sandboxStatus?.state === "available" ? sandboxStatus.info : undefined;
+  const codeExecutionEnabled = sandboxInfo !== undefined;
   const inlined = await inlineUploads(
     imageToolsEnabled
       ? withImageReferences(restoredContext.messages, supportsImageInput)
@@ -417,6 +436,7 @@ export async function runChat(
       fileNames: new Map(chatFiles.map((file) => [file.uploadId, file.name])),
       readerAvailable: toolCallingEnabled,
       onPartial: (uploadId) => partialUploadIds.add(uploadId),
+      codeExecution: codeExecutionEnabled,
     },
   );
   // Offer file tools only when some attached document is not entirely in the
@@ -443,6 +463,13 @@ export async function runChat(
     toolCallingEnabled &&
     parsedRequest.responseStyle !== "voice";
   const documentTools = createDocumentTools({ userId, messages });
+  const codeTools = createCodeExecutionTools({
+    userId,
+    files: chatFiles,
+    supportsImageInput,
+    outputTokens: readChunkTokens(contextBudget?.inputTokens),
+    info: sandboxInfo,
+  });
   const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withRecentOpenUIPrograms(withResponseStyle(inlined))).map((message) =>
     message.role === "assistant"
       ? { ...message, parts: joinContinuationTextParts(message.parts) }
@@ -454,6 +481,7 @@ export async function runChat(
       ...openuiTools,
       ...fileTools,
       ...documentTools,
+      ...codeTools,
     },
     // An intentional stop can persist a tool call before its result arrives.
     // Keep partial text/reasoning, but do not replay an unmatched call.
@@ -496,6 +524,7 @@ export async function runChat(
     projectSystemPrompt(project),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
     documentsEnabled ? DOCUMENT_TOOL_PROMPT : null,
+    sandboxInfo ? codeExecutionPrompt(sandboxInfo) : null,
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
@@ -619,6 +648,7 @@ export async function runChat(
       ...(webToolsEnabled ? [chatTools] : []),
       ...(fileToolsEnabled ? [fileTools] : []),
       ...(documentsEnabled ? [documentTools] : []),
+      ...(codeExecutionEnabled ? [codeTools] : []),
       ...(imageToolsEnabled ? [imageTools] : []),
       ...(openuiToolsEnabled ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
@@ -634,6 +664,7 @@ export async function runChat(
       ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
       ...(fileToolsEnabled ? FILE_TOOL_ORDER : []),
       ...(documentsEnabled ? DOCUMENT_TOOL_ORDER : []),
+      ...(codeExecutionEnabled ? CODE_EXECUTION_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
       ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
@@ -641,6 +672,7 @@ export async function runChat(
           !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
           !(FILE_TOOL_ORDER as readonly string[]).includes(name) &&
           !(DOCUMENT_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(CODE_EXECUTION_TOOL_ORDER as readonly string[]).includes(name) &&
           !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
           !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
@@ -987,9 +1019,9 @@ export async function runChat(
       },
       onEnd: async ({ responseMessage, isAborted }) => {
         if (temporary) return;
-        // Completed images and document versions are durable results even if
-        // the subsequent language model step fails. Preserve them while
-        // discarding broken text fragments.
+        // Completed images, document versions and files from code runs are
+        // durable results even if the subsequent language model step fails.
+        // Preserve them while discarding broken text fragments.
         const savedParts = streamError
           ? [
               ...(continueMessage?.parts ?? []),
@@ -1002,7 +1034,9 @@ export async function runChat(
                     part.output.images.some(isGeneratedImage)) ||
                   (isDocumentToolPart(part) &&
                     part.state === "output-available" &&
-                    isDocumentOutput(part.output)),
+                    isDocumentOutput(part.output)) ||
+                  (isCodeExecutionPart(part) &&
+                    codeExecutionFiles(part).length > 0),
                 ),
             ]
           : responseMessage.parts;

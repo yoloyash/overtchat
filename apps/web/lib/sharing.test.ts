@@ -284,6 +284,52 @@ describe("shared content projection", () => {
     ]);
   });
 
+  it("publishes code runs and points their files at the share snapshot", () => {
+    const run = {
+      type: "tool-run_python",
+      toolCallId: "run",
+      state: "output-available",
+      input: { code: "df.plot()" },
+      output: {
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 5,
+        stdout: "",
+        stderr: "",
+        files: [
+          { id: "chart", url: "/api/uploads/chart", name: "chart.png", mediaType: "image/png", size: 10 },
+          { id: "data", url: "/api/uploads/data", name: "data.csv", mediaType: "text/csv", size: 4 },
+        ],
+      },
+      callProviderMetadata: { secret: true },
+    };
+    const replaced: string[] = [];
+    const [message] = mapUploadReferences(
+      sharedMessages([{ id: "a", role: "assistant", parts: [run] as UIMessage["parts"] }]),
+      (id) => {
+        replaced.push(id);
+        return `/api/share/token/files/${id}`;
+      },
+    );
+    expect(replaced).toEqual(["chart", "data"]);
+    expect(message.parts).toEqual([
+      {
+        type: "tool-run_python",
+        toolCallId: "run",
+        state: "output-available",
+        input: run.input,
+        output: {
+          ...run.output,
+          files: [
+            { ...run.output.files[0], url: "/api/share/token/files/chart" },
+            { ...run.output.files[1], url: "/api/share/token/files/data" },
+          ],
+        },
+      },
+    ]);
+    expect(run.output.files[0].url).toBe("/api/uploads/chart");
+  });
+
   it("does not publish system instructions or hidden compaction checkpoints", () => {
     expect(
       sharedMessages([

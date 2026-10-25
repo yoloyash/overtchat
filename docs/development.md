@@ -484,6 +484,50 @@ To try the Compose service, run `docker compose --profile sandbox up -d --build
 sandbox`, then call it from a container on the internal `sandbox` network, for
 example `curl http://sandbox:8080/healthz`.
 
+## Code execution validation
+
+Tool-calling models get `run_python` when the client advertises
+`codeExecutionSupported`, the answer is not spoken, and `SANDBOX_URL` points at
+a healthy sandbox. Chat requests reuse a health result for up to 60 seconds (10
+when unavailable); `/api/capabilities` probes afresh and refreshes it. Each run
+sends the conversation's files, newest first within the sandbox input limit, as
+`/mnt/data/uploads/<name>`, under the same names the file tools use. Files a
+run writes to `/mnt/data/outputs/` become the user's uploads, named uniquely
+within the conversation so later runs read them by name. Saved results keep
+those upload references; replay rebuilds the model's view from them, including
+up to four returned images for models with image input.
+
+Each user message lists its files' sandbox paths, and spreadsheets include a
+2,000-token preview with a note to analyze the whole file in code. Web and
+desktop show each run in the activity timeline with its code and output,
+returned images inline, and other files as download cards; shares serve them
+from the snapshot. Android and iOS do not request code execution yet.
+
+```sh
+npm run test -w apps/web -- lib/sandbox lib/chat/chat-files.test.ts lib/db/uploads-inline.test.ts lib/chat/parts.test.ts lib/chat/request.test.ts lib/sharing.test.ts lib/db/library.test.ts app/api/capabilities app/api/chat/route.test.ts
+E2E_PORT=4791 npm run test:e2e -w apps/web -- code-execution.spec.ts
+```
+
+The browser tests start a scripted provider and a stand-in sandbox on port
+`E2E_PORT` + 2000. They cover the tool offer and attachment paths, the run
+request and token, the model's view of output and images, inline charts,
+downloads, a later run reading earlier outputs, a failed run, reload, the
+library, a public share, and clients or sandboxes that rule code execution out.
+To use a real sandbox instead, publish one and point the test server at it. Set
+`CODE_EXECUTION_LIVE_URL` to also have a live tool-calling model total a CSV
+column with a chart, blur half of an image, and write a Word file:
+
+```sh
+docker run -d --name overtchat-sandbox-e2e --init --read-only \
+  --tmpfs /runs:size=2g,mode=0711 --tmpfs /tmp:size=256m \
+  --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN \
+  --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add KILL \
+  --security-opt no-new-privileges:true --pids-limit 512 \
+  -e SANDBOX_TOKEN=e2e-sandbox-token -p 127.0.0.1:4794:8080 overtchat-sandbox-test
+SANDBOX_URL=http://127.0.0.1:4794 CODE_EXECUTION_LIVE_URL=http://127.0.0.1:8000/v1 \
+  E2E_PORT=4791 npm run test:e2e -w apps/web -- code-execution.spec.ts
+```
+
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,

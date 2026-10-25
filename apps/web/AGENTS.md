@@ -108,6 +108,13 @@ Model-created documents are the saved results of their tool calls in
 message parts rather than a separate table so history operations stay
 consistent. See [documents](../../docs/development.md#model-created-documents-validation).
 
+`lib/sandbox` calls the optional code sandbox over HTTP; the app never runs
+model code itself. Files a run returns become the user's uploads, and run
+results keep only their `/api/uploads` references, which replay, sharing, the
+library and the orphan sweep resolve like other uploads. Only owner upload URLs
+reach models; share URLs are for public rendering. See
+[code execution](../../docs/development.md#code-execution-validation).
+
 MCP input is validated in `lib/mcp/schema.ts`. STDIO configuration remains
 structured as command, arguments, environment, passthrough, and working
 directory. `lib/mcp/manager.ts` scopes runtimes by user and chat; release

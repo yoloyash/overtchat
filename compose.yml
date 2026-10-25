@@ -18,10 +18,13 @@ services:
       SEARXNG_URL: ${OVERTCHAT_SEARXNG_URL:-http://searxng:8080}
       KOKORO_URL: ${OVERTCHAT_KOKORO_URL:-http://kokoro:8880}
       STT_URL: ${OVERTCHAT_STT_URL:-http://stt:5092}
+      SANDBOX_URL: ${OVERTCHAT_SANDBOX_URL:-}
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
       DATABASE_URL: /app/data/chat.db
       REDIS_URL: redis://redis:6379
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks: [default, sandbox]
     volumes:
       - overtchat-data:/app/data
       - overtchat-npm-cache:/app/npm-cache
@@ -138,7 +141,8 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # Code execution sandbox. Off by default; opt in with:
+  # Code execution sandbox. Off by default; opt in by setting
+  # OVERTCHAT_SANDBOX_URL=http://sandbox:8080 in .env, then:
   #   docker compose --profile sandbox up -d        (Python data, chart and document libraries)
   #   docker compose --profile sandbox-full up -d   (adds pandoc, LibreOffice, OCR and ffmpeg)
   # Runs are stateless and isolated per user; the container needs the

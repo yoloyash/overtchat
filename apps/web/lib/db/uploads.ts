@@ -10,6 +10,7 @@ import { MAX_BYTES_IMAGE } from "@/lib/extract";
 import { allocateTokenBudget } from "@/lib/chat/chat-files";
 import { measureTokens, rangeEnd } from "@/lib/chat/document-text";
 import { assertFetchedImageContent } from "@/lib/image-content";
+import { SANDBOX_UPLOADS_DIR } from "@overtchat/shared";
 
 type Part = UIMessagePart<UIDataTypes, UITools>;
 
@@ -149,7 +150,15 @@ export interface InlineUploadOptions {
   readerAvailable?: boolean;
   /** Reports each document that was included only in part. */
   onPartial?: (uploadId: string) => void;
+  /**
+   * The model can run code on the conversation's files: spreadsheets include
+   * only a preview, and each message lists its files' sandbox paths.
+   */
+  codeExecution?: boolean;
 }
+
+/** Spreadsheets are for computing, not reading: include a preview. */
+const SPREADSHEET_PREVIEW_TOKENS = 2_000;
 
 /**
  * Rewrites `file` parts that reference our uploads route:
@@ -171,12 +180,16 @@ export async function inlineUploads(
     uiMessages.map(async (m) => {
       const docs: InlineDocument[] = [];
       const rest: Part[] = [];
+      const sandboxPaths: string[] = [];
 
       for (const part of m.parts) {
         if (part.type === "file" && part.url.startsWith(UPLOAD_URL_PREFIX)) {
           const id = part.url.slice(UPLOAD_URL_PREFIX.length);
           const row = await getUpload(id, userId);
           if (!row) continue;
+          sandboxPaths.push(
+            `${SANDBOX_UPLOADS_DIR}/${options.fileNames?.get(id) ?? row.filename}`,
+          );
           if (row.category === "image") {
             const bytes = await fsp.readFile(uploadPath(id));
             const dataUrl = `data:${row.mediaType};base64,${bytes.toString("base64")}`;
@@ -187,12 +200,21 @@ export async function inlineUploads(
               source: options.fileNames?.get(id) ?? row.filename,
               text: row.extractedText,
               truncated: row.truncated,
+              spreadsheet: row.category === "spreadsheet",
               end: row.extractedText.length,
             });
           }
           continue;
         }
         rest.push(part);
+      }
+
+      // Before the user's words, so the question stays last.
+      if (options.codeExecution && sandboxPaths.length) {
+        rest.unshift({
+          type: "text",
+          text: `Files from this message are available to run_python at: ${sandboxPaths.join(", ")}`,
+        });
       }
 
       if (docs.length === 0) return { ...m, parts: rest };
@@ -204,12 +226,20 @@ export async function inlineUploads(
           (index, limit) => measureTokens(docs[index].text, limit, docs[index].uploadId),
         );
         docs.forEach((doc, index) => {
-          doc.end = rangeEnd(doc.text, 0, allocations[index], doc.uploadId);
+          const tokens =
+            options.codeExecution && doc.spreadsheet
+              ? Math.min(allocations[index], SPREADSHEET_PREVIEW_TOKENS)
+              : allocations[index];
+          doc.end = rangeEnd(doc.text, 0, tokens, doc.uploadId);
           if (doc.end < doc.text.length) options.onPartial?.(doc.uploadId);
         });
       }
 
-      const docsXml = renderDocuments(docs, options.readerAvailable === true);
+      const docsXml = renderDocuments(
+        docs,
+        options.readerAvailable === true,
+        options.codeExecution === true,
+      );
       const textIdx = rest.findIndex((p) => p.type === "text");
       if (textIdx >= 0) {
         const t = rest[textIdx] as Extract<Part, { type: "text" }>;
@@ -227,18 +257,23 @@ interface InlineDocument {
   source: string;
   text: string;
   truncated: boolean;
+  spreadsheet: boolean;
   /** End of the included prefix. */
   end: number;
 }
 
-function renderDocuments(docs: InlineDocument[], readerAvailable: boolean): string {
+function renderDocuments(
+  docs: InlineDocument[],
+  readerAvailable: boolean,
+  codeExecution: boolean,
+): string {
   const items = docs
     .map((d, i) => {
       const src = d.truncated ? `${d.source} (truncated)` : d.source;
       const partial = d.end < d.text.length;
       const content = partial ? d.text.slice(0, d.end) : d.text;
       const status = partial
-        ? `\n<document_status>${escapeXml(partialStatus(d, readerAvailable))}</document_status>`
+        ? `\n<document_status>${escapeXml(partialStatus(d, readerAvailable, codeExecution))}</document_status>`
         : "";
       return `<document index="${i + 1}">\n<source>${escapeXml(src)}</source>\n<document_content>\n${content}\n</document_content>${status}\n</document>`;
     })
@@ -246,8 +281,15 @@ function renderDocuments(docs: InlineDocument[], readerAvailable: boolean): stri
   return `<documents>\n${items}\n</documents>`;
 }
 
-function partialStatus(doc: InlineDocument, readerAvailable: boolean): string {
+function partialStatus(
+  doc: InlineDocument,
+  readerAvailable: boolean,
+  codeExecution: boolean,
+): string {
   const included = `Included the first ${doc.end} of ${doc.text.length} characters.`;
+  if (codeExecution && doc.spreadsheet) {
+    return `${included} Analyze the whole file with run_python at ${SANDBOX_UPLOADS_DIR}/${doc.source}.`;
+  }
   return readerAvailable
     ? `${included} Use read_file with file ${JSON.stringify(doc.source)} and offset ${doc.end} to read further, or search_files to find specific passages.`
     : `${included} The rest of this document is not available in this conversation.`;

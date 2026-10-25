@@ -27,8 +27,9 @@ export async function listLibrary(
     .where(and(
       eq(uploads.userId, userId),
       cursor ? sql`(${uploads.createdAt}, ${uploads.id}) < (${cursor.createdAt}, ${cursor.id})` : undefined,
-      // Match user attachments and explicit image-generation outputs.
-      // Both sides are scoped: imported references never grant ownership.
+      // Match user attachments, image-generation outputs and files returned
+      // by code runs. Both sides are scoped: imported references never grant
+      // ownership.
       inArray(sql`'/api/uploads/' || ${uploads.id}`, sql`(
         SELECT json_extract(part.value, '$.url')
         FROM ${messages}
@@ -49,6 +50,18 @@ export async function listLibrary(
           AND ${messages.role} = 'assistant'
           AND part.type = 'object' AND image.type = 'object'
           AND json_extract(part.value, '$.type') IN ('tool-generate_image', 'tool-edit_image')
+          AND json_extract(part.value, '$.state') = 'output-available'
+        UNION ALL
+        SELECT json_extract(file.value, '$.url')
+        FROM ${messages}
+        INNER JOIN ${chats} ON ${chats.id} = ${messages.chatId}
+        CROSS JOIN json_each(${messages.parts}) AS part
+        CROSS JOIN json_each(CASE WHEN json_type(part.value, '$.output.files') = 'array'
+          THEN json_extract(part.value, '$.output.files') ELSE '[]' END) AS file
+        WHERE ${chats.userId} = ${userId}
+          AND ${messages.role} = 'assistant'
+          AND part.type = 'object' AND file.type = 'object'
+          AND json_extract(part.value, '$.type') = 'tool-run_python'
           AND json_extract(part.value, '$.state') = 'output-available'
       )`),
       // Treat search as a literal substring (including %, _ and quotes).

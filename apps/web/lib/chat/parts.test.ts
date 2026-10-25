@@ -34,6 +34,33 @@ const memory = (key: string): Part =>
     output: { ok: true, key, value: "A saved preference." },
   }) as unknown as Part;
 
+const runFile = (id: string, url = `/api/uploads/${id}`) => ({
+  id,
+  url,
+  name: `${id}.png`,
+  mediaType: "image/png",
+  size: 10,
+});
+const codeRun = (id: string, files: unknown[], state = "output-available"): Part =>
+  ({
+    type: "tool-run_python",
+    toolCallId: id,
+    state,
+    input: { code: "print(1)" },
+    ...(state === "output-available"
+      ? {
+          output: {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 5,
+            stdout: "1\n",
+            stderr: "",
+            files,
+          },
+        }
+      : {}),
+  }) as unknown as Part;
+
 describe("groupMessageParts", () => {
   it("keeps explicit image settings for reply regeneration without inventing image intent", () => {
     expect(imageOptionsFromMetadata({ imageGeneration: { size: "1024x1536", quality: "low" } })).toEqual({ size: "1024x1536", quality: "low" });
@@ -121,6 +148,26 @@ describe("groupMessageParts", () => {
     expect(
       (segs[0] as Extract<MessageSegment, { kind: "activity" }>).parts,
     ).toHaveLength(2);
+  });
+
+  it("shows files from code runs after the activity that made them", () => {
+    const shared = "/api/share/00000000-0000-0000-0000-000000000000/files/c";
+    const segs = groupMessageParts([
+      reasoning("plan"),
+      codeRun("one", [runFile("a"), { id: "bad", url: "https://example.com/x", name: "x", mediaType: "image/png", size: 1 }]),
+      search("context"),
+      codeRun("two", [runFile("b"), runFile("c", shared)]),
+      codeRun("three", [], "input-available"),
+      text("Here is the chart."),
+      codeRun("four", []),
+    ]);
+
+    expect(segs.map((segment) => segment.kind)).toEqual(["activity", "files", "text", "activity"]);
+    const activity = segs[0] as Extract<MessageSegment, { kind: "activity" }>;
+    expect(activity.parts).toHaveLength(5);
+    const files = segs[1] as Extract<MessageSegment, { kind: "files" }>;
+    expect(files.index).toBe(activity.startIndex);
+    expect(files.files.map((file) => file.url)).toEqual(["/api/uploads/a", "/api/uploads/b", shared]);
   });
 
   it("renders memory tools as persistent artifacts outside the work timeline", () => {

@@ -2,6 +2,11 @@ import type { UIMessage } from "ai";
 import { isMcpToolName } from "./mcp";
 import { isMemoryToolPart, type MemoryToolPart } from "./memory-tools";
 
+import {
+  codeExecutionFiles,
+  isCodeExecutionPart,
+  type CodeExecutionFile,
+} from "./code-execution";
 import { isDocumentToolPart, type DocumentToolPart } from "./documents";
 import { isImageToolPart, type ImageToolPart } from "./images";
 import { isOpenUIToolPart, type OpenUIToolPart } from "./openui";
@@ -37,6 +42,7 @@ const ACTIVITY_TYPES = new Set([
   "tool-fetch_url",
   "tool-read_file",
   "tool-search_files",
+  "tool-run_python",
 ]);
 
 export function isActivityPart(part: AnyPart): boolean {
@@ -49,6 +55,8 @@ export function isActivityPart(part: AnyPart): boolean {
 export type MessageSegment =
   | { kind: "image"; part: ImageToolPart; index: number }
   | { kind: "document"; part: DocumentToolPart; index: number }
+  /** Files written by code runs, shown after the activity that made them. */
+  | { kind: "files"; files: CodeExecutionFile[]; index: number }
   | { kind: "openui"; part: OpenUIToolPart; index: number }
   | { kind: "text"; part: AnyPart; index: number }
   | { kind: "activity"; parts: AnyPart[]; startIndex: number }
@@ -65,11 +73,16 @@ export function groupMessageParts(
   let textRun: Extract<MessageSegment, { kind: "text" }> | undefined;
   let run: Extract<MessageSegment, { kind: "activity" | "memory" }> | null =
     null;
+  let runFiles: CodeExecutionFile[] = [];
 
   const flush = () => {
     if (run) {
       segments.push(run);
+      if (runFiles.length) {
+        segments.push({ kind: "files", files: runFiles, index: run.startIndex });
+      }
       run = null;
+      runFiles = [];
     }
   };
 
@@ -79,6 +92,7 @@ export function groupMessageParts(
       run = { kind: "activity", parts: [], startIndex: index };
     }
     run.parts.push(part);
+    if (isCodeExecutionPart(part)) runFiles.push(...codeExecutionFiles(part));
   };
 
   const appendMemory = (part: MemoryToolPart, index: number) => {

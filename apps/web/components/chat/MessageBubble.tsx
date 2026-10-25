@@ -40,6 +40,7 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { CodeExecutionFiles } from "./CodeExecutionFiles";
 import { DocumentCard } from "./DocumentCard";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
@@ -272,6 +273,9 @@ function AssistantBubble({
             }
             if (seg.kind === "memory") {
               return <MemoryArtifact key={seg.startIndex} parts={seg.parts} />;
+            }
+            if (seg.kind === "files") {
+              return <CodeExecutionFiles key={`files-${seg.index}`} files={seg.files} />;
             }
             const trailing = seg.parts[seg.parts.length - 1];
             const trailingDone =

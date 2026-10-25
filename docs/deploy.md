@@ -1067,4 +1067,26 @@ for automatic coordination of these settings.
 For manual Compose, `DISABLE_UPDATE_CHECK=true` disables release notifications.
 Guided installations expose this preference in `overtchat setup`.
 
+### Code execution
+
+Code execution lets tool-calling models run Python on a chat's files: analyze
+spreadsheets, make charts, edit images, and create documents such as Word or
+PDF files. Each run happens in a separate sandbox container without internet
+access and returns the files it writes as downloads. Choose one image:
+
+- `sandbox`: Python data, chart, image and document libraries (about 500 MB).
+- `sandbox-full`: also pandoc, LibreOffice, OCR and ffmpeg (about 2 GB).
+
+Set `OVERTCHAT_SANDBOX_URL=http://sandbox:8080` in `.env`, optionally a random
+`SANDBOX_TOKEN`, then start the profile and recreate the app:
+
+```sh
+docker compose --profile sandbox up -d
+```
+
+The sandbox needs the capabilities listed in `compose.yml` to switch each run to
+a fresh unprivileged user. Without them it refuses runs, and models are not
+offered code execution. Web and desktop clients show each run's code, output
+and returned files.
+
 [Development setup](development.md) · [Release process](release.md)

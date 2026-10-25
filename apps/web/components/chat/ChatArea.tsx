@@ -481,6 +481,7 @@ export function ChatArea({
     openuiSupported: true,
     openuiEnabled,
     documentsSupported: true,
+    codeExecutionSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,

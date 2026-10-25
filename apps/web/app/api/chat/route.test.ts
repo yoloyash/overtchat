@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
     getChatGeneration: vi.fn(),
     getChatGenerationByRequestId: vi.fn(),
     inlineUploads: vi.fn(),
+    getSandboxStatus: vi.fn(),
     getModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
     listEffectiveMcpServers: vi.fn(),
@@ -150,6 +151,10 @@ vi.mock("@/lib/db/chatTurns", () => ({
   getChatGenerationByRequestId: mocks.getChatGenerationByRequestId,
 }));
 vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
+vi.mock("@/lib/sandbox/client", () => ({
+  getSandboxStatus: mocks.getSandboxStatus,
+  runInSandbox: vi.fn(),
+}));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
 }));
@@ -1066,6 +1071,111 @@ describe("chat route setup boundary", () => {
       expect(Object.keys(mocks.convertToModelMessages.mock.calls[0][1].tools)).toEqual(
         expect.arrayContaining(["create_document", "update_document"]),
       );
+    });
+  });
+
+  describe("code execution", () => {
+    const sandbox = {
+      state: "available",
+      info: {
+        tier: "slim",
+        version: "0.1.0",
+        packages: { pandas: "2.2.3" },
+        tools: [],
+        skills: [{ name: "charts", description: "Make charts.", path: "/opt/skills/charts/SKILL.md" }],
+        limits: {
+          timeout_seconds: 60,
+          max_timeout_seconds: 300,
+          max_input_bytes: 1_000_000,
+          max_output_files: 20,
+          max_output_bytes: 1_000_000,
+        },
+      },
+    };
+
+    it("offers run_python to clients that render runs when the sandbox is healthy", async () => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, codeExecutionSupported: true });
+      mocks.getSandboxStatus.mockResolvedValue(sandbox);
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.agentSettings[0].toolOrder).toEqual(["web_search", "fetch_url", "run_python"]);
+      expect(
+        (mocks.agentSettings[0].instructions as { content: string }).content,
+      ).toContain("charts (/opt/skills/charts/SKILL.md): Make charts.");
+      expect(mocks.inlineUploads.mock.calls[0][2]).toMatchObject({ codeExecution: true });
+    });
+
+    it.each([
+      ["clients without a renderer", {}, {}, false],
+      ["voice answers", { codeExecutionSupported: true, responseStyle: "voice" }, {}, false],
+      ["models without tool calling", { codeExecutionSupported: true }, { toolCallingEnabled: false }, false],
+      ["an unavailable sandbox", { codeExecutionSupported: true }, {}, true],
+    ])("keeps run_python away from %s", async (_name, requestOverrides, modelOverrides, probed) => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, ...requestOverrides });
+      mocks.getModelConfig.mockResolvedValue({ ...modelConfig, ...modelOverrides });
+      mocks.getSandboxStatus.mockResolvedValue({ state: "unreachable", error: "down" });
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.getSandboxStatus).toHaveBeenCalledTimes(probed ? 1 : 0);
+      expect(Object.keys((mocks.agentSettings[0].tools ?? {}) as object)).not.toContain("run_python");
+      expect(JSON.stringify(mocks.agentSettings[0].instructions ?? "")).not.toContain("run_python");
+      expect(mocks.inlineUploads.mock.calls[0][2]).toMatchObject({ codeExecution: false });
+      // Earlier runs still replay through the tool definition.
+      expect(Object.keys(mocks.convertToModelMessages.mock.calls[0][1].tools)).toContain("run_python");
+    });
+
+    it("keeps runs that returned files when the provider stream later errors", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let observedRead: Promise<ReadableStreamReadResult<unknown>> | undefined;
+      mocks.agentStream.mockResolvedValue({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: "error", error: new Error("provider failed") });
+            controller.close();
+          },
+        }),
+      });
+      mocks.toUIMessageStream.mockImplementation((options: Record<string, unknown>) => {
+        mocks.uiStreamOptions = options;
+        observedRead = (options.stream as ReadableStream<unknown>).getReader().read();
+        return new ReadableStream();
+      });
+
+      await POST(request());
+      await observedRead;
+      const output = { exitCode: 0, timedOut: false, durationMs: 5, stdout: "", stderr: "" };
+      const withFiles = {
+        type: "tool-run_python",
+        toolCallId: "chart",
+        state: "output-available",
+        input: { code: "plt.show()" },
+        output: {
+          ...output,
+          files: [{ id: "f1", url: "/api/uploads/f1", name: "chart.png", mediaType: "image/png", size: 10 }],
+        },
+      };
+      await (mocks.uiStreamOptions?.onEnd as (event: unknown) => Promise<void>)({
+        isAborted: false,
+        responseMessage: {
+          id: "assistant-message",
+          role: "assistant",
+          parts: [
+            { type: "tool-run_python", toolCallId: "print", state: "output-available", input: { code: "print(1)" }, output: { ...output, files: [] } },
+            withFiles,
+            { type: "text", text: "Broken partial" },
+          ],
+        },
+      });
+
+      expect(mocks.completeChatStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assistantMessage: { id: "assistant-message", parts: [withFiles] },
+          status: "error",
+        }),
+      );
+      consoleSpy.mockRestore();
     });
   });
 
