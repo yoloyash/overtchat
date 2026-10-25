@@ -16,6 +16,9 @@ type Grant = {
 };
 type Viewer = Grant & { socket: WebSocket; host: WebSocket };
 type HostIdentity = { id: string; authorize: () => boolean };
+// A server data frame header is at most 10 bytes; a close frame is at most 125
+// (2-byte code and 123-byte reason) plus a 2-byte header.
+const FRAME_HEADROOM_BYTES = 10 + 2 + 125;
 
 /** Process-local, ephemeral terminal delivery. Shells and their state remain on the connector. */
 export class TerminalRelay {
@@ -79,7 +82,9 @@ export class TerminalRelay {
   private send(socket: WebSocket, value: unknown): boolean {
     if (socket.readyState !== WebSocket.OPEN) return false;
     const data = JSON.stringify(value);
-    if (socket.bufferedAmount + Buffer.byteLength(data) > TERMINAL_MAX_BUFFER_BYTES) {
+    // bufferedAmount includes frame headers. Reserve this frame's header and
+    // the close frame so a stalled viewer never holds more than the cap.
+    if (socket.bufferedAmount + Buffer.byteLength(data) + FRAME_HEADROOM_BYTES > TERMINAL_MAX_BUFFER_BYTES) {
       socket.close(1013, "Terminal receiver is behind; reconnect to restore output.");
       return false;
     }

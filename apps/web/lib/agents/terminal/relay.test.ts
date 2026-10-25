@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { once } from "node:events";
 import { WebSocket } from "ws";
-import { TERMINAL_SOCKET_PATH, TERMINAL_STREAM_PROTOCOL, type AgentDaemonWorkspaceDescriptor } from "@overtchat/agent-bridge";
+import { TERMINAL_MAX_BUFFER_BYTES, TERMINAL_SOCKET_PATH, TERMINAL_STREAM_PROTOCOL, type AgentDaemonWorkspaceDescriptor } from "@overtchat/agent-bridge";
 import { TerminalRelay } from "./relay";
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -92,5 +92,26 @@ describe("terminal relay isolation", () => {
     serverView.socket.emit("message", Buffer.from(JSON.stringify({ type: "input", data: "queued command\r" })), false);
     expect(send).not.toHaveBeenCalled();
     expect((await closed)[0]).toBe(1008);
+  });
+  it("disconnects a viewer before output and frame headers would exceed the buffer cap", async () => {
+    const { host, viewer, relay } = await harness();
+    const owner = await host("host-a");
+    const attached = once(owner, "message");
+    const view = viewer();
+    await once(view, "open");
+    const { streamId } = JSON.parse((await attached)[0].toString());
+    const serverView = (Reflect.get(relay, "views") as Map<string, { socket: WebSocket }>).get(streamId)!;
+    const output = { type: "output", revision: 1, data: "x" };
+    // The payload alone fits exactly; its frame header would not.
+    Object.defineProperty(serverView.socket, "bufferedAmount", {
+      configurable: true,
+      get: () => TERMINAL_MAX_BUFFER_BYTES - Buffer.byteLength(JSON.stringify(output)),
+    });
+    const outcome = Promise.race([
+      once(view, "message").then(() => "delivered"),
+      once(view, "close").then(([code]) => code),
+    ]);
+    owner.send(JSON.stringify({ streamId, message: output }));
+    expect(await outcome).toBe(1013);
   });
 });
