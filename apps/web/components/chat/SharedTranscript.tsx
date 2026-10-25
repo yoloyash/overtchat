@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { UIMessage } from "ai";
 import { collectOpenUIStates, type OpenUIFormState } from "@overtchat/shared";
+import { DocumentPanel } from "./DocumentPanel";
+import { DocumentPanelProvider } from "./DocumentPanelContext";
 import { MessageBubble } from "./MessageBubble";
 import { Button } from "@/components/ui/button";
 
@@ -18,11 +20,18 @@ export function SharedTranscript({
   loadingMore?: boolean;
 }) {
   const [visible, setVisible] = useState(50);
+  const [documentTarget, setDocumentTarget] = useState<string | null>(null);
+  const closeDocument = useCallback(() => setDocumentTarget(null), []);
+  const documentPanel = useMemo(
+    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
+    [documentTarget],
+  );
   const openuiStates = useMemo(
     () => new Map([...collectOpenUIStates(messages), ...(formStates ?? [])]),
     [messages, formStates],
   );
   return (
+    <DocumentPanelProvider value={documentPanel}>
     <div className="space-y-8" data-shared-transcript="">
       {(onLoadMore ? messages : messages.slice(0, visible)).map((message) => (
         <article
@@ -52,5 +61,16 @@ export function SharedTranscript({
         </Button>
       )}
     </div>
+    {documentTarget && (
+      <DocumentPanel
+        messages={messages}
+        toolCallId={documentTarget}
+        streaming={false}
+        variant="overlay"
+        onSelect={setDocumentTarget}
+        onClose={closeDocument}
+      />
+    )}
+    </DocumentPanelProvider>
   );
 }

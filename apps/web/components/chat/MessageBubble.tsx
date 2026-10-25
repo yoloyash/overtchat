@@ -40,6 +40,7 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { DocumentCard } from "./DocumentCard";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { OpenUICard } from "./OpenUICard";
@@ -245,6 +246,15 @@ function AssistantBubble({
                   part={seg.part}
                   streaming={streaming}
                   onReference={canAct ? onImageReference : undefined}
+                />
+              );
+            }
+            if (seg.kind === "document") {
+              return (
+                <DocumentCard
+                  key={seg.part.toolCallId}
+                  part={seg.part}
+                  streaming={streaming}
                 />
               );
             }

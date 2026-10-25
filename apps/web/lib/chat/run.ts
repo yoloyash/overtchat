@@ -36,6 +36,8 @@ import {
   withSummaryOutputBudget,
 } from "@/lib/providers/server/output-budget";
 import {
+  isDocumentOutput,
+  isDocumentToolPart,
   isImageToolPart,
   OPENUI_PRESENT_TOOL_NAME,
   isGeneratedImage,
@@ -110,6 +112,11 @@ import {
   readChunkTokens,
 } from "@/lib/chat/chat-files";
 import { createFileTools, FILE_TOOL_ORDER } from "@/lib/chat/file-tools";
+import {
+  createDocumentTools,
+  DOCUMENT_TOOL_ORDER,
+  DOCUMENT_TOOL_PROMPT,
+} from "@/lib/documents/tools";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
@@ -430,12 +437,24 @@ export async function runChat(
     files: chatFiles,
     chunkTokens: readChunkTokens(contextBudget?.inputTokens),
   });
+  // Clients advertise a document renderer; voice answers stay spoken.
+  const documentsEnabled =
+    parsedRequest.documentsSupported === true &&
+    toolCallingEnabled &&
+    parsedRequest.responseStyle !== "voice";
+  const documentTools = createDocumentTools({ userId, messages });
   const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withRecentOpenUIPrograms(withResponseStyle(inlined))).map((message) =>
     message.role === "assistant"
       ? { ...message, parts: joinContinuationTextParts(message.parts) }
       : message,
   ), {
-    tools: { ...chatTools, ...imageTools, ...openuiTools, ...fileTools },
+    tools: {
+      ...chatTools,
+      ...imageTools,
+      ...openuiTools,
+      ...fileTools,
+      ...documentTools,
+    },
     // An intentional stop can persist a tool call before its result arrives.
     // Keep partial text/reasoning, but do not replay an unmatched call.
     ignoreIncompleteToolCalls: true,
@@ -476,6 +495,7 @@ export async function runChat(
       : null,
     projectSystemPrompt(project),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+    documentsEnabled ? DOCUMENT_TOOL_PROMPT : null,
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
@@ -598,6 +618,7 @@ export async function runChat(
     const toolSources: ToolSet[] = [
       ...(webToolsEnabled ? [chatTools] : []),
       ...(fileToolsEnabled ? [fileTools] : []),
+      ...(documentsEnabled ? [documentTools] : []),
       ...(imageToolsEnabled ? [imageTools] : []),
       ...(openuiToolsEnabled ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
@@ -612,12 +633,14 @@ export async function runChat(
     const toolOrder = [
       ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
       ...(fileToolsEnabled ? FILE_TOOL_ORDER : []),
+      ...(documentsEnabled ? DOCUMENT_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
       ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
         (name) =>
           !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
           !(FILE_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(DOCUMENT_TOOL_ORDER as readonly string[]).includes(name) &&
           !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
           !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
@@ -964,18 +987,22 @@ export async function runChat(
       },
       onEnd: async ({ responseMessage, isAborted }) => {
         if (temporary) return;
-        // A completed image is a durable result even if the subsequent language
-        // model step fails. Preserve it while discarding broken text fragments.
+        // Completed images and document versions are durable results even if
+        // the subsequent language model step fails. Preserve them while
+        // discarding broken text fragments.
         const savedParts = streamError
           ? [
               ...(continueMessage?.parts ?? []),
               ...responseMessage.parts
                 .slice(continueMessage?.parts.length ?? 0)
                 .filter((part) =>
-                  isImageToolPart(part) &&
-                  part.state === "output-available" &&
-                  Array.isArray(part.output?.images) &&
-                  part.output.images.some(isGeneratedImage),
+                  (isImageToolPart(part) &&
+                    part.state === "output-available" &&
+                    Array.isArray(part.output?.images) &&
+                    part.output.images.some(isGeneratedImage)) ||
+                  (isDocumentToolPart(part) &&
+                    part.state === "output-available" &&
+                    isDocumentOutput(part.output)),
                 ),
             ]
           : responseMessage.parts;

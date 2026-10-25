@@ -2,13 +2,24 @@
 
 import type { OpenUIAction } from "@overtchat/shared";
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, generateId, type FileUIPart, type UIMessage } from "ai";
 import {
+  documentIdOf,
+  findDocumentPart,
+  followLiveDocuments,
   hasSuccessfulMemoryMutation,
+  isDocumentToolPart,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
   imageOptionsFromMetadata,
@@ -86,6 +97,8 @@ import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
 import { ChatHeader } from "./ChatHeader";
+import { DocumentPanel } from "./DocumentPanel";
+import { DocumentPanelProvider } from "./DocumentPanelContext";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
@@ -100,6 +113,11 @@ const REASONING_LEVELS_STORAGE_KEY = "overtchat_reasoning_levels";
 
 function shouldAutofocusComposer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+/** Wide enough to show a document beside the chat without covering it. */
+function documentPanelDocks() {
+  return window.matchMedia("(min-width: 1024px)").matches;
 }
 
 interface Props {
@@ -462,6 +480,7 @@ export function ChatArea({
     forceSearch: searchAvailable && forceSearch,
     openuiSupported: true,
     openuiEnabled,
+    documentsSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
@@ -473,6 +492,41 @@ export function ChatArea({
   });
 
   const streaming = status === "streaming" || status === "submitted";
+
+  // Tool call whose document version the panel shows.
+  const [documentTarget, setDocumentTarget] = useState<string | null>(null);
+  const closeDocument = useCallback(() => setDocumentTarget(null), []);
+  const documentPanel = useMemo(
+    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
+    [documentTarget],
+  );
+  // Calls already saved when the chat opens never open the panel by themselves.
+  const handledDocumentCalls = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (handledDocumentCalls.current === null) {
+      handledDocumentCalls.current = new Set(
+        messages.flatMap((message) =>
+          message.parts.flatMap((part) =>
+            isDocumentToolPart(part) ? [part.toolCallId] : [],
+          ),
+        ),
+      );
+      return;
+    }
+    if (!streaming) return;
+    const openPart = documentTarget
+      ? findDocumentPart(messages, documentTarget)
+      : undefined;
+    const { handled, follow } = followLiveDocuments(
+      messages.at(-1),
+      handledDocumentCalls.current,
+      documentTarget ? (openPart ? (documentIdOf(openPart) ?? "") : "") : undefined,
+      documentPanelDocks(),
+    );
+    for (const id of handled) handledDocumentCalls.current.add(id);
+    if (follow) setDocumentTarget(follow);
+  }, [documentTarget, messages, streaming]);
+
   const chatQueue = useChatQueue({
     chatId,
     userId: session?.user.id,
@@ -860,8 +914,10 @@ export function ChatArea({
   );
 
   return (
+    <DocumentPanelProvider value={documentPanel}>
+    <div className="relative flex min-w-0 flex-1 overflow-hidden">
     <div
-      className="relative flex flex-1 flex-col overflow-hidden"
+      className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -986,5 +1042,16 @@ export function ChatArea({
         </>
       )}
     </div>
+    {documentTarget && (
+      <DocumentPanel
+        messages={messages}
+        toolCallId={documentTarget}
+        streaming={streaming}
+        onSelect={setDocumentTarget}
+        onClose={closeDocument}
+      />
+    )}
+    </div>
+    </DocumentPanelProvider>
   );
 }

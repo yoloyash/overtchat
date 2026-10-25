@@ -253,6 +253,37 @@ describe("shared content projection", () => {
     expect(output.uploadUrl).toBe("/api/uploads/fetched");
   });
 
+  it("publishes document versions and file reads with their saved data", () => {
+    const document = {
+      type: "tool-create_document",
+      toolCallId: "doc",
+      state: "output-available",
+      input: { title: "Plan", type: "markdown", content: "Body" },
+      output: { id: "plan", title: "Plan", type: "markdown", version: 1, content: "Body" },
+      providerExecuted: false,
+    };
+    const read = {
+      type: "tool-read_file",
+      toolCallId: "read",
+      state: "output-available",
+      input: { file: "a.txt" },
+      output: { file: "a.txt", uploadId: "u", offset: 0, end: 4, totalCharacters: 4 },
+    };
+    const [message] = sharedMessages([
+      { id: "a", role: "assistant", parts: [document, read] as UIMessage["parts"] },
+    ]);
+    expect(message.parts).toEqual([
+      {
+        type: "tool-create_document",
+        toolCallId: "doc",
+        state: "output-available",
+        input: document.input,
+        output: document.output,
+      },
+      read,
+    ]);
+  });
+
   it("does not publish system instructions or hidden compaction checkpoints", () => {
     expect(
       sharedMessages([

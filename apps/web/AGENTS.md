@@ -103,6 +103,11 @@ only from the model, so saved messages render identically across turns.
 immutable uploads, never document text, and are rehydrated during replay. See
 [attachment reading](../../docs/development.md#chat-attachment-reading-validation).
 
+Model-created documents are the saved results of their tool calls in
+`lib/documents/tools.ts`: each result is a complete version. Keep them in
+message parts rather than a separate table so history operations stay
+consistent. See [documents](../../docs/development.md#model-created-documents-validation).
+
 MCP input is validated in `lib/mcp/schema.ts`. STDIO configuration remains
 structured as command, arguments, environment, passthrough, and working
 directory. `lib/mcp/manager.ts` scopes runtimes by user and chat; release

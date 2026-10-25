@@ -406,6 +406,36 @@ ATTACHMENT_READING_LIVE_URL=http://127.0.0.1:8000/v1 E2E_PORT=4791 npm run test:
 On Android and iOS, expand a message's activity and check the file read and
 search steps.
 
+## Model-created documents validation
+
+Tool-calling models can create documents (Markdown, code, HTML, SVG, Mermaid)
+with `create_document` and revise them with `update_document`, using exact
+`find`/`replace` edits or a full rewrite. `from_file` starts a document from an
+attached text file. Each call's saved result is one version with its full
+content. Versions therefore follow edit, regenerate, sharing and import like any
+message part, and no separate storage exists. The model sees only short
+confirmations; failed edits change nothing and return the current text.
+
+Clients advertise a renderer with `documentsSupported`; others, and voice
+answers, are not offered the tools. Web and desktop show a card per version in
+the message and the document beside the chat (full screen below 1024px), with
+version navigation, source view, copy and download. A new document opens by
+itself while it is written on wide screens, and the open document follows its
+revisions. HTML previews run scripts only inside a sandboxed frame without
+same-origin access. Shared chats show documents read-only.
+
+```sh
+npm run test -w apps/web -- lib/documents lib/chat/request.test.ts lib/search/extract.test.ts lib/sharing.test.ts app/api/chat/route.test.ts
+E2E_PORT=4791 npm run test:e2e -w apps/web -- documents.spec.ts
+```
+
+The browser tests use a scripted provider that streams tool arguments. They
+cover automatic opening, a revision followed in place, version navigation,
+source view, download names and content, reload, Escape, a narrow viewport, a
+public share, sandboxed HTML, Mermaid, SVG and code, and clients that do not
+advertise documents. To include a live tool-calling model, set
+`DOCUMENTS_LIVE_URL` to its `/v1` endpoint.
+
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,

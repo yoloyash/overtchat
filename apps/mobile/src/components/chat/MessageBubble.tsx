@@ -234,6 +234,8 @@ export function MessageBubble({
               <MemoryArtifact key={`m-${seg.startIndex}`} parts={seg.parts} />
             );
           }
+          // Mobile does not advertise a document renderer yet.
+          if (seg.kind === "document") return null;
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =
             trailing.type === "reasoning"

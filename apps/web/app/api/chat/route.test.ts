@@ -978,6 +978,97 @@ describe("chat route setup boundary", () => {
     consoleSpy.mockRestore();
   });
 
+  it("keeps finished document versions when the provider stream later errors", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let observedRead: Promise<ReadableStreamReadResult<unknown>> | undefined;
+    mocks.agentStream.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "error", error: new Error("provider failed") });
+          controller.close();
+        },
+      }),
+    });
+    mocks.toUIMessageStream.mockImplementation((options: Record<string, unknown>) => {
+      mocks.uiStreamOptions = options;
+      observedRead = (options.stream as ReadableStream<unknown>).getReader().read();
+      return new ReadableStream();
+    });
+
+    await POST(request());
+    await observedRead;
+    const document = {
+      type: "tool-create_document",
+      toolCallId: "doc",
+      state: "output-available",
+      input: { title: "Plan", type: "markdown", content: "Body" },
+      output: { id: "plan", title: "Plan", type: "markdown", version: 1, content: "Body" },
+    };
+    await (mocks.uiStreamOptions?.onEnd as (event: unknown) => Promise<void>)({
+      isAborted: false,
+      responseMessage: {
+        id: "assistant-message",
+        role: "assistant",
+        parts: [
+          document,
+          { type: "tool-update_document", toolCallId: "pending", state: "input-available", input: { id: "plan" } },
+          { type: "text", text: "Broken partial" },
+        ],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assistantMessage: { id: "assistant-message", parts: [document] },
+        status: "error",
+      }),
+    );
+    consoleSpy.mockRestore();
+  });
+
+  describe("model-created documents", () => {
+    it("offers document tools to clients that render them", async () => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, documentsSupported: true });
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.agentSettings[0].toolOrder).toEqual([
+        "web_search",
+        "fetch_url",
+        "create_document",
+        "update_document",
+      ]);
+      expect(Object.keys(mocks.agentSettings[0].tools as object)).toEqual(
+        expect.arrayContaining(["create_document", "update_document"]),
+      );
+      expect(
+        (mocks.agentSettings[0].instructions as { content: string }).content,
+      ).toContain("Use create_document for substantial standalone content");
+    });
+
+    it.each([
+      ["clients without a renderer", {}, {}],
+      ["voice answers", { documentsSupported: true, responseStyle: "voice" }, {}],
+      ["models without tool calling", { documentsSupported: true }, { toolCallingEnabled: false }],
+    ])("keeps document tools away from %s", async (_name, requestOverrides, modelOverrides) => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, ...requestOverrides });
+      mocks.getModelConfig.mockResolvedValue({ ...modelConfig, ...modelOverrides });
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(Object.keys((mocks.agentSettings[0].tools ?? {}) as object)).not.toContain(
+        "create_document",
+      );
+      expect(JSON.stringify(mocks.agentSettings[0].instructions ?? "")).not.toContain(
+        "create_document",
+      );
+      // Saved documents still replay through the tool definitions.
+      expect(Object.keys(mocks.convertToModelMessages.mock.calls[0][1].tools)).toEqual(
+        expect.arrayContaining(["create_document", "update_document"]),
+      );
+    });
+  });
+
   it("does not discard an assistant for an ordinary UI tool error", async () => {
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];

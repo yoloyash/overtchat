@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import {
   openUIActionOf,
   isActivityPart,
+  isDocumentToolPart,
   isImageToolPart,
   isOpenUIToolPart,
   isMemoryToolPart,
@@ -65,6 +66,7 @@ export function sharedMessages(messages: UIMessage[]): UIMessage[] {
               ].includes(part.type) ||
               isActivityPart(part) ||
               isImageToolPart(part) ||
+              isDocumentToolPart(part) ||
               isOpenUIToolPart(part) ||
               isMemoryToolPart(part),
           )
