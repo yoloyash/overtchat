@@ -64,8 +64,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Running every workspace suite at once oversubscribes the 4-vCPU runner:
+      # files ran 3-10x slower than with two at a time, for no gain in wall
+      # time, and tests near their timeouts flaked.
       - name: Test
-        run: npm run test
+        run: npm run test -- --concurrency=2
 
       - name: Qualify incident-scale connector journal recovery
         run: npm run test:journal-scale -w apps/connector
