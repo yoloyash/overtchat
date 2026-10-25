@@ -424,8 +424,15 @@ itself while it is written on wide screens, and the open document follows its
 revisions. HTML previews run scripts only inside a sandboxed frame without
 same-origin access. Shared chats show documents read-only.
 
+Mobile opens a card's version full screen, with version navigation, source
+view, copy, the share sheet, and saving to a chosen folder. Markdown and code
+render natively. HTML and SVG render in a WebView without cookies, file
+access, a native bridge or navigation; links open in the system browser.
+Mermaid documents show their source on mobile.
+
 ```sh
 npm run test -w apps/web -- lib/documents lib/chat/request.test.ts lib/search/extract.test.ts lib/sharing.test.ts app/api/chat/route.test.ts
+npm run test -w apps/mobile -- src/components/chat/DocumentViewer.test.tsx
 E2E_PORT=4791 npm run test:e2e -w apps/web -- documents.spec.ts
 ```
 
@@ -434,7 +441,9 @@ cover automatic opening, a revision followed in place, version navigation,
 source view, download names and content, reload, Escape, a narrow viewport, a
 public share, sandboxed HTML, Mermaid, SVG and code, and clients that do not
 advertise documents. To include a live tool-calling model, set
-`DOCUMENTS_LIVE_URL` to its `/v1` endpoint.
+`DOCUMENTS_LIVE_URL` to its `/v1` endpoint. On Android and iOS, open each
+document type, step through versions, and check the share sheet, saving, and
+links in an HTML document.
 
 ## Chat compaction validation
 

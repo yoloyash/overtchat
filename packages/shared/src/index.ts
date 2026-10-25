@@ -17,6 +17,7 @@ export * from "./message-parts";
 export * from "./theme/tokens";
 export * from "./images";
 export * from "./documents";
+export * from "./html-preview";
 export * from "./openui";
 export * from "./errors";
 export * from "./two-factor";

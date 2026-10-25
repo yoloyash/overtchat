@@ -46,6 +46,8 @@ import { useMobileVoice } from "@/lib/voice/useMobileVoice";
 import { Composer } from "@/components/chat/Composer";
 import { ShareChatButton } from "@/components/chat/ShareChatButton";
 import { MessageList } from "@/components/chat/MessageList";
+import { DocumentViewer } from "@/components/chat/DocumentViewer";
+import { DocumentViewerProvider } from "@/components/chat/DocumentViewerContext";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import {
   ModelPickerSheet,
@@ -348,6 +350,13 @@ function ChatSurface({
   }, [generation, chatQueue.queue]);
 
   const streaming = status === "streaming" || status === "submitted";
+  // Tool call whose document version the viewer shows.
+  const [documentTarget, setDocumentTarget] = useState<string | null>(null);
+  const closeDocument = useCallback(() => setDocumentTarget(null), []);
+  const documentViewer = useMemo(
+    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
+    [documentTarget],
+  );
   const configured = Boolean(selectedId);
   const modelLoading =
     modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
@@ -548,6 +557,7 @@ function ChatSurface({
       openuiSupported: true,
       openuiEnabled,
       forceOpenUI: requestedOpenUI,
+      documentsSupported: true,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
@@ -686,6 +696,7 @@ function ChatSurface({
   }
 
   return (
+    <DocumentViewerProvider value={documentViewer}>
     <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: colors.background }]}
       behavior="padding"
@@ -935,6 +946,16 @@ function ChatSurface({
         }}
       />
     </KeyboardAvoidingView>
+    {documentTarget ? (
+      <DocumentViewer
+        messages={messages}
+        toolCallId={documentTarget}
+        streaming={streaming}
+        onSelect={setDocumentTarget}
+        onClose={closeDocument}
+      />
+    ) : null}
+    </DocumentViewerProvider>
   );
 }
 

@@ -14,6 +14,7 @@ import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
 import { AttachmentChip } from "./AttachmentChip";
 import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
+import { DocumentCard } from "./DocumentCard";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { GeneratedImageCard } from "./GeneratedImageCard";
@@ -234,8 +235,15 @@ export function MessageBubble({
               <MemoryArtifact key={`m-${seg.startIndex}`} parts={seg.parts} />
             );
           }
-          // Mobile does not advertise a document renderer yet.
-          if (seg.kind === "document") return null;
+          if (seg.kind === "document") {
+            return (
+              <DocumentCard
+                key={seg.part.toolCallId}
+                part={seg.part}
+                streaming={streaming}
+              />
+            );
+          }
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =
             trailing.type === "reasoning"
