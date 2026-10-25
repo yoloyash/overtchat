@@ -3,10 +3,13 @@ import type { UIMessage } from "ai";
 import {
   codeExecutionFileIndex,
   collectOpenUIStates,
+  type CodeExecutionFile,
   type OpenUIFormState,
 } from "@overtchat/shared";
 import { DocumentPanel } from "./DocumentPanel";
 import { DocumentPanelProvider } from "./DocumentPanelContext";
+import { FilePanel } from "./FilePanel";
+import { FilePanelProvider } from "./FilePanelContext";
 import { MessageBubble } from "./MessageBubble";
 import { Button } from "@/components/ui/button";
 
@@ -26,9 +29,27 @@ export function SharedTranscript({
   const [visible, setVisible] = useState(50);
   const [documentTarget, setDocumentTarget] = useState<string | null>(null);
   const closeDocument = useCallback(() => setDocumentTarget(null), []);
+  const [fileTarget, setFileTarget] = useState<CodeExecutionFile | null>(null);
+  const closeFile = useCallback(() => setFileTarget(null), []);
   const documentPanel = useMemo(
-    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
+    () => ({
+      activeToolCallId: documentTarget,
+      open(toolCallId: string) {
+        setFileTarget(null);
+        setDocumentTarget(toolCallId);
+      },
+    }),
     [documentTarget],
+  );
+  const filePanel = useMemo(
+    () => ({
+      activeFileId: fileTarget?.id ?? null,
+      open(file: CodeExecutionFile) {
+        setDocumentTarget(null);
+        setFileTarget(file);
+      },
+    }),
+    [fileTarget],
   );
   const openuiStates = useMemo(
     () => new Map([...collectOpenUIStates(messages), ...(formStates ?? [])]),
@@ -37,6 +58,7 @@ export function SharedTranscript({
   const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
   return (
     <DocumentPanelProvider value={documentPanel}>
+    <FilePanelProvider value={filePanel}>
     <div className="space-y-8" data-shared-transcript="">
       {(onLoadMore ? messages : messages.slice(0, visible)).map((message) => (
         <article
@@ -78,6 +100,8 @@ export function SharedTranscript({
         onClose={closeDocument}
       />
     )}
+    {fileTarget && <FilePanel file={fileTarget} variant="overlay" onClose={closeFile} />}
+    </FilePanelProvider>
     </DocumentPanelProvider>
   );
 }

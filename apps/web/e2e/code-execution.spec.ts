@@ -367,10 +367,22 @@ test("runs code on an attachment, returns its files, and reuses them in a later 
   await expect.poll(() => chart.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   const table = page.locator("[data-code-file-card]", { hasText: "totals.csv" });
   await expect(table).toContainText(`CSV · ${Buffer.byteLength(totalsCsv)} B`);
+
+  // The card opens the table beside the chat, where it also downloads.
+  await table.getByRole("button").click();
+  const panel = page.locator("[data-file-panel]");
+  await expect(panel.getByRole("heading", { name: "totals.csv" })).toBeVisible();
+  await expect(panel.locator("[data-file-table] tbody tr").first()).toHaveText(/north\s*7/);
   const download = page.waitForEvent("download");
-  await table.click();
+  await panel.getByLabel("Download file").click();
   expect((await download).suggestedFilename()).toBe("totals.csv");
   expect(await readFile((await (await download).path())!, "utf8")).toBe(totalsCsv);
+  // The chart opens in the same panel, and Escape closes it.
+  await chart.click();
+  await expect(panel.getByRole("img", { name: "totals.png" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("code-file-panel.png") });
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
 
   // The activity shows the code, what it printed, and every file it saved.
   await expandRun(page, "Ran code · 2 files");
@@ -420,8 +432,11 @@ test("runs code on an attachment, returns its files, and reuses them in a later 
     await expect(sharedChart).toBeVisible();
     await expect.poll(() => sharedChart.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     expect(await sharedChart.getAttribute("src")).toMatch(/^\/api\/share\/[0-9a-f-]{36}\/files\/[\w-]+$/);
+    await reader.locator("[data-code-file-card]", { hasText: "totals.csv" }).getByRole("button").click();
+    const sharedPanel = reader.locator("[data-file-panel]");
+    await expect(sharedPanel.locator("[data-file-table] tbody tr")).toHaveCount(2);
     const sharedDownload = reader.waitForEvent("download");
-    await reader.locator("[data-code-file-card]", { hasText: "totals.csv" }).click();
+    await sharedPanel.getByLabel("Download file").click();
     expect(await readFile((await (await sharedDownload).path())!, "utf8")).toBe(totalsCsv);
     await reader.screenshot({ path: testInfo.outputPath("code-run-shared.png") });
   } finally {

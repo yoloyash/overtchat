@@ -37,6 +37,7 @@ import { htmlPreviewDocument, svgPreviewSource } from "@/lib/chat/code-preview";
 import { renderDiagram } from "@/lib/chat/render-diagram";
 import { DiagramViewport } from "./DiagramViewport";
 import { DOCUMENT_ICONS } from "./DocumentCard";
+import { SidePanel } from "./SidePanel";
 
 type ShownDocument = DocumentDraft & { version?: number };
 
@@ -44,8 +45,7 @@ const PREVIEWABLE = new Set<DocumentType>(["markdown", "html", "svg", "mermaid"]
 
 /**
  * The document beside the chat: the version produced by one tool call, with
- * navigation to the document's other saved versions. Docked beside the chat
- * on wide screens and full screen otherwise; `overlay` floats it everywhere.
+ * navigation to the document's other saved versions.
  */
 export function DocumentPanel({
   messages,
@@ -76,25 +76,6 @@ export function DocumentPanel({
     // The tool call can disappear when history is edited or regenerated.
     if (missing) onClose();
   }, [missing, onClose]);
-  useEffect(() => {
-    // Escape closes the panel from anywhere unless something else handles it.
-    function onKey(event: KeyboardEvent) {
-      const target = event.target instanceof Element ? event.target : null;
-      if (
-        event.key !== "Escape" ||
-        event.defaultPrevented ||
-        event.isComposing ||
-        event.keyCode === 229 ||
-        target?.closest("[role=dialog]")
-      ) {
-        return;
-      }
-      event.preventDefault();
-      onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
   if (!view) return null;
 
   const saved = view.versions[view.index];
@@ -155,15 +136,11 @@ export function DocumentPanel({
   }
 
   return (
-    <aside
+    <SidePanel
       aria-label={`Document: ${document.title}`}
       data-document-panel=""
-      className={cn(
-        "z-40 flex min-h-0 flex-col bg-background text-foreground",
-        variant === "docked"
-          ? "fixed inset-0 lg:static lg:z-auto lg:w-[min(46rem,48%)] lg:shrink-0 lg:border-l"
-          : "fixed inset-0 lg:inset-y-0 lg:right-0 lg:left-auto lg:w-[min(46rem,60%)] lg:border-l lg:shadow-xl",
-      )}
+      variant={variant}
+      onClose={onClose}
     >
       {/* One row on wide screens; narrow screens move the toolbar below the
           title so the title stays readable. */}
@@ -317,7 +294,7 @@ export function DocumentPanel({
           writing={writing}
         />
       </div>
-    </aside>
+    </SidePanel>
   );
 }
 

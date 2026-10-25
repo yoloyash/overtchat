@@ -1,6 +1,6 @@
 "use client";
 
-import type { OpenUIAction } from "@overtchat/shared";
+import type { CodeExecutionFile, OpenUIAction } from "@overtchat/shared";
 
 import {
   type ReactNode,
@@ -99,6 +99,8 @@ import { toast } from "@/components/ui/toast";
 import { ChatHeader } from "./ChatHeader";
 import { DocumentPanel } from "./DocumentPanel";
 import { DocumentPanelProvider } from "./DocumentPanelContext";
+import { FilePanel } from "./FilePanel";
+import { FilePanelProvider } from "./FilePanelContext";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
@@ -497,9 +499,28 @@ export function ChatArea({
   // Tool call whose document version the panel shows.
   const [documentTarget, setDocumentTarget] = useState<string | null>(null);
   const closeDocument = useCallback(() => setDocumentTarget(null), []);
+  // A run file the panel shows instead; one panel is open at a time.
+  const [fileTarget, setFileTarget] = useState<CodeExecutionFile | null>(null);
+  const closeFile = useCallback(() => setFileTarget(null), []);
   const documentPanel = useMemo(
-    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
+    () => ({
+      activeToolCallId: documentTarget,
+      open(toolCallId: string) {
+        setFileTarget(null);
+        setDocumentTarget(toolCallId);
+      },
+    }),
     [documentTarget],
+  );
+  const filePanel = useMemo(
+    () => ({
+      activeFileId: fileTarget?.id ?? null,
+      open(file: CodeExecutionFile) {
+        setDocumentTarget(null);
+        setFileTarget(file);
+      },
+    }),
+    [fileTarget],
   );
   // Calls already saved when the chat opens never open the panel by themselves.
   const handledDocumentCalls = useRef<Set<string> | null>(null);
@@ -525,7 +546,10 @@ export function ChatArea({
       documentPanelDocks(),
     );
     for (const id of handled) handledDocumentCalls.current.add(id);
-    if (follow) setDocumentTarget(follow);
+    if (follow) {
+      setFileTarget(null);
+      setDocumentTarget(follow);
+    }
   }, [documentTarget, messages, streaming]);
 
   const chatQueue = useChatQueue({
@@ -916,6 +940,7 @@ export function ChatArea({
 
   return (
     <DocumentPanelProvider value={documentPanel}>
+    <FilePanelProvider value={filePanel}>
     <div className="relative flex min-w-0 flex-1 overflow-hidden">
     <div
       className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
@@ -1052,7 +1077,9 @@ export function ChatArea({
         onClose={closeDocument}
       />
     )}
+    {fileTarget && <FilePanel file={fileTarget} onClose={closeFile} />}
     </div>
+    </FilePanelProvider>
     </DocumentPanelProvider>
   );
 }
