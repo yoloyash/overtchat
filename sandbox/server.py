@@ -116,8 +116,14 @@ POOL = UserPool(MAX_RUNS)
 def safe_name(name: object) -> str:
     if not isinstance(name, str):
         raise RequestError(HTTPStatus.BAD_REQUEST, "Each file needs a name.")
-    cleaned = SAFE_NAME.sub("_", name).strip()[:180]
-    if cleaned in ("", ".", ".."):
+    cleaned = SAFE_NAME.sub("_", name).strip()
+    try:
+        size = len(cleaned.encode("utf-8"))
+    except UnicodeEncodeError:
+        size = None
+    # Shortening a name would move the file away from the path the caller
+    # expects, so names the file system cannot store are rejected instead.
+    if cleaned in ("", ".", "..") or size is None or size > 255:
         raise RequestError(HTTPStatus.BAD_REQUEST, f"Invalid file name: {name!r}")
     return cleaned
 

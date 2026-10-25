@@ -255,6 +255,8 @@ class SandboxTests(unittest.TestCase):
             ({"code": "1", "files": [{"name": "a", "data": "!!"}]}, "Invalid data"),
             ({"code": "1", "files": [{"name": "a", "data": ""}, {"name": "a", "data": ""}]}, "Duplicate"),
             ({"code": "1", "files": [{"name": "..", "data": ""}]}, "Invalid file name"),
+            ({"code": "1", "files": [{"name": "\u00e9" * 128, "data": ""}]}, "Invalid file name"),
+            ({"code": "1", "files": [{"name": "a\ud800", "data": ""}]}, "Invalid file name"),
         ]
         for payload, message in cases:
             with self.subTest(message=message):
@@ -266,6 +268,12 @@ class SandboxTests(unittest.TestCase):
             files=[{"name": "../escape.txt", "data": encode("x")}],
         )
         self.assertEqual(result["stdout"].strip(), "['.._escape.txt']")
+        long_name = "\u00e9" * 125 + ".csv"
+        result = run(
+            "import os; print(os.listdir('uploads') == [%r])" % long_name,
+            files=[{"name": long_name, "data": encode("x")}],
+        )
+        self.assertEqual(result["stdout"].strip(), "True")
 
     def test_lists_packages_tools_and_skills(self):
         packages = server.versions()
