@@ -395,7 +395,9 @@ describe("agent workspace Git watcher", () => {
         { timeout: 10_000 },
       );
       expect(git(directory, "status", "--porcelain")).toBe("");
-      expect(statuses("workspace")).toHaveLength(1);
+      // The initial inspection runs alongside the canary check, so the canary
+      // can come and go before the first status arrives.
+      await vi.waitFor(() => expect(statuses("workspace")).toHaveLength(1), { timeout: 10_000 });
     } finally {
       observer.close();
       await watcher.stop();
