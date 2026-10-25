@@ -1086,7 +1086,7 @@ docker compose --profile sandbox up -d
 
 The sandbox needs the capabilities listed in `compose.yml` to switch each run to
 a fresh unprivileged user. Without them it refuses runs, and models are not
-offered code execution. Web and desktop clients show each run's code, output
-and returned files.
+offered code execution. Web, desktop and mobile clients show each run's code,
+output and returned files.
 
 [Development setup](development.md) · [Release process](release.md)

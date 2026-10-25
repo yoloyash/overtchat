@@ -501,10 +501,12 @@ Each user message lists its files' sandbox paths, and spreadsheets include a
 2,000-token preview with a note to analyze the whole file in code. Web and
 desktop show each run in the activity timeline with its code and output,
 returned images inline, and other files as download cards; shares serve them
-from the snapshot. Android and iOS do not request code execution yet.
+from the snapshot. Android and iOS show the same timeline step, preview
+returned images, and save any returned file to a chosen folder.
 
 ```sh
 npm run test -w apps/web -- lib/sandbox lib/chat/chat-files.test.ts lib/db/uploads-inline.test.ts lib/chat/parts.test.ts lib/chat/request.test.ts lib/sharing.test.ts lib/db/library.test.ts app/api/capabilities app/api/chat/route.test.ts
+npm run test -w apps/mobile -- src/components/chat/ChainOfThought.test.tsx src/components/chat/CodeExecutionFiles.test.tsx
 E2E_PORT=4791 npm run test:e2e -w apps/web -- code-execution.spec.ts
 ```
 
@@ -527,6 +529,9 @@ docker run -d --name overtchat-sandbox-e2e --init --read-only \
 SANDBOX_URL=http://127.0.0.1:4794 CODE_EXECUTION_LIVE_URL=http://127.0.0.1:8000/v1 \
   E2E_PORT=4791 npm run test:e2e -w apps/web -- code-execution.spec.ts
 ```
+
+On Android and iOS, ask for a chart and a spreadsheet, then expand the run,
+open the chart, and save both files.
 
 ## Chat compaction validation
 

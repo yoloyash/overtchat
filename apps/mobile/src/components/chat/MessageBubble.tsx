@@ -14,6 +14,7 @@ import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
 import { AttachmentChip } from "./AttachmentChip";
 import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
+import { CodeExecutionFiles } from "./CodeExecutionFiles";
 import { DocumentCard } from "./DocumentCard";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
@@ -244,8 +245,9 @@ export function MessageBubble({
               />
             );
           }
-          // This client does not request code execution yet.
-          if (seg.kind === "files") return null;
+          if (seg.kind === "files") {
+            return <CodeExecutionFiles key={`f-${seg.index}`} files={seg.files} />;
+          }
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =
             trailing.type === "reasoning"

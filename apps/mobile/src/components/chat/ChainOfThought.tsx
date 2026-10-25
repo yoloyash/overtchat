@@ -17,9 +17,12 @@ import {
 } from "react-native";
 import {
   cleanDomain,
+  codeRunStatus,
   faviconUrl,
+  type CodeExecutionPart,
   type FetchedImage,
   type FetchUrlPart,
+  isCodeExecutionPart,
   isReadFilePart,
   isSearchFilesPart,
   isToolSettled,
@@ -36,6 +39,7 @@ import type { DynamicToolUIPart } from "ai";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { useTheme } from "@/lib/theme";
+import { CodeBlock } from "./CodeBlock";
 import { MarkdownBody } from "./MarkdownBody";
 
 type ReasoningPart = { type: "reasoning"; text: string; state?: string };
@@ -44,6 +48,7 @@ export type ActivityPart =
   | FetchUrlPart
   | ReadFilePart
   | SearchFilesPart
+  | CodeExecutionPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -65,7 +70,13 @@ function isFileTool(p: ActivityPart): p is ReadFilePart | SearchFilesPart {
 function isTool(
   p: ActivityPart,
 ): p is Exclude<ActivityPart, ReasoningPart> {
-  return isWebSearch(p) || isFetchUrl(p) || isFileTool(p) || isMcpTool(p);
+  return (
+    isWebSearch(p) ||
+    isFetchUrl(p) ||
+    isFileTool(p) ||
+    isCodeExecutionPart(p) ||
+    isMcpTool(p)
+  );
 }
 
 /**
@@ -110,7 +121,13 @@ export function ChainOfThought({
   }, [active]);
 
   const lastTool = [...parts].reverse().find(isTool);
-  const toolKind = lastTool ? (isFileTool(lastTool) ? "file" : "web") : null;
+  const toolKind = lastTool
+    ? isFileTool(lastTool)
+      ? "file"
+      : isCodeExecutionPart(lastTool)
+        ? "code"
+        : "web"
+    : null;
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
@@ -171,7 +188,7 @@ function StatusIcon({
   color,
 }: {
   active: boolean;
-  toolKind: "web" | "file" | null;
+  toolKind: "web" | "file" | "code" | null;
   failed: boolean;
   color: string;
 }) {
@@ -196,6 +213,11 @@ function StatusIcon({
         color={color}
         style={styles.statusIcon}
       />
+    );
+  }
+  if (toolKind === "code") {
+    return (
+      <Ionicons name="code-slash-outline" size={15} color={color} style={styles.statusIcon} />
     );
   }
   if (toolKind === "web") {
@@ -264,9 +286,11 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
             ? "file"
             : isSearchFilesPart(part)
               ? "file-search"
-              : isMcpTool(part)
-                ? "tool"
-                : "brain";
+              : isCodeExecutionPart(part)
+                ? "code"
+                : isMcpTool(part)
+                  ? "tool"
+                  : "brain";
 
   return (
     <View style={styles.step}>
@@ -280,6 +304,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <ReadFileStep part={part} />
         ) : isSearchFilesPart(part) ? (
           <SearchFilesStep part={part} />
+        ) : isCodeExecutionPart(part) ? (
+          <CodeStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -295,6 +321,7 @@ type RailIcon =
   | "globe"
   | "file"
   | "file-search"
+  | "code"
   | "tool"
   | "brain"
   | "failed";
@@ -315,6 +342,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <Ionicons name="document-text-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "file-search" ? (
           <MaterialCommunityIcons name="file-search-outline" size={11} color={colors.mutedForeground} />
+        ) : icon === "code" ? (
+          <Ionicons name="code-slash-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
@@ -377,7 +406,63 @@ function McpStep({ part }: { part: DynamicToolUIPart }) {
   );
 }
 
-function ToolValue({ label, value }: { label: string; value: unknown }) {
+function CodeStep({ part }: { part: CodeExecutionPart }) {
+  const { colors, fonts } = useTheme();
+  const output = part.output;
+  const code = part.input?.code ?? "";
+  return (
+    <View style={styles.searchStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          Python
+        </Text>
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {codeRunStatus(part)}
+        </Text>
+      </View>
+      {code ? <CodeBlock code={code} language="python" /> : null}
+      {part.state === "output-error" ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : null}
+      {output?.stdout ? (
+        <ToolValue label="Output" value={output.stdout} truncated={output.stdoutTruncated} mono />
+      ) : null}
+      {output?.stderr ? (
+        <ToolValue label="Errors" value={output.stderr} truncated={output.stderrTruncated} mono />
+      ) : null}
+    </View>
+  );
+}
+
+function ToolValue({
+  label,
+  value,
+  truncated = false,
+  mono = false,
+}: {
+  label: string;
+  value: unknown;
+  truncated?: boolean;
+  mono?: boolean;
+}) {
   const { colors, fonts } = useTheme();
   if (value === undefined) return null;
   const text = formatToolValue(value);
@@ -396,12 +481,13 @@ function ToolValue({ label, value }: { label: string; value: unknown }) {
         ]}
       >
         {label.toUpperCase()}
+        {truncated ? " (TRUNCATED)" : ""}
       </Text>
       <Text
         selectable
         style={[
           styles.toolValueText,
-          { color: colors.foreground, fontFamily: fonts.sansRegular },
+          { color: colors.foreground, fontFamily: mono ? fonts.mono : fonts.sansRegular },
         ]}
       >
         {text}
@@ -868,6 +954,7 @@ function activeLabel(last: ActivityPart | undefined): string {
     const query = last.input?.query?.trim();
     return query ? `Searching files for "${query}"` : "Searching files…";
   }
+  if (isCodeExecutionPart(last)) return "Running code…";
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -902,6 +989,11 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
     if (lastTool.state === "output-error") return "File search failed";
     if (lastTool.state === "output-available") return "Searched files";
     return "File search did not complete";
+  }
+  if (lastTool && isCodeExecutionPart(lastTool)) {
+    if (lastTool.state === "output-error") return "Code run failed";
+    if (lastTool.state !== "output-available") return "Code run did not complete";
+    return lastTool.output?.exitCode === 0 ? "Ran code" : "Code ended with an error";
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

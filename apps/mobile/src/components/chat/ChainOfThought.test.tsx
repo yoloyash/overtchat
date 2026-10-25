@@ -2,7 +2,7 @@ import React, { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { ReadFilePart, SearchFilesPart } from "@overtchat/shared";
+import type { CodeExecutionPart, ReadFilePart, SearchFilesPart } from "@overtchat/shared";
 
 vi.mock("@expo/vector-icons", () => ({
   Feather: () => null,
@@ -15,6 +15,11 @@ vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => null }));
 vi.mock("./MarkdownBody", () => ({
   MarkdownBody: ({ text }: { text: string }) => <p>{text}</p>,
 }));
+vi.mock("./CodeBlock", () => ({
+  CodeBlock: ({ code, language }: { code: string; language: string }) => (
+    <pre data-language={language}>{code}</pre>
+  ),
+}));
 vi.mock("@/lib/theme", () => ({
   useTheme: () => ({
     colors: {
@@ -25,7 +30,7 @@ vi.mock("@/lib/theme", () => ({
       destructive: "#ef4444",
       border: "#333",
     },
-    fonts: { sansRegular: "System", sansMedium: "System" },
+    fonts: { sansRegular: "System", sansMedium: "System", mono: "Menlo" },
   }),
 }));
 vi.mock("react-native", () => {
@@ -170,4 +175,88 @@ it("shows live labels and failures", async () => {
     (container.querySelector("button") as unknown as { click(): void }).click();
   });
   expect(container.textContent).toContain('"long-report.txt" is no longer available.');
+});
+
+const run: CodeExecutionPart = {
+  type: "tool-run_python",
+  toolCallId: "run",
+  state: "output-available",
+  input: { code: "print(df.total.sum())" },
+  output: {
+    exitCode: 0,
+    timedOut: false,
+    durationMs: 420,
+    stdout: "12\n",
+    stderr: "",
+    files: [],
+  },
+};
+
+it("shows code runs with their code, status and output", async () => {
+  await act(async () => {
+    root.render(<ChainOfThought parts={[run]} active={false} />);
+  });
+  expect(container.textContent).toContain("Ran code");
+  expect(container.querySelector('[data-icon="code-slash-outline"]')).not.toBeNull();
+
+  await act(async () => {
+    (container.querySelector("button") as unknown as { click(): void }).click();
+  });
+  const text = container.textContent ?? "";
+  expect(text).toContain("Python");
+  expect(text).toContain("Done · 0.4s");
+  expect(container.querySelector('pre[data-language="python"]')?.textContent).toBe("print(df.total.sum())");
+  expect(text).toContain("OUTPUT");
+  expect(text).toContain("12");
+
+  await act(async () => {
+    root.render(
+      <ChainOfThought
+        parts={[
+          {
+            ...run,
+            output: {
+              ...run.output!,
+              exitCode: 1,
+              stdout: "",
+              stderr: "ZeroDivisionError: division by zero\n",
+              stderrTruncated: true,
+            },
+          },
+        ]}
+        active={false}
+      />,
+    );
+  });
+  expect(container.textContent).toContain("Code ended with an error");
+  expect(container.textContent).toContain("Exit code 1");
+  expect(container.textContent).toContain("ERRORS (TRUNCATED)");
+  expect(container.textContent).toContain("ZeroDivisionError: division by zero");
+});
+
+it("labels running, failed and unfinished code runs", async () => {
+  const pending = { ...run, state: "input-available" as const, output: undefined };
+  await act(async () => {
+    root.render(<ChainOfThought parts={[pending]} active />);
+  });
+  expect(container.textContent).toContain("Running code…");
+
+  await act(async () => {
+    root.render(<ChainOfThought parts={[pending]} active={false} />);
+  });
+  expect(container.textContent).toContain("Code run did not complete");
+
+  await act(async () => {
+    root.render(
+      <ChainOfThought
+        parts={[{ ...pending, state: "output-error", errorText: "The code sandbox is unreachable." }]}
+        active={false}
+      />,
+    );
+  });
+  expect(container.textContent).toContain("Code run failed");
+  await act(async () => {
+    (container.querySelector("button") as unknown as { click(): void }).click();
+  });
+  expect(container.textContent).toContain("The code sandbox is unreachable.");
 });

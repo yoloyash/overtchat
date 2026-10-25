@@ -558,6 +558,7 @@ function ChatSurface({
       openuiEnabled,
       forceOpenUI: requestedOpenUI,
       documentsSupported: true,
+      codeExecutionSupported: true,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
