@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CodeBlock, Streamdown } from "streamdown";
 import { Code, Download, Eye, Loader2, X } from "lucide-react";
-import type { CodeExecutionFile } from "@overtchat/shared";
+import type { PanelFile } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { serverUrl } from "@/lib/api-url";
 import { formatSize, humanMediaLabel } from "@/lib/chat/attachments";
@@ -23,13 +23,13 @@ import { SidePanel } from "./SidePanel";
 
 type TextPreview = Extract<FilePreview, { kind: "table" | "markdown" | "html" | "text" }>;
 
-/** A file a code run returned, previewed beside the chat. */
+/** A file from the conversation, previewed beside the chat. */
 export function FilePanel({
   file,
   variant = "docked",
   onClose,
 }: {
-  file: CodeExecutionFile;
+  file: PanelFile;
   variant?: "docked" | "overlay";
   onClose: () => void;
 }) {
@@ -51,7 +51,8 @@ export function FilePanel({
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">{file.name}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {humanMediaLabel(file.mediaType)} · {formatSize(file.size)}
+            {humanMediaLabel(file.mediaType)}
+            {file.size !== undefined && ` · ${formatSize(file.size)}`}
           </p>
         </div>
         {rendered && (
@@ -101,7 +102,7 @@ function FileBody({
   preview,
   source,
 }: {
-  file: CodeExecutionFile;
+  file: PanelFile;
   preview: FilePreview;
   source: boolean;
 }) {
@@ -129,8 +130,8 @@ function FileBody({
         </div>
       );
     default:
-      return file.size > MAX_TEXT_PREVIEW_BYTES ? (
-        <Notice>This file is too large to preview. Download it to open it.</Notice>
+      return (file.size ?? 0) > MAX_TEXT_PREVIEW_BYTES ? (
+        <TooLarge />
       ) : (
         <TextFile file={file} preview={preview} source={source} />
       );
@@ -142,19 +143,28 @@ function TextFile({
   preview,
   source,
 }: {
-  file: CodeExecutionFile;
+  file: PanelFile;
   preview: TextPreview;
   source: boolean;
 }) {
-  const [loaded, setLoaded] = useState<{ text?: string; failed?: boolean } | null>(null);
+  const [loaded, setLoaded] = useState<{
+    text?: string;
+    failed?: boolean;
+    tooLarge?: boolean;
+  } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     fetch(serverUrl(file.url), { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Loading failed (${response.status})`);
-        return response.text();
+        return response.blob();
       })
-      .then((text) => setLoaded({ text }))
+      // Attachments have no recorded size, so it is checked here.
+      .then(async (blob) =>
+        setLoaded(
+          blob.size > MAX_TEXT_PREVIEW_BYTES ? { tooLarge: true } : { text: await blob.text() },
+        ),
+      )
       .catch(() => {
         if (!controller.signal.aborted) setLoaded({ failed: true });
       });
@@ -162,6 +172,7 @@ function TextFile({
   }, [file.url]);
 
   if (loaded?.failed) return <Notice>This file could not be loaded.</Notice>;
+  if (loaded?.tooLarge) return <TooLarge />;
   if (loaded?.text === undefined) {
     return (
       <div className="flex justify-center p-6 text-muted-foreground" role="status" aria-label="Loading file">
@@ -250,4 +261,8 @@ function Table({ text, delimiter }: { text: string; delimiter: string }) {
 
 function Notice({ children }: { children: React.ReactNode }) {
   return <p className="p-6 text-sm text-muted-foreground">{children}</p>;
+}
+
+function TooLarge() {
+  return <Notice>This file is too large to preview. Download it to open it.</Notice>;
 }

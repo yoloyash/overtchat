@@ -3,8 +3,8 @@ import type { UIMessage } from "ai";
 import {
   codeExecutionFileIndex,
   collectOpenUIStates,
-  type CodeExecutionFile,
   type OpenUIFormState,
+  type PanelFile,
 } from "@overtchat/shared";
 import { DocumentPanel } from "./DocumentPanel";
 import { DocumentPanelProvider } from "./DocumentPanelContext";
@@ -29,7 +29,7 @@ export function SharedTranscript({
   const [visible, setVisible] = useState(50);
   const [documentTarget, setDocumentTarget] = useState<string | null>(null);
   const closeDocument = useCallback(() => setDocumentTarget(null), []);
-  const [fileTarget, setFileTarget] = useState<CodeExecutionFile | null>(null);
+  const [fileTarget, setFileTarget] = useState<PanelFile | null>(null);
   const closeFile = useCallback(() => setFileTarget(null), []);
   const documentPanel = useMemo(
     () => ({
@@ -44,7 +44,7 @@ export function SharedTranscript({
   const filePanel = useMemo(
     () => ({
       activeFileId: fileTarget?.id ?? null,
-      open(file: CodeExecutionFile) {
+      open(file: PanelFile) {
         setDocumentTarget(null);
         setFileTarget(file);
       },

@@ -3345,6 +3345,16 @@ test("workspace terminal streams a real shell, retains state, and reconnects und
     await expect.poll(async () => (await pane.boundingBox())!.height).toBeGreaterThan(originalHeight);
     await pane.getByRole("button", { name: "Restore terminal size", exact: true }).click();
     await expect.poll(async () => (await pane.boundingBox())!.height).toBe(originalHeight);
+    // Dragging the edge above the terminal resizes it; a double click restores it.
+    const resizeHandle = page.getByRole("separator", { name: "Resize workspace terminal" });
+    const edge = (await resizeHandle.boundingBox())!;
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 - 80, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBeGreaterThan(originalHeight + 60);
+    await resizeHandle.dblclick();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBe(originalHeight);
     await command(windowsAlias
       ? "Write-Output ('polish-'+'needle one'); Write-Output ('polish-'+'needle two'); Write-Output 'https://example.com/overtchat-terminal'"
       : "printf 'polish-%s one\\npolish-%s two\\nhttps://example.com/overtchat-terminal\\n' needle needle");

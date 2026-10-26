@@ -1,6 +1,6 @@
 "use client";
 
-import type { CodeExecutionFile, OpenUIAction } from "@overtchat/shared";
+import type { OpenUIAction, PanelFile } from "@overtchat/shared";
 
 import {
   type ReactNode,
@@ -499,8 +499,8 @@ export function ChatArea({
   // Tool call whose document version the panel shows.
   const [documentTarget, setDocumentTarget] = useState<string | null>(null);
   const closeDocument = useCallback(() => setDocumentTarget(null), []);
-  // A run file the panel shows instead; one panel is open at a time.
-  const [fileTarget, setFileTarget] = useState<CodeExecutionFile | null>(null);
+  // A file the panel shows instead; one panel is open at a time.
+  const [fileTarget, setFileTarget] = useState<PanelFile | null>(null);
   const closeFile = useCallback(() => setFileTarget(null), []);
   const documentPanel = useMemo(
     () => ({
@@ -515,7 +515,7 @@ export function ChatArea({
   const filePanel = useMemo(
     () => ({
       activeFileId: fileTarget?.id ?? null,
-      open(file: CodeExecutionFile) {
+      open(file: PanelFile) {
         setDocumentTarget(null);
         setFileTarget(file);
       },
@@ -952,6 +952,7 @@ export function ChatArea({
       <ChatHeader
         shareChatId={chatPersisted && !temporary ? chatId : undefined}
         sharingDisabled={streaming || voiceActive}
+        messages={messages}
         title={headerTitle}
         project={
           project && !(renderEmptyState && showEmptyState)

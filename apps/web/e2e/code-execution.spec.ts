@@ -409,6 +409,43 @@ test("runs code on an attachment, returns its files, and reuses them in a later 
   await expandRun(page, "Ran code · 1 file");
   await expect(page.locator("[data-code-run-file]", { hasText: "totals (2).csv" })).toBeVisible();
 
+  // The header lists the conversation's outputs and uploads, newest first,
+  // and opens them beside the chat.
+  await page.getByRole("button", { name: "4 files" }).click();
+  const filesMenu = page.getByRole("menu");
+  await expect(filesMenu.getByRole("menuitem")).toHaveText([
+    /totals \(2\)\.csv\s*CSV/,
+    /totals\.csv\s*CSV/,
+    /totals\.png\s*PNG/,
+    /sales\.csv\s*CSV/,
+  ]);
+  await page.screenshot({ path: testInfo.outputPath("chat-files-menu.png") });
+  await filesMenu.getByRole("menuitem", { name: /sales\.csv/ }).click();
+  await expect(filesMenu).toHaveCount(0);
+  await expect(panel.getByRole("heading", { name: "sales.csv" })).toBeVisible();
+  await expect(panel.locator("[data-file-table] tbody tr")).toHaveCount(3);
+
+  // The panel is resized from its edge and keeps the width when reopened.
+  const handle = page.getByRole("separator", { name: "Resize panel" });
+  const width = async () => Math.round((await panel.boundingBox())!.width);
+  const before = await width();
+  const edge = (await handle.boundingBox())!;
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(edge.x + edge.width / 2 - 100, edge.y + edge.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(width).toBe(before + 100);
+  await page.screenshot({ path: testInfo.outputPath("chat-panel-resized.png") });
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "4 files" }).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: /totals\.png/ }).click();
+  await expect(panel.getByRole("img", { name: "totals.png" })).toBeVisible();
+  expect(await width()).toBe(before + 100);
+  await handle.dblclick();
+  await expect.poll(width).toBe(before);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+
   // Everything survives a reload, and the files are in the library.
   await page.reload();
   await expect(page.locator("[data-code-file-image]").getByRole("img", { name: "totals.png" })).toBeVisible();

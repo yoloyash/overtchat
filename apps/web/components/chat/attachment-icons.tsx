@@ -1,6 +1,7 @@
 import {
   File as FileIcon,
   FileCode,
+  FileImage,
   FileSpreadsheet,
   FileText,
 } from "lucide-react";
@@ -34,6 +35,8 @@ export function MediaIcon({
   filename: string | undefined;
   className?: string;
 }) {
+  if (mediaType?.startsWith("image/"))
+    return <FileImage className={className} />;
   if (mediaType === "application/pdf")
     return <FileText className={className} />;
   if (mediaType?.includes("wordprocessingml"))

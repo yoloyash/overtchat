@@ -17,8 +17,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -62,6 +60,7 @@ import {
 } from "@/lib/agents/createPreferences";
 import { motionClasses } from "@/lib/motion";
 import { useLocalStorage } from "@/lib/useLocalStorage";
+import { usePaneResize } from "@/lib/usePaneResize";
 import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
 import { terminalOutputQuote } from "./terminal-presentation";
@@ -231,25 +230,6 @@ function workspaceFileSelections(value: unknown): AgentWorkspaceFileSelection[] 
   );
 }
 
-function clampWorkspacePaneWidth(width: number, viewportWidth: number): number {
-  const maximum = Math.max(
-    MIN_WORKSPACE_PANE_WIDTH,
-    Math.min(MAX_WORKSPACE_PANE_WIDTH, viewportWidth - MIN_TRANSCRIPT_WIDTH),
-  );
-  return Math.min(maximum, Math.max(MIN_WORKSPACE_PANE_WIDTH, width));
-}
-
-function clampTerminalPaneHeight(
-  height: number,
-  viewportHeight: number,
-): number {
-  const maximum = Math.max(
-    MIN_TERMINAL_PANE_HEIGHT,
-    Math.min(MAX_TERMINAL_PANE_HEIGHT, viewportHeight - MIN_TRANSCRIPT_HEIGHT),
-  );
-  return Math.min(maximum, Math.max(MIN_TERMINAL_PANE_HEIGHT, height));
-}
-
 export function AgentSessionView({
   sessionId,
   provider,
@@ -319,11 +299,6 @@ export function AgentSessionView({
     `overtchat:agent-terminal-pane:${sessionId}`,
     false,
   );
-  const [storedTerminalHeight, setStoredTerminalHeight] =
-    useLocalStorage<unknown>(
-      TERMINAL_PANE_HEIGHT_KEY,
-      DEFAULT_TERMINAL_PANE_HEIGHT,
-    );
   const [storedFileSelection, setStoredFileSelection] =
     useLocalStorage<unknown>(
       `overtchat:agent-workspace-file:${sessionId}`,
@@ -332,10 +307,6 @@ export function AgentSessionView({
   const [storedOpenFiles, setStoredOpenFiles] = useLocalStorage<unknown>(
     `overtchat:agent-workspace-tabs:${sessionId}`,
     [],
-  );
-  const [storedPaneWidth, setStoredPaneWidth] = useLocalStorage<unknown>(
-    WORKSPACE_PANE_WIDTH_KEY,
-    DEFAULT_WORKSPACE_PANE_WIDTH,
   );
   const selectedFile = useMemo(
     () => workspaceFileSelection(storedFileSelection),
@@ -347,34 +318,29 @@ export function AgentSessionView({
   );
   const [viewportWidth, setViewportWidth] = useState(1440);
   const [viewportHeight, setViewportHeight] = useState(900);
-  const [dragPaneWidth, setDragPaneWidth] = useState<number | null>(null);
-  const [resizingPane, setResizingPane] = useState(false);
-  const resizeStart = useRef<{ pointerX: number; width: number } | null>(null);
-  const [dragTerminalHeight, setDragTerminalHeight] = useState<number | null>(
-    null,
-  );
-  const [resizingTerminal, setResizingTerminal] = useState(false);
   const [openedTerminalSession, setOpenedTerminalSession] = useState<string | null>(
     terminalOpen ? sessionId : null,
   );
-  const terminalResizeStart = useRef<{
-    pointerY: number;
-    height: number;
-  } | null>(null);
-  const preferredPaneWidth =
-    typeof storedPaneWidth === "number" && Number.isFinite(storedPaneWidth)
-      ? storedPaneWidth
-      : DEFAULT_WORKSPACE_PANE_WIDTH;
-  const paneWidth =
-    dragPaneWidth ?? clampWorkspacePaneWidth(preferredPaneWidth, viewportWidth);
-  const preferredTerminalHeight =
-    typeof storedTerminalHeight === "number" &&
-    Number.isFinite(storedTerminalHeight)
-      ? storedTerminalHeight
-      : DEFAULT_TERMINAL_PANE_HEIGHT;
-  const terminalHeight =
-    dragTerminalHeight ??
-    clampTerminalPaneHeight(preferredTerminalHeight, viewportHeight);
+  const paneResize = usePaneResize({
+    storageKey: WORKSPACE_PANE_WIDTH_KEY,
+    defaultSize: DEFAULT_WORKSPACE_PANE_WIDTH,
+    minSize: MIN_WORKSPACE_PANE_WIDTH,
+    maxSize: Math.min(
+      MAX_WORKSPACE_PANE_WIDTH,
+      viewportWidth - MIN_TRANSCRIPT_WIDTH,
+    ),
+    edge: "left",
+  });
+  const terminalResize = usePaneResize({
+    storageKey: TERMINAL_PANE_HEIGHT_KEY,
+    defaultSize: DEFAULT_TERMINAL_PANE_HEIGHT,
+    minSize: MIN_TERMINAL_PANE_HEIGHT,
+    maxSize: Math.min(
+      MAX_TERMINAL_PANE_HEIGHT,
+      viewportHeight - MIN_TRANSCRIPT_HEIGHT,
+    ),
+    edge: "top",
+  });
 
   useEffect(() => {
     const updateViewport = () => {
@@ -438,124 +404,6 @@ export function AgentSessionView({
     [openFiles, selectedFile?.path, setStoredFileSelection, setStoredOpenFiles],
   );
 
-  function paneWidthFromPointer(pointerX: number): number {
-    const start = resizeStart.current;
-    if (!start) return paneWidth;
-    return clampWorkspacePaneWidth(
-      start.width + start.pointerX - pointerX,
-      viewportWidth,
-    );
-  }
-
-  function startPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    resizeStart.current = { pointerX: event.clientX, width: paneWidth };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragPaneWidth(paneWidth);
-    setResizingPane(true);
-  }
-
-  function movePaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!resizeStart.current) return;
-    event.preventDefault();
-    setDragPaneWidth(paneWidthFromPointer(event.clientX));
-  }
-
-  function finishPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!resizeStart.current) return;
-    const width = paneWidthFromPointer(event.clientX);
-    resizeStart.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setStoredPaneWidth(width);
-    setDragPaneWidth(null);
-    setResizingPane(false);
-  }
-
-  function cancelPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    resizeStart.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setDragPaneWidth(null);
-    setResizingPane(false);
-  }
-
-  function resizePaneWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const step = event.shiftKey ? 64 : 24;
-    let width: number | null = null;
-    if (event.key === "ArrowLeft") width = paneWidth + step;
-    if (event.key === "ArrowRight") width = paneWidth - step;
-    if (event.key === "Home") width = MIN_WORKSPACE_PANE_WIDTH;
-    if (event.key === "End") width = MAX_WORKSPACE_PANE_WIDTH;
-    if (width === null) return;
-    event.preventDefault();
-    setStoredPaneWidth(clampWorkspacePaneWidth(width, viewportWidth));
-  }
-
-  function terminalHeightFromPointer(pointerY: number): number {
-    const start = terminalResizeStart.current;
-    if (!start) return terminalHeight;
-    return clampTerminalPaneHeight(
-      start.height + start.pointerY - pointerY,
-      viewportHeight,
-    );
-  }
-
-  function startTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    terminalResizeStart.current = {
-      pointerY: event.clientY,
-      height: terminalHeight,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragTerminalHeight(terminalHeight);
-    setResizingTerminal(true);
-  }
-
-  function moveTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!terminalResizeStart.current) return;
-    event.preventDefault();
-    setDragTerminalHeight(terminalHeightFromPointer(event.clientY));
-  }
-
-  function finishTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!terminalResizeStart.current) return;
-    const height = terminalHeightFromPointer(event.clientY);
-    terminalResizeStart.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setStoredTerminalHeight(height);
-    setDragTerminalHeight(null);
-    setResizingTerminal(false);
-  }
-
-  function cancelTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
-    terminalResizeStart.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setDragTerminalHeight(null);
-    setResizingTerminal(false);
-  }
-
-  function resizeTerminalWithKeyboard(
-    event: ReactKeyboardEvent<HTMLDivElement>,
-  ) {
-    const step = event.shiftKey ? 64 : 24;
-    let height: number | null = null;
-    if (event.key === "ArrowUp") height = terminalHeight + step;
-    if (event.key === "ArrowDown") height = terminalHeight - step;
-    if (event.key === "Home") height = MIN_TERMINAL_PANE_HEIGHT;
-    if (event.key === "End") height = MAX_TERMINAL_PANE_HEIGHT;
-    if (height === null) return;
-    event.preventDefault();
-    setStoredTerminalHeight(clampTerminalPaneHeight(height, viewportHeight));
-  }
   const workspaceNavigation = useMemo(
     () => ({ openFile: openWorkspaceFile }),
     [openWorkspaceFile],
@@ -1001,38 +849,22 @@ export function AgentSessionView({
           {(terminalOpen || openedTerminalSession === sessionId) && (
             <div
               data-testid="agent-terminal-pane"
-              style={terminalExpanded ? undefined : { height: `${terminalHeight}px` }}
+              style={terminalExpanded ? undefined : { height: `${terminalResize.size}px` }}
               className={cn("shrink-0 border-t bg-background", terminalExpanded ? "absolute inset-x-0 top-12 bottom-0 z-20" : "relative", !terminalOpen && "hidden")}
             >
               <div
-                role="separator"
+                {...terminalResize.separatorProps}
                 aria-label="Resize workspace terminal"
-                aria-orientation="horizontal"
-                aria-valuemin={MIN_TERMINAL_PANE_HEIGHT}
-                aria-valuemax={clampTerminalPaneHeight(
-                  MAX_TERMINAL_PANE_HEIGHT,
-                  viewportHeight,
-                )}
-                aria-valuenow={Math.round(terminalHeight)}
                 tabIndex={0}
-                onPointerDown={startTerminalResize}
-                onPointerMove={moveTerminalResize}
-                onPointerUp={finishTerminalResize}
-                onPointerCancel={cancelTerminalResize}
-                onDoubleClick={() =>
-                  setStoredTerminalHeight(DEFAULT_TERMINAL_PANE_HEIGHT)
-                }
-                onKeyDown={resizeTerminalWithKeyboard}
                 className={cn(
                   "group absolute inset-x-0 top-0 z-10 h-2 -translate-y-1/2 touch-none cursor-row-resize outline-none select-none",
-                  resizingTerminal && "cursor-row-resize",
                   terminalExpanded && "hidden",
                 )}
               >
                 <span
                   className={cn(
                     "absolute inset-x-0 top-1/2 h-px bg-border motion-colors group-hover:bg-primary/70 group-focus-visible:h-0.5 group-focus-visible:bg-primary",
-                    resizingTerminal && "h-0.5 bg-primary",
+                    terminalResize.resizing && "h-0.5 bg-primary",
                   )}
                 />
               </div>
@@ -1143,46 +975,28 @@ export function AgentSessionView({
           inert={!filesOpen}
           style={
             {
-              "--workspace-pane-width": `${paneWidth}px`,
+              "--workspace-pane-width": `${paneResize.size}px`,
             } as CSSProperties
           }
           className={cn(
             "absolute inset-y-0 right-0 z-30 w-[min(34rem,calc(100%-1rem))] overflow-hidden xl:relative xl:z-auto xl:w-0 xl:shrink-0 xl:shadow-none",
-            !resizingPane && "xl:motion-width",
+            !paneResize.resizing && "xl:motion-width",
             filesOpen
               ? "pointer-events-auto xl:w-(--workspace-pane-width)"
               : "pointer-events-none xl:w-0",
           )}
         >
           <div
-            role="separator"
+            {...paneResize.separatorProps}
             aria-label="Resize workspace files"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_WORKSPACE_PANE_WIDTH}
-            aria-valuemax={clampWorkspacePaneWidth(
-              MAX_WORKSPACE_PANE_WIDTH,
-              viewportWidth,
-            )}
-            aria-valuenow={Math.round(paneWidth)}
             tabIndex={filesOpen ? 0 : -1}
             data-testid="agent-workspace-resize-handle"
-            onPointerDown={startPaneResize}
-            onPointerMove={movePaneResize}
-            onPointerUp={finishPaneResize}
-            onPointerCancel={cancelPaneResize}
-            onDoubleClick={() =>
-              setStoredPaneWidth(DEFAULT_WORKSPACE_PANE_WIDTH)
-            }
-            onKeyDown={resizePaneWithKeyboard}
-            className={cn(
-              "group absolute inset-y-0 left-0 z-40 hidden w-2 touch-none cursor-col-resize outline-none select-none xl:block",
-              resizingPane && "cursor-col-resize",
-            )}
+            className="group absolute inset-y-0 left-0 z-40 hidden w-2 touch-none cursor-col-resize outline-none select-none xl:block"
           >
             <span
               className={cn(
                 "absolute inset-y-0 left-0 w-px bg-border motion-colors group-hover:bg-primary/70 group-focus-visible:w-0.5 group-focus-visible:bg-primary",
-                resizingPane && "w-0.5 bg-primary",
+                paneResize.resizing && "w-0.5 bg-primary",
               )}
             />
           </div>
