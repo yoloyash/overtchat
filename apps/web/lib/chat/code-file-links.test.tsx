@@ -83,6 +83,12 @@ describe("code file links", () => {
     expect(codeExecutionFileIndex([{ parts: [failed] }]).size).toBe(0);
   });
 
+  it("links a name to the latest run that saved it, as saving over a file does", () => {
+    const replaced = { ...chart, id: "chart-2", url: "/api/uploads/chart-2", name: "chart.png" };
+    const index = codeExecutionFileIndex([{ parts: [run([chart])] }, { parts: [run([replaced])] }]);
+    expect(index.get("chart.png")).toBe(replaced);
+  });
+
   it("shows an image or a card where the reply links a file on its own line", () => {
     const document = render(
       "North leads.\n\n![Totals](sandbox:/mnt/data/outputs/chart.png)\n\n[Download](totals%20(2).csv)",

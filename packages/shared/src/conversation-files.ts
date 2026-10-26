@@ -20,8 +20,8 @@ export type ConversationOutput =
   | { kind: "document"; document: DocumentVersion };
 
 export interface ConversationFiles {
-  /** What the assistant made, most recent first: files from code runs,
-   * generated images, and documents at their latest version. */
+  /** What the assistant made, most recent first: files from code runs and
+   * documents at their latest version, and generated images. */
   outputs: ConversationOutput[];
   /** Files the user attached, most recent first. */
   uploads: PanelFile[];
@@ -46,8 +46,12 @@ export function conversationFiles(messages: readonly UIMessage[]): ConversationF
           });
         }
       } else if (isCodeExecutionPart(part)) {
+        // A run's file replaces an earlier run's file of the same name and
+        // moves up to where it was last saved.
         for (const file of codeExecutionFiles(part)) {
-          outputs.set(`file:${file.id}`, { kind: "file", file });
+          const key = `run:${file.name.toLowerCase()}`;
+          outputs.delete(key);
+          outputs.set(key, { kind: "file", file });
         }
       } else if (
         isImageToolPart(part) &&

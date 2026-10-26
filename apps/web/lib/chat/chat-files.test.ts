@@ -180,6 +180,32 @@ describe("conversation files", () => {
     ]);
   });
 
+  it("replaces a run's file when a later run saves the same name", () => {
+    const run = (toolCallId: string, files: unknown[]) => ({
+      type: "tool-run_python",
+      toolCallId,
+      state: "output-available",
+      input: { code: "..." },
+      output: { exitCode: 0, timedOut: false, durationMs: 5, stdout: "", stderr: "", files },
+    });
+    const files = listChatFiles([
+      user("1", [file("photo", "photo.png", "image/png")]),
+      assistant("2", [
+        run("run1", [runOutput("b1", "blurred.png", "image/png"), runOutput("crop", "crop.png", "image/png")]),
+        run("run2", [runOutput("b2", "blurred.png", "image/png")]),
+      ]),
+      // An attachment never replaces a file, nor is replaced by one.
+      user("3", [file("upload", "blurred.png", "image/png")]),
+      assistant("4", [run("run3", [runOutput("b3", "Blurred.png", "image/png")])]),
+    ]);
+    expect(files).toEqual([
+      { uploadId: "photo", name: "photo.png", mediaType: "image/png" },
+      { uploadId: "crop", name: "crop.png", mediaType: "image/png", fromRun: true },
+      { uploadId: "upload", name: "blurred (2).png", mediaType: "image/png" },
+      { uploadId: "b3", name: "Blurred.png", mediaType: "image/png", fromRun: true },
+    ]);
+  });
+
   it("resolves names case-insensitively and falls back to upload IDs", () => {
     const files = listChatFiles([
       user("1", [file("abc", "Q3 Report.pdf"), file("def", "photo.png", "image/png")]),

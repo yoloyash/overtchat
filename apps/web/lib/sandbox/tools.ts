@@ -90,7 +90,8 @@ function toolDescription(info: SandboxInfo | undefined): string {
 
 /**
  * run_python sends the conversation's files to the sandbox and saves the files
- * a run returns as the user's uploads, named uniquely within the conversation.
+ * a run returns as the user's uploads, named uniquely within the conversation
+ * except that a run's file replaces an earlier run's file of the same name.
  * The model reads at most `outputTokens` of a run's printed output.
  */
 export function createCodeExecutionTools({
@@ -108,15 +109,21 @@ export function createCodeExecutionTools({
 }) {
   const outputChars = outputTokens * CHARS_PER_TOKEN;
   // Names taken in this conversation, including files saved earlier in this
-  // request, so every saved file keeps the name later runs see.
-  const takenNames = new Set(files.map((file) => file.name.toLowerCase()));
+  // request, so every saved file keeps the name later runs see. Each maps to
+  // whether a run saved it: saving that name again replaces the file, as
+  // saving over a file does. Attachments and generated images keep theirs.
+  const takenNames = new Map(files.map((file) => [file.name.toLowerCase(), file.fromRun === true]));
   const savedFiles: ChatFile[] = [];
 
-  function reserveName(name: string): string {
+  /** `runNames` holds the names this run saved, which it cannot replace. */
+  function reserveName(name: string, runNames: Set<string>): string {
     const base = safeFilename(name, mediaTypeFor(name), NAME_SUFFIX_RESERVE);
     let chosen = base;
-    for (let n = 2; takenNames.has(chosen.toLowerCase()); n++) chosen = numberedName(base, n);
-    takenNames.add(chosen.toLowerCase());
+    if (!takenNames.get(base.toLowerCase()) || runNames.has(base.toLowerCase())) {
+      for (let n = 2; takenNames.has(chosen.toLowerCase()); n++) chosen = numberedName(base, n);
+    }
+    takenNames.set(chosen.toLowerCase(), true);
+    runNames.add(chosen.toLowerCase());
     return chosen;
   }
 
@@ -124,8 +131,12 @@ export function createCodeExecutionTools({
     let remaining = info?.limits.max_input_bytes ?? 100 * 1024 * 1024;
     const selected: SandboxFile[] = [];
     const omitted: string[] = [];
-    // Newest first, so a large old file never crowds out what was just made.
+    const names = new Set<string>();
+    // Newest first, so a large old file never crowds out what was just made,
+    // and a file this request replaced gives way to its replacement.
     for (const file of [...files, ...savedFiles].reverse()) {
+      if (names.has(file.name.toLowerCase())) continue;
+      names.add(file.name.toLowerCase());
       const row = await getUpload(file.uploadId, userId);
       if (!row) continue;
       if (selected.length >= MAX_INPUT_FILES || row.size > remaining) {
@@ -140,8 +151,11 @@ export function createCodeExecutionTools({
     return { files: selected, omitted: omitted.reverse() };
   }
 
-  async function save(output: { name: string; data: string }): Promise<CodeExecutionFile> {
-    const name = reserveName(output.name);
+  async function save(
+    output: { name: string; data: string },
+    runNames: Set<string>,
+  ): Promise<CodeExecutionFile> {
+    const name = reserveName(output.name, runNames);
     const mediaType = mediaTypeFor(name);
     const bytes = Buffer.from(output.data, "base64");
     let category: "image" | "document" | "text" | "spreadsheet" = "document";
@@ -189,7 +203,7 @@ export function createCodeExecutionTools({
       await fsp.rm(uploadPath(id), { force: true });
       throw error;
     }
-    savedFiles.push({ uploadId: id, name, mediaType: storedType });
+    savedFiles.push({ uploadId: id, name, mediaType: storedType, fromRun: true });
     return { id, url: `/api/uploads/${id}`, name, mediaType: storedType, size: bytes.byteLength };
   }
 
@@ -219,7 +233,8 @@ export function createCodeExecutionTools({
           abortSignal,
         );
         const saved: CodeExecutionFile[] = [];
-        for (const file of result.files) saved.push(await save(file));
+        const runNames = new Set<string>();
+        for (const file of result.files) saved.push(await save(file, runNames));
         return {
           exitCode: result.exit_code,
           ...(result.signal ? { signal: result.signal } : {}),

@@ -82,6 +82,24 @@ describe("conversationFiles", () => {
     ]);
   });
 
+  it("lists a run's file once, at its latest save and where it was saved", () => {
+    const run = (toolCallId: string, files: CodeExecutionFile[]) => ({
+      type: "tool-run_python",
+      toolCallId,
+      state: "output-available",
+      output: { exitCode: 0, timedOut: false, durationMs: 5, stdout: "", stderr: "", files },
+    });
+    const latest = { ...chart, id: "chart-2", url: "/api/uploads/chart-2", name: "Chart.png" };
+    const files = conversationFiles([
+      message("a1", "assistant", [run("first", [chart, { ...chart, id: "table", url: "/api/uploads/table", name: "table.csv" }])]),
+      message("a2", "assistant", [run("second", [latest])]),
+    ]);
+    expect(files.outputs.map((output) => output.kind === "file" && output.file.id)).toEqual([
+      "chart-2",
+      "table",
+    ]);
+  });
+
   it("skips unfinished calls, malformed outputs and files outside saved uploads", () => {
     const files = conversationFiles([
       message("u1", "user", [

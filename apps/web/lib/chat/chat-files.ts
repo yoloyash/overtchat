@@ -16,6 +16,8 @@ export interface ChatFile {
   uploadId: string;
   name: string;
   mediaType: string;
+  /** Saved by a code run, so a later run saving the same name replaces it. */
+  fromRun?: true;
 }
 
 export function uploadIdFromUrl(url: string): string | null {
@@ -23,26 +25,39 @@ export function uploadIdFromUrl(url: string): string | null {
 }
 
 /**
- * Lists the conversation's files in order of first appearance: attachments,
- * files written by code runs, and generated images. Names come from the
- * filename; repeated names get a numbered suffix so the model can refer to
- * every file unambiguously. The same history always yields the same names,
- * which keeps tool references and prompts stable across turns.
+ * Lists the conversation's files in order of appearance: attachments, files
+ * written by code runs, and generated images. Names come from the filename;
+ * repeated names get a numbered suffix so the model can refer to every file
+ * unambiguously. A run that saves a name an earlier run saved replaces that
+ * file, as saving over a file does, and the newer file moves to the end. The
+ * same history always yields the same names, which keeps tool references and
+ * prompts stable across turns.
  */
 export function listChatFiles(messages: readonly UIMessage[]): ChatFile[] {
   const files: ChatFile[] = [];
   const seenIds = new Set<string>();
-  const usedNames = new Set<string>();
-  const add = (uploadId: string | null, filename: string | undefined, mediaType: string) => {
+  const holders = new Map<string, ChatFile>();
+  const add = (
+    uploadId: string | null,
+    filename: string | undefined,
+    mediaType: string,
+    fromRun = false,
+  ) => {
     if (!uploadId || seenIds.has(uploadId)) return;
     seenIds.add(uploadId);
     const base = safeFilename(filename, mediaType);
+    const replaced = fromRun ? holders.get(base.toLowerCase()) : undefined;
     let name = base;
-    for (let n = 2; usedNames.has(name.toLowerCase()); n++) {
-      name = numberedName(base, n);
+    if (replaced?.fromRun) {
+      files.splice(files.indexOf(replaced), 1);
+    } else {
+      for (let n = 2; holders.has(name.toLowerCase()); n++) {
+        name = numberedName(base, n);
+      }
     }
-    usedNames.add(name.toLowerCase());
-    files.push({ uploadId, name, mediaType });
+    const file: ChatFile = { uploadId, name, mediaType, ...(fromRun ? { fromRun: true } : {}) };
+    holders.set(name.toLowerCase(), file);
+    files.push(file);
   };
   for (const message of messages) {
     for (const part of message.parts) {
@@ -50,7 +65,7 @@ export function listChatFiles(messages: readonly UIMessage[]): ChatFile[] {
         add(uploadIdFromUrl(part.url), part.filename, part.mediaType);
       } else if (isCodeExecutionPart(part)) {
         for (const file of codeExecutionFiles(part)) {
-          add(uploadIdFromUrl(file.url), file.name, file.mediaType);
+          add(uploadIdFromUrl(file.url), file.name, file.mediaType, true);
         }
       } else if (
         isImageToolPart(part) &&

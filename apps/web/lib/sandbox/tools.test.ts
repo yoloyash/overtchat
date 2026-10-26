@@ -184,7 +184,7 @@ describe("run_python", () => {
     expect(patient.safeParse({ code: "1", timeout_seconds: 241 }).success).toBe(false);
   });
 
-  it("saves returned files as uploads under names unique to the conversation", async () => {
+  it("saves returned files as uploads without taking an attachment's name", async () => {
     stored("sales", "sales.csv", Buffer.from("region,total\nnorth,3\n"));
     mocks.run.mockResolvedValue(
       sandboxResult([
@@ -230,11 +230,36 @@ describe("run_python", () => {
     const first = await execute(runTools);
     mocks.run.mockResolvedValueOnce(sandboxResult([{ name: "out.csv", data: Buffer.from("a\n2\n") }]));
     const second = await execute(runTools);
+    mocks.run.mockResolvedValueOnce(sandboxResult());
+    await execute(runTools);
     expect(mocks.run.mock.calls[1][0].files).toEqual([
       { name: "out.csv", data: Buffer.from("a\n1\n").toString("base64") },
     ]);
+    // Saving the name again replaces the file, so the next run reads the new one.
     expect(first.files[0].name).toBe("out.csv");
-    expect(second.files[0].name).toBe("out (2).csv");
+    expect(second.files[0].name).toBe("out.csv");
+    expect(second.files[0].id).not.toBe(first.files[0].id);
+    expect(mocks.run.mock.calls[2][0].files).toEqual([
+      { name: "out.csv", data: Buffer.from("a\n2\n").toString("base64") },
+    ]);
+  });
+
+  it("replaces an earlier run's file but numbers a name taken in the same run", async () => {
+    stored("old", "chart.png", PNG, "image/png");
+    mocks.run.mockResolvedValue(
+      sandboxResult([
+        { name: "chart.png", data: PNG },
+        { name: "Chart.png", data: PNG },
+        { name: "photo.png", data: PNG },
+      ]),
+    );
+    const output = await execute(
+      tools([
+        { uploadId: "photo", name: "photo.png", mediaType: "image/png" },
+        { uploadId: "old", name: "chart.png", mediaType: "image/png", fromRun: true },
+      ]),
+    );
+    expect(output.files.map((file) => file.name)).toEqual(["chart.png", "Chart (2).png", "photo (2).png"]);
   });
 
   it("removes the saved bytes when the upload row cannot be created", async () => {

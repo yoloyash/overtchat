@@ -96,8 +96,9 @@ export function codeExecutionFiles(part: CodeExecutionPart): CodeExecutionFile[]
 }
 
 /**
- * Files the conversation's runs returned, keyed by lower-cased name. Saved
- * names are unique within a conversation, so a reply can link a file by name.
+ * Files the conversation's runs returned, keyed by lower-cased name, so a
+ * reply can link a file by name. A run's file replaces an earlier run's file
+ * of the same name, so a name links the latest one.
  */
 export function codeExecutionFileIndex(
   messages: readonly { parts: readonly { type: string }[] }[],
