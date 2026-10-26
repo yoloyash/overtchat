@@ -571,7 +571,7 @@ test("a live tool-calling model analyzes data, edits an image and writes a Word 
   const saved = async (chatId: string) => {
     const response = await page.request.get(`/api/chat/${chatId}/messages`);
     return response.ok()
-      ? ((await response.json()).messages as Array<{ role: string; parts: SavedPart[] }>)
+      ? ((await response.json()).messages as Array<{ id: string; role: string; parts: SavedPart[] }>)
       : [];
   };
   // Each turn is done once its answer is saved and the stream has ended.
@@ -599,7 +599,7 @@ test("a live tool-calling model analyzes data, edits an image and writes a Word 
     const files = latest.parts.flatMap((part) =>
       part.type === "tool-run_python" && part.state === "output-available" ? (part.output?.files ?? []) : [],
     );
-    return { chatId: id, files };
+    return { chatId: id, messageId: latest.id, files };
   };
 
   const regions = ["north", "south", "east", "west"];
@@ -635,6 +635,23 @@ test("a live tool-calling model analyzes data, edits an image and writes a Word 
   const blurredBytes = await (await page.request.get(blurred!.url)).body();
   expect(blurredBytes.subarray(0, 8)).toEqual(photo.subarray(0, 8));
   expect(blurredBytes.equals(photo)).toBe(false);
+
+  // Refining a file, models tend to save over its name. Each image the reply
+  // shows is the newest file with its name.
+  const refine = await turn(chatId, "Now also blur the right half of that result, and show me the image.");
+  expect(refine.files.some((file) => file.mediaType === "image/png")).toBe(true);
+  const runFiles = (await saved(chatId)).flatMap((message) =>
+    message.parts.flatMap((part) =>
+      part.type === "tool-run_python" && part.state === "output-available" ? (part.output?.files ?? []) : [],
+    ),
+  );
+  testInfo.annotations.push({ type: "saved files", description: runFiles.map((file) => file.name).join(", ") });
+  const newest = new Map(runFiles.map((file) => [file.name.toLowerCase(), file.url]));
+  const shown = page.locator(`[data-message-id="${refine.messageId}"] [data-code-file-image] img`);
+  await expect(shown.first()).toBeVisible();
+  for (const image of await shown.all()) {
+    expect(await image.getAttribute("src")).toBe(newest.get((await image.getAttribute("alt"))!.toLowerCase()));
+  }
 
   const writing = await turn(
     chatId,
