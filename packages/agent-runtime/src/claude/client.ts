@@ -268,7 +268,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private contextTokens: number | null = null;
   private reportedContextWindow?: number;
   private reportedContextModel?: string;
+  /** A catalog model ID, so clients can match it to a listed model. */
   private selectedModel?: string;
+  /** The model Claude Code last reported running, often a resolved alias. */
+  private runtimeModel?: string;
   private thinkingOptionId?: string;
   private modeId: PermissionMode;
   private active = false;
@@ -434,6 +437,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       }
       await this.sdkQuery.setModel(modelId);
       this.selectedModel = modelId;
+      this.runtimeModel = undefined;
       this.reportedContextWindow = undefined;
       this.reportedContextModel = undefined;
       this.updateContextUsage(null);
@@ -924,7 +928,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
           this.reportedContextModel = undefined;
           this.updateContextUsage(null);
         }
-        this.selectedModel = message.model;
+        this.runtimeModel = message.model;
+        this.selectedModel = this.catalogModelId(message.model);
       }
       if (isClaudePermissionMode(String(message.permissionMode ?? ""))) {
         this.modeId = message.permissionMode as PermissionMode;
@@ -1221,6 +1226,24 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     return id.toLowerCase().replace(/\[1m\]/gu, "");
   }
 
+  /**
+   * Claude Code reports the model it resolved an alias to (opus becomes
+   * claude-opus-...). Keep the selection when it is still that model;
+   * otherwise use the listed model it belongs to, or the reported ID.
+   */
+  private catalogModelId(reported: string): string {
+    const id = this.normalizeModelId(reported);
+    if (this.selectedModel && this.modelIds(this.selectedModel).has(id)) {
+      return this.selectedModel;
+    }
+    const listed =
+      this.models.find((model) => this.normalizeModelId(model.id) === id) ??
+      this.models.find((model) =>
+        typeof model.metadata?.modelId === "string" &&
+        this.normalizeModelId(model.metadata.modelId) === id);
+    return listed?.id ?? reported;
+  }
+
   private modelIds(selected: string | undefined): Set<string> {
     const model = this.models.find((candidate) => candidate.id === selected ||
       candidate.metadata?.modelId === selected);
@@ -1231,9 +1254,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
 
   private resultModelUsage(modelUsage: Record<string, unknown> | null): Record<string, unknown> | null {
     if (!modelUsage) return null;
-    const exact = record(modelUsage[this.selectedModel ?? ""]);
+    const exact = record(modelUsage[this.runtimeModel ?? this.selectedModel ?? ""]);
     if (exact) return exact;
     const ids = this.modelIds(this.selectedModel);
+    if (this.runtimeModel) ids.add(this.normalizeModelId(this.runtimeModel));
     const matches = Object.entries(modelUsage).filter(([id, value]) => {
       const canonical = record(value)?.canonicalModel;
       return ids.has(this.normalizeModelId(id)) ||
@@ -1257,7 +1281,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     const contextWindow = this.usageNumber(selectedUsage?.contextWindow);
     if (contextWindow && contextWindow !== this.reportedContextWindow) {
       this.reportedContextWindow = contextWindow;
-      this.reportedContextModel = this.selectedModel;
+      this.reportedContextModel = this.runtimeModel ?? this.selectedModel;
       this.updateContextUsage(this.contextTokens);
     }
     const totals = modelUsage

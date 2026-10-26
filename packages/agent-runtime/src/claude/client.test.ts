@@ -953,6 +953,45 @@ it.each(["files", "both"] as const)("restores files on the source session before
 });
 
 
+describe("Claude reported models", () => {
+  it("keeps listed model IDs when Claude Code reports the model an alias resolved to", async () => {
+    let query!: FakeQuery;
+    queryMock.mockImplementation((params) => {
+      query = new FakeQuery(params);
+      const initialized = query.initializationResult();
+      query.initializationResult = async () => {
+        const result = await initialized;
+        return {
+          ...result,
+          models: [
+            ...result.models.map((model) => ({ ...model, resolvedModel: "claude-haiku-test" })),
+            { value: "opus", displayName: "Opus", description: "Capable", supportsAutoMode: true, resolvedModel: "claude-opus-test" },
+          ],
+        };
+      };
+      return query;
+    });
+    const client = new ClaudeRuntimeClient(
+      { transport: "local" },
+      { executable: "claude", cwd: "/workspace", model: "haiku" },
+    );
+    const reported = async (model: string) => {
+      query.push({ type: "system", subtype: "init", session_id: "session", model });
+      await nextTask();
+      return (await client.getState()).model;
+    };
+    try {
+      await client.getState();
+      expect(await reported("claude-haiku-test")).toEqual({ provider: "claude", id: "haiku" });
+      // A native /model switch reports another listed model by its resolved ID.
+      expect(await reported("claude-opus-test")).toEqual({ provider: "claude", id: "opus" });
+      expect(await reported("gateway/unlisted")).toEqual({ provider: "claude", id: "gateway/unlisted" });
+    } finally {
+      await client.stop();
+    }
+  });
+});
+
 describe("Claude context reporting", () => {
   it("reads native capacity on open and streams usage for an unmatched runtime model", async () => {
     let q!: FakeQuery;
