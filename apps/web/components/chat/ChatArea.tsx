@@ -15,6 +15,7 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, generateId, type FileUIPart, type UIMessage } from "ai";
 import {
+  conversationFiles,
   documentIdOf,
   findDocumentPart,
   followLiveDocuments,
@@ -96,6 +97,7 @@ import {
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
+import { ChatFilesPanel } from "./ChatFiles";
 import { ChatHeader } from "./ChatHeader";
 import { DocumentPanel } from "./DocumentPanel";
 import { DocumentPanelProvider } from "./DocumentPanelContext";
@@ -121,6 +123,11 @@ function shouldAutofocusComposer() {
 function documentPanelDocks() {
   return window.matchMedia("(min-width: 1024px)").matches;
 }
+
+type PanelView =
+  | { kind: "files" }
+  | { kind: "file"; file: PanelFile }
+  | { kind: "document"; toolCallId: string };
 
 interface Props {
   chatId: string;
@@ -496,31 +503,26 @@ export function ChatArea({
 
   const streaming = status === "streaming" || status === "submitted";
 
-  // Tool call whose document version the panel shows.
-  const [documentTarget, setDocumentTarget] = useState<string | null>(null);
-  const closeDocument = useCallback(() => setDocumentTarget(null), []);
-  // A file the panel shows instead; one panel is open at a time.
-  const [fileTarget, setFileTarget] = useState<PanelFile | null>(null);
-  const closeFile = useCallback(() => setFileTarget(null), []);
+  // What the side panel shows: the chat's files, one of them, or a
+  // document version.
+  const [panel, setPanel] = useState<PanelView | null>(null);
+  const closePanel = useCallback(() => setPanel(null), []);
+  const showFiles = useCallback(() => setPanel({ kind: "files" }), []);
+  const openDocument = useCallback(
+    (toolCallId: string) => setPanel({ kind: "document", toolCallId }),
+    [],
+  );
+  const openFile = useCallback((file: PanelFile) => setPanel({ kind: "file", file }), []);
+  const documentTarget = panel?.kind === "document" ? panel.toolCallId : null;
+  const fileTarget = panel?.kind === "file" ? panel.file : null;
+  const files = useMemo(() => conversationFiles(messages), [messages]);
   const documentPanel = useMemo(
-    () => ({
-      activeToolCallId: documentTarget,
-      open(toolCallId: string) {
-        setFileTarget(null);
-        setDocumentTarget(toolCallId);
-      },
-    }),
-    [documentTarget],
+    () => ({ activeToolCallId: documentTarget, open: openDocument }),
+    [documentTarget, openDocument],
   );
   const filePanel = useMemo(
-    () => ({
-      activeFileId: fileTarget?.id ?? null,
-      open(file: PanelFile) {
-        setDocumentTarget(null);
-        setFileTarget(file);
-      },
-    }),
-    [fileTarget],
+    () => ({ activeFileId: fileTarget?.id ?? null, open: openFile }),
+    [fileTarget, openFile],
   );
   // Calls already saved when the chat opens never open the panel by themselves.
   const handledDocumentCalls = useRef<Set<string> | null>(null);
@@ -539,18 +541,16 @@ export function ChatArea({
     const openPart = documentTarget
       ? findDocumentPart(messages, documentTarget)
       : undefined;
+    // With the files or a file shown, the panel is open on no document.
     const { handled, follow } = followLiveDocuments(
       messages.at(-1),
       handledDocumentCalls.current,
-      documentTarget ? (openPart ? (documentIdOf(openPart) ?? "") : "") : undefined,
+      panel ? (openPart ? (documentIdOf(openPart) ?? "") : "") : undefined,
       documentPanelDocks(),
     );
     for (const id of handled) handledDocumentCalls.current.add(id);
-    if (follow) {
-      setFileTarget(null);
-      setDocumentTarget(follow);
-    }
-  }, [documentTarget, messages, streaming]);
+    if (follow) setPanel({ kind: "document", toolCallId: follow });
+  }, [documentTarget, messages, panel, streaming]);
 
   const chatQueue = useChatQueue({
     chatId,
@@ -943,6 +943,7 @@ export function ChatArea({
     <FilePanelProvider value={filePanel}>
     <div className="relative flex min-w-0 flex-1 overflow-hidden">
     <div
+      data-titlebar-interior={panel ? "" : undefined}
       className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -952,7 +953,11 @@ export function ChatArea({
       <ChatHeader
         shareChatId={chatPersisted && !temporary ? chatId : undefined}
         sharingDisabled={streaming || voiceActive}
-        messages={messages}
+        files={{
+          count: files.outputs.length + files.uploads.length,
+          open: panel !== null,
+          onToggle: () => setPanel((shown) => (shown ? null : { kind: "files" })),
+        }}
         title={headerTitle}
         project={
           project && !(renderEmptyState && showEmptyState)
@@ -1069,16 +1074,25 @@ export function ChatArea({
         </>
       )}
     </div>
+    {panel?.kind === "files" && (
+      <ChatFilesPanel
+        files={files}
+        onOpenFile={openFile}
+        onOpenDocument={openDocument}
+        onClose={closePanel}
+      />
+    )}
     {documentTarget && (
       <DocumentPanel
         messages={messages}
         toolCallId={documentTarget}
         streaming={streaming}
-        onSelect={setDocumentTarget}
-        onClose={closeDocument}
+        onSelect={openDocument}
+        onBack={showFiles}
+        onClose={closePanel}
       />
     )}
-    {fileTarget && <FilePanel file={fileTarget} onClose={closeFile} />}
+    {fileTarget && <FilePanel file={fileTarget} onBack={showFiles} onClose={closePanel} />}
     </div>
     </FilePanelProvider>
     </DocumentPanelProvider>

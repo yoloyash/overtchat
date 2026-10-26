@@ -235,6 +235,13 @@
       margin-left: max(0px, calc(var(--desktop-titlebar-inset, 0px) - 1.25rem));
     }
   }
+
+  /* Side panels fill the window below the lg breakpoint. */
+  @media (max-width: 1023px) {
+    html[data-desktop-shell] [data-side-panel-header] {
+      padding-left: max(0.75rem, var(--desktop-titlebar-inset, 0px));
+    }
+  }
 }
 
 @media (forced-colors: active) {

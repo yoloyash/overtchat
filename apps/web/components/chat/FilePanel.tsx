@@ -19,7 +19,8 @@ import { MESSAGE_MARKDOWN_PLUGINS } from "@/lib/chat/markdown";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { MediaIcon } from "./attachment-icons";
-import { SidePanel } from "./SidePanel";
+import { BackToFilesButton } from "./ChatFiles";
+import { SidePanel, SidePanelHeader } from "./SidePanel";
 
 type TextPreview = Extract<FilePreview, { kind: "table" | "markdown" | "html" | "text" }>;
 
@@ -27,10 +28,13 @@ type TextPreview = Extract<FilePreview, { kind: "table" | "markdown" | "html" | 
 export function FilePanel({
   file,
   variant = "docked",
+  onBack,
   onClose,
 }: {
   file: PanelFile;
   variant?: "docked" | "overlay";
+  /** Returns to the panel's list of files, where there is one. */
+  onBack?: () => void;
   onClose: () => void;
 }) {
   const preview = filePreview(file);
@@ -44,7 +48,8 @@ export function FilePanel({
       variant={variant}
       onClose={onClose}
     >
-      <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+      <SidePanelHeader>
+        {onBack && <BackToFilesButton onClick={onBack} />}
         <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <MediaIcon mediaType={file.mediaType} filename={file.name} className="size-4" />
         </span>
@@ -85,7 +90,7 @@ export function FilePanel({
         >
           <X />
         </Button>
-      </header>
+      </SidePanelHeader>
       <div className="min-h-0 flex-1 overflow-auto" data-file-body="">
         {preview ? (
           <FileBody key={`${file.id}:${showSource}`} file={file} preview={preview} source={showSource} />

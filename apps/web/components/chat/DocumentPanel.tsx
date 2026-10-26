@@ -37,7 +37,8 @@ import { htmlPreviewDocument, svgPreviewSource } from "@/lib/chat/code-preview";
 import { renderDiagram } from "@/lib/chat/render-diagram";
 import { DiagramViewport } from "./DiagramViewport";
 import { DOCUMENT_ICONS } from "./DocumentCard";
-import { SidePanel } from "./SidePanel";
+import { BackToFilesButton } from "./ChatFiles";
+import { SidePanel, SidePanelHeader } from "./SidePanel";
 
 type ShownDocument = DocumentDraft & { version?: number };
 
@@ -54,6 +55,7 @@ export function DocumentPanel({
   variant = "docked",
   wordExport = true,
   onSelect,
+  onBack,
   onClose,
 }: {
   messages: UIMessage[];
@@ -63,6 +65,8 @@ export function DocumentPanel({
   /** Word export converts on the server and needs a signed-in session. */
   wordExport?: boolean;
   onSelect: (toolCallId: string) => void;
+  /** Returns to the panel's list of files, where there is one. */
+  onBack?: () => void;
   onClose: () => void;
 }) {
   const view = useMemo(
@@ -142,9 +146,10 @@ export function DocumentPanel({
       variant={variant}
       onClose={onClose}
     >
-      {/* One row on wide screens; narrow screens move the toolbar below the
+      {/* One row in a wide panel; a narrow one moves the toolbar below the
           title so the title stays readable. */}
-      <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-2">
+      <SidePanelHeader className="flex-wrap gap-x-2 gap-y-1">
+        {onBack && <BackToFilesButton onClick={onBack} />}
         <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           {writing ? (
             <Loader2 className={cn("size-4", motionClasses.spinner)} />
@@ -162,7 +167,7 @@ export function DocumentPanel({
             · {status}
           </p>
         </div>
-        <div className="order-last flex w-full items-center gap-0.5 lg:order-none lg:w-auto">
+        <div className="order-last flex w-full items-center gap-0.5 @md/panel:order-none @md/panel:w-auto">
           {view.versions.length > 1 && !view.draft && (
             <div className="flex items-center" role="group" aria-label="Versions">
               <Button
@@ -187,7 +192,7 @@ export function DocumentPanel({
               </Button>
             </div>
           )}
-          <div className="ml-auto flex items-center gap-0.5 lg:ml-0">
+          <div className="ml-auto flex items-center gap-0.5 @md/panel:ml-0">
             {previewable && (
               <Button
                 variant="ghost"
@@ -283,7 +288,7 @@ export function DocumentPanel({
         >
           <X />
         </Button>
-      </header>
+      </SidePanelHeader>
       <div className="min-h-0 flex-1 overflow-auto" data-document-body="">
         {/* A saved version never changes, so remount when the shown version
             does; streamed rendering only expects text appended in place. */}

@@ -79,7 +79,7 @@ export function SidePanel({
           : style
       }
       className={cn(
-        "z-40 flex min-h-0 flex-col bg-background text-foreground",
+        "@container/panel z-40 flex min-h-0 flex-col bg-background text-foreground",
         docked
           ? "fixed inset-0 lg:relative lg:z-auto lg:w-[var(--side-panel-width,min(46rem,48%))] lg:shrink-0 lg:border-l"
           : "fixed inset-0 lg:inset-y-0 lg:right-0 lg:left-auto lg:w-[min(46rem,60%)] lg:border-l lg:shadow-xl",
@@ -106,5 +106,21 @@ export function SidePanel({
       )}
       {children}
     </aside>
+  );
+}
+
+/**
+ * The panel's top row. In the desktop app it is part of the titlebar: it
+ * drags the window and clears the window controls, also when the panel fills
+ * the window on narrow screens.
+ */
+export function SidePanelHeader({ className, ...props }: ComponentProps<"header">) {
+  return (
+    <header
+      {...props}
+      data-titlebar
+      data-side-panel-header=""
+      className={cn("flex min-h-12 shrink-0 items-center gap-2 border-b px-3 py-1", className)}
+    />
   );
 }

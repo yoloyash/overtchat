@@ -248,13 +248,18 @@ test("creates, revises, versions, downloads and shares a document", async ({ pag
   await expect(panel(page)).toContainText("Version 1 of 2");
   await page.keyboard.press("Escape");
   await expect(panel(page)).toHaveCount(0);
-  // The header's file list shows the document once and opens its latest version.
+  // The header's file list shows the document once and opens its latest
+  // version in the same panel, which leads back to the list.
   await page.getByRole("button", { name: "1 file" }).click();
-  await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText([/Launch plan\s*Document/]);
-  await page.getByRole("menuitem", { name: /Launch plan/ }).click();
+  const files = page.locator("[data-files-panel]");
+  await expect(files.getByRole("listitem")).toHaveText(["Launch planDocument"]);
+  await files.getByRole("button", { name: /Launch plan/ }).click();
   await expect(panel(page)).toContainText("Version 2 of 2");
-  await page.keyboard.press("Escape");
+  await panel(page).getByRole("button", { name: "Back to files" }).click();
   await expect(panel(page)).toHaveCount(0);
+  await expect(files).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(files).toHaveCount(0);
 
   // Narrow screens show the document full screen.
   await page.setViewportSize({ width: 390, height: 844 });
