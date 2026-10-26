@@ -378,7 +378,7 @@ export function AgentTranscript({
         >
           <TranscriptItem
             item={item}
-            active={active}
+            active={active && index === 0}
             turnActive={position >= activeTurnStart}
             actionText={actions?.text}
             actionMessageId={actions?.messageId ?? null}
@@ -520,6 +520,7 @@ const TranscriptItem = memo(function TranscriptItem({
   onRewind,
 }: {
   item: AgentTranscriptItem;
+  /** Only the newest row is live; earlier work in the same turn has settled. */
   active: boolean;
   turnActive: boolean;
   actionText: string | undefined;
@@ -597,7 +598,7 @@ const TranscriptItem = memo(function TranscriptItem({
                 <View style={{ flex: 1 }} />
                 {item.actionable && (
                   <ImplementPlanButton
-                    disabled={disabled || active}
+                    disabled={disabled || turnActive}
                     onPress={() => onImplementPlan(item.text)}
                   />
                 )}

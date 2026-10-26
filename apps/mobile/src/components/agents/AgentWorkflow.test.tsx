@@ -1405,6 +1405,28 @@ describe("agent presentation regressions", () => {
     expect(container.textContent).not.toContain("Working");
     expect(container.textContent).toContain("The agent stopped unexpectedly.");
   });
+
+  it("settles earlier work in a running turn and keeps only the newest row live", async () => {
+    mocks.snapshot!.status = "running";
+    mocks.snapshot!.messages = [
+      { role: "user", id: "current-user", content: "Check the files" },
+      { role: "assistant", id: "think-1", content: [{ type: "thinking", thinking: "Look first." }] },
+      { role: "assistant", id: "tool-1", content: [{ type: "toolCall", id: "call", name: "bash", arguments: { command: "ls" } }] },
+      { role: "toolResult", toolCallId: "call", content: [{ type: "text", text: "README.md" }] },
+      { role: "assistant", id: "think-2", content: [{ type: "thinking", thinking: "Now read it." }] },
+    ];
+    await render();
+    expect(container.textContent).toContain("Thoughts");
+    expect(container.textContent).toContain("Thinking");
+    expect(container.textContent?.match(/Thinking/g)).toHaveLength(1);
+    mocks.snapshot!.messages = [
+      ...mocks.snapshot!.messages,
+      { role: "assistant", id: "tool-2", content: [{ type: "toolCall", id: "call-2", name: "bash", arguments: { command: "cat README.md" } }] },
+    ];
+    await render();
+    expect(container.textContent).not.toContain("Thinking");
+    expect(container.textContent?.match(/Thoughts/g)).toHaveLength(2);
+  });
 });
 
 describe("workspace navigation at scale", () => {
