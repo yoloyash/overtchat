@@ -1386,6 +1386,12 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByRole("menuitem", { name: "Copy branch name" }),
   ).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("menuitem", { name: "Copy session ID" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("native-session");
+  await page.getByRole("button", { name: "Session actions" }).click();
   await page.getByRole("menuitem", { name: "Session usage" }).click();
   const sessionUsage = page.getByRole("dialog", { name: "Session usage" });
   await expect(sessionUsage).toContainText("Tool calls");

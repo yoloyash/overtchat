@@ -20,6 +20,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Loader2,
@@ -46,6 +47,7 @@ import {
   useAgentSessionCommand,
   useAgentSessionUsage,
 } from "@/lib/queries/agentSessions";
+import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
 import { latestAgentTaskList } from "@/lib/agents/presentation";
 import {
@@ -275,6 +277,16 @@ export function AgentSessionView({
   const isAdmin = authSession?.user.role === "admin";
   const command = useAgentSessionCommand(sessionId);
   const usageCommand = useAgentSessionUsage(sessionId);
+  // Read from the shared connection list, which refreshes after a rewind or
+  // edit swaps the provider session behind this chat.
+  const providerSessionId = useQuery({
+    ...agentConnectionListQuery,
+    select: (connections) =>
+      connections
+        .flatMap((connection) => connection.workspaces)
+        .flatMap((workspace) => workspace.sessions)
+        .find((item) => item.id === sessionId)?.providerSessionId ?? null,
+  }).data ?? null;
   const [storedPreferences, setStoredPreferences] = useLocalStorage<unknown>(
     AGENT_CREATE_PREFERENCES_KEY,
     DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -758,6 +770,7 @@ export function AgentSessionView({
             provider={provider}
             workspaceId={workspaceId}
             workspacePath={workspacePath}
+            providerSessionId={providerSessionId}
             running={running}
             commandPending={command.isPending}
             readOnly={Boolean(readOnly)}

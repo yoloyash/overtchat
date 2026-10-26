@@ -8,6 +8,7 @@ import {
   FileDiff,
   Gauge,
   GitBranch,
+  Hash,
   MoreHorizontal,
   PanelRight,
   Pencil,
@@ -32,6 +33,7 @@ export function AgentSessionHeader({
   provider,
   workspaceId,
   workspacePath,
+  providerSessionId,
   running,
   commandPending,
   readOnly,
@@ -50,6 +52,7 @@ export function AgentSessionHeader({
   provider: AgentProviderId;
   workspaceId: string;
   workspacePath: string;
+  providerSessionId: string | null;
   running: boolean;
   commandPending: boolean;
   readOnly: boolean;
@@ -78,7 +81,9 @@ export function AgentSessionHeader({
       await clipboardWriteText(value);
       toast.success({ title: `${label} copied` });
     } catch {
-      toast.error({ title: `Could not copy ${label.toLowerCase()}` });
+      toast.error({
+        title: `Could not copy ${label[0].toLowerCase()}${label.slice(1)}`,
+      });
     }
   }
 
@@ -202,6 +207,17 @@ export function AgentSessionHeader({
                   <GitBranch className="size-3.5 text-muted-foreground" />
                   Copy branch name
                 </Menu.Item>
+                )}
+                {providerSessionId && (
+                  <Menu.Item
+                    onClick={() =>
+                      void copyWorkspaceValue(providerSessionId, "Session ID")
+                    }
+                    className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
+                  >
+                    <Hash className="size-3.5 text-muted-foreground" />
+                    Copy session ID
+                  </Menu.Item>
                 )}
                 <Menu.Separator className="my-1 h-px bg-border" />
                 <Menu.Item
