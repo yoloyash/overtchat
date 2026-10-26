@@ -227,24 +227,12 @@ describe("session model labels", () => {
     listed("haiku", "Haiku 5.5"),
   ];
 
-  it("uses the exact catalog entry when the session reports a listed ID", () => {
+  it("uses the exact catalog entry and keeps an unlisted ID as reported", () => {
     const result = sessionModel({ ...snapshot(), models, state: { model: { id: "opus" } } });
     expect(result.model?.label).toBe("Opus 5.5");
-    expect(result.display).toBe(result.model);
-  });
-
-  it("labels a resolved model ID with the longest matching listed model, for display only", () => {
-    const result = sessionModel({
-      ...snapshot(),
-      models,
-      state: { model: { id: "claude-opus-5-5" } },
-    });
-    // Image input and commands still require the exact entry the connector checks.
-    expect(result.model).toBeUndefined();
-    expect(result.display?.label).toBe("Opus 5.5");
     expect(
-      sessionModel({ ...snapshot(), models, state: { model: { id: "gpt-5" } } }).display,
-    ).toBeUndefined();
+      sessionModel({ ...snapshot(), models, state: { model: { id: "claude-opus-5-5" } } }),
+    ).toEqual({ id: "claude-opus-5-5", model: undefined });
   });
 
   it("names the effort from the model's options", () => {

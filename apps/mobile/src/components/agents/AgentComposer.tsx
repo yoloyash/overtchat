@@ -287,9 +287,7 @@ export function AgentComposer({
     !dictating &&
     !empty &&
     (!draft.images.length || supportsImages);
-  // Like the chat composer: dictate into an idle, empty message; send once
-  // there is content. A running agent shows Stop in the mic's place.
-  const showMic = (empty && !running) || dictating;
+  // Dictation stays available for follow-ups and appends to typed text.
   const showSend = !empty;
   const settingsLabel = [modelLabel, thinkingLabel, permission?.label]
     .filter(Boolean)
@@ -481,20 +479,12 @@ export function AgentComposer({
                 }}
               >
                 {modelLabel}
+                {!!thinkingLabel && (
+                  <Text style={{ color: colors.mutedForeground }}>
+                    {`  ${thinkingLabel}`}
+                  </Text>
+                )}
               </Text>
-              {!!thinkingLabel && (
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    flexShrink: 0,
-                    color: colors.mutedForeground,
-                    fontFamily: fonts.sansMedium,
-                    fontSize: 13,
-                  }}
-                >
-                  {thinkingLabel}
-                </Text>
-              )}
             </View>
           </Pressable>
           {permission && onPermissions && (
@@ -511,26 +501,24 @@ export function AgentComposer({
           {contextUsage !== undefined && onContext && (
             <AgentContextButton usage={contextUsage ?? undefined} onPress={onContext} />
           )}
-          {showMic && (
-            <ControlButton
-              label={
-                dictation.status === "recording"
-                  ? "Stop dictation"
-                  : dictation.status === "transcribing"
-                    ? "Transcribing"
-                    : "Start dictation"
-              }
-              icon={dictation.status === "recording" ? "stop" : "mic"}
-              danger={dictation.status === "recording"}
-              loading={dictation.status === "transcribing"}
-              disabled={
-                dictation.status === "transcribing" ||
-                (dictation.status !== "recording" &&
-                  (disabled || sending || uploading))
-              }
-              onPress={toggleMic}
-            />
-          )}
+          <ControlButton
+            label={
+              dictation.status === "recording"
+                ? "Stop dictation"
+                : dictation.status === "transcribing"
+                  ? "Transcribing"
+                  : "Start dictation"
+            }
+            icon={dictation.status === "recording" ? "stop" : "mic"}
+            danger={dictation.status === "recording"}
+            loading={dictation.status === "transcribing"}
+            disabled={
+              dictation.status === "transcribing" ||
+              (dictation.status !== "recording" &&
+                (disabled || sending || uploading))
+            }
+            onPress={toggleMic}
+          />
           {running && (
             <ControlButton
               label="Stop agent"
@@ -810,6 +798,8 @@ const styles = StyleSheet.create({
   modelPill: {
     height: 34,
     minWidth: 0,
+    flexShrink: 1,
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,

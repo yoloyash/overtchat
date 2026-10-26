@@ -260,6 +260,8 @@ export function AgentNotice({
                 accessibilityState={{ disabled: !!action.disabled }}
                 disabled={action.disabled}
                 onPress={action.onPress}
+                // Compact pills keep a 44pt touch target.
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                 style={({ pressed }) => ({
                   minHeight: 32,
                   justifyContent: "center",

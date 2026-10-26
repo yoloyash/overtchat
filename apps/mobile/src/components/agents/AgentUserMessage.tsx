@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import type {
-  AgentRewindMode,
-  AgentRuntimeCapabilities,
-} from "@overtchat/agent-bridge";
+import type { AgentRewindMode } from "@overtchat/agent-bridge";
+import type { AgentRewindCapabilities } from "@overtchat/shared/agent-presentation";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { record, text } from "@/lib/agents/model";
 import { useTheme } from "@/lib/theme";
@@ -59,7 +57,7 @@ export function AgentUserMessage({
 }: {
   message: unknown;
   timestamp?: number;
-  capabilities: AgentRuntimeCapabilities;
+  capabilities: AgentRewindCapabilities;
   disabled: boolean;
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {

@@ -1430,8 +1430,13 @@ function formatUnknown(value: unknown): string {
   }
 }
 
+export type AgentRewindCapabilities = Pick<
+  AgentRuntimeCapabilities,
+  "rewindConversation" | "rewindFiles" | "rewindBoth"
+>;
+
 export function agentRewindOptions(
-  capabilities: AgentRuntimeCapabilities,
+  capabilities: AgentRewindCapabilities,
 ): Array<{ mode: AgentRewindMode; label: string }> {
   const options: Array<{
     enabled: boolean | undefined;

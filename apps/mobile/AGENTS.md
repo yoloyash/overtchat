@@ -45,6 +45,9 @@ Advanced MCP and agent workspace setup can open the matching web settings page.
 - `src/lib/agents/stream.ts` owns the foreground SSE lifecycle. Use bridge
   replicas for cursor/epoch reconciliation, abort subscriptions while away,
   and reconcile before reconnecting. Never automatically retry agent commands.
+  Hermes copies strings on slice and concatenation, so parsing must stay
+  linear in the bytes received; per-line buffer copies froze the JS thread on
+  large bursts.
   Drafts and unresolved message identities are scoped to server, user, and
   session in `src/lib/agents/drafts.ts`.
 

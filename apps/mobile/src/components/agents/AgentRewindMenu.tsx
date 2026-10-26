@@ -1,10 +1,10 @@
 import { View } from "react-native";
 import type { Ionicons } from "@expo/vector-icons";
-import type {
-  AgentRewindMode,
-  AgentRuntimeCapabilities,
-} from "@overtchat/agent-bridge";
-import { agentRewindOptions } from "@overtchat/shared/agent-presentation";
+import type { AgentRewindMode } from "@overtchat/agent-bridge";
+import {
+  agentRewindOptions,
+  type AgentRewindCapabilities,
+} from "@overtchat/shared/agent-presentation";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { AgentMenu, type AgentMenuItem } from "./AgentMenu";
 import { AgentIconButton } from "./AgentPrimitives";
@@ -22,13 +22,14 @@ const icons: Record<
 
 /** Rewind choices supported by the provider, as menu items. */
 export function agentRewindMenuItems(
-  capabilities: AgentRuntimeCapabilities,
+  capabilities: AgentRewindCapabilities,
   onRewind: (mode: AgentRewindMode) => void,
 ): AgentMenuItem[] {
   return agentRewindOptions(capabilities).map(({ mode, label }) => ({
     key: `rewind:${mode}`,
     label,
     icon: icons[mode],
+    destructive: true,
     onSelect: () => onRewind(mode),
   }));
 }
@@ -39,7 +40,7 @@ export function AgentRewindMenu({
   pending,
   onRewind,
 }: {
-  capabilities: AgentRuntimeCapabilities;
+  capabilities: AgentRewindCapabilities;
   disabled: boolean;
   pending: boolean;
   onRewind: (mode: AgentRewindMode) => void;

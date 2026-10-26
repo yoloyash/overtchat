@@ -8,6 +8,7 @@ import type { AgentDraft } from "@/lib/agents/drafts";
 import { snapshot } from "@/lib/agents/test-fixtures";
 
 const mocks = vi.hoisted(() => ({
+  screenReader: false,
   snapshot: undefined as ReturnType<typeof snapshot> | undefined,
   status: "connected",
   sessionError: undefined as string | undefined,
@@ -36,7 +37,6 @@ const mocks = vi.hoisted(() => ({
   uuid: vi.fn(),
   invalidDismiss: vi.fn(),
   backHandlers: new Set<() => boolean>(),
-  scrollToEnd: vi.fn(),
   scrollToOffset: vi.fn(),
   listHandlers: {} as {
     inverted?: boolean;
@@ -49,7 +49,6 @@ const mocks = vi.hoisted(() => ({
     onContentSizeChange?: (width: number, height: number) => void;
     onScroll?: (event: { nativeEvent: { contentOffset: { y: number } } }) => void;
   },
-  measurements: { height: 2000, viewport: 500, offset: 1500 },
   layouts: new Map<string, (event: { nativeEvent: { layout: { y: number; height: number } } }) => void>(),
   draft: { message: "", images: [] } as AgentDraft,
   params: {
@@ -108,6 +107,10 @@ vi.mock("react-native", async () => {
     View,
     StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1, absoluteFill: {} },
     Platform: { OS: "ios", select: (options: { ios?: unknown; default?: unknown }) => options.ios ?? options.default },
+    AccessibilityInfo: {
+      isScreenReaderEnabled: async () => mocks.screenReader,
+      addEventListener: () => ({ remove: () => {} }),
+    },
     useWindowDimensions: () => ({ width: 390, height: 844 }),
     Text,
     ScrollView: View,
@@ -131,7 +134,6 @@ vi.mock("react-native", async () => {
         if (props.inverted) mocks.listHandlers = props;
         React.useImperativeHandle(ref, () => ({
           scrollToOffset: mocks.scrollToOffset,
-          scrollToEnd: mocks.scrollToEnd,
         }));
         const Cell = props.CellRendererComponent;
         const rows = props.data.map((item, index) => {
@@ -441,47 +443,6 @@ vi.mock("./AgentImage", () => ({
 vi.mock("@/components/chat/MarkdownBody", () => ({
   MarkdownBody: ({ text }: { text: string }) => <p>{text}</p>,
 }));
-vi.mock("@shopify/flash-list", async () => {
-  const { forwardRef, useImperativeHandle } = await import("react");
-  return {
-    FlashList: forwardRef(
-      (
-        props: {
-          data: unknown[];
-          renderItem: (args: { item: unknown; index: number }) => ReactNode;
-          ListEmptyComponent: ReactNode;
-          ListHeaderComponent: ReactNode;
-          ListFooterComponent: ReactNode;
-        } & typeof mocks.listHandlers,
-        ref,
-      ) => {
-        mocks.listHandlers = props;
-        useImperativeHandle(ref, () => ({
-          scrollToEnd: mocks.scrollToEnd,
-          scrollToOffset: mocks.scrollToOffset,
-          getLayout: (index: number) => ({ y: index * 100 }),
-          prepareForLayoutAnimationRender: vi.fn(),
-          getWindowSize: () => ({ height: mocks.measurements.viewport }),
-          getChildContainerDimensions: () => ({
-            height: mocks.measurements.height,
-          }),
-          getAbsoluteLastScrollOffset: () => mocks.measurements.offset,
-        }));
-        return (
-          <div>
-            {props.ListHeaderComponent}
-            {props.data.length
-              ? props.data.map((item, i) => (
-                  <div key={i}>{props.renderItem({ item, index: i })}</div>
-                ))
-              : props.ListEmptyComponent}
-            {props.ListFooterComponent}
-          </div>
-        );
-      },
-    ),
-  };
-});
 vi.mock("react-native-reanimated", async () => {
   const { useRef } = await import("react");
   const { View } = await import("react-native");
@@ -559,6 +520,7 @@ const model = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.screenReader = false;
   mocks.storage.clear();
   mocks.history.isPending = false;
   mocks.history.error = null;
@@ -568,7 +530,6 @@ beforeEach(() => {
   mocks.connections = [];
   mocks.copy.mockResolvedValue(undefined);
   mocks.uuid.mockReturnValue("message-id");
-  mocks.measurements = { height: 2000, viewport: 500, offset: 1500 };
   mocks.layouts.clear();
   vi.stubGlobal(
     "requestAnimationFrame",
@@ -964,7 +925,11 @@ describe("native agent screen workflows", () => {
   it("queues while running and exposes stop and slash commands", async () => {
     mocks.snapshot!.status = "running";
     await render();
+    const mic = () => container.querySelector('button[aria-label="Start dictation"]');
+    // Dictation stays available for a follow-up and alongside typed text.
+    expect(mic()).not.toBeNull();
     await input("Then test it");
+    expect(mic()).not.toBeNull();
     await click("Queue message");
     expect(mocks.send.mock.lastCall?.[0].type).toBe("queue");
     await click("Stop agent");
@@ -1305,6 +1270,22 @@ describe("agent presentation regressions", () => {
     await act(async () => mocks.listHandlers.onMomentumScrollEnd?.());
     await scroll(120);
     expect(mocks.scrollToOffset).toHaveBeenLastCalledWith({ offset: 0, animated: false });
+  });
+
+  it("leaves screen reader scrolling where the reader put it", async () => {
+    mocks.screenReader = true;
+    mocks.snapshot!.messages = [{ role: "user", id: "first", content: "First" }];
+    await render();
+    const scroll = (y: number) =>
+      act(async () =>
+        mocks.listHandlers.onScroll?.({ nativeEvent: { contentOffset: { y } } }),
+      );
+    // Screen readers scroll without drag events.
+    await scroll(400);
+    expect(mocks.scrollToOffset).not.toHaveBeenCalled();
+    await scroll(10);
+    await scroll(150);
+    expect(mocks.scrollToOffset).not.toHaveBeenCalled();
   });
 
   it("offers a jump to the newest content only after scrolling away from it", async () => {

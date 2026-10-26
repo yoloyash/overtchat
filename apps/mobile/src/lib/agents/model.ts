@@ -36,36 +36,13 @@ export function sessionModes(snapshot: AgentRuntimeSnapshot): AgentMode[] {
     : [];
 }
 
-function compact(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
-}
-
-/**
- * The session's current model. `model` is the exact catalog entry, which the
- * connector also requires for image input. Some providers report the resolved
- * model (claude-opus-5-5) while listing an alias (Opus 5.5), so `display` falls
- * back to the listed model whose label is the longest match within that ID.
- */
+/** The session's current model: its ID and catalog entry, when listed. */
 export function sessionModel(snapshot: AgentRuntimeSnapshot): {
   id: string;
   model: AgentModel | undefined;
-  display: AgentModel | undefined;
 } {
   const id = text(record(snapshot.state.model).id);
-  const model = snapshot.models.find((item) => item.id === id);
-  if (model || !id) return { id, model, display: model };
-  const resolved = compact(id);
-  let display: AgentModel | undefined;
-  for (const item of snapshot.models) {
-    const label = compact(item.label);
-    if (
-      label.length > 2 &&
-      resolved.includes(label) &&
-      label.length > compact(display?.label ?? "").length
-    )
-      display = item;
-  }
-  return { id, model, display };
+  return { id, model: snapshot.models.find((item) => item.id === id) };
 }
 
 export function thinkingLabel(

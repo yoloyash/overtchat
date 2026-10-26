@@ -101,9 +101,9 @@ function AgentSession({
   useEffect(() => {
     setInteraction(!!requestId);
   }, [requestId]);
-  const { id: modelId, model, display } = snapshot
+  const { id: modelId, model } = snapshot
     ? sessionModel(snapshot)
-    : { id: "", model: undefined, display: undefined };
+    : { id: "", model: undefined };
   const modes = snapshot ? sessionModes(snapshot) : [];
   const modeId = text(snapshot?.state.modeId);
   const mode = modes.find((item) => item.id === modeId);
@@ -453,8 +453,8 @@ function AgentSession({
           isAdmin={isAdmin}
           onBeforeDictate={stopSpeech}
           provider={snapshot?.provider}
-          modelLabel={display?.label || modelId || "Model"}
-          thinkingLabel={thinkingLabel(display, text(snapshot?.state.thinkingLevel))}
+          modelLabel={model?.label || modelId || "Model"}
+          thinkingLabel={thinkingLabel(model, text(snapshot?.state.thinkingLevel))}
           permission={
             mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined
           }
@@ -483,7 +483,7 @@ function AgentSession({
         provider={snapshot?.provider}
         onClose={() => setSettings(null)}
         models={snapshot?.models ?? []}
-        modelId={display?.id ?? modelId}
+        modelId={modelId}
         modes={modes}
         modeId={modeId}
         thinking={text(snapshot?.state.thinkingLevel)}

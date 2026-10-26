@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   FlatList,
   Platform,
@@ -31,11 +32,11 @@ import {
   agentResponseActions,
   agentWorkLabel,
   describeAgentActivity,
+  type AgentRewindCapabilities,
   type AgentTranscriptItem,
 } from "@overtchat/shared/agent-presentation";
 import type {
   AgentRewindMode,
-  AgentRuntimeCapabilities,
   AgentRuntimeSnapshot,
 } from "@overtchat/agent-bridge";
 import { MarkdownBody } from "@/components/chat/MarkdownBody";
@@ -211,11 +212,10 @@ export function AgentTranscript({
     [speech.activeId, speech.status, play],
   );
   // Rows only read the rewind capabilities; keep them referentially stable.
-  const { steer, rewindConversation, rewindFiles, rewindBoth } =
-    snapshot.capabilities;
-  const capabilities = useMemo<AgentRuntimeCapabilities>(
-    () => ({ steer, rewindConversation, rewindFiles, rewindBoth }),
-    [steer, rewindConversation, rewindFiles, rewindBoth],
+  const { rewindConversation, rewindFiles, rewindBoth } = snapshot.capabilities;
+  const capabilities = useMemo<AgentRewindCapabilities>(
+    () => ({ rewindConversation, rewindFiles, rewindBoth }),
+    [rewindConversation, rewindFiles, rewindBoth],
   );
   const canFork = !!onFork;
   const canRewind = !!onRewind;
@@ -226,6 +226,26 @@ export function AgentTranscript({
   // scrolling changes this; position keeping and jumps move the list for them.
   const following = useRef(true);
   const userScrolling = useRef(false);
+  // Screen readers scroll without drag events, so every scroll is the reader's.
+  const screenReader = useRef(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isScreenReaderEnabled()
+      .then((enabled) => {
+        if (mounted) screenReader.current = enabled;
+      })
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener(
+      "screenReaderChanged",
+      (enabled) => {
+        screenReader.current = enabled;
+      },
+    );
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
   const dragEnd = useRef<number | null>(null);
   const jumpingUntil = useRef(0);
   const [away, setAway] = useState(false);
@@ -290,7 +310,7 @@ export function AgentTranscript({
       const y = nativeEvent.contentOffset.y;
       offset.current = y;
       setAway(y > JUMP_THRESHOLD);
-      if (userScrolling.current) {
+      if (userScrolling.current || screenReader.current) {
         following.current = y <= FOLLOW_THRESHOLD;
         return;
       }
@@ -527,7 +547,7 @@ const TranscriptItem = memo(function TranscriptItem({
   actionMessageId: string | null;
   speech: Speech;
   disabled: boolean;
-  capabilities: AgentRuntimeCapabilities;
+  capabilities: AgentRewindCapabilities;
   onToggleWork: (key: string) => void;
   /** Keeps this row's top edge in place while it expands. */
   onHold: (key: string) => void;

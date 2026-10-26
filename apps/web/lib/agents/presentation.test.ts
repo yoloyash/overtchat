@@ -735,7 +735,7 @@ describe("rewind presentation", () => {
         (item) => item.mode,
       ),
     ).toEqual(["both"]);
-    expect(agentRewindOptions({ steer: false })).toEqual([]);
+    expect(agentRewindOptions({})).toEqual([]);
   });
   it("preserves the human draft and restores into an empty composer", () => {
     expect(restoreAgentComposer("existing", "previous")).toBe("existing");
