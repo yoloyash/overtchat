@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import type { StreamStatus } from "@/lib/agents/stream";
-import { AgentButton, AgentFeedback, AgentText } from "./AgentPrimitives";
+import { AgentFeedback, AgentNotice } from "./AgentPrimitives";
 
 /** Keep transport readiness immediate; only delay the visible recovery notice. */
 export function AgentConnectionFeedback({
@@ -27,9 +27,13 @@ function ReconnectingFeedback({ retry }: { retry: () => void }) {
 
   if (!visible) return null;
   return (
-    <View style={{ padding: 16, gap: 8 }}>
-      <AgentText muted>Reconnecting to your agent…</AgentText>
-      <AgentButton label="Retry" onPress={retry} />
+    <View style={{ paddingHorizontal: 12, paddingTop: 8 }}>
+      <AgentNotice
+        icon="cloud-offline-outline"
+        warning
+        message="Reconnecting to your agent…"
+        actions={[{ label: "Retry", onPress: retry }]}
+      />
     </View>
   );
 }

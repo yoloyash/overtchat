@@ -12,10 +12,13 @@ export function MarkdownBody({
   text,
   variant = "body",
   sourceLookup,
+  fuzzyLinks = true,
 }: {
   text: string;
   variant?: Variant;
   sourceLookup?: SourceLookup;
+  /** Link bare domains. Disable where file names like notes.md are common. */
+  fuzzyLinks?: boolean;
 }) {
   const { colors, fonts, radii } = useTheme();
 
@@ -30,10 +33,11 @@ export function MarkdownBody({
     [colors, fonts, radii, variant],
   );
 
-  const markdownit = useMemo(
-    () => MarkdownIt({ typographer: true, linkify: true, breaks: true }),
-    [],
-  );
+  const markdownit = useMemo(() => {
+    const parser = MarkdownIt({ typographer: true, linkify: true, breaks: true });
+    if (!fuzzyLinks) parser.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
+    return parser;
+  }, [fuzzyLinks]);
 
   const rules = useMemo<RenderRules>(
     () => ({

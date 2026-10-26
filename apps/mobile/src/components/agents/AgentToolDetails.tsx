@@ -26,6 +26,11 @@ const icons: Record<
   fetch: "globe-outline",
   other: "construct-outline",
 };
+
+export function agentToolIcon(category: AgentToolCategory) {
+  return icons[category];
+}
+
 export function AgentToolRow({
   tool,
   active,
@@ -44,19 +49,19 @@ export function AgentToolRow({
       accessibilityLabel={`${presentation.label}${presentation.summary ? `: ${presentation.summary}` : ""}, ${status}`}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 48,
+        minHeight: 44,
         flexDirection: "row",
         alignItems: "center",
-        gap: 9,
+        gap: 8,
         borderRadius: 10,
-        paddingHorizontal: 8,
-        paddingVertical: 8,
+        paddingHorizontal: 6,
+        paddingVertical: 6,
         backgroundColor: pressed ? colors.muted : "transparent",
       })}
     >
       <Ionicons
         name={icons[presentation.category]}
-        size={17}
+        size={16}
         color={colors.mutedForeground}
       />
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>

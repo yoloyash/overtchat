@@ -9,6 +9,7 @@ declare module "markdown-it" {
   interface MarkdownItInstance {
     parse(src: string, env?: unknown): unknown[];
     render(src: string, env?: unknown): string;
+    linkify: { set(options: { fuzzyLink?: boolean; fuzzyEmail?: boolean; fuzzyIP?: boolean }): unknown };
     [key: string]: unknown;
   }
   function MarkdownIt(options?: MarkdownItOptions): MarkdownItInstance;

@@ -1,6 +1,6 @@
 import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Keyboard, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, View } from "react-native";
 import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { DrawerToggleButton } from "expo-router/build/react-navigation/drawer";
@@ -15,19 +15,19 @@ import {
   type AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import {
-  AgentButton,
   AgentFeedback,
+  AgentNotice,
   AgentSheet,
   AgentText,
 } from "@/components/agents/AgentPrimitives";
 import { AgentSessionHeaderTitle } from "@/components/agents/AgentSessionHeader";
-import {
-  AgentContextButton,
-  AgentContextSheet,
-} from "@/components/agents/AgentContextUsage";
+import { AgentContextSheet } from "@/components/agents/AgentContextUsage";
 import { AgentComposer } from "@/components/agents/AgentComposer";
 import { AgentConnectionFeedback } from "@/components/agents/AgentConnectionFeedback";
-import { AgentControls } from "@/components/agents/AgentControls";
+import {
+  AgentControls,
+  type AgentSettingsPanel,
+} from "@/components/agents/AgentControls";
 import { isAgentQuestion } from "@overtchat/shared/agent-interaction";
 import { AgentQuestionCard } from "@/components/agents/AgentQuestionCard";
 import { AgentInteraction } from "@/components/agents/AgentInteraction";
@@ -35,12 +35,14 @@ import { AgentTranscript } from "@/components/agents/AgentTranscript";
 import { useAgentDraft } from "@/lib/agents/drafts";
 import {
   prepareSubmission,
-  record,
+  sessionModel,
   sessionModes,
   submissionFingerprint,
   text,
+  thinkingLabel,
 } from "@/lib/agents/model";
 import { useAgentCommand, useAgentSession } from "@/lib/queries/agents";
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { useTheme } from "@/lib/theme";
 import { useSpeech } from "@/lib/useSpeech";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
@@ -80,7 +82,8 @@ function AgentSession({
   const mutation = useAgentCommand(id);
   const { draft, setDraft, storageError, saveDraftToSession } =
     useAgentDraft(id);
-  const [settings, setSettings] = useState(false);
+  const [settings, setSettings] = useState<AgentSettingsPanel | null>(null);
+  const [followSignal, setFollowSignal] = useState(0);
   const [contextVisible, setContextVisible] = useState(false);
   const [interaction, setInteraction] = useState(false);
   const [usage, setUsage] = useState<AgentUsageSnapshot>();
@@ -98,10 +101,12 @@ function AgentSession({
   useEffect(() => {
     setInteraction(!!requestId);
   }, [requestId]);
-  const modelId = text(record(snapshot?.state.model).id);
-  const model = snapshot?.models.find((item) => item.id === modelId);
+  const { id: modelId, model, display } = snapshot
+    ? sessionModel(snapshot)
+    : { id: "", model: undefined, display: undefined };
   const modes = snapshot ? sessionModes(snapshot) : [];
   const modeId = text(snapshot?.state.modeId);
+  const mode = modes.find((item) => item.id === modeId);
   const ready =
     session.status === "connected" && !!snapshot && !snapshot.readOnly;
   const busy =
@@ -207,6 +212,7 @@ function AgentSession({
         Crypto.randomUUID,
       );
       if (pending) setDraft({ ...draft, pending }, true);
+      setFollowSignal((value) => value + 1);
       void execute(command, true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Invalid command.");
@@ -237,6 +243,17 @@ function AgentSession({
     [id, ready, mutation.mutateAsync],
   );
 
+  const title = text(snapshot?.state.sessionName).trim() || name;
+  const pendingResponse =
+    snapshot?.pendingInteraction &&
+    !isAgentQuestion(snapshot.pendingInteraction) &&
+    !interaction;
+  const unconfirmed =
+    !!draft.pending &&
+    !mutation.isPending &&
+    draft.pending.fingerprint ===
+      submissionFingerprint(draft.message, draft.images);
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -245,27 +262,17 @@ function AgentSession({
     >
       <Stack.Screen
         options={{
-          title: text(snapshot?.state.sessionName).trim() || name,
+          title,
           headerTitleAlign: "left",
           headerBackButtonDisplayMode: "minimal",
           headerBackVisible: true,
           headerLeft: ({ canGoBack }) =>
             canGoBack ? null : <DrawerToggleButton tintColor={colors.foreground} />,
-          headerRight: ({ canGoBack }) => (
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <AgentContextButton
-                usage={snapshot?.stats.contextUsage}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setContextVisible(true);
-                }}
-              />
-              {canGoBack && <DrawerToggleButton tintColor={colors.foreground} />}
-            </View>
-          ),
+          headerRight: ({ canGoBack }) =>
+            canGoBack ? <DrawerToggleButton tintColor={colors.foreground} /> : null,
           headerTitle: () => (
             <AgentSessionHeaderTitle
-              title={text(snapshot?.state.sessionName).trim() || name}
+              title={title}
               working={busy && session.status === "connected"}
               provider={snapshot?.provider}
               workspace={workspace}
@@ -274,125 +281,142 @@ function AgentSession({
           ),
         }}
       />
-      {snapshot?.pendingInteraction && !isAgentQuestion(snapshot.pendingInteraction) && !interaction && (
-        <View
-          style={{
-            marginHorizontal: 12,
-            marginVertical: 6,
-            paddingLeft: 12,
-            borderRadius: 12,
-            backgroundColor: colors.muted,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <AgentText>Response needed</AgentText>
-          </View>
-          <AgentButton
-            label="Respond"
-            icon="chatbubble-ellipses-outline"
-            onPress={() => {
-              Keyboard.dismiss();
-              setInteraction(true);
+      {snapshot ? (
+        <>
+          <AgentConnectionFeedback
+            status={session.status}
+            error={session.error}
+            retry={session.reconnect}
+          />
+          <AgentTranscript
+            history={{
+              hasOlder: Boolean(snapshot.history?.beforeCursor),
+              loading: session.history.isPending,
+              error: session.history.error?.message,
+              load: () => session.history.mutate(),
             }}
+            onFork={async (messageId, chooseWorkspace) => {
+              await execute(
+                { type: "fork_message", messageId },
+                false,
+                chooseWorkspace,
+              );
+            }}
+            onRewind={async (messageId, mode) => {
+              await execute({ type: "rewind", messageId, mode });
+            }}
+            speech={speech}
+            snapshot={snapshot}
+            error={snapshot.error}
+            followSignal={followSignal}
+            question={
+              isAgentQuestion(snapshot.pendingInteraction) &&
+              snapshot.pendingInteraction ? (
+                <AgentQuestionCard
+                  key={snapshot.pendingInteraction.id}
+                  request={snapshot.pendingInteraction}
+                  pending={mutation.isPending || !ready}
+                  error={error}
+                  onRespond={(response) =>
+                    void execute({
+                      type: "interaction_response",
+                      id: snapshot.pendingInteraction!.id,
+                      ...response,
+                    })
+                  }
+                />
+              ) : undefined
+            }
+            disabled={!ready || mutation.isPending}
+            onImplementPlan={implementPlan}
+          />
+        </>
+      ) : session.status === "error" ? (
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <AgentFeedback error={session.error} retry={session.reconnect} />
+        </View>
+      ) : (
+        <View
+          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+        >
+          <ActivityIndicator
+            accessibilityLabel="Loading conversation"
+            color={colors.mutedForeground}
           />
         </View>
       )}
-      {!snapshot && (
-        <AgentFeedback
-          loading={session.status !== "error"}
-          error={session.error}
-          retry={session.reconnect}
-        />
-      )}
-      {snapshot && (
-        <AgentConnectionFeedback
-          status={session.status}
-          error={session.error}
-          retry={session.reconnect}
-        />
-      )}
-      {snapshot?.readOnly && (
-        <View style={{ padding: 12 }}>
-          <AgentText muted>{snapshot.readOnly.reason}</AgentText>
-          {snapshot.readOnly.retryable && (
-            <AgentButton
-              label="Retry interactive session"
-              disabled={mutation.isPending || session.status !== "connected"}
-              onPress={() => void execute({ type: "retry_interactive" })}
-            />
-          )}
-        </View>
-      )}
-      {snapshot && (
-        <AgentTranscript
-                  history={{ hasOlder: Boolean(snapshot.history?.beforeCursor), loading: session.history.isPending, error: session.history.error?.message, load: () => session.history.mutate() }}
-          onFork={async (messageId, chooseWorkspace) => {
-            await execute(
-              { type: "fork_message", messageId },
-              false,
-              chooseWorkspace,
-            );
-          }}
-          onRewind={async (messageId, mode) => {
-            await execute({ type: "rewind", messageId, mode });
-          }}
-          speech={speech}
-          snapshot={snapshot}
-          question={isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
-            <AgentQuestionCard key={snapshot.pendingInteraction.id} request={snapshot.pendingInteraction}
-              pending={mutation.isPending || !ready} error={error}
-              onRespond={(response) => void execute({ type: "interaction_response", id: snapshot.pendingInteraction!.id, ...response })}
-            />
-          ) : undefined}
-          disabled={!ready || mutation.isPending}
-          onImplementPlan={implementPlan}
-        />
-      )}
       <MiniSpeechPlayer speech={speech} />
-      {!!(error || storageError || snapshot?.error) && (
-        <ScrollView
-          style={{ maxHeight: 110 }}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 6 }}
-        >
-          <AgentText danger>
-            {error || storageError || snapshot?.error}
-          </AgentText>
-        </ScrollView>
-      )}
-      {!!notice && (
-        <View style={{ paddingHorizontal: 12 }}>
-          <AgentText muted>{notice}</AgentText>
-          <AgentButton label="Dismiss" onPress={() => setNotice(undefined)} />
-        </View>
-      )}
-      {!!draft.pending &&
-        !mutation.isPending &&
-        draft.pending.fingerprint ===
-          submissionFingerprint(draft.message, draft.images) && (
-          <View style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 4 }}>
-            <AgentText muted>
-              Delivery not confirmed. Check the conversation before retrying.
-            </AgentText>
-            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-              <AgentButton
-                label="Already delivered"
-                icon="checkmark"
-                onPress={() =>
+      <View
+        style={{
+          paddingHorizontal: 12,
+          paddingTop: 8,
+          paddingBottom: keyboard ? 8 : 12 + insets.bottom,
+          gap: 8,
+        }}
+      >
+        {snapshot?.readOnly && (
+          <AgentNotice
+            icon="lock-closed-outline"
+            message={snapshot.readOnly.reason}
+            actions={
+              snapshot.readOnly.retryable
+                ? [
+                    {
+                      label: "Retry interactive session",
+                      disabled:
+                        mutation.isPending || session.status !== "connected",
+                      onPress: () => void execute({ type: "retry_interactive" }),
+                    },
+                  ]
+                : []
+            }
+          />
+        )}
+        {pendingResponse && (
+          <AgentNotice
+            icon="hand-left-outline"
+            warning
+            message="The agent is waiting for your response."
+            actions={[
+              {
+                label: "Respond",
+                primary: true,
+                onPress: () => {
+                  Keyboard.dismiss();
+                  setInteraction(true);
+                },
+              },
+            ]}
+          />
+        )}
+        {!!(error || storageError) && (
+          <ErrorNotice
+            message={error || storageError}
+            onDismiss={error ? () => setError(undefined) : undefined}
+          />
+        )}
+        {!!notice && (
+          <AgentNotice message={notice} onDismiss={() => setNotice(undefined)} />
+        )}
+        {unconfirmed && (
+          <AgentNotice
+            icon="help-circle-outline"
+            warning
+            message="Delivery not confirmed. Check the conversation before retrying."
+            actions={[
+              {
+                label: "Already delivered",
+                onPress: () =>
                   setDraft(
                     (current) =>
                       current === draft ? { message: "", images: [] } : current,
                     true,
-                  )
-                }
-              />
-              <AgentButton
-                label="Send again…"
-                icon="refresh-outline"
-                disabled={!ready}
-                onPress={() =>
+                  ),
+              },
+              {
+                label: "Send again…",
+                disabled: !ready,
+                onPress: () =>
                   Alert.alert(
                     "Send as a new message?",
                     "Only send again if you checked the conversation and it wasn't delivered. This could otherwise send it twice.",
@@ -400,13 +424,11 @@ function AgentSession({
                       { text: "Cancel", style: "cancel" },
                       { text: "Send again", onPress: () => send(true) },
                     ],
-                  )
-                }
-              />
-            </View>
-          </View>
+                  ),
+              },
+            ]}
+          />
         )}
-      <View style={{ paddingBottom: keyboard ? 0 : insets.bottom }}>
         <AgentComposer
           draft={draft}
           setDraft={setDraft}
@@ -425,34 +447,43 @@ function AgentSession({
           }
           supportsImages={model?.input.includes("image") === true}
           disabled={!ready || !!snapshot?.pendingInteraction}
+          canStop={ready}
           sending={mutation.isPending}
           running={busy}
           isAdmin={isAdmin}
           onBeforeDictate={stopSpeech}
           provider={snapshot?.provider}
-          modelLabel={model?.label || modelId || "Model"}
-          thinkingLabel={
-            model?.thinkingOptions?.length
-              ? text(snapshot?.state.thinkingLevel) || "Reasoning"
-              : undefined
+          modelLabel={display?.label || modelId || "Model"}
+          thinkingLabel={thinkingLabel(display, text(snapshot?.state.thinkingLevel))}
+          permission={
+            mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined
           }
-          modeLabel={modes.find((mode) => mode.id === modeId)?.label ?? ""}
+          contextUsage={snapshot ? (snapshot.stats.contextUsage ?? null) : undefined}
+          onContext={() => {
+            Keyboard.dismiss();
+            setContextVisible(true);
+          }}
           onSettings={() => {
             Keyboard.dismiss();
-            setSettings(true);
+            setSettings("settings");
+          }}
+          onPermissions={() => {
+            Keyboard.dismiss();
+            setSettings("permissions");
           }}
           onSend={() => send()}
           onStop={() => void execute({ type: "abort" })}
         />
       </View>
       <AgentControls
-        visible={settings}
+        visible={settings !== null}
+        initialPanel={settings ?? "settings"}
         error={error}
         notice={notice}
         provider={snapshot?.provider}
-        onClose={() => setSettings(false)}
+        onClose={() => setSettings(null)}
         models={snapshot?.models ?? []}
-        modelId={modelId}
+        modelId={display?.id ?? modelId}
         modes={modes}
         modeId={modeId}
         thinking={text(snapshot?.state.thinkingLevel)}

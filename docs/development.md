@@ -579,7 +579,10 @@ build validation.
 On Android and iOS, check session creation/resume, web/mobile switching,
 background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
-gestures. Use an existing development client unless native modules change.
+gestures. While an agent streams, check that the transcript follows new output
+at the bottom, holds still once you scroll up, and loads older history at the
+top, and that expanding work keeps the tapped row in place. Use an existing
+development client unless native modules change.
 For navigation changes, check the shared drawer from regular and agent chats,
 the remembered Agents section expansion, recent agent selection, workspace
 chat creation, and opening both chat types from push notifications. Check native

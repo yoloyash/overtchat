@@ -79,7 +79,7 @@ export function AgentContextButton({
   usage: ContextUsage;
   onPress: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, fonts } = useTheme();
   const values = contextValues(usage);
   return (
     <Pressable
@@ -89,17 +89,33 @@ export function AgentContextButton({
           ? `Context: ${values.percentage}% used. Show details`
           : "Context usage unavailable. Show details"
       }
+      hitSlop={4}
       onPress={onPress}
       style={({ pressed }) => ({
-        width: 44,
-        height: 44,
+        minWidth: 40,
+        height: 40,
+        flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        borderRadius: 22,
+        gap: 5,
+        paddingHorizontal: 6,
+        borderRadius: 20,
         backgroundColor: pressed ? colors.muted : "transparent",
       })}
     >
-      <ContextRing usage={usage} />
+      <ContextRing usage={usage} size={18} />
+      {values?.percentage !== undefined && (
+        <Text
+          style={{
+            color: colors.mutedForeground,
+            fontFamily: fonts.sansMedium,
+            fontSize: 12,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {values.percentage}%
+        </Text>
+      )}
     </Pressable>
   );
 }

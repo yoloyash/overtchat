@@ -39,19 +39,18 @@ const mocks = vi.hoisted(() => ({
   scrollToEnd: vi.fn(),
   scrollToOffset: vi.fn(),
   listHandlers: {} as {
-    onLoad?: () => void;
+    inverted?: boolean;
+    maintainVisibleContentPosition?: unknown;
     onScrollBeginDrag?: () => void;
+    onScrollEndDrag?: () => void;
+    onMomentumScrollBegin?: () => void;
+    onMomentumScrollEnd?: () => void;
     onEndReached?: () => void;
-    onContentSizeChange?: () => void;
-    onScroll?: (event: {
-      nativeEvent: {
-        contentSize: { height: number };
-        contentOffset: { y: number };
-        layoutMeasurement: { height: number };
-      };
-    }) => void;
+    onContentSizeChange?: (width: number, height: number) => void;
+    onScroll?: (event: { nativeEvent: { contentOffset: { y: number } } }) => void;
   },
   measurements: { height: 2000, viewport: 500, offset: 1500 },
+  layouts: new Map<string, (event: { nativeEvent: { layout: { y: number; height: number } } }) => void>(),
   draft: { message: "", images: [] } as AgentDraft,
   params: {
     id: "session",
@@ -80,7 +79,16 @@ vi.mock("react-native", async () => {
     editable?: boolean;
     testID?: string;
   };
-  const View = ({ children }: Props) => <div>{children}</div>;
+  const View = ({
+    children,
+    testID,
+    onLayout,
+  }: Props & {
+    onLayout?: (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  }) => {
+    if (testID && onLayout) mocks.layouts.set(testID, onLayout);
+    return <div data-testid={testID}>{children}</div>;
+  };
   const Text = ({ children }: Props) => <span>{children}</span>;
   const TextInput = ({
     value,
@@ -98,27 +106,59 @@ vi.mock("react-native", async () => {
   );
   return {
     View,
-    StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
+    StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1, absoluteFill: {} },
+    Platform: { OS: "ios", select: (options: { ios?: unknown; default?: unknown }) => options.ios ?? options.default },
     useWindowDimensions: () => ({ width: 390, height: 844 }),
     Text,
     ScrollView: View,
-    FlatList: ({
-      data,
-      renderItem,
-      ListHeaderComponent,
-      ListEmptyComponent,
-    }: {
-      data: unknown[];
-      renderItem: (args: { item: unknown }) => ReactNode;
-      ListHeaderComponent?: ReactNode;
-      ListEmptyComponent?: ReactNode;
-    }) => (
-      <div>
-        {ListHeaderComponent}
-        {data.length
-          ? data.map((item, i) => <div key={i}>{renderItem({ item })}</div>)
-          : ListEmptyComponent}
-      </div>
+    FlatList: React.forwardRef(
+      (
+        props: {
+          data: unknown[];
+          renderItem: (args: { item: unknown; index: number }) => ReactNode;
+          keyExtractor?: (item: unknown, index: number) => string;
+          CellRendererComponent?: React.ComponentType<{
+            cellKey: string;
+            children: ReactNode;
+          }>;
+          ListHeaderComponent?: ReactNode;
+          ListFooterComponent?: ReactNode;
+          ListEmptyComponent?: ReactNode;
+          inverted?: boolean;
+        } & typeof mocks.listHandlers,
+        ref: React.Ref<unknown>,
+      ) => {
+        if (props.inverted) mocks.listHandlers = props;
+        React.useImperativeHandle(ref, () => ({
+          scrollToOffset: mocks.scrollToOffset,
+          scrollToEnd: mocks.scrollToEnd,
+        }));
+        const Cell = props.CellRendererComponent;
+        const rows = props.data.map((item, index) => {
+          const key = props.keyExtractor?.(item, index) ?? String(index);
+          return Cell ? (
+            <Cell key={key} cellKey={key}>
+              {props.renderItem({ item, index })}
+            </Cell>
+          ) : (
+            <div key={key}>{props.renderItem({ item, index })}</div>
+          );
+        });
+        // Inverted lists render newest first; keep the DOM in reading order.
+        return props.inverted ? (
+          <div>
+            {props.ListFooterComponent}
+            {rows.reverse()}
+            {props.ListHeaderComponent}
+          </div>
+        ) : (
+          <div>
+            {props.ListHeaderComponent}
+            {props.data.length ? rows : props.ListEmptyComponent}
+            {props.ListFooterComponent}
+          </div>
+        );
+      },
     ),
     SectionList: ({
       sections,
@@ -211,10 +251,20 @@ vi.mock("@gorhom/bottom-sheet", async () => {
   return {
     BottomSheetBackdrop: View,
     BottomSheetScrollView: View,
+    BottomSheetView: View,
+    BottomSheetFooter: View,
     BottomSheetTextInput: TextInput,
     BottomSheetModal: forwardRef(
       (
-        { children, onDismiss }: { children: ReactNode; onDismiss: () => void },
+        {
+          children,
+          onDismiss,
+          footerComponent,
+        }: {
+          children: ReactNode;
+          onDismiss: () => void;
+          footerComponent?: (props: object) => ReactNode;
+        },
         ref,
       ) => {
         const [open, setOpen] = useState(false);
@@ -234,7 +284,12 @@ vi.mock("@gorhom/bottom-sheet", async () => {
             }
           },
         }));
-        return open ? <div role="dialog">{children}</div> : null;
+        return open ? (
+          <div role="dialog">
+            {children}
+            {footerComponent?.({})}
+          </div>
+        ) : null;
       },
     ),
   };
@@ -302,6 +357,50 @@ vi.mock("@expo/vector-icons", () => ({
   Ionicons: ({ name }: { name: string }) => (
     <span data-icon={name} aria-hidden="true" />
   ),
+}));
+vi.mock("react-native-popover-view", async () => {
+  const { useEffect, useRef } = await import("react");
+  function Popover({
+    isVisible,
+    children,
+    onCloseComplete,
+  }: {
+    isVisible: boolean;
+    children: ReactNode;
+    onCloseComplete?: () => void;
+  }) {
+    const shown = useRef(false);
+    useEffect(() => {
+      if (shown.current && !isVisible) onCloseComplete?.();
+      shown.current = isVisible;
+    }, [isVisible, onCloseComplete]);
+    return isVisible ? <div role="menu">{children}</div> : null;
+  }
+  return {
+    default: Popover,
+    PopoverPlacement: { AUTO: "auto", TOP: "top", BOTTOM: "bottom" },
+    Rect: class {},
+  };
+});
+vi.mock("@/components/ui/useMeasuredPopoverAnchor", async () => {
+  const { useState } = await import("react");
+  return {
+    useMeasuredPopoverAnchor: () => {
+      const [visible, setVisible] = useState(false);
+      return {
+        anchorRef: { current: null },
+        anchorRect: { x: 0, y: 0, width: 1, height: 1 },
+        visible,
+        open: () => setVisible(true),
+        close: () => setVisible(false),
+      };
+    },
+  };
+});
+vi.mock("expo-haptics", () => ({
+  selectionAsync: () => Promise.resolve(),
+  impactAsync: () => Promise.resolve(),
+  ImpactFeedbackStyle: { Medium: "medium" },
 }));
 vi.mock("expo-paste-input", () => ({
   TextInputWrapper: ({ children }: { children: ReactNode }) => (
@@ -392,6 +491,8 @@ vi.mock("react-native-reanimated", async () => {
     useSharedValue: (value: number) => useRef({ value }).current,
     useAnimatedStyle: (style: () => unknown) => style(),
     withTiming: (value: number) => value,
+    withRepeat: (value: number) => value,
+    withSequence: (...values: number[]) => values[0],
   };
 });
 vi.mock("@/lib/queries/agents", () => ({
@@ -468,6 +569,7 @@ beforeEach(() => {
   mocks.copy.mockResolvedValue(undefined);
   mocks.uuid.mockReturnValue("message-id");
   mocks.measurements = { height: 2000, viewport: 500, offset: 1500 };
+  mocks.layouts.clear();
   vi.stubGlobal(
     "requestAnimationFrame",
     (callback: (timestamp: number) => void) => setTimeout(() => callback(0), 0),
@@ -560,7 +662,7 @@ it.each([false, true])("keeps the drawer and context controls accessible with ca
 });
 
 describe("agent context usage", () => {
-  it("opens details from the header and updates them from live context, not cumulative tokens", async () => {
+  it("opens details from the composer and updates them from live context, not cumulative tokens", async () => {
     mocks.snapshot!.stats.contextUsage = {
       tokens: 49000,
       contextWindow: 100000,
@@ -569,9 +671,10 @@ describe("agent context usage", () => {
     mocks.snapshot!.stats.tokens.total = 900000;
     await render();
     expect(
-      container.querySelector(
-        'header [aria-label="Context: 49% used. Show details"]',
-      ),
+      container.querySelector('header [aria-label^="Context"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[aria-label="Context: 49% used. Show details"]'),
     ).not.toBeNull();
     await click("Context: 49% used. Show details");
     const details = () =>
@@ -613,21 +716,34 @@ describe("agent context usage", () => {
 });
 
 describe("agent history actions", () => {
-  it("loads older native transcript pages and exposes loading and retry feedback", async () => {
+  it("loads older native transcript pages when reaching the top, with loading and retry feedback", async () => {
+    mocks.snapshot!.messages = [{ role: "user", id: "latest", content: "Latest" }];
     mocks.snapshot!.history = { beforeCursor: "older" };
     await render();
-    await click("Load older messages");
+    await act(async () => mocks.listHandlers.onEndReached?.());
     expect(mocks.history.mutate).toHaveBeenCalledTimes(1);
     mocks.history.isPending = true;
     await render();
-    expect(container.querySelector('button[aria-label="Loading…"]')?.hasAttribute("disabled")).toBe(true);
+    expect(
+      container.querySelector('[role="progressbar"][aria-label="Loading older messages"]'),
+    ).not.toBeNull();
+    // A request in flight is not repeated.
+    await act(async () => mocks.listHandlers.onEndReached?.());
+    expect(mocks.history.mutate).toHaveBeenCalledTimes(1);
     mocks.history.isPending = false;
     mocks.history.error = new Error("History changed. Try again.");
     await render();
     expect(container.textContent).toContain("History changed. Try again.");
+    // Failures wait for an explicit retry instead of looping on scroll.
+    await act(async () => mocks.listHandlers.onEndReached?.());
+    expect(mocks.history.mutate).toHaveBeenCalledTimes(1);
+    await click("Retry");
+    expect(mocks.history.mutate).toHaveBeenCalledTimes(2);
+    mocks.history.error = null;
     mocks.snapshot!.history.beforeCursor = null;
     await render();
-    expect(container.querySelector('button[aria-label="Load older messages"]')).toBeNull();
+    await act(async () => mocks.listHandlers.onEndReached?.());
+    expect(mocks.history.mutate).toHaveBeenCalledTimes(2);
   });
 
   it("rewinds from a native message and preserves an existing draft", async () => {
@@ -1143,68 +1259,151 @@ describe("agent presentation regressions", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the jump button hidden during initial layout and clears it when jumping or reaching the end", async () => {
+  it("anchors the transcript at the newest content and keeps the reader's place natively", async () => {
+    mocks.snapshot!.messages = [
+      { role: "user", id: "first", content: "First" },
+      { role: "assistant", id: "answer", content: [{ type: "text", text: "Answer" }] },
+      { role: "user", id: "second", content: "Second" },
+    ];
     await render();
-    const scroll = (offset: number) =>
-      mocks.listHandlers.onScroll?.({
-        nativeEvent: {
-          contentSize: { height: 2000 },
-          contentOffset: { y: offset },
-          layoutMeasurement: { height: 500 },
-        },
-      });
-    const jump = () =>
-      container.querySelector('button[aria-label="Jump to latest"]');
-    await act(async () => scroll(0));
-    expect(jump()).toBeNull();
-    await act(async () => mocks.listHandlers.onLoad?.());
-    expect(mocks.scrollToEnd).toHaveBeenCalledWith({ animated: false });
+    expect(mocks.listHandlers.inverted).toBe(true);
+    // A constant configuration: iOS applies its last anchor when this turns back on.
+    const position = mocks.listHandlers.maintainVisibleContentPosition;
+    expect(position).toEqual({ minIndexForVisible: 0 });
+    mocks.snapshot!.status = "running";
+    await render();
+    expect(mocks.listHandlers.maintainVisibleContentPosition).toBe(position);
+    // The DOM keeps reading order even though the native list is inverted.
+    const text = container.textContent ?? "";
+    expect(text.indexOf("First")).toBeLessThan(text.indexOf("Answer"));
+    expect(text.indexOf("Answer")).toBeLessThan(text.indexOf("Second"));
+  });
+
+  it("keeps following the newest content until the reader scrolls away", async () => {
+    mocks.snapshot!.messages = [{ role: "user", id: "first", content: "First" }];
+    await render();
+    const scroll = (y: number) =>
+      act(async () =>
+        mocks.listHandlers.onScroll?.({ nativeEvent: { contentOffset: { y } } }),
+      );
+    // Position keeping moved the list for a new row below the reader.
+    await scroll(150);
+    expect(mocks.scrollToOffset).toHaveBeenLastCalledWith({ offset: 0, animated: false });
+    mocks.scrollToOffset.mockClear();
+    // The reader drags away and lets go.
+    await act(async () => mocks.listHandlers.onScrollBeginDrag?.());
+    await scroll(500);
     await act(async () => {
-      mocks.listHandlers.onScrollBeginDrag?.();
-      scroll(200);
+      mocks.listHandlers.onScrollEndDrag?.();
+      await new Promise((resolve) => setTimeout(resolve, 5));
     });
+    await scroll(700);
+    expect(mocks.scrollToOffset).not.toHaveBeenCalled();
+    // Momentum that ends back at the newest content resumes following.
+    await act(async () => mocks.listHandlers.onMomentumScrollBegin?.());
+    await scroll(10);
+    await act(async () => mocks.listHandlers.onMomentumScrollEnd?.());
+    await scroll(120);
+    expect(mocks.scrollToOffset).toHaveBeenLastCalledWith({ offset: 0, animated: false });
+  });
+
+  it("offers a jump to the newest content only after scrolling away from it", async () => {
+    mocks.snapshot!.messages = [{ role: "user", id: "first", content: "First" }];
+    await render();
+    const scroll = (y: number) =>
+      act(async () =>
+        mocks.listHandlers.onScroll?.({ nativeEvent: { contentOffset: { y } } }),
+      );
+    const jump = () => container.querySelector('button[aria-label="Jump to latest"]');
+    expect(jump()).toBeNull();
+    await act(async () => mocks.listHandlers.onScrollBeginDrag?.());
+    await scroll(200);
+    expect(jump()).toBeNull();
+    await scroll(600);
     expect(jump()).not.toBeNull();
     await click("Jump to latest");
-    expect(mocks.scrollToEnd).toHaveBeenCalledWith({ animated: true });
-    expect(jump()).toBeNull();
-    // Position correction may leave a stale native callback on the way down.
-    await act(async () => scroll(200));
-    expect(jump()).toBeNull();
-    await act(async () => {
-      mocks.listHandlers.onScrollBeginDrag?.();
-      scroll(200);
-    });
-    expect(jump()).not.toBeNull();
-    await act(async () => mocks.listHandlers.onEndReached?.());
+    expect(mocks.scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+    await scroll(0);
     expect(jump()).toBeNull();
   });
 
-  it("recomputes the jump button when content shrinks without a scroll callback", async () => {
+  it("returns to the newest content when sending from further up", async () => {
+    mocks.snapshot!.messages = [{ role: "user", id: "first", content: "First" }];
+    mocks.draft.message = "Next step";
     await render();
-    await act(async () => {
-      mocks.listHandlers.onScrollBeginDrag?.();
-      mocks.listHandlers.onScroll?.({
-        nativeEvent: {
-          contentSize: { height: 2000 },
-          contentOffset: { y: 200 },
-          layoutMeasurement: { height: 500 },
-        },
+    await act(async () =>
+      mocks.listHandlers.onScroll?.({ nativeEvent: { contentOffset: { y: 900 } } }),
+    );
+    await click("Send message");
+    expect(mocks.scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+  });
+
+  it("keeps an opened row's top edge in place while its content opens below it", async () => {
+    mocks.snapshot!.messages = [
+      { role: "user", id: "user", content: "Check" },
+      { role: "assistant", id: "progress", content: [{ type: "text", text: "Checking" }] },
+      { role: "assistant", id: "tool", content: [{ type: "toolCall", id: "call", name: "bash", arguments: { command: "ls" } }] },
+      { role: "toolResult", toolCallId: "call", content: [{ type: "text", text: "README.md" }] },
+      { role: "assistant", id: "answer", content: [{ type: "text", text: "Summary" }] },
+      { role: "turnFooter", messageId: "boundary", content: "Summary", durationMs: 2000 },
+    ];
+    await render();
+    const cell = (prefix: string) =>
+      container
+        .querySelector(`[data-testid^="agent-transcript-cell:${prefix}"]`)
+        ?.getAttribute("data-testid") ?? "";
+    const layout = (testID: string, y: number, height: number) =>
+      act(async () => mocks.layouts.get(testID)?.({ nativeEvent: { layout: { y, height } } }));
+    const scroll = (y: number) =>
+      act(async () => {
+        mocks.listHandlers.onScrollBeginDrag?.();
+        mocks.listHandlers.onScroll?.({ nativeEvent: { contentOffset: { y } } });
+        mocks.listHandlers.onMomentumScrollEnd?.();
       });
-    });
-    const jump = container.querySelector(
-      'button[aria-label="Jump to latest"]',
-    )!;
-    expect(jump).not.toBeNull();
-    expect(jump.querySelector('[data-icon="arrow-down"]')).not.toBeNull();
-    expect(jump.querySelector('[data-icon="checkmark"]')).toBeNull();
-    mocks.measurements = { height: 600, viewport: 500, offset: 100 };
-    await act(async () => {
-      mocks.listHandlers.onContentSizeChange?.();
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    });
-    expect(
-      container.querySelector('button[aria-label="Jump to latest"]'),
-    ).toBeNull();
+
+    // Revealed steps are inserted below the summary, which moves its top edge.
+    const summary = cell("work:");
+    await layout(summary, 500, 40);
+    await scroll(300);
+    await click("Worked for 2s");
+    expect(container.textContent).toContain("Checking");
+    await layout(summary, 800, 40);
+    expect(mocks.scrollToOffset).toHaveBeenLastCalledWith({ offset: 600, animated: false });
+    // Rows measured elsewhere do not move the reader.
+    mocks.scrollToOffset.mockClear();
+    await layout(cell("assistant"), 2000, 400);
+    expect(mocks.scrollToOffset).not.toHaveBeenCalled();
+    // A group that grows in place keeps its header still too.
+    await scroll(600);
+    const activity = cell("activity:");
+    await layout(activity, 120, 36);
+    await click("Ran 1 command");
+    await layout(activity, 120, 200);
+    expect(mocks.scrollToOffset).toHaveBeenLastCalledWith({ offset: 764, animated: false });
+    // Dragging hands control back to the reader.
+    mocks.scrollToOffset.mockClear();
+    await click("Ran 1 command");
+    await act(async () => mocks.listHandlers.onScrollBeginDrag?.());
+    await layout(activity, 120, 36);
+    expect(mocks.scrollToOffset).not.toHaveBeenCalled();
+  });
+
+  it("shows a live working status with elapsed time and session errors after the transcript", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-26T12:00:00Z"));
+    mocks.snapshot!.status = "running";
+    mocks.snapshot!.activeTurn = { startedAt: Date.now() - 65_000 };
+    mocks.snapshot!.messages = [{ role: "user", id: "first", content: "Go" }];
+    await render();
+    expect(container.textContent).toContain("Working");
+    expect(container.textContent).toContain("1m 5s");
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect(container.textContent).toContain("1m 7s");
+    mocks.snapshot!.status = "idle";
+    mocks.snapshot!.error = "The agent stopped unexpectedly.";
+    await render();
+    expect(container.textContent).not.toContain("Working");
+    expect(container.textContent).toContain("The agent stopped unexpectedly.");
   });
 });
 

@@ -10,7 +10,8 @@ import { AgentWorkingIndicator } from "./AgentWorkingIndicator";
 import { AgentBranch } from "./AgentNavigation";
 
 // Use the native navigation bar's title slot so back gestures, safe areas and
-// keyboard offsets remain owned by Expo Router.
+// keyboard offsets remain owned by Expo Router. The title is centered between
+// the bar buttons on iOS, so it is capped to the space they leave.
 export function AgentSessionHeaderTitle({
   title,
   provider,
@@ -32,7 +33,7 @@ export function AgentSessionHeaderTitle({
         flexDirection: "row",
         alignItems: "center",
         gap: 10,
-        maxWidth: Math.max(120, width - 148),
+        maxWidth: Math.max(120, width - 168),
       }}
     >
       <View
@@ -77,7 +78,10 @@ export function AgentSessionHeaderTitle({
           }}
         >
           {workspace ? (
-            <AgentBranch workspace={workspace} fallback={workspaceName} />
+            <AgentBranch
+              workspace={workspace}
+              fallback={workspaceName !== title ? workspaceName : undefined}
+            />
           ) : workspaceName !== title ? (
             <Text
               numberOfLines={1}
