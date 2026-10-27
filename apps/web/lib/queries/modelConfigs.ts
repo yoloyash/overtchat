@@ -12,7 +12,17 @@ import type {
   ModelConfigInput,
   PublicModelConfig,
 } from "@/lib/model-config/schema";
-import { apiUrl } from "@/lib/api-url";
+import { CLIENT_HEADER } from "@overtchat/shared";
+import { apiUrl, getApiOrigin } from "@/lib/api-url";
+
+/**
+ * Pages served by this server render every provider ID it returns. The
+ * desktop app's cross-origin requests omit the header because older servers'
+ * CORS preflights reject it; it keeps the view older clients get.
+ */
+function adminHeaders(): Record<string, string> {
+  return getApiOrigin() ? {} : { [CLIENT_HEADER]: "web" };
+}
 
 export function useModelConfigs() {
   return useQuery({
@@ -29,7 +39,9 @@ export function useModelConfigs() {
 export const adminModelConfigsQuery = queryOptions({
   queryKey: modelConfigKeys.adminList(),
   queryFn: async (): Promise<AdminModelConfig[]> => {
-    const r = await fetch(apiUrl("/api/model-configs?admin=1"));
+    const r = await fetch(apiUrl("/api/model-configs?admin=1"), {
+      headers: adminHeaders(),
+    });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const json = (await r.json()) as { modelConfigs: AdminModelConfig[] };
     return json.modelConfigs;
@@ -51,7 +63,7 @@ export function useCreateModelConfig() {
     mutationFn: async (input: ModelConfigInput) => {
       const r = await fetch(apiUrl("/api/model-configs"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminHeaders() },
         body: JSON.stringify(input),
       });
       if (!r.ok) {
@@ -75,7 +87,7 @@ export function useUpdateModelConfig() {
     }) => {
       const r = await fetch(apiUrl(`/api/model-configs/${id}`), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminHeaders() },
         body: JSON.stringify(input),
       });
       if (!r.ok) {
@@ -122,7 +134,7 @@ export function useSetTaskModel() {
     mutationFn: async (modelConfigId: string | null) => {
       const r = await fetch(apiUrl("/api/model-configs/task-model"), {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminHeaders() },
         body: JSON.stringify({ modelConfigId }),
       });
       if (!r.ok) {

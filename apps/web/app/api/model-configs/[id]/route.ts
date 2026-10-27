@@ -5,6 +5,10 @@ import {
   toAdminModelConfig,
   updateModelConfig,
 } from "@/lib/db/modelConfigs";
+import {
+  adminModelConfigForClient,
+  restoreNewerProvider,
+} from "@/lib/model-config/legacy-clients";
 import { ModelConfigSchema } from "@/lib/model-config/schema";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
@@ -43,15 +47,18 @@ export async function PATCH(
       { status: 400 },
     );
   }
+  const input = restoreNewerProvider(req, parsed.data, existing);
   try {
-    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
+    if (input.modelType !== "image") createConfiguredLanguageModel(input);
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });
   }
-  const row = await updateModelConfig(id, parsed.data);
+  const row = await updateModelConfig(id, input);
   if (!row) return new Response("Not found", { status: 404 });
-  return Response.json({ modelConfig: toAdminModelConfig(row) });
+  return Response.json({
+    modelConfig: adminModelConfigForClient(req, toAdminModelConfig(row)),
+  });
 }
 
 export async function DELETE(
