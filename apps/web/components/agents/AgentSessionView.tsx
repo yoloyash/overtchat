@@ -52,6 +52,7 @@ import {
   agentForkDraftKey,
   agentSessionDraftRestoreKey,
 } from "@/lib/agents/sessionDraft";
+import { agentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import {
   AGENT_CREATE_PREFERENCES_KEY,
   DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -841,6 +842,8 @@ export function AgentSessionView({
                 }
                 restoreDraftKey={agentSessionDraftRestoreKey(sessionId)}
                 restoredDraft={restoredDraft}
+                draftUserId={authSession?.user.id}
+                draftScope={agentComposerDraftScope(sessionId)}
               />
             </div>
           </div>

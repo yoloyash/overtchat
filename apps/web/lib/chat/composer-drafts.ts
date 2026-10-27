@@ -13,6 +13,17 @@ export function newChatComposerDraftScope(projectId?: string | null): string {
   return projectId ? `new:project:${projectId}` : "new:root";
 }
 
+export function agentComposerDraftScope(sessionId: string): string {
+  return `agent:${sessionId}`;
+}
+
+export function newAgentComposerDraftScope(
+  workspaceId: string,
+  provider: string,
+): string {
+  return `new:agent:${workspaceId}:${provider}`;
+}
+
 export function readComposerDraft(
   userId: string,
   scope: string,

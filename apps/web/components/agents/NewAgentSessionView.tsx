@@ -39,6 +39,7 @@ import {
 } from "@/lib/queries/agentConnections";
 import { sendAgentSessionCommand } from "@/lib/queries/agentSessions";
 import { authClient } from "@/lib/auth/client";
+import { newAgentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
@@ -405,6 +406,14 @@ export function NewAgentSessionView({
               onEditQueued={async () => false}
               onDeleteQueued={async () => false}
               onSteerQueued={async () => false}
+              draftUserId={authSession?.user.id}
+              // A fork's history lives only in this tab, so its message is not
+              // saved where a later ordinary new session would restore it.
+              draftScope={
+                forkId
+                  ? null
+                  : newAgentComposerDraftScope(workspaceId, provider)
+              }
             />
           </div>
         </div>

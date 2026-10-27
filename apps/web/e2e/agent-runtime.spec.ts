@@ -566,6 +566,81 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   expect(errors).toEqual([]);
 });
 
+test("keeps unsent agent messages per session and new-session page", async ({
+  page,
+}) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Agent Draft Tester");
+  await page.locator("#email").fill("agent-drafts@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const db = openE2eDatabase();
+  try {
+    db.prepare(`
+      INSERT INTO agent_sessions (
+        id, workspace_id, provider_session_id, provider_session_path,
+        name, first_message, message_count
+      ) VALUES ('second-session', 'workspace', 'native-second',
+        '/tmp/runtime-second.jsonl', 'Second session', 'Second prompt', 1)
+    `).run();
+  } finally {
+    db.close();
+  }
+
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(/\/api\/agent-sessions\/([^/?]+)(?:\?.*)?$/, (route) => {
+    const sessionId = new URL(route.request().url()).pathname.split("/").at(-1);
+    return route.fulfill({ json: { snapshot: { ...snapshot, sessionId } } });
+  });
+  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", (route) =>
+    route.fulfill({ json: { provider: "codex", models: [imageModel], modes: [] } }),
+  );
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
+  const sessionLink = (name: string) =>
+    page.getByRole("link", { name, exact: true }).first();
+
+  await page.goto(`/agents/${SESSION_ID}`);
+  await composer.fill("  Unsent runtime prompt\n\n  with indentation  ");
+  await sessionLink("Second session").click();
+  await page.waitForURL("**/agents/second-session");
+  await expect(composer).toHaveValue("");
+  await composer.fill("Unsent second prompt");
+
+  await sessionLink("Runtime activity").click();
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
+  await expect(composer).toHaveValue(
+    "  Unsent runtime prompt\n\n  with indentation  ",
+  );
+  await page.reload();
+  await expect(composer).toHaveValue(
+    "  Unsent runtime prompt\n\n  with indentation  ",
+  );
+  await sessionLink("Second session").click();
+  await expect(composer).toHaveValue("Unsent second prompt");
+
+  await page.goto("/agents/new?workspaceId=workspace&provider=codex");
+  await expect(composer).toBeEnabled();
+  await expect(composer).toHaveValue("");
+  await composer.fill("Unsent new-session prompt");
+  await sessionLink("Runtime activity").click();
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
+  await page.goto("/agents/new?workspaceId=workspace&provider=codex");
+  await expect(composer).toHaveValue("Unsent new-session prompt");
+});
+
 test("requires inspection before retrying an uncertain queued message", async ({
   page,
 }) => {

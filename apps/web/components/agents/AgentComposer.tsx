@@ -2,6 +2,7 @@
 
 import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -38,6 +39,7 @@ import {
   MAX_AGENT_IMAGE_TOTAL_BYTES,
 } from "@overtchat/agent-bridge";
 import { getDataTransferFiles } from "@/lib/chat/attachments";
+import { useComposerDraft } from "@/lib/chat/use-composer-draft";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
@@ -90,6 +92,8 @@ export function AgentComposer({
   restoredDraft,
   appendedDraft,
   onAppendedDraftConsumed,
+  draftUserId,
+  draftScope,
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
@@ -117,13 +121,27 @@ export function AgentComposer({
   restoredDraft?: { revision: number; text: string } | null;
   appendedDraft?: { revision: number; text: string } | null;
   onAppendedDraftConsumed?: () => void;
+  /** Saves unsent text on this device so it survives navigation and reloads. */
+  draftUserId?: string;
+  draftScope?: string | null;
 }) {
-  const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handleDraftRestore = useCallback(() => {
+    requestAnimationFrame(() => {
+      const element = textareaRef.current;
+      element?.setSelectionRange(element.value.length, element.value.length);
+    });
+  }, []);
+  const { value: input, setValue: setInput } = useComposerDraft({
+    userId: draftUserId,
+    scope: draftScope ?? null,
+    enabled: Boolean(draftScope),
+    onRestore: handleDraftRestore,
+  });
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const appliedAppendRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
@@ -172,7 +190,7 @@ export function AgentComposer({
       onAppendedDraftConsumed?.();
     });
     return () => cancelAnimationFrame(frame);
-  }, [appendedDraft, onAppendedDraftConsumed]);
+  }, [appendedDraft, onAppendedDraftConsumed, setInput]);
 
   useEffect(() => {
     if (!restoreDraftKey) return;
@@ -192,7 +210,7 @@ export function AgentComposer({
       cancelAnimationFrame(restoreFrame);
       if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
     };
-  }, [restoreDraftKey]);
+  }, [restoreDraftKey, setInput]);
 
   useEffect(() => {
     if (!restoredDraft) return;
@@ -209,7 +227,7 @@ export function AgentComposer({
       cancelAnimationFrame(restoreFrame);
       if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
     };
-  }, [restoredDraft]);
+  }, [restoredDraft, setInput]);
 
   const query = agentSlashCommandQuery(input);
   const filteredCommands = useMemo(() => {

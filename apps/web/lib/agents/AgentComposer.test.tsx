@@ -1,7 +1,7 @@
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import type { Dictation } from "@/lib/useDictation";
 import { AgentComposer } from "@/components/agents/AgentComposer";
 
@@ -133,3 +133,40 @@ it.each(["recording", "transcribing"] as const)(
     expect(mocks.onSubmit).toHaveBeenCalledWith("Please fix the spec", []);
   },
 );
+
+it("keeps each session's unsent message across remounts and clears it once sent", async () => {
+  const values = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      get length() { return values.size; },
+      key: (index: number) => [...values.keys()][index] ?? null,
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+    },
+  });
+  // linkedom has no text selection; restoring moves the caret to the end.
+  const textareaPrototype = window.HTMLTextAreaElement.prototype;
+  Object.defineProperty(textareaPrototype, "setSelectionRange", { configurable: true, value: vi.fn() });
+  onTestFinished(() => { Reflect.deleteProperty(textareaPrototype, "setSelectionRange"); });
+  const textarea = () => container.querySelector("textarea") as HTMLTextAreaElement;
+  async function remount(draftScope: string) {
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await render({ draftUserId: "user", draftScope });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  }
+
+  await render({ draftUserId: "user", draftScope: "agent:a" });
+  await act(async () => mocks.onResult("Half-written prompt"));
+  await remount("agent:b");
+  expect(textarea().value).toBe("");
+  await remount("agent:a");
+  expect(textarea().value).toBe("Half-written prompt");
+
+  await act(async () => button("Send message").click());
+  expect(mocks.onSubmit).toHaveBeenCalledWith("Half-written prompt", []);
+  expect(textarea().value).toBe("");
+  expect(values.size).toBe(0);
+});
