@@ -8,9 +8,8 @@ export const CLIENT_API_LEVEL = 5;
 
 /**
  * Bundled clients send `<platform>/<version>` in this header. Its presence
- * declares that the client renders enum values added after its build, such as
- * provider IDs it does not know. Servers give requests without it only values
- * that older clients can render.
+ * declares that the client renders model provider IDs added after its build.
+ * Servers give requests without it only provider IDs that older clients know.
  */
 export const CLIENT_HEADER = "X-OvertChat-Client";
 

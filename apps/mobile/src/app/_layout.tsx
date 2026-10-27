@@ -50,6 +50,8 @@ import { getAuthClient } from "@/lib/auth/client";
 import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 SplashScreen.preventAutoHideAsync();
 
 // Must be stored in EAS with plain-text visibility: releases build with

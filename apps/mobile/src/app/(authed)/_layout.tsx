@@ -7,6 +7,8 @@ import { ChatSessionContext, type ChatSession } from "@/lib/chat/session";
 import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { useTheme } from "@/lib/theme";
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 type State = { id: string; isNew: boolean; projectId: string | null };
 
 export default function AuthedLayout() {

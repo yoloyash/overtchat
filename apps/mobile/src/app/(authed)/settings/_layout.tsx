@@ -2,6 +2,8 @@ import { Stack, router } from "expo-router";
 import { HeaderBackButton } from "expo-router/build/react-navigation/elements";
 import { useTheme } from "@/lib/theme";
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 // Deep links into a settings page still return to the settings list.
 export const unstable_settings = { initialRouteName: "index" };
 

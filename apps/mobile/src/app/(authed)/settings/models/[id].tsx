@@ -3,8 +3,12 @@ import { useState } from "react";
 import { Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import type { ModelCapabilities } from "@overtchat/shared";
-import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
-import { PROVIDERS, API_FORMATS } from "@overtchat/shared/provider-catalog";
+import {
+  API_FORMATS,
+  findProvider,
+  isProviderId,
+  PROVIDERS,
+} from "@overtchat/shared/provider-catalog";
 import { AdminGate } from "@/components/settings/AdminGate";
 import {
   SettingsPage,
@@ -31,7 +35,9 @@ import {
   customApiFormats,
   modelProviders,
   parseModelDraft,
+  providerLabel,
   type ModelDraft,
+  type SettingsModelConfig,
 } from "@/lib/settings-model";
 import { toastSuccess } from "@/lib/toast";
 type Discovered = {
@@ -49,7 +55,7 @@ export default function ModelEditor() {
 }
 function EditorScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const query = useSettingsQuery<{ modelConfigs: AdminModelConfig[] }>(
+  const query = useSettingsQuery<{ modelConfigs: SettingsModelConfig[] }>(
     "/model-configs?admin=1",
     true,
   );
@@ -69,7 +75,7 @@ function EditorScreen() {
     </SettingsPage>
   );
 }
-function Editor({ model }: { model?: AdminModelConfig }) {
+function Editor({ model }: { model?: SettingsModelConfig }) {
   const [draft, setDraft] = useState(() => modelDraft(model));
   const [pricingText, setPricingText] = useState(() =>
     pricingStrings(model?.pricing),
@@ -149,12 +155,28 @@ function Editor({ model }: { model?: AdminModelConfig }) {
           disabled={busy}
           title="Provider"
           value={draft.providerId}
-          options={modelProviders(draft.modelType).map((id) => ({
-            value: id,
-            label: PROVIDERS[id].label,
-            leading: <SettingsModelIcon provider={id} />,
-          }))}
+          options={[
+            // Keep a provider from a newer server selectable as-is.
+            ...(isProviderId(draft.providerId)
+              ? []
+              : [
+                  {
+                    value: draft.providerId,
+                    label: providerLabel({
+                      providerId: draft.providerId,
+                      displayProvider: model?.displayProvider,
+                    }),
+                    leading: <SettingsModelIcon provider={draft.providerId} />,
+                  },
+                ]),
+            ...modelProviders(draft.modelType).map((id) => ({
+              value: id as string,
+              label: PROVIDERS[id].label,
+              leading: <SettingsModelIcon provider={id} />,
+            })),
+          ]}
           onChange={(id) => {
+            if (!isProviderId(id)) return;
             setDraft(changeModelProvider(draft, id));
             setOptions("");
             setDiscovered([]);
@@ -235,7 +257,9 @@ function Editor({ model }: { model?: AdminModelConfig }) {
               discoveredCapabilities: null,
             })
           }
-          placeholder={PROVIDERS[draft.providerId].modelPlaceholder}
+          placeholder={
+            findProvider(draft.providerId)?.modelPlaceholder ?? "model-id"
+          }
         />
         <Field
           editable={!busy}
