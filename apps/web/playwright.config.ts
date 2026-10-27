@@ -35,6 +35,9 @@ export default defineConfig({
     reuseExistingServer: !isCI,
     timeout: 180 * 1000,
     env: {
+      // The standalone server binds to HOSTNAME, which Docker sets to the
+      // container ID. Listen everywhere, as the app image does.
+      HOSTNAME: "0.0.0.0",
       PORT: port,
       DATABASE_URL: path.resolve(__dirname, "data/test.db"),
       MIGRATIONS_FOLDER: path.resolve(__dirname, "drizzle"),
