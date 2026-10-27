@@ -12,14 +12,17 @@ concurrency:
 
 jobs:
   e2e:
-    # Playwright cannot install Chromium on ubuntu-latest (26.04) yet.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # Chromium and its system libraries come preinstalled, so the job does not
+    # depend on the runner's apt mirror. Keep the tag on the lockfile's
+    # Playwright version.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --user 1001 --init --ipc=host
     services:
       redis:
         image: redis:8-alpine@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
-        ports:
-          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -33,11 +36,12 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
-      - name: Install Chromium and system dependencies
-        timeout-minutes: 5
+      - name: Check the image's browser matches Playwright
         run: |
-          sudo install -m 644 .github/apt-ci.conf /etc/apt/apt.conf.d/99overtchat-ci
-          npx playwright install chromium --with-deps
+          node -e "require('node:fs').accessSync(require('playwright-core').chromium.executablePath())" || {
+            echo "::error::Set the container image to mcr.microsoft.com/playwright:v$(node -p "require('playwright-core/package.json').version")-noble"
+            exit 1
+          }
       - env:
           DATABASE_URL: ":memory:"
           BETTER_AUTH_SECRET: ci-build-secret-12345678901234567890
@@ -47,7 +51,7 @@ jobs:
       - env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CI: true
-          REDIS_URL: redis://127.0.0.1:6379
+          REDIS_URL: redis://redis:6379
         run: npm run test:e2e -w apps/web --
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
