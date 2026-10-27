@@ -16,7 +16,7 @@
 
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.28.1}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.29.0}
     restart: always
     # For Podman automatic updates, use the :latest tag and uncomment these
     # lines; see docs/deploy.md#minimal-compose-updates.
