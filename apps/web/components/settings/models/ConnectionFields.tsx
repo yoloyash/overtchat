@@ -4,12 +4,23 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+  useComboboxFilter,
+} from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
@@ -80,7 +91,9 @@ export function ConnectionFields({
   const [modelMode, setModelMode] = useState<"manual" | "list">("manual");
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState("");
+  const [modelQuery, setModelQuery] = useState("");
   const lastAutoProbeKeyRef = useRef("");
+  const { contains } = useComboboxFilter();
 
   const canProbe = Boolean(draft.baseUrl) && !(requiresKey && !draft.apiKey);
   const probeKey = [
@@ -223,6 +236,10 @@ export function ConnectionFields({
     return () => clearTimeout(t);
   }, [autoFetchModels, canProbe, probeKey]);
 
+  const modelIds = useMemo(() => models.map((model) => model.id), [models]);
+  const matchingModelIds = modelQuery
+    ? modelIds.filter((id) => contains(id, modelQuery))
+    : modelIds;
   const currentModelWasFetched = models.some(
     (model) => model.id === draft.model,
   );
@@ -412,27 +429,46 @@ export function ConnectionFields({
         <div className="w-full space-y-2">
           <div className="flex flex-col gap-2 @lg:flex-row">
             {showList ? (
-              <Select
+              <Combobox
+                items={modelIds}
+                // Filtered here so every opening starts a fresh search, even
+                // when it interrupts the previous close animation.
+                filteredItems={matchingModelIds}
+                inputValue={modelQuery}
+                onInputValueChange={setModelQuery}
+                onOpenChange={(open) => {
+                  if (open) setModelQuery("");
+                }}
                 value={draft.model}
                 onValueChange={(value) => {
                   if (value == null) return;
                   const model = models.find((item) => item.id === value);
                   if (model) selectDiscoveredModel(model);
                 }}
+                autoHighlight
               >
-                <SelectTrigger id="p-model" className="min-w-0 flex-1">
+                <ComboboxTrigger id="p-model" className="min-w-0 flex-1">
                   <ModelBrandIcon iconId={modelIconForModel(draft.model)} />
-                  <SelectValue>{draft.model}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      <ModelBrandIcon iconId={modelIconForModel(model.id)} />
-                      {model.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {draft.model}
+                  </span>
+                </ComboboxTrigger>
+                <ComboboxContent aria-label="Fetched models">
+                  <ComboboxInput
+                    placeholder="Search models"
+                    aria-label="Search models"
+                  />
+                  <ComboboxEmpty>No matching models.</ComboboxEmpty>
+                  <ComboboxList>
+                    {(id: string) => (
+                      <ComboboxItem key={id} value={id}>
+                        <ModelBrandIcon iconId={modelIconForModel(id)} />
+                        <span className="min-w-0 truncate">{id}</span>
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
             ) : (
               <Input
                 id="p-model"

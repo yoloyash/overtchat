@@ -496,6 +496,45 @@ describe("provider registry", () => {
     expect(configured.promptCacheStrategy).toBeUndefined();
   });
 
+  it("sends OpenRouter's configured thinking request with saved options", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json(
+          { error: { message: "intentional test response" } },
+          { status: 400 },
+        );
+      }),
+    );
+    const configured = createConfiguredLanguageModel({
+      ...baseConfig,
+      providerId: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "vendor/model",
+      providerOptions: { provider: { sort: "price" } },
+      reasoningLevel: "high",
+      reasoningRequest: { reasoning: { effort: "high" } },
+    });
+
+    expect(configured.providerOptionsKey).toBe("openrouter");
+    expect(configured.promptCacheStrategy).toBeUndefined();
+    await expect(
+      generateText({
+        model: configured.model,
+        prompt: "Hello",
+        providerOptions: configured.providerOptions,
+      }),
+    ).rejects.toThrow("intentional test response");
+
+    expect(requestBody).toMatchObject({
+      model: "vendor/model",
+      provider: { sort: "price" },
+      reasoning: { effort: "high" },
+    });
+  });
+
   it("rejects malformed endpoints and missing registered-provider credentials", () => {
     expect(() =>
       validateProviderConnection({

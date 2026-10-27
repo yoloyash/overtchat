@@ -60,7 +60,7 @@ export function supportsLocalReasoningConfig(
   apiFormat: string,
 ): boolean {
   return (
-    ["vllm", "llamacpp", "sglang"].includes(providerId) ||
+    ["vllm", "llamacpp", "sglang", "openrouter"].includes(providerId) ||
     (providerId === "custom" && apiFormat === "openai-chat")
   );
 }

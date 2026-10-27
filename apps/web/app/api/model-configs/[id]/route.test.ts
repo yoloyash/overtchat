@@ -71,6 +71,66 @@ describe("model updates", () => {
       expect(mocks.update).not.toHaveBeenCalled();
     },
   );
+  it("keeps an OpenRouter model that an older client saves as custom", async () => {
+    const openRouter = {
+      ...existing,
+      providerId: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      providerOptions: null,
+    };
+    mocks.get.mockResolvedValue(openRouter);
+
+    const response = await PATCH(
+      request({
+        ...openRouter,
+        providerId: "custom",
+        apiFormat: "openai-chat",
+        label: "Renamed",
+      }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.update.mock.calls[0][1]).toMatchObject({
+      label: "Renamed",
+      providerId: "openrouter",
+      apiFormat: "auto",
+    });
+    // The response still uses the view that client can render.
+    await expect(response.json()).resolves.toMatchObject({
+      modelConfig: { providerId: "custom", apiFormat: "openai-chat" },
+    });
+  });
+
+  it("lets a current client change an OpenRouter model to custom", async () => {
+    mocks.get.mockResolvedValue({
+      ...existing,
+      providerId: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+    });
+
+    const response = await PATCH(
+      new Request("http://localhost/api/model-configs/model", {
+        method: "PATCH",
+        headers: { "X-OvertChat-Client": "web" },
+        body: JSON.stringify({
+          ...existing,
+          providerId: "custom",
+          apiFormat: "openai-chat",
+          baseUrl: "https://openrouter.ai/api/v1",
+          providerOptions: null,
+        }),
+      }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.update.mock.calls[0][1]).toMatchObject({
+      providerId: "custom",
+      apiFormat: "openai-chat",
+    });
+  });
+
   it.each([null, { user: { role: "user" } }])(
     "requires an administrator",
     async (session) => {
