@@ -1,7 +1,6 @@
 import "server-only";
 import { createOpenAICompatibleAdapter } from "@/lib/providers/server/adapters/openai-compatible";
-
-import { applyLocalReasoningLevel } from "./local-reasoning";
+import { applyLocalReasoningLevel } from "@/lib/providers/server/adapters/local-reasoning";
 
 // OpenRouter does not report per-model effort levels or defaults, so thinking
 // levels come from an administrator's override, as with other chat endpoints.
