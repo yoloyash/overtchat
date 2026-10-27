@@ -6,6 +6,7 @@ export const PROVIDER_IDS = [
   "google",
   "deepseek",
   "bedrock",
+  "openrouter",
   "vllm",
   "llamacpp",
   "sglang",
@@ -80,6 +81,15 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     defaultBaseUrl: "https://bedrock-mantle.us-east-1.api.aws/v1",
     defaultApiFormat: "auto",
     modelPlaceholder: "openai.gpt-5.6-terra",
+    requiresApiKey: true,
+  },
+  openrouter: {
+    id: "openrouter",
+    label: "OpenRouter",
+    iconId: "openrouter",
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "openai/gpt-5-mini",
     requiresApiKey: true,
   },
   vllm: {
