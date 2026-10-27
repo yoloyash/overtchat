@@ -157,6 +157,15 @@ export function getProvider(providerId: ProviderId): ProviderDefinition {
   return PROVIDERS[providerId];
 }
 
+export function isProviderId(value: string): value is ProviderId {
+  return (PROVIDER_IDS as readonly string[]).includes(value);
+}
+
+/** Looks up a provider ID that may come from a newer server. */
+export function findProvider(providerId: string): ProviderDefinition | undefined {
+  return isProviderId(providerId) ? PROVIDERS[providerId] : undefined;
+}
+
 export function modelIconForModel(model: string): ModelBrandIconId | null {
   const normalized = model.toLowerCase();
 
