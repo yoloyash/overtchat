@@ -10,6 +10,7 @@ export type AgentSetup = {
   provider: AgentProviderId;
   workspaceName: string;
   workspacePath: string;
+  hostId: string;
   hostLabel: string;
   transport: AgentConnectionListItem["host"]["transport"];
   /** Latest activity of the setup's sessions; 0 when it has none. */
@@ -31,6 +32,7 @@ export function recentAgentSetups(
         provider: connection.provider,
         workspaceName: workspace.name,
         workspacePath: workspace.path,
+        hostId: connection.host.id,
         hostLabel: connection.host.sshAlias || connection.host.name,
         transport: connection.host.transport,
         activityAt: Math.max(
@@ -44,32 +46,64 @@ export function recentAgentSetups(
   return setups.sort((left, right) => right.activityAt - left.activityAt);
 }
 
-/** Each workspace name once, in the order its setups were last used. */
-export function agentSetupWorkspaceNames(
-  setups: readonly AgentSetup[],
-): string[] {
-  return Array.from(new Set(setups.map((setup) => setup.workspaceName)));
+export type AgentSetupHost = Pick<AgentSetup, "hostId" | "hostLabel" | "transport">;
+
+/** Each machine once, in the order its setups were last used. */
+export function agentSetupHosts(setups: readonly AgentSetup[]): AgentSetupHost[] {
+  const hosts: AgentSetupHost[] = [];
+  for (const setup of setups) {
+    if (hosts.some((host) => host.hostId === setup.hostId)) continue;
+    hosts.push({
+      hostId: setup.hostId,
+      hostLabel: setup.hostLabel,
+      transport: setup.transport,
+    });
+  }
+  return hosts;
 }
 
-export type AgentSetupHostGroup = {
-  hostLabel: string;
-  setups: AgentSetup[];
-};
+/**
+ * Each folder on the machine once, in the order its setups were last used,
+ * each represented by its most recently used agent.
+ */
+export function agentSetupWorkspaces(
+  setups: readonly AgentSetup[],
+  hostId: string,
+): AgentSetup[] {
+  const workspaces: AgentSetup[] = [];
+  for (const setup of setups) {
+    if (setup.hostId !== hostId) continue;
+    if (workspaces.some((item) => item.workspacePath === setup.workspacePath)) {
+      continue;
+    }
+    workspaces.push(setup);
+  }
+  return workspaces;
+}
+
+/** The agents on the machine that have the folder, in last-used order. */
+export function agentSetupsForWorkspace(
+  setups: readonly AgentSetup[],
+  hostId: string,
+  workspacePath: string,
+): AgentSetup[] {
+  return setups.filter(
+    (setup) => setup.hostId === hostId && setup.workspacePath === workspacePath,
+  );
+}
 
 /**
- * The setups that have a workspace of this name, grouped by host. Hosts and
- * the setups within them keep the order they were last used.
+ * The setup to open when the folder changes: the agent already chosen if the
+ * folder has it, otherwise the folder's most recently used agent.
  */
-export function agentSetupsByHost(
+export function agentSetupForWorkspace(
   setups: readonly AgentSetup[],
-  workspaceName: string,
-): AgentSetupHostGroup[] {
-  const groups: AgentSetupHostGroup[] = [];
-  for (const setup of setups) {
-    if (setup.workspaceName !== workspaceName) continue;
-    const group = groups.find((item) => item.hostLabel === setup.hostLabel);
-    if (group) group.setups.push(setup);
-    else groups.push({ hostLabel: setup.hostLabel, setups: [setup] });
-  }
-  return groups;
+  hostId: string,
+  workspacePath: string,
+  provider: AgentProviderId,
+): AgentSetup | undefined {
+  const candidates = agentSetupsForWorkspace(setups, hostId, workspacePath);
+  return (
+    candidates.find((setup) => setup.provider === provider) ?? candidates[0]
+  );
 }
