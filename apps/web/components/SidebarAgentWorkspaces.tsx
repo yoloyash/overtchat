@@ -7,17 +7,12 @@ import { useSortable } from "@dnd-kit/react/sortable";
 import { move } from "@dnd-kit/helpers";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import {
-  ChevronDown,
   ChevronRight,
-  ChevronUp,
   FileDiff,
   GitBranch,
   GitBranchPlus,
   GripVertical,
-  Loader2,
-  Monitor,
   Plus,
-  Wifi,
   Trash2,
 } from "lucide-react";
 import type {
@@ -32,7 +27,6 @@ import {
   visibleAgentSessions,
 } from "@/lib/agents/sidebar";
 import {
-  agentSessionNeedsOwner,
   agentSessionState,
   agentSessionStateSince,
   mostUrgentAgentSessionState,
@@ -61,8 +55,14 @@ import { cn } from "@/lib/utils";
 import { NewAgentSessionDialog } from "@/components/agents/NewAgentSessionDialog";
 import { NewAgentWorktreeDialog } from "@/components/agents/NewAgentWorktreeDialog";
 import { AgentWorktreeRemovalDetails } from "@/components/agents/AgentWorktreeRemovalDetails";
-import { AgentSessionStatusIcon } from "@/components/agents/AgentSessionStatus";
-import { AgentSessionRow } from "@/components/agents/AgentSessionRow";
+import {
+  AgentSessionStatusIcon,
+  agentSessionStateLabel,
+} from "@/components/agents/AgentSessionStatus";
+import {
+  AgentSessionListToggle,
+  AgentSessionRow,
+} from "@/components/agents/AgentSessionRow";
 import { useNow } from "@/lib/useNow";
 import { authClient } from "@/lib/auth/client";
 import { getApiOrigin } from "@/lib/api-url";
@@ -416,12 +416,6 @@ function WorkspaceNode({
   const filteredSessions = providerFilter
     ? group.sessions.filter(({ provider }) => provider === providerFilter)
     : group.sessions;
-  const runningCount = filteredSessions.filter(({ session }) =>
-    agentSessionIsRunning(session),
-  ).length;
-  const waitingCount = filteredSessions.filter(({ session }) =>
-    agentSessionNeedsOwner(agentSessionState(session)),
-  ).length;
   const urgentState = mostUrgentAgentSessionState(
     filteredSessions.map(({ session }) => session),
   );
@@ -469,6 +463,8 @@ function WorkspaceNode({
       ref={ref}
       data-dropping={isDropping}
       className={cn(
+        // An open workspace keeps a gap before the next, like a status group.
+        open && "pb-2",
         (isDragSource || isDropping) &&
           "relative z-10 rounded-md bg-sidebar shadow-md",
       )}
@@ -486,7 +482,7 @@ function WorkspaceNode({
           aria-expanded={open}
           aria-controls={sessionListId}
           className={cn(
-            "flex min-h-10 min-w-0 flex-1 items-start gap-1.5 rounded-md px-1 py-0.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11",
+            "flex min-h-10 min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-px text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11",
             organizing
               ? "pr-0"
               : canCreateWorktree
@@ -495,67 +491,41 @@ function WorkspaceNode({
           )}
           title={`${group.path} · ${agentWorkspaceHostLabel(group)}`}
         >
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              "mt-1 size-3 shrink-0 text-muted-foreground motion-transform",
-              open && "rotate-90",
-            )}
-          />
+          <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 text-muted-foreground motion-transform",
+                open && "rotate-90",
+              )}
+            />
+          </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate font-medium leading-5">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 flex-1 truncate leading-5">
                 {group.name}
               </span>
-              {waitingCount > 0 && (
+              {/* A closed workspace shows the most urgent state among its sessions. */}
+              {!open && urgentState !== "idle" && (
                 <span
                   role="status"
-                  aria-label={`${waitingCount} ${waitingCount === 1 ? "chat needs" : "chats need"} you in ${group.name}`}
-                  className="flex shrink-0 items-center gap-1 text-[10px] text-amber-500"
-                >
-                  <AgentSessionStatusIcon state={urgentState} className="size-3" />
-                  <span className="tabular-nums">{waitingCount}</span>
-                </span>
-              )}
-              {runningCount > 0 && (
-                <span
-                  role="status"
-                  aria-label={`${runningCount} running ${runningCount === 1 ? "chat" : "chats"} in ${group.name}`}
-                  className="flex shrink-0 items-center gap-1 text-[10px] text-primary"
-                >
-                  <Loader2
-                    aria-hidden="true"
-                    className={cn("size-3", motionClasses.spinner)}
-                  />
-                  <span className="tabular-nums">{runningCount}</span>
-                </span>
-              )}
-              {/* An open workspace lists its finished chats instead. */}
-              {!open && urgentState === "unread" && (
-                <span
-                  role="status"
-                  aria-label={`Finished chats to review in ${group.name}`}
-                  title="Finished chats to review"
+                  aria-label={`${agentSessionStateLabel(urgentState)} in ${group.name}`}
+                  title={agentSessionStateLabel(urgentState)}
                   className="flex shrink-0 items-center"
                 >
-                  <AgentSessionStatusIcon state="unread" className="size-3" />
+                  <AgentSessionStatusIcon state={urgentState} />
                 </span>
               )}
             </span>
-            <span className="flex min-w-0 items-center gap-1.5 text-[10px] leading-3 text-muted-foreground">
+            <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
               <span
                 className={cn(
-                  "flex min-w-0 items-center gap-1",
+                  "truncate",
                   gitStatus?.isGit && "max-w-[45%]",
                 )}
                 title={agentWorkspaceHostLabel(group)}
               >
-                {group.host.transport === "ssh" ? (
-                  <Wifi aria-hidden="true" className="size-2.5 shrink-0" />
-                ) : (
-                  <Monitor aria-hidden="true" className="size-2.5 shrink-0" />
-                )}
-                <span className="truncate">{agentWorkspaceHostLabel(group)}</span>
+                {agentWorkspaceHostLabel(group)}
               </span>
               {gitStatus?.isGit && (
                 <span aria-hidden="true" className="text-muted-foreground/50">
@@ -633,10 +603,7 @@ function WorkspaceNode({
       <ul
         id={sessionListId}
         hidden={!open}
-        className={cn(
-          "ml-2.5 flex-col gap-0.5 border-l border-sidebar-border pl-1.5",
-          open ? "flex" : "hidden",
-        )}
+        className={cn("mt-0.5 flex-col gap-0.5", open ? "flex" : "hidden")}
       >
         {open && (
           <>
@@ -657,34 +624,21 @@ function WorkspaceNode({
               );
             })}
             {filteredSessions.length === 0 && (
-              <li className="px-2 py-1.5 text-xs text-muted-foreground">
+              <li className="py-1.5 pr-2 pl-4 text-xs text-muted-foreground">
                 No{" "}
                 {providerFilter
-                  ? agentProviderMetadata(providerFilter).label
-                  : "agent"}{" "}
-                chats
+                  ? `${agentProviderMetadata(providerFilter).label} sessions`
+                  : "sessions"}
               </li>
             )}
             {filteredSessions.length > AGENT_SESSION_PREVIEW_COUNT &&
               (sessionsExpanded || hiddenSessionCount > 0) && (
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => setSessionsExpanded((current) => !current)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
-                  >
-                    {sessionsExpanded ? (
-                      <ChevronUp className="size-3.5" />
-                    ) : (
-                      <ChevronDown className="size-3.5" />
-                    )}
-                    <span>
-                      {sessionsExpanded
-                        ? "Show less"
-                        : `Show ${hiddenSessionCount} more`}
-                    </span>
-                  </button>
-                </li>
+                <AgentSessionListToggle
+                  expanded={sessionsExpanded}
+                  hiddenCount={hiddenSessionCount}
+                  onToggle={() => setSessionsExpanded((current) => !current)}
+                  controls={sessionListId}
+                />
               )}
           </>
         )}
@@ -693,10 +647,7 @@ function WorkspaceNode({
         <ul
           aria-label={`Worktrees of ${group.name}`}
           hidden={!open}
-          className={cn(
-            "ml-2.5 mt-0.5 flex-col gap-0.5 border-l border-sidebar-border pl-1.5",
-            open ? "flex" : "hidden",
-          )}
+          className={cn("mt-0.5 flex-col gap-0.5 pl-3", open ? "flex" : "hidden")}
         >
           {worktrees.map(renderWorktree)}
         </ul>
@@ -752,11 +703,11 @@ function WorkspaceGitMeta({
   return (
     <span
       data-testid={`sidebar-workspace-git-status-${workspaceId}`}
-      className="flex min-w-0 flex-1 items-center gap-1 text-[10px]"
+      className="flex min-w-0 flex-1 items-center gap-1"
       title={detail}
     >
       <span className="flex min-w-0 flex-1 items-center gap-1">
-        <GitBranch aria-hidden="true" className="size-2.5 shrink-0" />
+        <GitBranch aria-hidden="true" className="size-3 shrink-0" />
         <span className="truncate">{status.branch ?? "Detached HEAD"}</span>
       </span>
       {status.dirty && (
@@ -764,7 +715,7 @@ function WorkspaceGitMeta({
           className="flex shrink-0 items-center gap-0.5 tabular-nums text-amber-500"
           aria-label={`${status.changedFiles} changed file${status.changedFiles === 1 ? "" : "s"}`}
         >
-          <FileDiff aria-hidden="true" className="size-2.5" />
+          <FileDiff aria-hidden="true" className="size-3" />
           {status.changedFiles}
         </span>
       )}

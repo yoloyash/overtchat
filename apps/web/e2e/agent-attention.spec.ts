@@ -28,9 +28,6 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   await page.waitForURL("**/agents/new?workspaceId=codex-app&provider=codex");
   await expect(sidebarView(page).getByRole("button", { name: "Agents" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("heading", { name: "New Codex session" })).toBeVisible();
-  const recent = page.getByRole("navigation", { name: "Recent setups" });
-  await expect(recent.getByRole("link")).toHaveCount(1);
-  await expect(recent.getByRole("link", { name: /api Claude Code · home-server/ })).toBeVisible();
   // Any workspace and agent can be picked, including one never used.
   await page.getByRole("combobox", { name: "Workspace and agent" }).click();
   await expect(page.getByRole("option")).toHaveCount(3);
@@ -39,56 +36,79 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   await expect(page.getByRole("combobox", { name: "Workspace and agent" })).toContainText("site");
 
   // Every session is listed once, filed by what it needs.
-  const needsYou = section(page, "Needs you");
-  await expect(needsYou.getByRole("link")).toHaveCount(2);
-  await expect(needsYou.getByRole("link").nth(0)).toContainText("Upgrade the parser");
-  await expect(needsYou.getByRole("link").nth(0)).toContainText("Allow Bash · npm ci");
-  await expect(needsYou.getByRole("link").nth(1)).toContainText("Fix the flaky test");
-  await expect(needsYou.getByRole("link").nth(1)).toContainText("Rate limit reached");
+  const needsInput = section(page, "Needs input");
+  await expect(needsInput.getByRole("link")).toHaveCount(1);
+  await expect(needsInput.getByRole("link")).toHaveAccessibleName(
+    /^Needs approval: Upgrade the parser \d+m Allow Bash · npm ci$/,
+  );
+  const failed = section(page, "Failed");
+  await expect(failed.getByRole("link")).toHaveAccessibleName(
+    /^Failed: Fix the flaky test \d+m app · This machine$/,
+  );
   await expect(section(page, "Working").getByRole("link")).toHaveCount(1);
   await expect(section(page, "Working").getByRole("link")).toHaveAccessibleName(
     /^Working: Write the docs \d+m app · This machine$/,
   );
   const ready = section(page, "Ready to review");
-  await expect(ready.getByRole("link")).toHaveCount(1);
-  await expect(ready.getByRole("link")).toContainText("Added cursor pagination to /items.");
-  const recentSessions = section(page, "Recent");
-  await expect(recentSessions.getByRole("link")).toHaveAccessibleName(/^Old refactor \d+h api · home-server$/);
+  await expect(ready.getByRole("link")).toHaveAccessibleName(
+    /^Finished: Add pagination \d+m api · home-server$/,
+  );
+  const done = section(page, "Done");
+  await expect(done.getByRole("link")).toHaveAccessibleName(/^Old refactor \d+h api · home-server$/);
   const sectionOrder = await page
     .getByRole("complementary")
     .getByRole("region")
     .evaluateAll((regions) => regions.map((region) => region.getAttribute("aria-label")));
-  expect(sectionOrder).toEqual(["Needs you", "Ready to review", "Working", "Recent"]);
+  expect(sectionOrder).toEqual(["Needs input", "Failed", "Ready to review", "Working", "Done"]);
 
-  // Marking a finished session read files it under Recent; unread brings it back.
+  // A group folds from its header and stays folded.
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Done", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(done.getByRole("link")).toHaveCount(0);
+  await page.reload();
+  await expect(done.getByRole("link")).toHaveCount(0);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(done.getByRole("link")).toHaveCount(1);
+
+  // Marking a finished session read files it under Done; unread brings it back.
   await ready.getByRole("link").hover();
   await ready.getByRole("button", { name: "Mark Add pagination as read" }).click();
   await expect(ready).toHaveCount(0);
-  await expect(recentSessions.getByRole("link")).toHaveCount(2);
+  await expect(done.getByRole("link")).toHaveCount(2);
   expect(reads).toEqual([{ sessionId: "ready", read: true }]);
-  await recentSessions.getByRole("link", { name: /^Old refactor/ }).hover();
-  await recentSessions.getByRole("button", { name: "Mark Old refactor as unread" }).click();
-  await expect(section(page, "Ready to review").getByRole("link")).toContainText("Old refactor");
+  await done.getByRole("link", { name: /^Old refactor/ }).hover();
+  await done.getByRole("button", { name: "Mark Old refactor as unread" }).click();
+  await expect(section(page, "Ready to review").getByRole("link")).toHaveAccessibleName(/^Finished: Old refactor /);
   expect(reads.at(-1)).toEqual({ sessionId: "seen", read: false });
 
   // The workspace grouping shows each session's state in its folder.
   await page.getByRole("button", { name: "Agent list options", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Workspace" }).click();
-  await expect(needsYou).toHaveCount(0);
+  await expect(needsInput).toHaveCount(0);
+  await expect(page.getByRole("status", { name: "Finished in api" })).toBeVisible();
   await page.getByRole("button", { name: "Expand api" }).click();
   const tree = page.getByRole("list", { name: "Agent workspaces", exact: true });
-  await expect(tree.getByRole("link", { name: /^Finished: Old refactor / })).toBeVisible();
+  await expect(tree.getByRole("link", { name: /^Finished: Old refactor \d+h Claude Code$/ })).toBeVisible();
   await expect(tree.getByRole("link", { name: /^Add pagination / })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("list", { name: "Agent workspaces", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Agent list options", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Status" }).click();
 
+  // Every finished session can be marked read at once.
+  await page.getByRole("button", { name: "Agent list options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Mark all as read" }).click();
+  await expect(section(page, "Ready to review")).toHaveCount(0);
+  expect(reads.at(-1)).toEqual({ sessionId: "seen", read: true });
+  await page.getByRole("button", { name: "Agent list options", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Mark all as read" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
   // Opening a session with an unseen result marks it read.
-  await needsYou.getByRole("link", { name: /Fix the flaky test/ }).click();
+  await failed.getByRole("link", { name: /Fix the flaky test/ }).click();
   await page.waitForURL("**/agents/failed");
   await expect.poll(() => reads.at(-1)).toEqual({ sessionId: "failed", read: true });
-  await expect(section(page, "Needs you").getByRole("link")).toHaveCount(1);
+  await expect(section(page, "Failed")).toHaveCount(0);
 
   // Settings keep the current mode, and each mode returns to where it was left.
   await page.goto("/settings/general");

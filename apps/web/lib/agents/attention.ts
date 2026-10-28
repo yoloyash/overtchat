@@ -42,7 +42,7 @@ export function agentSessionState(session: AttentionFields): AgentSessionState {
   return unseen ? "unread" : "idle";
 }
 
-/** States shown under "Needs you". */
+/** States the Agents toggle counts as needing their owner. */
 export function agentSessionNeedsOwner(state: AgentSessionState): boolean {
   return state === "approval" || state === "question" || state === "failed";
 }
@@ -66,12 +66,17 @@ export type AgentAttentionItem = {
   since: number;
 };
 
+/** The status groups, in the order the sidebar lists them. */
 export type AgentAttentionSections = {
-  needsYou: AgentAttentionItem[];
+  /** Waiting on an approval or an answer. */
+  needsInput: AgentAttentionItem[];
+  /** The last turn failed and has not been seen. */
+  failed: AgentAttentionItem[];
+  /** The last turn finished and has not been seen. */
   ready: AgentAttentionItem[];
   working: AgentAttentionItem[];
   /** Everything else, most recently active first. */
-  recent: AgentAttentionItem[];
+  done: AgentAttentionItem[];
 };
 
 /** When a session entered its current state. */
@@ -91,10 +96,11 @@ export function agentAttentionSections(
   providerFilter: AgentProviderId | null = null,
 ): AgentAttentionSections {
   const sections: AgentAttentionSections = {
-    needsYou: [],
+    needsInput: [],
+    failed: [],
     ready: [],
     working: [],
-    recent: [],
+    done: [],
   };
   for (const group of groups) {
     for (const item of group.sessions) {
@@ -106,10 +112,11 @@ export function agentAttentionSections(
         state,
         since: agentSessionStateSince(item.session, state),
       };
-      if (agentSessionNeedsOwner(state)) sections.needsYou.push(entry);
+      if (state === "approval" || state === "question") sections.needsInput.push(entry);
+      else if (state === "failed") sections.failed.push(entry);
       else if (state === "unread") sections.ready.push(entry);
       else if (state === "working") sections.working.push(entry);
-      else sections.recent.push(entry);
+      else sections.done.push(entry);
     }
   }
   for (const list of Object.values(sections)) {

@@ -2,23 +2,71 @@
 
 import { useId, useMemo, useState } from "react";
 import { useLocation } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, CircleDashed, Clock, Hand } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+  CircleX,
+} from "lucide-react";
 import type {
   AgentConnectionListItem,
   AgentProviderId,
 } from "@overtchat/agent-bridge";
-import { AgentSessionRow } from "@/components/agents/AgentSessionRow";
-import { AgentSessionStatusIcon } from "@/components/agents/AgentSessionStatus";
+import {
+  AgentSessionListToggle,
+  AgentSessionRow,
+} from "@/components/agents/AgentSessionRow";
 import {
   agentAttentionSections,
   type AgentAttentionItem,
+  type AgentAttentionSections,
 } from "@/lib/agents/attention";
 import { groupAgentWorkspaces } from "@/lib/agents/workspaces";
-import { useSetAgentSessionRead } from "@/lib/queries/agentSessionRead";
+import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useNow } from "@/lib/useNow";
+import { cn } from "@/lib/utils";
 
-/** Recent sessions listed before "Show more"; the other sections list everything. */
-export const RECENT_PREVIEW_COUNT = 7;
+/** Done sessions listed before "Show more"; the other groups list everything. */
+export const DONE_PREVIEW_COUNT = 7;
+
+const COLLAPSED_GROUPS_KEY = "overtchat:agent-status-collapsed";
+const NO_COLLAPSED_GROUPS: string[] = [];
+
+type StatusGroupKey = keyof AgentAttentionSections;
+
+const STATUS_GROUPS: {
+  key: StatusGroupKey;
+  label: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    key: "needsInput",
+    label: "Needs input",
+    icon: <CircleAlert aria-hidden="true" className="size-3.5 text-amber-500" />,
+  },
+  {
+    key: "failed",
+    label: "Failed",
+    icon: <CircleX aria-hidden="true" className="size-3.5 text-red-500 dark:text-red-400" />,
+  },
+  {
+    key: "ready",
+    label: "Ready to review",
+    icon: <CircleCheck aria-hidden="true" className="size-3.5 text-green-600 dark:text-green-500" />,
+  },
+  {
+    key: "working",
+    label: "Working",
+    icon: <CircleDot aria-hidden="true" className="size-3.5 text-blue-500 dark:text-blue-400" />,
+  },
+  {
+    key: "done",
+    label: "Done",
+    icon: <CircleCheck aria-hidden="true" className="size-3.5" />,
+  },
+];
 
 /** Every agent session, grouped by what it needs from its owner. */
 export function SidebarAgentStatusList({
@@ -32,30 +80,26 @@ export function SidebarAgentStatusList({
     () => agentAttentionSections(groupAgentWorkspaces(connections), providerFilter),
     [connections, providerFilter],
   );
-  const setRead = useSetAgentSessionRead();
-  const [showAllRecent, setShowAllRecent] = useState(false);
-  const recentListId = useId();
-  const working = sections.working.length > 0;
+  const [storedCollapsed, setStoredCollapsed] = useLocalStorage<unknown>(
+    COLLAPSED_GROUPS_KEY,
+    NO_COLLAPSED_GROUPS,
+  );
+  const collapsed = Array.isArray(storedCollapsed) ? storedCollapsed : NO_COLLAPSED_GROUPS;
+  const [showAllDone, setShowAllDone] = useState(false);
+  const doneListId = useId();
   // Running times tick each second; ages only need the minute.
-  const now = useNow(working ? 1_000 : 30_000);
+  const now = useNow(sections.working.length > 0 ? 1_000 : 30_000);
   const pathname = useLocation({ select: (location) => location.pathname });
-  // The open session stays listed when it is older than the preview.
-  const recent = showAllRecent
-    ? sections.recent
-    : sections.recent.filter(
+  // Only Done is shortened, and the open session stays listed when it is older.
+  const done = showAllDone
+    ? sections.done
+    : sections.done.filter(
         ({ item }, index) =>
-          index < RECENT_PREVIEW_COUNT ||
+          index < DONE_PREVIEW_COUNT ||
           pathname === `/agents/${item.session.id}`,
       );
-  const hiddenRecent = sections.recent.length - recent.length;
 
-  if (
-    sections.needsYou.length +
-      sections.ready.length +
-      sections.working.length +
-      sections.recent.length ===
-    0
-  ) {
+  if (Object.values(sections).every((items) => items.length === 0)) {
     return (
       <p className="px-2 py-1.5 text-xs text-muted-foreground">
         No sessions yet.
@@ -63,112 +107,101 @@ export function SidebarAgentStatusList({
     );
   }
   return (
-    <div className="flex flex-col gap-1 pb-1">
-      <StatusSection
-        label="Needs you"
-        icon={<Hand aria-hidden="true" className="size-3.5 text-amber-500" />}
-        items={sections.needsYou}
-        now={now}
-      />
-      <StatusSection
-        label="Ready to review"
-        icon={<AgentSessionStatusIcon state="unread" />}
-        items={sections.ready}
-        now={now}
-        action={
-          <button
-            type="button"
-            onClick={() => {
-              for (const { item } of sections.ready) {
-                setRead.mutate({ sessionId: item.session.id, read: true });
-              }
-            }}
-            className="rounded px-1 text-[11px] text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
-          >
-            Mark all read
-          </button>
-        }
-      />
-      <StatusSection
-        label="Working"
-        icon={<CircleDashed aria-hidden="true" className="size-3.5 text-muted-foreground" />}
-        items={sections.working}
-        now={now}
-      />
-      <StatusSection
-        label="Recent"
-        icon={<Clock aria-hidden="true" className="size-3.5 text-muted-foreground" />}
-        items={recent}
-        count={sections.recent.length}
-        now={now}
-        listId={recentListId}
-        footer={
-          sections.recent.length > RECENT_PREVIEW_COUNT && (
-            <li>
-              <button
-                type="button"
-                aria-expanded={showAllRecent}
-                aria-controls={recentListId}
-                onClick={() => setShowAllRecent((current) => !current)}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground max-md:min-h-11"
-              >
-                {showAllRecent ? (
-                  <ChevronUp aria-hidden="true" className="size-3.5" />
-                ) : (
-                  <ChevronDown aria-hidden="true" className="size-3.5" />
-                )}
-                <span>{showAllRecent ? "Show less" : `Show ${hiddenRecent} more`}</span>
-              </button>
-            </li>
-          )
-        }
-      />
+    <div className="flex flex-col gap-3 pb-1">
+      {STATUS_GROUPS.map(({ key, label, icon }) =>
+        sections[key].length === 0 ? null : (
+          <StatusGroup
+            key={key}
+            label={label}
+            icon={icon}
+            items={key === "done" ? done : sections[key]}
+            now={now}
+            collapsed={collapsed.includes(key)}
+            onToggle={() =>
+              setStoredCollapsed(
+                collapsed.includes(key)
+                  ? collapsed.filter((item) => item !== key)
+                  : [...collapsed, key],
+              )
+            }
+            listId={key === "done" ? doneListId : undefined}
+            footer={
+              key === "done" &&
+              sections.done.length > DONE_PREVIEW_COUNT && (
+                <AgentSessionListToggle
+                  expanded={showAllDone}
+                  hiddenCount={sections.done.length - done.length}
+                  onToggle={() => setShowAllDone((current) => !current)}
+                  controls={doneListId}
+                />
+              )
+            }
+          />
+        ),
+      )}
     </div>
   );
 }
 
-function StatusSection({
+function StatusGroup({
   label,
   icon,
   items,
-  count = items.length,
   now,
-  action,
+  collapsed,
+  onToggle,
   footer,
   listId,
 }: {
   label: string;
   icon: React.ReactNode;
   items: AgentAttentionItem[];
-  count?: number;
   now: number;
-  action?: React.ReactNode;
+  collapsed: boolean;
+  onToggle: () => void;
   footer?: React.ReactNode;
   listId?: string;
 }) {
-  if (count === 0) return null;
+  const fallbackListId = useId();
+  const id = listId ?? fallbackListId;
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
   return (
-    <section aria-label={label} className="group/section">
-      <div className="mt-2 mb-0.5 flex min-h-6 items-center gap-1.5 px-2">
-        <span className="flex w-3.5 shrink-0 justify-center">{icon}</span>
-        <h2 className="text-xs font-medium text-muted-foreground">{label}</h2>
-        <span className="text-xs tabular-nums text-muted-foreground/70">{count}</span>
-        {action && (
-          <span className="ml-auto opacity-0 motion-opacity group-hover/section:opacity-100 group-focus-within/section:opacity-100 [@media(hover:none)]:opacity-100">
-            {action}
+    <section aria-label={label}>
+      <h2>
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls={id}
+          onClick={onToggle}
+          className="group/header flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground outline-none motion-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
+        >
+          {/* The group's mark turns into its chevron while pointed at. */}
+          <span className="flex w-3.5 shrink-0 justify-center">
+            <span className="flex group-hover/header:hidden group-focus-visible/header:hidden">
+              {icon}
+            </span>
+            <Chevron
+              aria-hidden="true"
+              className="hidden size-3.5 group-hover/header:block group-focus-visible/header:block"
+            />
           </span>
+          <span className="truncate">{label}</span>
+        </button>
+      </h2>
+      <ul id={id} hidden={collapsed} className={cn("mt-0.5 flex-col gap-0.5", collapsed ? "hidden" : "flex")}>
+        {!collapsed && (
+          <>
+            {items.map((entry) => (
+              <AgentSessionRow
+                key={entry.item.session.id}
+                entry={entry}
+                now={now}
+                context="all"
+              />
+            ))}
+            {footer}
+          </>
         )}
-      </div>
-      <ul id={listId} className="flex flex-col gap-0.5">
-        {items.map((entry) => (
-          <AgentSessionRow
-            key={entry.item.session.id}
-            entry={entry}
-            now={now}
-            context="all"
-          />
-        ))}
-        {footer}
       </ul>
     </section>
   );

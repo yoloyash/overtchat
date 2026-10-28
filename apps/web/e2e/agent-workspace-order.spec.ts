@@ -258,7 +258,7 @@ for (const mobile of [false, true]) {
     await expect(working.getByRole("link")).toHaveAccessibleName(
       /^Working: Run the release checks \d+[smh]/,
     );
-    const recent = page.getByRole("region", { name: "Recent", exact: true });
+    const recent = page.getByRole("region", { name: "Done", exact: true });
     await expect(recent.getByRole("link")).toHaveCount(7);
     expect(
       await recent
@@ -304,7 +304,7 @@ for (const mobile of [false, true]) {
       .first();
     await expect(expand).toContainText("macbook");
     await expect(
-      expand.getByRole("status", { name: "1 running chat in overtchat" }),
+      expand.getByRole("status", { name: "Working in overtchat" }),
     ).toBeVisible();
     await expect(
       expand.getByLabel("3 changed files", { exact: true }),
@@ -344,14 +344,14 @@ for (const mobile of [false, true]) {
     await page
       .getByRole("button", { name: "Agent list options", exact: true })
       .click();
-    const filter = page.getByRole("menuitem", { name: "Filter chats" });
+    const filter = page.getByRole("menuitem", { name: "Filter by agent" });
     if (mobile) await filter.click();
     else await filter.hover();
     await page.getByRole("menuitemradio", { name: "Pi", exact: true }).click();
     await expect(local.getByRole("link")).toHaveCount(1);
     await expect(local).toContainText("Review the sidebar design");
     await expect(
-      local.getByRole("status", { name: "1 running chat in overtchat" }),
+      local.getByRole("status", { name: "Working in overtchat" }),
     ).toHaveCount(0);
 
     await local.getByRole("link").click();
@@ -408,7 +408,7 @@ test("mouse and keyboard reorder grouped workspaces, persist locally, and preser
   await expect(
     list(page).getByRole("button", { name: "Collapse Gamma" }),
   ).toBeVisible();
-  await expect(list(page).getByText("No agent chats")).toHaveCount(1);
+  await expect(list(page).getByText("No sessions")).toHaveCount(1);
   await list(page).screenshot({
     path: test.info().outputPath("workspace-order.png"),
   });
@@ -620,7 +620,7 @@ test("Organize controls stay on the right and Done restores the normal sidebar",
   ).toBeVisible();
 });
 
-test("Filter chats submenu retains the provider selection", async ({
+test("Filter by agent submenu retains the provider selection", async ({
   page,
 }) => {
   await setup(page);
@@ -633,22 +633,22 @@ test("Filter chats submenu retains the provider selection", async ({
   await expect(
     page.getByRole("menuitemradio", { name: "Codex", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await page.getByRole("menuitemradio", { name: "Codex", exact: true }).click();
-  await expect(list(page).getByText("No Codex chats")).toBeVisible();
+  await expect(list(page).getByText("No Codex sessions")).toBeVisible();
   const options = page.getByRole("button", {
     name: "Agent list options, filtered by Codex",
     exact: true,
   });
   await options.click();
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await expect(
     page.getByRole("menuitemradio", { name: "Codex", exact: true }),
   ).toHaveAttribute("aria-checked", "true");
   await page
     .getByRole("menuitemradio", { name: "All agents", exact: true })
     .click();
-  await expect(list(page).getByText("No agent chats")).toBeVisible();
+  await expect(list(page).getByText("No sessions")).toBeVisible();
 });
 
 for (const mobile of [false, true]) {
@@ -837,7 +837,12 @@ for (const mobile of [false, true]) {
       name: "Add workspace…",
       exact: true,
     });
-    await expect(page.getByRole("menuitem").first()).toHaveText("Add workspace…");
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Filter by agent",
+      "Organize workspaces",
+      "Add workspace…",
+      "Refresh sessions",
+    ]);
     await expect(addWorkspace).toHaveAttribute("href", "/settings/connections?add=1");
     await addWorkspace.focus();
     await page.keyboard.press("Enter");

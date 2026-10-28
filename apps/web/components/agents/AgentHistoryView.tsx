@@ -15,10 +15,7 @@ import {
   AgentSessionStatusIcon,
   agentSessionStateLabel,
 } from "@/components/agents/AgentSessionStatus";
-import {
-  agentSessionRowDetail,
-  agentSessionRowTitle,
-} from "@/components/agents/AgentSessionRow";
+import { agentSessionRowTitle } from "@/components/agents/AgentSessionRow";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -309,9 +306,11 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
   const { session, provider } = item;
   const title = agentSessionRowTitle(entry);
   const needsOwner = agentSessionNeedsOwner(state);
-  const snippet =
-    needsOwner || state === "unread"
-      ? agentSessionRowDetail(entry, "workspace")
+  // What it is asking, why it failed, or how it last replied.
+  const snippet = session.attention
+    ? [session.attention.title, session.attention.detail].filter(Boolean).join(" · ")
+    : state === "failed"
+      ? session.lastTurn?.error || "The last turn failed."
       : session.lastTurn?.preview ||
         (session.firstMessage && session.firstMessage !== title ? session.firstMessage : null);
   return (

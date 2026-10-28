@@ -1572,14 +1572,16 @@ remain compatible.
 For administrators the sidebar switches between Chat and Agents. The mode
 follows the URL (`/agents…` is Agents; settings keep the current mode), and
 each mode returns to the page last open in it. Agents mode groups sessions by
-status by default: those that need you (an approval, a question or an unseen
-failure), are ready to review, are working, then every other session by recent
-activity. Its list options switch to grouping by workspace, kept per device.
-While in Chat mode, the Agents toggle counts sessions that need you. Opening a
-session while the page is visible marks its latest turn read. `/agents` opens a
-new session with the most recently used agent and workspace; a picker switches
-to any other, and recent ones are offered as cards. `/agents/history` searches every session by title, first message,
-last reply, workspace, host and agent, with the filters kept in the URL.
+status by default: needs input (an approval or a question), failed, ready to
+review (an unseen result), working, then done, by recent activity. Only Done is
+shortened, and each group folds from its header. Its list options switch to
+grouping by workspace, kept per device, and mark every finished session read.
+While in Chat mode, the Agents toggle counts sessions that need input or failed.
+Opening a session while the page is visible marks its latest turn read.
+`/agents` opens a new session with the most recently used agent and workspace,
+and a picker above the composer switches to any other. `/agents/history`
+searches every session by title, first message, last reply, workspace, host and
+agent, with the filters kept in the URL.
 `apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
 session-list and event-stream responses.
 

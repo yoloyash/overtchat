@@ -642,7 +642,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   await expect(
     page.getByRole("menuitem", { name: "Add workspace…", exact: true }),
   ).toHaveAttribute("href", "/settings/connections?add=1");
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await expect(
     page.getByRole("menuitemradio", { name: "All agents" }),
   ).toBeVisible();
@@ -664,7 +664,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
       name: "Agent list options, filtered by Codex",
     })
     .click();
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await page.getByRole("menuitemradio", { name: "All agents" }).click();
   await page.screenshot({
     path: testInfo.outputPath("workspace-leading-provider-logos.png"),
@@ -673,8 +673,8 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   });
 
   await page.getByRole("button", { name: "Agent list options" }).click();
-  await page.getByRole("menuitem", { name: "Refresh all chats" }).click();
-  await expect(page.getByText("Chats refreshed", { exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Refresh sessions" }).click();
+  await expect(page.getByText("Sessions refreshed", { exact: true })).toBeVisible();
 
   await page
     .getByRole("button", { name: `New session in ${workspaceName}` })

@@ -51,13 +51,13 @@ export function AgentSetupPicker({
       <SelectTrigger
         size="sm"
         aria-label="Workspace and agent"
-        className="mx-auto mt-2 max-w-full"
+        className="max-w-full"
       >
         <SelectValue className="min-w-0 gap-1.5">
           {() => <SetupLabel setup={current} />}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} className="w-auto max-w-[min(28rem,calc(100vw-2rem))]">
+      <SelectContent align="start" alignItemWithTrigger={false} className="w-auto max-w-[min(28rem,calc(100vw-2rem))]">
         {setups.map((setup) => (
           <SelectItem key={setup.workspaceId} value={setup.workspaceId}>
             <SetupLabel setup={setup} />

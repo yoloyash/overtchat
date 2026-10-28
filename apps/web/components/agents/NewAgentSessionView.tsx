@@ -2,7 +2,7 @@
 
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { generateId } from "ai";
 import type {
@@ -44,11 +44,7 @@ import { newAgentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
-import { AgentProviderLogo } from "./AgentSessionStatus";
 import { AgentSetupPicker } from "./AgentSetupPicker";
-
-/** Other recently used agents and workspaces offered for a quick switch. */
-const RECENT_SETUP_COUNT = 3;
 
 export function NewAgentSessionView({
   provider,
@@ -89,11 +85,6 @@ export function NewAgentSessionView({
     () => recentAgentSetups(connections.data ?? []),
     [connections.data],
   );
-  const otherSetups = setups
-    .filter(
-      (setup) => setup.activityAt > 0 && setup.workspaceId !== workspaceId,
-    )
-    .slice(0, RECENT_SETUP_COUNT);
   const createSession = useCreateAgentSession();
   const [sendingFirstPrompt, setSendingFirstPrompt] = useState(false);
   const [modelId, setModelId] = useState("");
@@ -306,171 +297,131 @@ export function NewAgentSessionView({
         </span>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col">
-        <div className="flex flex-1 items-center justify-center px-6 text-center">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              New {providerMetadata.label} session
-            </h1>
+      {/* The title and setup sit on the composer, centred; on phones they drop to the thumb. */}
+      <main className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:justify-center md:pb-[12vh]">
+        <div className="mx-auto w-full max-w-3xl">
+          <h1 className="mb-6 px-1 text-2xl tracking-tight max-md:sr-only">
+            New {providerMetadata.label} session
+          </h1>
+          <div className="mb-2 flex min-w-0 items-center">
             {forkId || !setups.some((setup) => setup.workspaceId === workspaceId) ? (
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="truncate px-1 text-sm text-muted-foreground">
                 {workspaceName}
               </p>
             ) : (
               <AgentSetupPicker setups={setups} workspaceId={workspaceId} />
             )}
-            {!forkId && otherSetups.length > 0 && (
-              <nav aria-label="Recent setups" className="mt-8">
-                <h2 className="text-xs font-medium text-muted-foreground">
-                  Recent
-                </h2>
-                <ul className="mt-2 flex flex-wrap justify-center gap-2">
-                  {otherSetups.map((setup) => (
-                    <li key={setup.workspaceId}>
-                      <Link
-                        to="/agents/new"
-                        search={{
-                          workspaceId: setup.workspaceId,
-                          provider: setup.provider,
-                        }}
-                        replace
-                        className="flex w-60 items-center gap-2.5 rounded-lg border bg-card px-3 py-2 text-left outline-none motion-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <AgentProviderLogo
-                          provider={setup.provider}
-                          className="size-6 rounded-md opacity-100 [&>img]:size-4"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
-                            {setup.workspaceName}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {agentProviderMetadata(setup.provider).label} ·{" "}
-                            {setup.hostLabel}
-                          </span>
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            )}
           </div>
-        </div>
-
-        <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto max-w-3xl">
-            {forkError && (
-              <ErrorNotice className="mb-3" message="Could not restore the forked conversation. Return to the original session and fork again." />
-            )}
-            {catalog.isError && !catalog.data && (
-              <ErrorNotice className="mb-3" message={catalog.error} fallback="Model defaults could not be loaded." actions={
-                <Button type="button" variant="outline" size="sm" disabled={catalog.isFetching} onClick={() => void catalog.refetch()}>
-                  <RefreshCw /> Retry
-                </Button>
-              } />
-            )}
-            {forkContext && (
-              <label className="mb-3 block text-sm">
-                Workspace
-                <select
-                  autoFocus={chooseWorkspace}
-                  aria-label="Fork workspace"
-                  className="mt-1 block w-full rounded-md border bg-background p-2"
-                  value={targetWorkspaceId}
-                  onChange={(event) => setTargetWorkspaceId(event.target.value)}
-                >
-                  {!workspaceOptions.some(
-                    (workspace) => workspace.id === workspaceId,
-                  ) && <option value={workspaceId}>{workspaceName}</option>}
-                  {workspaceOptions.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {forkContext && (
-              <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                <span>Chat history attached</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setForkContext(null);
-                    if (forkId)
-                      window.sessionStorage.removeItem(
-                        agentForkDraftKey(forkId),
-                      );
-                  }}
-                >
-                  Remove
-                </Button>
-              </div>
-            )}
-            <AgentComposer
-              providerLabel={providerMetadata.label}
-              commands={[]}
-              queuedMessages={[]}
-              supportsSteer={false}
-              supportsImages={selectedModel?.input.includes("image") === true}
-              running={false}
-              pending={pending}
-              stopping={false}
-              disabled={!forkLoaded || forkError || loadingDefaults}
-              isAdmin={isAdmin}
-              controls={{
-                providerLabel: providerMetadata.label,
-                models: catalog.data?.models ?? [],
-                currentModel: selectedModel
-                  ? { provider: selectedModel.provider, id: selectedModel.id }
-                  : null,
-                thinkingLevel: selection.thinkingOptionId || null,
-                thinkingOptions: selectedModel?.thinkingOptions ?? [],
-                collaborationMode: "default",
-                collaborationModes: [],
-                fastModeEnabled: false,
-                fastModeAvailable: false,
-                modeId: selection.modeId,
-                modes: selection.modes,
-                disabled: pending,
-                modelLoading: loadingDefaults,
-                onSelectModel: (model) => {
-                  setModelId(model.id);
-                  setThinkingOptionId("");
-                  updateProviderPreferences({ model: model.id });
-                },
-                onSelectThinking: (level) => {
-                  if (!selectedModel) return;
-                  setThinkingOptionId(level);
-                  updateProviderPreferences({
-                    model: selectedModel.id,
-                    thinkingByModel: { [selectedModel.id]: level },
-                  });
-                },
-                onSelectCollaborationMode: () => undefined,
-                onToggleFastMode: () => undefined,
-                onSelectMode: (selectedModeId) => {
-                  setModeId(selectedModeId);
-                  updateProviderPreferences({ mode: selectedModeId });
-                },
-              }}
-              onSubmit={submit}
-              onStop={() => undefined}
-              onEditQueued={async () => false}
-              onDeleteQueued={async () => false}
-              onSteerQueued={async () => false}
-              draftUserId={authSession?.user.id}
-              // A fork's history lives only in this tab, so its message is not
-              // saved where a later ordinary new session would restore it.
-              draftScope={
-                forkId
-                  ? null
-                  : newAgentComposerDraftScope(workspaceId, provider)
-              }
-            />
-          </div>
+          {forkError && (
+            <ErrorNotice className="mb-3" message="Could not restore the forked conversation. Return to the original session and fork again." />
+          )}
+          {catalog.isError && !catalog.data && (
+            <ErrorNotice className="mb-3" message={catalog.error} fallback="Model defaults could not be loaded." actions={
+              <Button type="button" variant="outline" size="sm" disabled={catalog.isFetching} onClick={() => void catalog.refetch()}>
+                <RefreshCw /> Retry
+              </Button>
+            } />
+          )}
+          {forkContext && (
+            <label className="mb-3 block text-sm">
+              Workspace
+              <select
+                autoFocus={chooseWorkspace}
+                aria-label="Fork workspace"
+                className="mt-1 block w-full rounded-md border bg-background p-2"
+                value={targetWorkspaceId}
+                onChange={(event) => setTargetWorkspaceId(event.target.value)}
+              >
+                {!workspaceOptions.some(
+                  (workspace) => workspace.id === workspaceId,
+                ) && <option value={workspaceId}>{workspaceName}</option>}
+                {workspaceOptions.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {forkContext && (
+            <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+              <span>Chat history attached</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setForkContext(null);
+                  if (forkId)
+                    window.sessionStorage.removeItem(
+                      agentForkDraftKey(forkId),
+                    );
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          )}
+          <AgentComposer
+            providerLabel={providerMetadata.label}
+            commands={[]}
+            queuedMessages={[]}
+            supportsSteer={false}
+            supportsImages={selectedModel?.input.includes("image") === true}
+            running={false}
+            pending={pending}
+            stopping={false}
+            disabled={!forkLoaded || forkError || loadingDefaults}
+            isAdmin={isAdmin}
+            controls={{
+              providerLabel: providerMetadata.label,
+              models: catalog.data?.models ?? [],
+              currentModel: selectedModel
+                ? { provider: selectedModel.provider, id: selectedModel.id }
+                : null,
+              thinkingLevel: selection.thinkingOptionId || null,
+              thinkingOptions: selectedModel?.thinkingOptions ?? [],
+              collaborationMode: "default",
+              collaborationModes: [],
+              fastModeEnabled: false,
+              fastModeAvailable: false,
+              modeId: selection.modeId,
+              modes: selection.modes,
+              disabled: pending,
+              modelLoading: loadingDefaults,
+              onSelectModel: (model) => {
+                setModelId(model.id);
+                setThinkingOptionId("");
+                updateProviderPreferences({ model: model.id });
+              },
+              onSelectThinking: (level) => {
+                if (!selectedModel) return;
+                setThinkingOptionId(level);
+                updateProviderPreferences({
+                  model: selectedModel.id,
+                  thinkingByModel: { [selectedModel.id]: level },
+                });
+              },
+              onSelectCollaborationMode: () => undefined,
+              onToggleFastMode: () => undefined,
+              onSelectMode: (selectedModeId) => {
+                setModeId(selectedModeId);
+                updateProviderPreferences({ mode: selectedModeId });
+              },
+            }}
+            onSubmit={submit}
+            onStop={() => undefined}
+            onEditQueued={async () => false}
+            onDeleteQueued={async () => false}
+            onSteerQueued={async () => false}
+            draftUserId={authSession?.user.id}
+            // A fork's history lives only in this tab, so its message is not
+            // saved where a later ordinary new session would restore it.
+            draftScope={
+              forkId
+                ? null
+                : newAgentComposerDraftScope(workspaceId, provider)
+            }
+          />
         </div>
       </main>
     </div>

@@ -175,12 +175,17 @@ describe("agent attention sections", () => {
 
   it("files sessions by what they need, newest first", () => {
     const sections = agentAttentionSections(groupAgentWorkspaces(connections));
-    const ids = (list: typeof sections.needsYou) =>
+    const ids = (list: typeof sections.done) =>
       list.map((entry) => [entry.item.session.id, entry.state, entry.since]);
-    expect(ids(sections.needsYou)).toEqual([
-      ["failed", "failed", 60],
-      ["approval", "approval", 50],
+    expect(Object.keys(sections)).toEqual([
+      "needsInput",
+      "failed",
+      "ready",
+      "working",
+      "done",
     ]);
+    expect(ids(sections.needsInput)).toEqual([["approval", "approval", 50]]);
+    expect(ids(sections.failed)).toEqual([["failed", "failed", 60]]);
     expect(ids(sections.working)).toEqual([
       ["working-new", "working", 30],
       ["working-old", "working", 20],
@@ -189,7 +194,7 @@ describe("agent attention sections", () => {
       ["ready-new", "unread", 70],
       ["ready-old", "unread", 40],
     ]);
-    expect(ids(sections.recent)).toEqual([
+    expect(ids(sections.done)).toEqual([
       ["stopped", "idle", 45],
       ["idle", "idle", 40],
     ]);

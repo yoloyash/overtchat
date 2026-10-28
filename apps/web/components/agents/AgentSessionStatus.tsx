@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Check,
-  CircleAlert,
-  CircleDot,
-  Loader2,
-  MessageCircleQuestion,
-  ShieldQuestion,
-} from "lucide-react";
+import { Check, CircleAlert, CircleDot, CircleX } from "lucide-react";
 import type {
   AgentProviderId,
   AgentSessionListItem,
@@ -34,7 +27,10 @@ export function agentSessionStateLabel(state: AgentSessionState): string {
   return STATE_LABELS[state];
 }
 
-/** A session's state as a small icon; idle sessions show nothing. */
+/**
+ * A session's state in the slot before its title. Every state fills the slot,
+ * idle with a faint dot, so titles line up whatever their sessions are doing.
+ */
 export function AgentSessionStatusIcon({
   state,
   className,
@@ -42,30 +38,44 @@ export function AgentSessionStatusIcon({
   state: AgentSessionState;
   className?: string;
 }) {
-  const iconClass = cn("size-3.5 shrink-0", className);
+  const box = cn("flex size-3 shrink-0 items-center justify-center", className);
   switch (state) {
     case "approval":
-      return <ShieldQuestion aria-hidden="true" className={cn(iconClass, "text-amber-500")} />;
     case "question":
-      return <MessageCircleQuestion aria-hidden="true" className={cn(iconClass, "text-amber-500")} />;
+      return <CircleAlert aria-hidden="true" className={cn(box, "text-amber-500")} />;
     case "failed":
-      return <CircleAlert aria-hidden="true" className={cn(iconClass, "text-destructive")} />;
+      return <CircleX aria-hidden="true" className={cn(box, "text-red-500 dark:text-red-400")} />;
     case "working":
-      return (
-        <Loader2
-          aria-hidden="true"
-          className={cn(iconClass, "text-muted-foreground", motionClasses.spinner)}
-        />
-      );
+      return <AgentWorkingRing className={box} />;
     case "unread":
       return (
-        <span aria-hidden="true" className={cn("flex items-center justify-center", iconClass)}>
-          <span className="size-2 rounded-full bg-emerald-500" />
+        <span aria-hidden="true" className={box}>
+          <span className="size-1.5 rounded-full bg-green-600 dark:bg-green-500" />
         </span>
       );
     case "idle":
-      return null;
+      return (
+        <span aria-hidden="true" className={box}>
+          <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+        </span>
+      );
   }
+}
+
+/** A dot with a quarter arc turning around it: the one state that moves. */
+function AgentWorkingRing({ className }: { className?: string }) {
+  return (
+    <span aria-hidden="true" className={cn("relative", className)}>
+      <span className="absolute inset-0 rounded-full border-[1.5px] border-blue-500/30 dark:border-blue-400/30" />
+      <span
+        className={cn(
+          "absolute inset-0 rounded-full border-[1.5px] border-transparent border-t-blue-500/90 [animation-duration:900ms] dark:border-t-blue-400/90",
+          motionClasses.spinner,
+        )}
+      />
+      <span className="size-1.5 rounded-full bg-blue-500 dark:bg-blue-400" />
+    </span>
+  );
 }
 
 /** Whether a session has a finished turn its owner can mark read or unread. */

@@ -1490,7 +1490,7 @@ test("shows durable turn activity without changing completed tool status", async
 
   await page.getByRole("button", { name: "Collapse Runtime test" }).click();
   const workspaceActivity = page.getByRole("status", {
-    name: "1 running chat in Runtime test",
+    name: "Working in Runtime test",
   });
   await expect(workspaceActivity).toBeVisible();
   const [activityBox, newSessionBox] = await Promise.all([

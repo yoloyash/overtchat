@@ -6,6 +6,7 @@ import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
   Check,
+  CheckCheck,
   ChevronRight,
   ListFilter,
   GripVertical,
@@ -39,7 +40,12 @@ import {
   SidebarModeToggle,
   useSidebarMode,
 } from "@/components/SidebarModeToggle";
-import { agentAttentionCounts } from "@/lib/agents/attention";
+import {
+  agentAttentionCounts,
+  agentAttentionSections,
+} from "@/lib/agents/attention";
+import { groupAgentWorkspaces } from "@/lib/agents/workspaces";
+import { useSetAgentSessionRead } from "@/lib/queries/agentSessionRead";
 import { useSidebar } from "@/components/sidebar-context";
 import { useActiveChatIds, useChats } from "@/lib/queries/chats";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
@@ -294,11 +300,7 @@ function AgentsSidebar({
         <Link
           to="/agents"
           onClick={closeMobile}
-          aria-current={pathname === "/agents/new" ? "page" : undefined}
-          className={cn(
-            "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
-            pathname === "/agents/new" && "bg-sidebar-accent",
-          )}
+          className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
         >
           <SquarePen className="size-4 shrink-0 text-muted-foreground" />
           <span className="flex-1">New agent</span>
@@ -364,6 +366,15 @@ function AgentSessionList({
     providerFilter && providers.includes(providerFilter)
       ? providerFilter
       : null;
+  const setRead = useSetAgentSessionRead();
+  const readySessionIds = useMemo(
+    () =>
+      agentAttentionSections(
+        groupAgentWorkspaces(connections),
+        activeProviderFilter,
+      ).ready.map(({ item }) => item.session.id),
+    [connections, activeProviderFilter],
+  );
 
   if (!hasWorkspaces) {
     return (
@@ -376,7 +387,7 @@ function AgentSessionList({
         ) : (
           <>
             <p className="px-2 py-1 text-xs text-muted-foreground">
-              Connect a folder to start an agent chat.
+              Connect a folder to start an agent session.
             </p>
             <Link
               to="/settings/connections"
@@ -393,29 +404,29 @@ function AgentSessionList({
     );
   }
 
-  async function refreshAllChats() {
+  async function refreshSessions() {
     try {
       const result = await refresh.mutateAsync();
       const synced = result.created + result.refreshed;
       if (synced === 0) {
         toast.error({
-          title: "Chats could not be refreshed",
+          title: "Sessions could not be refreshed",
           description: result.failures[0]?.message,
         });
       } else if (result.failures.length > 0) {
         toast.warning({
-          title: "Chats refreshed with some errors",
+          title: "Sessions refreshed with some errors",
           description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced; ${result.failures.length} failed.`,
         });
       } else {
         toast.success({
-          title: "Chats refreshed",
+          title: "Sessions refreshed",
           description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced.`,
         });
       }
     } catch (error) {
       toast.error({
-        title: "Chats could not be refreshed",
+        title: "Sessions could not be refreshed",
         description:
           error instanceof Error ? error.message : "Refresh failed.",
       });
@@ -487,36 +498,11 @@ function AgentSessionList({
                           label="Workspace"
                         />
                       </Menu.RadioGroup>
-                      <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-                      <Menu.Item
-                        render={
-                          <Link
-                            to="/settings/connections"
-                            search={{ add: "1" }}
-                            onClick={closeMobile}
-                          />
-                        }
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                      >
-                        <FolderPlus className="size-3.5 text-muted-foreground" />
-                        <span>Add workspace…</span>
-                      </Menu.Item>
-                      <Menu.Item
-                        onClick={() => {
-                          // Workspaces are ordered in the workspace grouping.
-                          setGrouping("workspace");
-                          setOrganizing(true);
-                        }}
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                      >
-                        <GripVertical className="size-3.5 text-muted-foreground" />
-                        <span>Organize workspaces</span>
-                      </Menu.Item>
                       {providers.length > 1 && (
                         <Menu.SubmenuRoot>
                           <Menu.SubmenuTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[popup-open]:bg-accent">
                             <ListFilter className="size-3.5 text-muted-foreground" />
-                            <span>Filter chats</span>
+                            <span>Filter by agent</span>
                             <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
                           </Menu.SubmenuTrigger>
                           <Menu.Portal container={drawerRef}>
@@ -561,9 +547,44 @@ function AgentSessionList({
                         </Menu.SubmenuRoot>
                       )}
                       <Menu.Separator className="mx-1 my-1 h-px bg-border" />
+                      {readySessionIds.length > 0 && (
+                        <Menu.Item
+                          onClick={() => {
+                            for (const sessionId of readySessionIds) {
+                              setRead.mutate({ sessionId, read: true });
+                            }
+                          }}
+                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        >
+                          <CheckCheck className="size-3.5 text-muted-foreground" />
+                          <span>Mark all as read</span>
+                        </Menu.Item>
+                      )}
+                      {grouping === "workspace" && (
+                        <Menu.Item
+                          onClick={() => setOrganizing(true)}
+                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        >
+                          <GripVertical className="size-3.5 text-muted-foreground" />
+                          <span>Organize workspaces</span>
+                        </Menu.Item>
+                      )}
+                      <Menu.Item
+                        render={
+                          <Link
+                            to="/settings/connections"
+                            search={{ add: "1" }}
+                            onClick={closeMobile}
+                          />
+                        }
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <FolderPlus className="size-3.5 text-muted-foreground" />
+                        <span>Add workspace…</span>
+                      </Menu.Item>
                       <Menu.Item
                         disabled={refresh.isPending}
-                        onClick={() => void refreshAllChats()}
+                        onClick={() => void refreshSessions()}
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
                         <RefreshCw
@@ -573,7 +594,7 @@ function AgentSessionList({
                               "animate-spin motion-reduce:animate-none",
                           )}
                         />
-                        <span>Refresh all chats</span>
+                        <span>Refresh sessions</span>
                       </Menu.Item>
                     </Menu.Popup>
                   </Menu.Positioner>
@@ -655,7 +676,7 @@ function AgentListLabel({
 }) {
   return (
     <div className="mt-3 mb-0.5 flex min-h-6 items-center gap-2 px-2">
-      <h2 className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+      <h2 className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
         {children}
       </h2>
       {action}
