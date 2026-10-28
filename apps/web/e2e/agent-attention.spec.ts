@@ -28,21 +28,35 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   await page.waitForURL("**/agents/new?workspaceId=codex-app&provider=codex");
   await expect(sidebarView(page).getByRole("button", { name: "Agents" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("heading", { name: "New Codex session" })).toBeVisible();
-  // Any workspace can be picked, including one never used; it brings its own
-  // most recently used agent and host.
-  await page.getByRole("combobox", { name: "Workspace" }).click();
-  await expect(page.getByRole("option")).toHaveCount(3);
+  // Another machine opens with the folder and agent last used on it.
+  const machine = page.getByRole("combobox", { name: "Machine" });
+  await expect(machine).toContainText("This machine");
+  await machine.click();
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await page.getByRole("option", { name: "home-server" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=claude-api&provider=claude");
+  await expect(page.getByRole("heading", { name: "New Claude Code session" })).toBeVisible();
+  // The folder list holds only that machine's folders; the agent stays.
+  const workspace = page.getByRole("combobox", { name: "Workspace" });
+  await expect(workspace).toContainText("api");
+  await workspace.click();
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await page.getByRole("option", { name: "site" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=claude-site&provider=claude");
+  // Back on this machine, the agent list holds only the agents that have the folder.
+  await machine.click();
+  await page.getByRole("option", { name: "This machine" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=codex-app&provider=codex");
+  await workspace.click();
   await page.getByRole("option", { name: "site" }).click();
   await page.waitForURL("**/agents/new?workspaceId=codex-site&provider=codex");
-  await expect(page.getByRole("combobox", { name: "Workspace" })).toContainText("site");
-  // The agent list holds only the agents and hosts that have that workspace.
   const agent = page.getByRole("combobox", { name: "Agent" });
-  await expect(agent).toContainText("Codex · This machine");
+  await expect(agent).toContainText("Codex");
   await agent.click();
   await expect(page.getByRole("option")).toHaveCount(2);
-  await page.getByRole("option", { name: "Claude Code" }).click();
-  await page.waitForURL("**/agents/new?workspaceId=claude-site&provider=claude");
-  await expect(page.getByRole("heading", { name: "New Claude Code session" })).toBeVisible();
+  await page.getByRole("option", { name: "Oh My Pi" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=omp-site&provider=omp");
+  await expect(page.getByRole("heading", { name: "New Oh My Pi session" })).toBeVisible();
 
   // Every session is listed once, filed by what it needs.
   const needsInput = section(page, "Needs input");

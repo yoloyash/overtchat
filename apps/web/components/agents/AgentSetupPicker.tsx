@@ -1,20 +1,20 @@
 "use client";
 
 import { useNavigate } from "@tanstack/react-router";
-import { Folder } from "lucide-react";
+import { Folder, Monitor, Server } from "lucide-react";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import {
-  agentSetupWorkspaceNames,
-  agentSetupsByHost,
+  agentSetupForWorkspace,
+  agentSetupHosts,
+  agentSetupWorkspaces,
+  agentSetupsForWorkspace,
   type AgentSetup,
 } from "@/lib/agents/setups";
 import { AgentProviderLogo } from "./AgentSessionStatus";
@@ -26,8 +26,9 @@ const PILL =
 const POPUP = "w-auto max-w-[min(28rem,calc(100vw-2rem))]";
 
 /**
- * Switches a new session to any workspace, then to any agent and host that
- * have it. Both lists are ordered by last use.
+ * Switches a new session to another machine, a folder on it, then an agent
+ * that has that folder. The machine is only offered when there is more than
+ * one. Every list is ordered by last use.
  */
 export function AgentSetupPicker({
   setups,
@@ -39,7 +40,14 @@ export function AgentSetupPicker({
   const navigate = useNavigate();
   const current = setups.find((setup) => setup.workspaceId === workspaceId);
   if (!current) return null;
-  const hosts = agentSetupsByHost(setups, current.workspaceName);
+  const hosts = agentSetupHosts(setups);
+  const workspaces = agentSetupWorkspaces(setups, current.hostId);
+  const agents = agentSetupsForWorkspace(
+    setups,
+    current.hostId,
+    current.workspacePath,
+  );
+  const HostIcon = current.transport === "ssh" ? Server : Monitor;
 
   function open(setup: AgentSetup | undefined) {
     if (!setup || setup.workspaceId === workspaceId) return;
@@ -52,19 +60,45 @@ export function AgentSetupPicker({
 
   return (
     <>
+      {hosts.length > 1 && (
+        <Select
+          value={current.hostId}
+          // A machine opens with the folder and agent last used on it.
+          onValueChange={(hostId) =>
+            open(hostId ? agentSetupWorkspaces(setups, hostId)[0] : undefined)
+          }
+        >
+          <SelectTrigger size="sm" aria-label="Machine" title="Machine" className={PILL}>
+            <SelectValue className="min-w-0 gap-1.5">
+              {() => (
+                <>
+                  <HostIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                  <span className="truncate">{current.hostLabel}</span>
+                </>
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start" alignItemWithTrigger={false} className={POPUP}>
+            {hosts.map((host) => (
+              <SelectItem key={host.hostId} value={host.hostId}>
+                {host.hostLabel}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <Select
-        value={current.workspaceName}
-        // The workspace's most recently used agent and host come with it.
-        onValueChange={(name) =>
-          open(setups.find((setup) => setup.workspaceName === name))
+        value={current.workspacePath}
+        // The agent stays if the folder has it; otherwise its last-used agent.
+        onValueChange={(path) =>
+          open(
+            path
+              ? agentSetupForWorkspace(setups, current.hostId, path, current.provider)
+              : undefined,
+          )
         }
       >
-        <SelectTrigger
-          size="sm"
-          aria-label="Workspace"
-          title="Workspace"
-          className={PILL}
-        >
+        <SelectTrigger size="sm" aria-label="Workspace" title="Workspace" className={PILL}>
           <SelectValue className="min-w-0 gap-1.5">
             {() => (
               <>
@@ -75,59 +109,46 @@ export function AgentSetupPicker({
           </SelectValue>
         </SelectTrigger>
         <SelectContent align="start" alignItemWithTrigger={false} className={POPUP}>
-          {agentSetupWorkspaceNames(setups).map((name) => (
-            <SelectItem key={name} value={name}>
-              {name}
+          {workspaces.map((workspace) => (
+            <SelectItem key={workspace.workspacePath} value={workspace.workspacePath}>
+              <span className="truncate">{workspace.workspaceName}</span>
+              {/* Two folders with one name tell apart by path. */}
+              {workspaces.some(
+                (other) =>
+                  other !== workspace && other.workspaceName === workspace.workspaceName,
+              ) && (
+                <span className="truncate text-muted-foreground">
+                  {workspace.workspacePath}
+                </span>
+              )}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       <Select
         value={workspaceId}
-        onValueChange={(id) =>
-          open(setups.find((setup) => setup.workspaceId === id))
-        }
+        onValueChange={(id) => open(setups.find((setup) => setup.workspaceId === id))}
       >
-        <SelectTrigger
-          size="sm"
-          aria-label="Agent"
-          title="Agent and host"
-          className={PILL}
-        >
+        <SelectTrigger size="sm" aria-label="Agent" title="Agent" className={PILL}>
           <SelectValue className="min-w-0 gap-1.5">
             {() => (
               <>
                 <AgentProviderLogo provider={current.provider} className="opacity-100" />
                 <span className="truncate">
                   {agentProviderMetadata(current.provider).label}
-                  <span className="text-muted-foreground/60"> · {current.hostLabel}</span>
                 </span>
               </>
             )}
           </SelectValue>
         </SelectTrigger>
         <SelectContent align="start" alignItemWithTrigger={false} className={POPUP}>
-          {hosts.map((host) => (
-            <SelectGroup key={host.hostLabel}>
-              <SelectLabel>{host.hostLabel}</SelectLabel>
-              {host.setups.map((setup) => (
-                <SelectItem key={setup.workspaceId} value={setup.workspaceId}>
-                  <AgentProviderLogo provider={setup.provider} className="opacity-100" />
-                  <span className="truncate">
-                    {agentProviderMetadata(setup.provider).label}
-                  </span>
-                  {/* Two folders with one name on the same host tell apart by path. */}
-                  {host.setups.some(
-                    (other) =>
-                      other !== setup && other.provider === setup.provider,
-                  ) && (
-                    <span className="truncate text-muted-foreground">
-                      {setup.workspacePath}
-                    </span>
-                  )}
-                </SelectItem>
-              ))}
-            </SelectGroup>
+          {agents.map((setup) => (
+            <SelectItem key={setup.workspaceId} value={setup.workspaceId}>
+              <AgentProviderLogo provider={setup.provider} className="opacity-100" />
+              <span className="truncate">
+                {agentProviderMetadata(setup.provider).label}
+              </span>
+            </SelectItem>
           ))}
         </SelectContent>
       </Select>

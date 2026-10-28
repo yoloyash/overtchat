@@ -77,6 +77,24 @@ export function agentAttentionFixture(): AgentConnectionListItem[] {
       ],
     },
     {
+      id: "omp",
+      provider: "omp",
+      executable: "omp",
+      detectedVersion: "1.0",
+      lastValidatedAt: null,
+      host: {
+        id: "local-host",
+        connectorId: "connector",
+        name: "This machine",
+        transport: "local",
+        sshAlias: null,
+      },
+      // The same folder as codex-site, reachable with another agent.
+      workspaces: [
+        { id: "omp-site", name: "site", path: "/srv/site", sessions: [] },
+      ],
+    },
+    {
       id: "claude",
       provider: "claude",
       executable: "claude",
@@ -90,7 +108,7 @@ export function agentAttentionFixture(): AgentConnectionListItem[] {
         sshAlias: "home-server",
       },
       workspaces: [
-        // The same folder as codex-site, reachable with another agent.
+        // A folder of the same name on another machine.
         { id: "claude-site", name: "site", path: "/srv/site", sessions: [] },
         {
           id: "claude-api",
