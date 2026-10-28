@@ -32,7 +32,11 @@ import {
 } from "@/lib/queries/modelConfigs";
 import { findProvider, isProviderId, PROVIDERS } from "@/lib/providers/catalog";
 import { ThinkingFields } from "./ThinkingFields";
-import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
+import {
+  AdvancedFields,
+  PricingRow,
+  type ModelPricingDraft,
+} from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { CustomImageFields } from "./CustomImageFields";
 import { ConnectionTester } from "./ConnectionTester";
@@ -176,7 +180,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
     !!draft.model &&
-    (isImage || pricingIsValid) &&
+    (isCustomImage || pricingIsValid) &&
     (isImage || !providerOptionsError) &&
     !(requiresKey && !draft.apiKey);
   const stillEditingOriginalConnection =
@@ -256,11 +260,15 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     }
 
     const pricing =
-      isImage || draft.pricing === null
+      isCustomImage || draft.pricing === null
         ? null
         : parsePricingDraft(draft.pricing);
-    if (!isImage && draft.pricing !== null && pricing === null) {
-      setSaveError("Enter all four pricing rates as nonnegative numbers.");
+    if (!isCustomImage && draft.pricing !== null && pricing === null) {
+      setSaveError(
+        isImage
+          ? "Enter input and output rates as nonnegative numbers."
+          : "Enter all four pricing rates as nonnegative numbers.",
+      );
       return;
     }
 
@@ -354,6 +362,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                   modelType: value,
                   reasoningOverride: null,
                   providerOptions: null,
+                  pricing: null,
                   ...(current.providerId === "custom"
                     ? {
                         apiFormat:
@@ -555,6 +564,22 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             />
           </SettingsRow>
         </SettingsSection>
+
+        {isImage && !isCustomImage && (
+          <SettingsSection
+            title="Usage cost"
+            description="Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
+          >
+            <PricingRow
+              pricing={draft.pricing}
+              catalogPricing={catalogPricingHint}
+              onPricingChange={(next) =>
+                setDraft((d) => ({ ...d, pricing: next }))
+              }
+              cacheRates={false}
+            />
+          </SettingsSection>
+        )}
 
         {!isImage && (
           <>

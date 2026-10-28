@@ -15,6 +15,7 @@ export function ChatHeader({
   project,
   contextUsage,
   sessionUsage,
+  imageUsage,
   showTempToggle,
   temporary,
   onToggleTemporary,
@@ -27,6 +28,7 @@ export function ChatHeader({
   project?: { id: string; name: string };
   contextUsage?: { usedTokens: number; contextWindow?: number };
   sessionUsage?: UsageTotals;
+  imageUsage?: UsageTotals;
   showTempToggle: boolean;
   temporary: boolean;
   onToggleTemporary: () => void;
@@ -73,6 +75,7 @@ export function ChatHeader({
         <UsageIndicator
           contextUsage={contextUsage}
           sessionUsage={sessionUsage}
+          imageUsage={imageUsage}
         />
         {showTempToggle ? (
           <Button
