@@ -1,3 +1,4 @@
+import "../lib/random-uuid-fallback";
 import { createRoot } from "react-dom/client";
 import OpenUIRenderer from "../components/chat/OpenUIRenderer";
 import type { ColorTokens, OpenUIFormState } from "@overtchat/shared";
