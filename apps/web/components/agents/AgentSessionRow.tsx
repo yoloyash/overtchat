@@ -4,6 +4,7 @@ import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
+  AgentProviderLogo,
   AgentSessionReadToggle,
   AgentSessionStatusIcon,
   agentSessionCanToggleRead,
@@ -113,8 +114,9 @@ export function AgentSessionRow({
               {agentSessionRowTime(entry, now)}
             </span>
           </span>
-          <span className="block truncate text-xs leading-4 text-muted-foreground">
-            {agentSessionRowMeta(entry, context)}
+          <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
+            <AgentProviderLogo provider={provider} className="size-3" />
+            <span className="truncate">{agentSessionRowMeta(entry, context)}</span>
           </span>
         </span>
       </Link>

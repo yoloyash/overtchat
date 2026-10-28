@@ -300,12 +300,13 @@ export function NewAgentSessionView({
       {/* The title and setup sit on the composer, centred; on phones they drop to the thumb. */}
       <main className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:justify-center md:pb-[12vh]">
         <div className="mx-auto w-full max-w-3xl">
-          <h1 className="mb-6 px-1 text-2xl tracking-tight max-md:sr-only">
+          <h1 className="mb-8 pl-3.5 text-2xl tracking-tight max-md:sr-only">
             New {providerMetadata.label} session
           </h1>
-          <div className="mb-2 flex min-w-0 items-center">
+          {/* The picker's icon lines up with the title and the composer's content. */}
+          <div className="mb-4 flex min-w-0 items-center px-1.5">
             {forkId || !setups.some((setup) => setup.workspaceId === workspaceId) ? (
-              <p className="truncate px-1 text-sm text-muted-foreground">
+              <p className="truncate px-2 text-sm leading-7 text-muted-foreground">
                 {workspaceName}
               </p>
             ) : (
