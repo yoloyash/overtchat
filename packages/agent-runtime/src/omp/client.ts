@@ -16,8 +16,8 @@ import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submissi
 import { PiAssistantMessages } from "@overtchat/agent-runtime/pi/assistant-messages";
 import { PiCompaction } from "@overtchat/agent-runtime/pi/compaction";
 import { randomUUID } from "node:crypto";
-import { normalizeTodoEvent, normalizeTodoMessage, recordOf, type TaskList } from "../pi/todo-messages";
-import { parseOmpTodoPhases, parseOmpTodos } from "./todos";
+import { normalizeTodoEvent, normalizeTodoMessage, recordOf } from "../pi/todo-messages";
+import { OmpTurnTasks, parseOmpTodoPhases, parseOmpTodos, taskListOf } from "./todos";
 
 const READY_TIMEOUT_MS = 30_000;
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
@@ -57,6 +57,7 @@ export class OmpClient {
   private historyGeneration = 0;
   private todoRevision = 0;
   private todoItems: string | undefined;
+  private turnTasks = new OmpTurnTasks();
   private chunk: { id: string; count: number; byteLength: number; parts: Buffer[] } | undefined;
 
   constructor(process: AgentProcess, private readonly modeId: string) {
@@ -96,7 +97,7 @@ export class OmpClient {
         const items = JSON.stringify(tasks.items);
         const changed = this.todoItems !== undefined && items !== this.todoItems;
         this.todoItems = items;
-        if (changed) this.emit({ type: "message_end", message: this.todoMessage(tasks) });
+        if (changed) this.emit({ type: "message_end", message: this.turnTasks.refresh(tasks) });
       }
     }
     const model = state.model;
@@ -163,25 +164,35 @@ export class OmpClient {
     // Native current state also survives compaction and code-mode todo calls
     // whose enclosing tool result is not named "todo".
     const tasks = parseOmpTodoPhases(recordOf(state)?.todoPhases, "omp:tasks:state");
+    // Replay live presentation: one task card per turn, at its newest snapshot.
+    const turnTasks = new OmpTurnTasks();
+    const imported: unknown[] = [];
+    let carrier = -1;
     let previous: string | undefined;
-    for (const message of history.messages) {
-      const record = recordOf(message);
-      if (!Array.isArray(record?.content)) continue;
-      for (const part of record.content) {
-        if (recordOf(part)?.type === "taskList") previous = JSON.stringify(recordOf(part)?.items);
+    for (const native of history.messages) {
+      if (recordOf(native)?.role === "user") {
+        turnTasks.startTurn();
+        carrier = -1;
+      }
+      const { superseded, message } = turnTasks.add(native);
+      if (superseded) imported[carrier] = superseded;
+      imported.push(message);
+      const part = taskListOf(message);
+      if (part) {
+        carrier = imported.length - 1;
+        previous = JSON.stringify(part.items);
       }
     }
     if (tasks) {
       this.todoItems = JSON.stringify(tasks.items);
       if (this.todoItems !== previous && (previous !== undefined || tasks.items.length)) {
-        history.messages.push(this.todoMessage(tasks));
+        const message = turnTasks.refresh(tasks);
+        if (carrier >= 0) imported[carrier] = message;
+        else imported.push(message);
       }
     }
-    return history;
-  }
-
-  private todoMessage(tasks: TaskList) {
-    return { role: "assistant", id: tasks.id, content: [tasks] };
+    this.turnTasks = turnTasks;
+    return { messages: imported };
   }
 
   private async identifyMessages(
@@ -240,6 +251,7 @@ export class OmpClient {
     this.submissionEchoes.clear();
     this.assistantMessages.clear();
     this.todoItems = undefined;
+    this.turnTasks.startTurn();
   }
 
   prompt(
@@ -346,19 +358,25 @@ export class OmpClient {
     }
     if (typeof record.type !== "string") { this.transport.fail("Oh My Pi RPC event is missing a type."); return; }
     if (this.compaction.handle(record as OmpEvent)) return;
-    const event = normalizeTodoEvent(mapOmpUiRequest(
+    let event = normalizeTodoEvent(mapOmpUiRequest(
       this.assistantMessages.annotate(
         this.submissionEchoes.annotate(record) as OmpEvent,
       ),
     ) as OmpEvent, parseOmpTodos) as OmpEvent;
+    if (
+      event.type === "agent_start" ||
+      (["message_start", "message_end"].includes(event.type) && recordOf(event.message)?.role === "user")
+    ) {
+      this.turnTasks.startTurn();
+    }
     if (event.type === "message_end") {
-      const message = recordOf(event.message);
-      if (Array.isArray(message?.content)) {
-        const tasks = message.content.find((part) => recordOf(part)?.type === "taskList");
-        if (tasks) {
-          this.todoRevision += 1;
-          this.todoItems = JSON.stringify(recordOf(tasks)?.items);
-        }
+      const tasks = taskListOf(event.message);
+      if (tasks) {
+        this.todoRevision += 1;
+        this.todoItems = JSON.stringify(tasks.items);
+        const { superseded, message } = this.turnTasks.add(event.message);
+        if (superseded) this.emit({ type: "message_end", message: superseded });
+        event = { ...event, message };
       }
     }
     this.emit(event);
