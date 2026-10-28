@@ -39,6 +39,7 @@ import { motionClasses } from "@/lib/motion";
 import {
   API_FORMATS,
   EXPLICIT_API_FORMAT_IDS,
+  findProvider,
   getProvider,
   modelIconForModel,
   PROVIDERS,
@@ -69,6 +70,8 @@ export interface ConnectionFieldsProps {
   onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
   imageModel?: boolean;
+  /** Names a provider that the desktop app's bundled catalog predates. */
+  providerLabel?: string;
 }
 
 export function ConnectionFields({
@@ -83,9 +86,12 @@ export function ConnectionFields({
   onCapabilitySuggestion,
   autoFetchModels = false,
   imageModel = false,
+  providerLabel,
 }: ConnectionFieldsProps) {
-  const provider = getProvider(draft.providerId);
-  const requiresKey = provider.requiresApiKey;
+  // Undefined in a desktop app older than the provider; the server validates it.
+  const provider = findProvider(draft.providerId);
+  const providerName = provider?.label ?? providerLabel ?? draft.providerId;
+  const requiresKey = provider?.requiresApiKey ?? false;
 
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [modelMode, setModelMode] = useState<"manual" | "list">("manual");
@@ -275,14 +281,20 @@ export function ConnectionFields({
           }}
         >
           <SelectTrigger id="p-provider" className="w-full">
-            <ModelBrandIcon iconId={provider.iconId} />
+            <ModelBrandIcon iconId={provider?.iconId ?? null} />
             <SelectValue>
-              {imageModel && provider.id === "custom"
+              {imageModel && provider?.id === "custom"
                 ? "Custom (OpenAI-compatible)"
-                : provider.label}
+                : providerName}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
+            {!provider && (
+              <SelectItem value={draft.providerId}>
+                <ModelBrandIcon iconId={null} />
+                {providerName}
+              </SelectItem>
+            )}
             {PROVIDER_IDS.filter(
               (id) =>
                 !imageModel ||
@@ -344,7 +356,7 @@ export function ConnectionFields({
       <SettingsRow
         title="Endpoint"
         description={
-          provider.localRuntime
+          provider?.localRuntime
             ? "Base URL for the model API. If overtchat runs in Docker, use host.docker.internal instead of localhost."
             : "Base URL for the model API."
         }
@@ -355,7 +367,7 @@ export function ConnectionFields({
         <Input
           id="p-base-url"
           className="w-full"
-          placeholder={provider.defaultBaseUrl || "https://api.example.com/v1"}
+          placeholder={provider?.defaultBaseUrl || "https://api.example.com/v1"}
           required
           autoFocus={draft.providerId === "custom"}
           value={draft.baseUrl}
@@ -370,8 +382,10 @@ export function ConnectionFields({
         title="API key"
         description={
           requiresKey
-            ? `Required for ${provider.label}.`
-            : "Optional for local or custom endpoints."
+            ? `Required for ${providerName}.`
+            : provider
+              ? "Optional for local or custom endpoints."
+              : `Enter the key ${providerName} needs, if any.`
         }
         htmlFor="p-api-key"
         align="center"
@@ -480,7 +494,7 @@ export function ConnectionFields({
                       : draft.providerId === "google"
                         ? "gemini-3.1-flash-image"
                         : "gpt-image-1"
-                    : provider.modelPlaceholder
+                    : (provider?.modelPlaceholder ?? "model-id")
                 }
                 required
                 value={draft.model}
