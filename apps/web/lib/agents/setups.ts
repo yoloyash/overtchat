@@ -43,3 +43,33 @@ export function recentAgentSetups(
   // Array sort is stable, so equal activity keeps list order.
   return setups.sort((left, right) => right.activityAt - left.activityAt);
 }
+
+/** Each workspace name once, in the order its setups were last used. */
+export function agentSetupWorkspaceNames(
+  setups: readonly AgentSetup[],
+): string[] {
+  return Array.from(new Set(setups.map((setup) => setup.workspaceName)));
+}
+
+export type AgentSetupHostGroup = {
+  hostLabel: string;
+  setups: AgentSetup[];
+};
+
+/**
+ * The setups that have a workspace of this name, grouped by host. Hosts and
+ * the setups within them keep the order they were last used.
+ */
+export function agentSetupsByHost(
+  setups: readonly AgentSetup[],
+  workspaceName: string,
+): AgentSetupHostGroup[] {
+  const groups: AgentSetupHostGroup[] = [];
+  for (const setup of setups) {
+    if (setup.workspaceName !== workspaceName) continue;
+    const group = groups.find((item) => item.hostLabel === setup.hostLabel);
+    if (group) group.setups.push(setup);
+    else groups.push({ hostLabel: setup.hostLabel, setups: [setup] });
+  }
+  return groups;
+}

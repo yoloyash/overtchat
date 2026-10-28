@@ -90,6 +90,8 @@ export function agentAttentionFixture(): AgentConnectionListItem[] {
         sshAlias: "home-server",
       },
       workspaces: [
+        // The same folder as codex-site, reachable with another agent.
+        { id: "claude-site", name: "site", path: "/srv/site", sessions: [] },
         {
           id: "claude-api",
           name: "api",
