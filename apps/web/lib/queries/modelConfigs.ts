@@ -16,9 +16,9 @@ import { CLIENT_HEADER } from "@overtchat/shared";
 import { apiUrl, getApiOrigin } from "@/lib/api-url";
 
 /**
- * Pages served by this server render every provider ID it returns. The
- * desktop app's cross-origin requests omit the header because older servers'
- * CORS preflights reject it; it keeps the view older clients get.
+ * Pages served by this server identify themselves here. Bundled clients make
+ * cross-origin requests, where the header would need a CORS preflight that
+ * older servers reject; the desktop app adds it in its main process instead.
  */
 function adminHeaders(): Record<string, string> {
   return getApiOrigin() ? {} : { [CLIENT_HEADER]: "web" };
