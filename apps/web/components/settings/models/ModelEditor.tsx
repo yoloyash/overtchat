@@ -30,7 +30,7 @@ import {
   useCreateModelConfig,
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
-import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
+import { findProvider, isProviderId, PROVIDERS } from "@/lib/providers/catalog";
 import { ThinkingFields } from "./ThinkingFields";
 import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
@@ -152,7 +152,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const isImage = draft.modelType === "image";
   const isCustomImage = isImage && draft.providerId === "custom";
-  const requiresKey = getProvider(draft.providerId).requiresApiKey;
+  // The server validates providers that the desktop app's catalog predates.
+  const requiresKey = findProvider(draft.providerId)?.requiresApiKey ?? false;
   const parsedPricing =
     draft.pricing === null ? null : parsePricingDraft(draft.pricing);
   const pricingIsValid = draft.pricing === null || parsedPricing !== null;
@@ -260,6 +261,13 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         : parsePricingDraft(draft.pricing);
     if (!isImage && draft.pricing !== null && pricing === null) {
       setSaveError("Enter all four pricing rates as nonnegative numbers.");
+      return;
+    }
+
+    if (!isProviderId(draft.providerId)) {
+      setSaveError(
+        `Update the app to edit models that use ${existing?.displayProvider ?? draft.providerId}.`,
+      );
       return;
     }
 
@@ -384,6 +392,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <ConnectionFields
             key={draft.modelType}
             imageModel={isImage}
+            providerLabel={existing?.displayProvider}
             previouslyUsedApiKeys={previouslyUsedApiKeys}
             draft={{
               providerId: draft.providerId,
