@@ -45,6 +45,7 @@ import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
 import { AgentProviderLogo } from "./AgentSessionStatus";
+import { AgentSetupPicker } from "./AgentSetupPicker";
 
 /** Other recently used agents and workspaces offered for a quick switch. */
 const RECENT_SETUP_COUNT = 3;
@@ -84,16 +85,15 @@ export function NewAgentSessionView({
       })),
     );
   const catalog = useAgentWorkspaceCatalog(targetWorkspaceId, provider);
-  const otherSetups = useMemo(
-    () =>
-      recentAgentSetups(connections.data ?? [])
-        .filter(
-          (setup) =>
-            setup.activityAt > 0 && setup.workspaceId !== workspaceId,
-        )
-        .slice(0, RECENT_SETUP_COUNT),
-    [connections.data, workspaceId],
+  const setups = useMemo(
+    () => recentAgentSetups(connections.data ?? []),
+    [connections.data],
   );
+  const otherSetups = setups
+    .filter(
+      (setup) => setup.activityAt > 0 && setup.workspaceId !== workspaceId,
+    )
+    .slice(0, RECENT_SETUP_COUNT);
   const createSession = useCreateAgentSession();
   const [sendingFirstPrompt, setSendingFirstPrompt] = useState(false);
   const [modelId, setModelId] = useState("");
@@ -312,9 +312,13 @@ export function NewAgentSessionView({
             <h1 className="text-xl font-semibold tracking-tight">
               New {providerMetadata.label} session
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {workspaceName}
-            </p>
+            {forkId || !setups.some((setup) => setup.workspaceId === workspaceId) ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {workspaceName}
+              </p>
+            ) : (
+              <AgentSetupPicker setups={setups} workspaceId={workspaceId} />
+            )}
             {!forkId && otherSetups.length > 0 && (
               <nav aria-label="Recent setups" className="mt-8">
                 <h2 className="text-xs font-medium text-muted-foreground">

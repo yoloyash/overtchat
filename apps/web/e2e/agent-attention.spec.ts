@@ -31,6 +31,12 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   const recent = page.getByRole("navigation", { name: "Recent setups" });
   await expect(recent.getByRole("link")).toHaveCount(1);
   await expect(recent.getByRole("link", { name: /api Claude Code · home-server/ })).toBeVisible();
+  // Any workspace and agent can be picked, including one never used.
+  await page.getByRole("combobox", { name: "Workspace and agent" }).click();
+  await expect(page.getByRole("option")).toHaveCount(3);
+  await page.getByRole("option", { name: /^site Codex · This machine/ }).click();
+  await page.waitForURL("**/agents/new?workspaceId=codex-site&provider=codex");
+  await expect(page.getByRole("combobox", { name: "Workspace and agent" })).toContainText("site");
 
   // Every session is listed once, filed by what it needs.
   const needsYou = section(page, "Needs you");

@@ -73,6 +73,7 @@ export function agentAttentionFixture(): AgentConnectionListItem[] {
             }),
           ],
         },
+        { id: "codex-site", name: "site", path: "/srv/site", sessions: [] },
       ],
     },
     {

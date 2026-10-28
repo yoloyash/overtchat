@@ -1577,8 +1577,8 @@ failure), are ready to review, are working, then every other session by recent
 activity. Its list options switch to grouping by workspace, kept per device.
 While in Chat mode, the Agents toggle counts sessions that need you. Opening a
 session while the page is visible marks its latest turn read. `/agents` opens a
-new session with the most recently used agent and workspace, and offers other
-recent ones. `/agents/history` searches every session by title, first message,
+new session with the most recently used agent and workspace; a picker switches
+to any other, and recent ones are offered as cards. `/agents/history` searches every session by title, first message,
 last reply, workspace, host and agent, with the filters kept in the URL.
 `apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
 session-list and event-stream responses.
