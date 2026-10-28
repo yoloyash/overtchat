@@ -525,7 +525,7 @@ export const generationUsage = sqliteTable(
     messageId: text("message_id").references(() => messages.id, {
       onDelete: "set null",
     }),
-    context: text("context", { enum: ["chat", "title"] })
+    context: text("context", { enum: ["chat", "title", "image"] })
       .default("chat")
       .notNull(),
     occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull(),

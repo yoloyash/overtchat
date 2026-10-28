@@ -105,6 +105,7 @@ import {
   getChatGenerationByRequestId,
   type ChatGenerationRow,
   type CompletedGenerationUsage,
+  type CompletedImageUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
 import {
@@ -362,13 +363,13 @@ export async function runChat(
   }
 
   const chatTools = createWebTools({ userId, supportsImageInput });
-  let imageOperationStarted = false;
+  const imageUsage: CompletedImageUsage[] = [];
   const imageTools = createImageTools({
     userId,
     messages,
     supportsImageInput,
     options: imageGeneration,
-    onGenerate: () => { imageOperationStarted = true; },
+    onUsage: (usage) => { imageUsage.push(usage); },
   });
   const imageToolsEnabled =
     modelConfig.toolCallingEnabled !== false && getImageCapability().available;
@@ -959,8 +960,8 @@ export async function runChat(
               : undefined;
           };
           const estimatedCost =
-            stepCosts.length > 0 || hasUnpricedStep || imageOperationStarted
-              ? hasUnpricedStep || imageOperationStarted
+            stepCosts.length > 0 || hasUnpricedStep
+              ? hasUnpricedStep
                 ? null
                 : sumEstimatedGenerationCosts(stepCosts)
               : estimateGenerationCost({
@@ -1079,6 +1080,7 @@ export async function runChat(
             !(continueMessage && streamError)
               ? { usage: completedGenerationUsage }
               : {}),
+            ...(imageUsage.length > 0 ? { imageUsage } : {}),
           });
           if (
             completed &&

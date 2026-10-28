@@ -2,13 +2,22 @@ import { useEffect } from "react";
 import { Alert, Pressable, Text } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
-import type { ChatUsageResponse } from "@overtchat/shared/usage";
+import {
+  combinePricedUsage,
+  type ChatUsageResponse,
+  type UsageTotals,
+} from "@overtchat/shared/usage";
 import { readMessageStats } from "@overtchat/shared/message-stats";
 import { getContextMeterValues } from "@overtchat/shared/context-meter";
 import { useChatPreferences } from "@/lib/chatPreferences";
 import { useTheme } from "@/lib/theme";
 import { queryKeys } from "@/lib/queries/keys";
 import { settingsRequest } from "@/lib/queries/settings";
+
+const usd = (nanoUsd: number) => `$${(nanoUsd / 1e9).toFixed(4)}`;
+const priced = (totals?: UsageTotals) =>
+  totals && totals.pricedGenerations > 0 ? totals : undefined;
+
 export function ChatUsageBar({
   chatId,
   persisted,
@@ -46,12 +55,12 @@ export function ChatUsageBar({
           contextWindow ?? stats.contextWindow,
         )
       : undefined;
-  const cost =
-    prefs.sessionCost && usage.data?.usage.pricedGenerations
-      ? usage.data.usage
-      : undefined;
+  const chatCost = prefs.sessionCost ? priced(usage.data?.usage) : undefined;
+  // Older servers omit image usage.
+  const imageCost = prefs.sessionCost ? priced(usage.data?.images) : undefined;
+  const cost = combinePricedUsage([chatCost, imageCost]);
   const costText = cost
-    ? `$${(cost.totalCostNanoUsd / 1e9).toFixed(4)}${cost.pricedGenerations < cost.generations ? "+" : ""}`
+    ? `${usd(cost.totalCostNanoUsd)}${cost.partial ? "+" : ""}`
     : undefined;
   if (!context && !cost) return null;
   return (
@@ -66,7 +75,18 @@ export function ChatUsageBar({
               ? `${stats!.contextTokens!.toLocaleString()} context tokens${context.percentage === undefined ? " · limit unknown" : ` · ${context.percentage}% of the context window`}. Last reported usage.`
               : "",
             costText
-              ? `Session cost: ${costText}. ${cost!.pricedGenerations} of ${cost!.generations} generations have pricing. Missing prices are excluded.`
+              ? [
+                  `Session cost: ${costText}.`,
+                  chatCost
+                    ? `${chatCost.pricedGenerations} of ${chatCost.generations} generations have pricing.`
+                    : "",
+                  imageCost
+                    ? `Images: ${usd(imageCost.totalCostNanoUsd)} (${imageCost.pricedGenerations} of ${imageCost.generations} priced).`
+                    : "",
+                  "Missing prices are excluded.",
+                ]
+                  .filter(Boolean)
+                  .join(" ")
               : "",
           ]
             .filter(Boolean)
