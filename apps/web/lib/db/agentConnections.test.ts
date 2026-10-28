@@ -82,7 +82,6 @@ raw.exec(`
     provider_modified_at INTEGER,
     last_turn TEXT,
     read_turn_ended_at INTEGER,
-    title_generated_at INTEGER,
     last_synced_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
@@ -765,63 +764,6 @@ describe("agent connection persistence", () => {
       lastTurn: { endedAt: 600 },
       readTurnEndedAt: 400,
     });
-  });
-
-  it("lists untitled sessions per owner and keeps renames over generated titles", async () => {
-    const owned = createAliceConnection();
-    const workspace = await repository.createAgentWorkspace(
-      owned.connection.id,
-      "alice",
-      { path: "/work/overtchat", name: "overtchat" },
-    );
-    const save = (id: string, firstMessage: string | null, modifiedAt: number) =>
-      repository.upsertAgentSession(workspace!.id, {
-        providerSessionId: id,
-        providerSessionPath: `/remote/${id}.jsonl`,
-        name: null,
-        firstMessage,
-        messageCount: 1,
-        createdAt: null,
-        modifiedAt: new Date(modifiedAt),
-      });
-    const older = await save("older", "can u check issue 486", 100);
-    const newer = await save("newer", "fix the flaky test", 200);
-    await save("empty", null, 300);
-
-    expect(repository.listAgentSessionsAwaitingTitles("alice")).toEqual([
-      { id: newer.id, name: "fix the flaky test", firstMessage: "fix the flaky test" },
-      { id: older.id, name: "can u check issue 486", firstMessage: "can u check issue 486" },
-    ]);
-    expect(repository.listAgentSessionsAwaitingTitles("bob")).toEqual([]);
-
-    expect(
-      repository.applyGeneratedAgentSessionTitle(newer.id, "fix the flaky test", "Flaky Test Fix"),
-    ).toBe(true);
-    // A rename that lands while the title is generated wins.
-    await repository.renameAgentSession(older.id, "Issue 486");
-    expect(
-      repository.applyGeneratedAgentSessionTitle(older.id, "can u check issue 486", "Check Issue 486"),
-    ).toBe(false);
-
-    const titles = (await repository.listAgentConnections("alice"))[0]!.workspaces[0]!
-      .sessions.map((session) => [session.id, session.name]);
-    expect(titles).toEqual(
-      expect.arrayContaining([
-        [newer.id, "Flaky Test Fix"],
-        [older.id, "Issue 486"],
-      ]),
-    );
-    expect(
-      repository.listAgentSessionsAwaitingTitles("alice").map((session) => session.id),
-    ).toEqual([older.id]);
-
-    // Syncing the provider's metadata again keeps the generated title.
-    await save("newer", "fix the flaky test", 250);
-    expect(
-      (await repository.listAgentConnections("alice"))[0]!.workspaces[0]!.sessions.find(
-        (session) => session.id === newer.id,
-      )?.name,
-    ).toBe("Flaky Test Fix");
   });
 
   it("reconciles only sessions still authorized for a connector", async () => {

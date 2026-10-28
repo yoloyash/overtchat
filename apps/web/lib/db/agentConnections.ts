@@ -876,60 +876,6 @@ export function markAgentSessionUnread(id: string): boolean {
   return result.changes > 0;
 }
 
-/** Sessions of an owner that have not had a title generated, newest first. */
-export function listAgentSessionsAwaitingTitles(userId: string): Pick<
-  AgentSessionRow,
-  "id" | "name" | "firstMessage"
->[] {
-  return db
-    .select({
-      id: agentSessions.id,
-      name: agentSessions.name,
-      firstMessage: agentSessions.firstMessage,
-    })
-    .from(agentSessions)
-    .innerJoin(agentWorkspaces, eq(agentSessions.workspaceId, agentWorkspaces.id))
-    .innerJoin(
-      agentConnections,
-      eq(agentWorkspaces.connectionId, agentConnections.id),
-    )
-    .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
-    .where(
-      and(
-        eq(agentHosts.userId, userId),
-        isNull(agentSessions.titleGeneratedAt),
-        isNotNull(agentSessions.firstMessage),
-      ),
-    )
-    .orderBy(desc(agentSessions.providerModifiedAt))
-    .all();
-}
-
-/**
- * Replaces a session's title with a generated one, unless it was renamed
- * since `expectedName` was read.
- */
-export function applyGeneratedAgentSessionTitle(
-  id: string,
-  expectedName: string | null,
-  title: string,
-): boolean {
-  const now = new Date();
-  const result = db
-    .update(agentSessions)
-    .set({ name: title, titleGeneratedAt: now, updatedAt: now })
-    .where(
-      and(
-        eq(agentSessions.id, id),
-        expectedName === null
-          ? isNull(agentSessions.name)
-          : eq(agentSessions.name, expectedName),
-      ),
-    )
-    .run();
-  return result.changes > 0;
-}
-
 export async function renameAgentSession(
   id: string,
   name: string,

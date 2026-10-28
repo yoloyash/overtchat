@@ -13,7 +13,7 @@ import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 const TITLE_CONTEXT_CHAR_LIMIT = 2000;
 const TITLE_OUTPUT_CHAR_LIMIT = 80;
 
-export type TitleModelConfig = Pick<
+type TitleModelConfig = Pick<
   ModelConfigRow,
   | "providerId"
   | "apiFormat"
@@ -44,10 +44,69 @@ export async function ensureChatTitle({
     const modelConfig = getTaskModelConfig() ?? fallbackModelConfig;
     if (!modelConfig) return null;
 
-    const prompt = buildTitlePromptText(context.firstUserParts);
+    const userParts = context.firstUserParts;
+    const prompt = buildTitlePromptText(userParts);
     if (!prompt) return null;
 
-    const title = await generateTitle({ prompt, modelConfig, userId, chatId });
+    const { model, providerOptions, providerOptionsKey } =
+      createConfiguredLanguageModel({
+        providerId: modelConfig.providerId,
+        apiFormat: modelConfig.apiFormat,
+        baseUrl: modelConfig.baseUrl,
+        apiKey: modelConfig.apiKey,
+        model: modelConfig.model,
+        providerOptions: modelConfig.providerOptions,
+      });
+    const result = await generateText({
+      model,
+      prompt,
+      providerOptions: {
+        ...providerOptions,
+        [providerOptionsKey]: {
+          ...providerOptions?.[providerOptionsKey],
+          reasoningEffort: "none",
+        },
+      },
+      // Do not cap title-task output tokens here. Some reasoning models spend
+      // the first output budget on thoughts before emitting final text.
+      maxRetries: 0,
+      abortSignal: AbortSignal.timeout(15_000),
+    });
+    const tokenUsage = [
+      result.usage.inputTokens,
+      result.usage.inputTokenDetails.noCacheTokens,
+      result.usage.outputTokens,
+      result.usage.inputTokenDetails.cacheReadTokens,
+      result.usage.inputTokenDetails.cacheWriteTokens,
+      result.usage.totalTokens,
+    ];
+    if (tokenUsage.some((value) => value !== undefined)) {
+      const estimatedCost = estimateGenerationCost({
+        providerId: modelConfig.providerId,
+        model: modelConfig.model,
+        usage: result.usage,
+        pricing: modelConfig.pricing,
+      });
+      tryRecordGenerationUsage({
+        id: crypto.randomUUID(),
+        userId,
+        chatId,
+        context: "title",
+        occurredAt: new Date(),
+        providerId: modelConfig.providerId,
+        model: modelConfig.model,
+        inputTokens: result.usage.inputTokens,
+        uncachedInputTokens: result.usage.inputTokenDetails.noCacheTokens,
+        outputTokens: result.usage.outputTokens,
+        cacheReadTokens: result.usage.inputTokenDetails.cacheReadTokens,
+        cacheWriteTokens: result.usage.inputTokenDetails.cacheWriteTokens,
+        totalTokens: result.usage.totalTokens,
+        finishReason: result.finishReason,
+        ...(estimatedCost ?? {}),
+      });
+    }
+
+    const title = cleanGeneratedTitle(result.text);
     return title ? await setTitleIfNull(chatId, title) : null;
   } catch (err) {
     console.error("[title-generation]", err);
@@ -55,94 +114,10 @@ export async function ensureChatTitle({
   }
 }
 
-/**
- * Asks a model for a short title and records what it cost. Throws when the
- * model fails; returns null when it answers with nothing usable.
- */
-export async function generateTitle({
-  prompt,
-  modelConfig,
-  userId,
-  chatId,
-}: {
-  prompt: string;
-  modelConfig: TitleModelConfig;
-  userId: string;
-  chatId?: string;
-}): Promise<string | null> {
-  const { model, providerOptions, providerOptionsKey } =
-    createConfiguredLanguageModel({
-      providerId: modelConfig.providerId,
-      apiFormat: modelConfig.apiFormat,
-      baseUrl: modelConfig.baseUrl,
-      apiKey: modelConfig.apiKey,
-      model: modelConfig.model,
-      providerOptions: modelConfig.providerOptions,
-    });
-  const result = await generateText({
-    model,
-    prompt,
-    providerOptions: {
-      ...providerOptions,
-      [providerOptionsKey]: {
-        ...providerOptions?.[providerOptionsKey],
-        reasoningEffort: "none",
-      },
-    },
-    // Do not cap title-task output tokens here. Some reasoning models spend
-    // the first output budget on thoughts before emitting final text.
-    maxRetries: 0,
-    abortSignal: AbortSignal.timeout(15_000),
-  });
-  const tokenUsage = [
-    result.usage.inputTokens,
-    result.usage.inputTokenDetails.noCacheTokens,
-    result.usage.outputTokens,
-    result.usage.inputTokenDetails.cacheReadTokens,
-    result.usage.inputTokenDetails.cacheWriteTokens,
-    result.usage.totalTokens,
-  ];
-  if (tokenUsage.some((value) => value !== undefined)) {
-    const estimatedCost = estimateGenerationCost({
-      providerId: modelConfig.providerId,
-      model: modelConfig.model,
-      usage: result.usage,
-      pricing: modelConfig.pricing,
-    });
-    tryRecordGenerationUsage({
-      id: crypto.randomUUID(),
-      userId,
-      chatId,
-      context: "title",
-      occurredAt: new Date(),
-      providerId: modelConfig.providerId,
-      model: modelConfig.model,
-      inputTokens: result.usage.inputTokens,
-      uncachedInputTokens: result.usage.inputTokenDetails.noCacheTokens,
-      outputTokens: result.usage.outputTokens,
-      cacheReadTokens: result.usage.inputTokenDetails.cacheReadTokens,
-      cacheWriteTokens: result.usage.inputTokenDetails.cacheWriteTokens,
-      totalTokens: result.usage.totalTokens,
-      finishReason: result.finishReason,
-      ...(estimatedCost ?? {}),
-    });
-  }
-  return cleanGeneratedTitle(result.text);
-}
-
 export function buildTitlePromptText(
   userParts: UIMessage["parts"],
 ): string | null {
-  return buildTitlePromptFromText(extractTextForTitle(userParts));
-}
-
-/** The title prompt for a first message that is already plain text. */
-export function buildTitlePromptFromText(text: string): string | null {
-  const userText = stripCitationMarkers(text)
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, TITLE_CONTEXT_CHAR_LIMIT)
-    .trim();
+  const userText = extractTextForTitle(userParts);
   if (!userText) return null;
 
   return [

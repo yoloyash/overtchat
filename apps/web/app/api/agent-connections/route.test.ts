@@ -20,9 +20,6 @@ vi.mock("@/lib/db/agentConnections", () => ({
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: { request: mocks.daemonRequest },
 }));
-vi.mock("@/lib/agents/sessionTitles", () => ({
-  scheduleAgentSessionTitles: vi.fn(),
-}));
 vi.mock("@/lib/db/hostConnectors", () => ({
   getAvailableHostConnector: mocks.getAvailableHostConnector,
 }));

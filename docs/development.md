@@ -1583,11 +1583,6 @@ last reply, workspace, host and agent, with the filters kept in the URL.
 `apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
 session-list and event-stream responses.
 
-Sessions whose title is still the first line of their first message get a
-short generated title in the background, newest first, from the task model or,
-without one, the owner's default chat model. Titles set by the user or the
-agent are kept, and the cost is recorded as title usage.
-
 ```sh
 npm run test -w packages/agent-runtime -- src/runtime/attention.test.ts src/runtime/registry.test.ts
 RUN_ATTENTION_INTEGRATION=claude,codex,omp npm run test -w packages/agent-runtime -- src/runtime/attention.integration.test.ts

@@ -1,1 +1,0 @@
-ALTER TABLE `agent_sessions` ADD `title_generated_at` integer;
