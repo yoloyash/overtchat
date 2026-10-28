@@ -50,7 +50,7 @@ describe("agent attention notifications", () => {
     expect(notify).toHaveBeenCalledExactlyOnceWith({
       sessionId: "a",
       reason: "approval",
-      eventId: "request-1",
+      eventId: "a:request-1",
       attention: approval,
     });
     // Answering it is the owner's own doing; the next request is new.
@@ -64,7 +64,7 @@ describe("agent attention notifications", () => {
     );
     expect(notify).toHaveBeenCalledTimes(2);
     expect(notify).toHaveBeenLastCalledWith(
-      expect.objectContaining({ reason: "question", eventId: "request-2" }),
+      expect.objectContaining({ reason: "question", eventId: "a:request-2" }),
     );
   });
 

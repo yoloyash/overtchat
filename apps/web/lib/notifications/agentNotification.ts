@@ -63,6 +63,9 @@ export function agentNotificationNeedsInput(
   return reason === "approval" || reason === "question";
 }
 
+/** Replies can run to the status text limit; an alert shows a glance's worth. */
+const BODY_LIMIT = 160;
+
 /**
  * The title names the state and the session, like a sidebar row; the body is
  * the request, the reply or the error, or else where the session runs.
@@ -84,7 +87,9 @@ export function agentNotificationText(
   } else {
     body = event.turn?.error;
   }
-  return { title, body: body?.trim() || place };
+  body = body?.replace(/\s+/g, " ").trim() || place;
+  if (body.length > BODY_LIMIT) body = `${body.slice(0, BODY_LIMIT - 1).trimEnd()}…`;
+  return { title, body };
 }
 
 /** How long after its last heartbeat a client still counts as present. */

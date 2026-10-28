@@ -465,6 +465,7 @@ vi.mock("@/lib/queries/agents", () => ({
     history: mocks.history,
   }),
   useAgentCommand: () => ({ mutateAsync: mocks.send, isPending: false }),
+  useMarkAgentSessionSeen: () => {},
   useAgentConnections: () => ({
     data: mocks.connections,
     refetch: vi.fn(),

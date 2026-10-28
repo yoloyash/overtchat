@@ -56,10 +56,11 @@ export class AgentAttentionNotifications {
     const attention = entry.attention;
     if (attention && attention.id !== before.attention?.id) {
       this.cancel(state);
+      // Request ids are only unique within a session (Codex counts from 0).
       this.notify({
         sessionId: id,
         reason: attention.kind,
-        eventId: attention.id,
+        eventId: `${id}:${attention.id}`,
         attention,
       });
       return;
