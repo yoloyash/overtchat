@@ -1571,14 +1571,22 @@ remain compatible.
 
 For administrators the sidebar switches between Chat and Agents. The mode
 follows the URL (`/agents…` is Agents; settings keep the current mode), and
-each mode returns to the page last open in it. Agents mode lists sessions that
-need you (an approval, a question or an unseen failure), are working, or
-finished unseen, above the workspace tree. While in Chat mode, the Agents
-toggle counts sessions that need you. Opening a session while the page is
-visible marks its latest turn read. `/agents` opens a new session with the
-most recently used agent and workspace, and offers other recent ones.
+each mode returns to the page last open in it. Agents mode groups sessions by
+status by default: those that need you (an approval, a question or an unseen
+failure), are ready to review, are working, then every other session by recent
+activity. Its list options switch to grouping by workspace, kept per device.
+While in Chat mode, the Agents toggle counts sessions that need you. Opening a
+session while the page is visible marks its latest turn read. `/agents` opens a
+new session with the most recently used agent and workspace, and offers other
+recent ones. `/agents/history` searches every session by title, first message,
+last reply, workspace, host and agent, with the filters kept in the URL.
 `apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
 session-list and event-stream responses.
+
+Sessions whose title is still the first line of their first message get a
+short generated title in the background, newest first, from the task model or,
+without one, the owner's default chat model. Titles set by the user or the
+agent are kept, and the cost is recorded as title usage.
 
 ```sh
 npm run test -w packages/agent-runtime -- src/runtime/attention.test.ts src/runtime/registry.test.ts

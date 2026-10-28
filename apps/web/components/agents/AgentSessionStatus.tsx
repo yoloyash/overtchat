@@ -34,23 +34,6 @@ export function agentSessionStateLabel(state: AgentSessionState): string {
   return STATE_LABELS[state];
 }
 
-const STATE_SENTENCES: Record<AgentSessionState, string> = {
-  approval: "needs approval",
-  question: "has a question",
-  failed: "failed",
-  working: "is working",
-  unread: "finished",
-  idle: "",
-};
-
-/** Announces a session's state, such as "Fix the build needs approval". */
-export function agentSessionStateDescription(
-  title: string,
-  state: AgentSessionState,
-): string {
-  return `${title} ${STATE_SENTENCES[state]}`;
-}
-
 /** A session's state as a small icon; idle sessions show nothing. */
 export function AgentSessionStatusIcon({
   state,
@@ -86,7 +69,7 @@ export function AgentSessionStatusIcon({
 }
 
 /** Whether a session has a finished turn its owner can mark read or unread. */
-function canToggleRead(
+export function agentSessionCanToggleRead(
   session: AgentSessionListItem,
   state: AgentSessionState,
 ): boolean {
@@ -109,7 +92,7 @@ export function AgentSessionReadToggle({
   title: string;
 }) {
   const setRead = useSetAgentSessionRead();
-  if (!canToggleRead(session, state)) return null;
+  if (!agentSessionCanToggleRead(session, state)) return null;
   const unseen = agentSessionHasUnseenTurn(session);
   return (
     <button
@@ -117,7 +100,7 @@ export function AgentSessionReadToggle({
       onClick={() => setRead.mutate({ sessionId: session.id, read: unseen })}
       aria-label={unseen ? `Mark ${title} as read` : `Mark ${title} as unread`}
       title={unseen ? "Mark as read" : "Mark as unread"}
-      className="absolute inset-0 flex items-center justify-center rounded text-muted-foreground opacity-0 motion-opacity hover:bg-sidebar-border/60 hover:text-foreground focus-visible:opacity-100 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:hidden"
+      className="absolute inset-0 flex items-center justify-center rounded text-muted-foreground opacity-0 motion-opacity hover:bg-sidebar-border/60 hover:text-foreground focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:hidden"
     >
       {unseen ? (
         <Check aria-hidden="true" className="size-3.5" />
@@ -125,40 +108,6 @@ export function AgentSessionReadToggle({
         <CircleDot aria-hidden="true" className="size-3" />
       )}
     </button>
-  );
-}
-
-/**
- * The status slot at the end of a session row. Hovering a row with a
- * finished turn swaps the icon for marking it read or unread.
- */
-export function AgentSessionStatusSlot({
-  session,
-  state,
-  title,
-}: {
-  session: AgentSessionListItem;
-  state: AgentSessionState;
-  title: string;
-}) {
-  return (
-    <span className="relative flex size-5 shrink-0 items-center justify-center max-md:size-7">
-      {state !== "idle" && (
-        <span
-          role="status"
-          aria-label={agentSessionStateDescription(title, state)}
-          title={agentSessionStateLabel(state)}
-          className={cn(
-            "flex items-center justify-center motion-opacity",
-            canToggleRead(session, state) &&
-              "[@media(hover:hover)]:group-hover:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-0",
-          )}
-        >
-          <AgentSessionStatusIcon state={state} />
-        </span>
-      )}
-      <AgentSessionReadToggle session={session} state={state} title={title} />
-    </span>
   );
 }
 

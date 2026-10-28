@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
+import { groupAgentsByWorkspace } from "./helpers/agent-attention";
 import { expect, test } from "@playwright/test";
 import {
   openE2eDatabase,
@@ -16,6 +17,7 @@ const execFileAsync = promisify(execFile);
 const connectorProcesses = new Set<ChildProcess>();
 
 test.beforeEach(resetE2eDatabase);
+test.beforeEach(({ page }) => groupAgentsByWorkspace(page));
 test.afterEach(async () => {
   await Promise.all(
     [...connectorProcesses].map(
@@ -309,7 +311,7 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "Agents", exact: true }).click();
   await page.waitForURL((url) => url.pathname === "/agents");
   await expect(
-    page.getByText("Agent workspaces", { exact: true }),
+    page.getByRole("heading", { name: "Workspaces", exact: true }),
   ).toBeVisible();
   const addWorkspace = page
     .getByRole("complementary")
@@ -624,7 +626,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
 
   await page.goto("/agents");
   await expect(
-    page.getByRole("button", { name: "Agent workspace options" }),
+    page.getByRole("button", { name: "Agent list options" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Add workspace" }),
@@ -636,7 +638,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   await expect(workspaces.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
   await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await page.getByRole("button", { name: "Agent list options" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Add workspace…", exact: true }),
   ).toHaveAttribute("href", "/settings/connections?add=1");
@@ -654,12 +656,12 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toHaveCount(0);
   await expect(
     page.getByRole("button", {
-      name: "Agent workspace options, filtered by Codex",
+      name: "Agent list options, filtered by Codex",
     }),
   ).toBeVisible();
   await page
     .getByRole("button", {
-      name: "Agent workspace options, filtered by Codex",
+      name: "Agent list options, filtered by Codex",
     })
     .click();
   await page.getByRole("menuitem", { name: "Filter chats" }).hover();
@@ -670,7 +672,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
     animations: "disabled",
   });
 
-  await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await page.getByRole("button", { name: "Agent list options" }).click();
   await page.getByRole("menuitem", { name: "Refresh all chats" }).click();
   await expect(page.getByText("Chats refreshed", { exact: true })).toBeVisible();
 
@@ -992,7 +994,7 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     await page.getByLabel("Open sidebar").click();
     await expect(
       page
-        .getByText("Agent workspaces", { exact: true })
+        .getByRole("heading", { name: "Workspaces", exact: true })
         .filter({ visible: true })
         .first(),
     ).toBeVisible();

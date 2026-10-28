@@ -1,6 +1,6 @@
 "use client";
 
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
@@ -28,22 +28,22 @@ import type {
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
   AGENT_SESSION_PREVIEW_COUNT,
-  agentSessionDisplayTitle,
   agentSessionIsRunning,
   visibleAgentSessions,
 } from "@/lib/agents/sidebar";
 import {
   agentSessionNeedsOwner,
   agentSessionState,
+  agentSessionStateSince,
   mostUrgentAgentSessionState,
 } from "@/lib/agents/attention";
+import { agentWorkspaceHostLabel } from "@/lib/agents/search";
 import {
   agentConnectionTarget,
   groupAgentWorkspaces,
   nestAgentWorkspaceGroups,
   projectAgentWorkspaceProviders,
   type AgentWorkspaceGroup,
-  type AgentWorkspaceSession,
 } from "@/lib/agents/workspaces";
 import { useSidebar } from "@/components/sidebar-context";
 import { motionClasses } from "@/lib/motion";
@@ -61,11 +61,9 @@ import { cn } from "@/lib/utils";
 import { NewAgentSessionDialog } from "@/components/agents/NewAgentSessionDialog";
 import { NewAgentWorktreeDialog } from "@/components/agents/NewAgentWorktreeDialog";
 import { AgentWorktreeRemovalDetails } from "@/components/agents/AgentWorktreeRemovalDetails";
-import {
-  AgentProviderLogo,
-  AgentSessionStatusIcon,
-  AgentSessionStatusSlot,
-} from "@/components/agents/AgentSessionStatus";
+import { AgentSessionStatusIcon } from "@/components/agents/AgentSessionStatus";
+import { AgentSessionRow } from "@/components/agents/AgentSessionRow";
+import { useNow } from "@/lib/useNow";
 import { authClient } from "@/lib/auth/client";
 import { getApiOrigin } from "@/lib/api-url";
 import { useLocalStorage } from "@/lib/useLocalStorage";
@@ -76,7 +74,6 @@ import {
 
 const DEFAULT_WORKSPACE_ORDER: string[] = [];
 const DEFAULT_EXPANSION: Record<string, boolean> = {};
-const RECENT_CHAT_COUNT = 5;
 
 export function SidebarAgentWorkspaces({
   connections,
@@ -158,11 +155,6 @@ export function SidebarAgentWorkspaces({
   function setExpanded(key: string, open: boolean) {
     setSavedExpansion({ ...expansion, [key]: open });
   }
-  const [recentCollapsed, setRecentCollapsed] = useLocalStorage<unknown>(
-    `overtchat_agent_recent_collapsed:${JSON.stringify([getApiOrigin(), session?.user.id ?? ""])}`,
-    false,
-  );
-  const recentListId = useId();
   const orderedGroups = useMemo(
     () => orderAgentWorkspaces(groupAgentWorkspaces(connections), savedOrder),
     [connections, savedOrder],
@@ -214,70 +206,8 @@ export function SidebarAgentWorkspaces({
     null,
   );
   const groups = dragGroups ?? nested.roots;
-  const recentSessions = useMemo(
-    () =>
-      orderedGroups
-        .flatMap((group) =>
-          group.sessions
-            .filter(
-              (item) =>
-                (!providerFilter || item.provider === providerFilter) &&
-                // Sessions that need attention are already listed above.
-                agentSessionState(item.session) === "idle",
-            )
-            .map((item) => ({ item, group })),
-        )
-        .sort(
-          (left, right) =>
-            (right.item.session.modifiedAt ??
-              right.item.session.createdAt ??
-              0) -
-            (left.item.session.modifiedAt ?? left.item.session.createdAt ?? 0),
-        )
-        .slice(0, RECENT_CHAT_COUNT),
-    [orderedGroups, providerFilter],
-  );
   return (
     <>
-      {recentSessions.length > 0 && !organizing && (
-        <div className="mb-2 border-b border-sidebar-border pb-2">
-          <button
-            type="button"
-            aria-expanded={recentCollapsed !== true}
-            aria-controls={recentListId}
-            title="Most recently updated chats across your workspaces"
-            onClick={() => setRecentCollapsed(recentCollapsed !== true)}
-            className="flex min-h-7 w-full items-center gap-1.5 rounded-md px-1 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground max-md:min-h-11"
-          >
-            <ChevronRight
-              aria-hidden="true"
-              className={cn(
-                "size-3 shrink-0 motion-transform",
-                recentCollapsed !== true && "rotate-90",
-              )}
-            />
-            <span>Recent chats</span>
-          </button>
-          <ul
-            id={recentListId}
-            aria-label="Recent agent chats"
-            hidden={recentCollapsed === true}
-            className={cn(
-              "flex-col gap-0.5",
-              recentCollapsed === true ? "hidden" : "flex",
-            )}
-          >
-            {recentSessions.map(({ item, group }) => (
-              <SessionLink
-                key={item.session.id}
-                item={item}
-                context={`${group.name} · ${workspaceHostLabel(group)}`}
-                onNavigate={() => setExpanded(group.key, true)}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
       <DragDropProvider
         onDragStart={() => setDragGroups(nested.roots)}
         onDragEnd={(event) => {
@@ -469,6 +399,8 @@ function WorkspaceNode({
   const hasRunningSession = group.sessions.some(({ session }) =>
     agentSessionIsRunning(session),
   );
+  // Running times tick each second; ages only need the minute.
+  const now = useNow(hasRunningSession ? 1_000 : 30_000);
   const representativeTarget = group.targets[0]!;
   const representativeWorkspace = representativeTarget.workspace;
   const providerSnapshot = useAgentProviderSnapshot(
@@ -561,7 +493,7 @@ function WorkspaceNode({
                 ? "pr-14 max-md:pr-[5.5rem]"
                 : "pr-7 max-md:pr-11",
           )}
-          title={`${group.path} · ${workspaceHostLabel(group)}`}
+          title={`${group.path} · ${agentWorkspaceHostLabel(group)}`}
         >
           <ChevronRight
             aria-hidden="true"
@@ -616,14 +548,14 @@ function WorkspaceNode({
                   "flex min-w-0 items-center gap-1",
                   gitStatus?.isGit && "max-w-[45%]",
                 )}
-                title={workspaceHostLabel(group)}
+                title={agentWorkspaceHostLabel(group)}
               >
                 {group.host.transport === "ssh" ? (
                   <Wifi aria-hidden="true" className="size-2.5 shrink-0" />
                 ) : (
                   <Monitor aria-hidden="true" className="size-2.5 shrink-0" />
                 )}
-                <span className="truncate">{workspaceHostLabel(group)}</span>
+                <span className="truncate">{agentWorkspaceHostLabel(group)}</span>
               </span>
               {gitStatus?.isGit && (
                 <span aria-hidden="true" className="text-muted-foreground/50">
@@ -708,9 +640,22 @@ function WorkspaceNode({
       >
         {open && (
           <>
-            {visibleSessions.map((item) => (
-              <SessionLink key={item.session.id} item={item} />
-            ))}
+            {visibleSessions.map((item) => {
+              const state = agentSessionState(item.session);
+              return (
+                <AgentSessionRow
+                  key={item.session.id}
+                  entry={{
+                    item,
+                    group,
+                    state,
+                    since: agentSessionStateSince(item.session, state),
+                  }}
+                  now={now}
+                  context="workspace"
+                />
+              );
+            })}
             {filteredSessions.length === 0 && (
               <li className="px-2 py-1.5 text-xs text-muted-foreground">
                 No{" "}
@@ -827,63 +772,3 @@ function WorkspaceGitMeta({
   );
 }
 
-function workspaceHostLabel(group: AgentWorkspaceGroup) {
-  return group.host.sshAlias || group.host.name || "This server";
-}
-
-function SessionLink({
-  item,
-  context,
-  onNavigate,
-}: {
-  item: AgentWorkspaceSession;
-  context?: string;
-  onNavigate?: () => void;
-}) {
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const { closeMobile } = useSidebar();
-  const { session, provider } = item;
-  const title = agentSessionDisplayTitle(session) || "New session";
-  const state = agentSessionState(session);
-  const active = pathname === `/agents/${session.id}`;
-  return (
-    <li className="group relative">
-      <Link
-        to="/agents/$id"
-        params={{ id: session.id }}
-        onClick={() => {
-          onNavigate?.();
-          closeMobile();
-        }}
-        aria-current={active ? "page" : undefined}
-        title={`${title} · ${agentProviderMetadata(provider).label}${context ? ` · ${context}` : ""}`}
-        className={cn(
-          "flex min-h-7 min-w-0 items-center gap-1.5 rounded-md py-1 pr-6 pl-1.5 text-xs text-muted-foreground outline-none motion-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11 max-md:pr-8",
-          context && "min-h-10",
-          active && "bg-sidebar-accent text-foreground",
-          state !== "idle" && state !== "working" && "text-sidebar-foreground",
-        )}
-      >
-        <AgentProviderLogo provider={provider} />
-        <span className="min-w-0 flex-1">
-          <span
-            className={cn(
-              "block truncate leading-4",
-              context && "text-sidebar-foreground",
-            )}
-          >
-            {title}
-          </span>
-          {context && (
-            <span className="block truncate text-[10px] leading-3 text-muted-foreground">
-              {context}
-            </span>
-          )}
-        </span>
-      </Link>
-      <span className="absolute inset-y-0 right-0.5 flex items-center">
-        <AgentSessionStatusSlot session={session} state={state} title={title} />
-      </span>
-    </li>
-  );
-}

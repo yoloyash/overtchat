@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentSessionNeedsGeneratedTitle,
   deriveInitialAgentSessionTitle,
   resolveInitialAgentSessionTitle,
 } from "./sessionTitle";
@@ -39,5 +40,15 @@ describe("agent session titles", () => {
         firstMessage: "Review this repository\nBe thorough",
       }),
     ).toBe("Review this repository");
+  });
+
+  it.each([
+    ["an untitled session", null, "Fix the build\nand the tests", true],
+    ["a first-line title", "Fix the build", "Fix the build\nand the tests", true],
+    ["a rename", "Release prep", "Fix the build", false],
+    ["no first message", null, null, false],
+    ["a blank first message", null, "  ", false],
+  ])("decides whether %s needs a generated title", (_name, name, firstMessage, needs) => {
+    expect(agentSessionNeedsGeneratedTitle({ name, firstMessage })).toBe(needs);
   });
 });

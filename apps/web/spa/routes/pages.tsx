@@ -39,6 +39,10 @@ const NewAgentSessionView = lazyRouteComponent(
   () => import("@/components/agents/NewAgentSessionView"),
   "NewAgentSessionView",
 );
+const AgentHistoryView = lazyRouteComponent(
+  () => import("@/components/agents/AgentHistoryView"),
+  "AgentHistoryView",
+);
 const LibraryBrowser = lazyRouteComponent(
   () => import("@/components/library/LibraryBrowser"),
   "LibraryBrowser",
@@ -90,6 +94,28 @@ export const agentsHomeRoute = createRoute({
         </div>
       </div>
     );
+  },
+});
+
+/** Every agent session, searchable by title, message, workspace and agent. */
+export const agentHistoryRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/agents/history",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { q?: string; workspace?: string; provider?: string; sort?: string } => ({
+    q: optionalString(search.q),
+    workspace: optionalString(search.workspace),
+    provider: optionalString(search.provider),
+    sort: optionalString(search.sort),
+  }),
+  beforeLoad: ({ context }) => {
+    if (!context.isAdmin) throw redirect({ to: "/" });
+  },
+  pendingComponent: AppPending,
+  component: function AgentHistoryPage() {
+    const search = agentHistoryRoute.useSearch();
+    return <AgentHistoryView search={search} />;
   },
 });
 

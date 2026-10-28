@@ -133,8 +133,10 @@ function directory(
   );
 }
 
-export async function setupAgentAttention(page: Page) {
-  const connections = agentAttentionFixture();
+export async function setupAgentAttention(
+  page: Page,
+  connections = agentAttentionFixture(),
+) {
   const reads: Array<{ sessionId: string; read: boolean }> = [];
   await page.context().route("**/api/agent-connections", (route) =>
     route.fulfill({ json: { connections } }),
@@ -186,4 +188,13 @@ export async function setupAgentAttention(page: Page) {
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
   return { reads };
+}
+
+/** Starts the agents sidebar grouped by workspace unless the test regroups it. */
+export async function groupAgentsByWorkspace(page: Page) {
+  await page.addInitScript((key) => {
+    if (localStorage.getItem(key) === null) {
+      localStorage.setItem(key, JSON.stringify("workspace"));
+    }
+  }, "overtchat:agent-sidebar-grouping");
 }

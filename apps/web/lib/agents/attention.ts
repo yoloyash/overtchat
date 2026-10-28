@@ -1,5 +1,6 @@
 import type {
   AgentConnectionListItem,
+  AgentProviderId,
   AgentSessionListItem,
 } from "@overtchat/agent-bridge";
 import type {
@@ -67,41 +68,48 @@ export type AgentAttentionItem = {
 
 export type AgentAttentionSections = {
   needsYou: AgentAttentionItem[];
-  working: AgentAttentionItem[];
   ready: AgentAttentionItem[];
+  working: AgentAttentionItem[];
+  /** Everything else, most recently active first. */
+  recent: AgentAttentionItem[];
 };
 
-function stateSince(
+/** When a session entered its current state. */
+export function agentSessionStateSince(
   session: AgentSessionListItem,
   state: AgentSessionState,
 ): number {
   if (session.attention) return session.attention.requestedAt;
   if (state === "working") return session.turnStartedAt ?? 0;
+  if (state === "idle") return agentSessionActivityAt(session);
   return session.lastTurn?.endedAt ?? 0;
 }
 
-/** Sessions for the sidebar's attention sections, newest first. */
+/** Every session filed by what it needs from its owner, newest first. */
 export function agentAttentionSections(
   groups: readonly AgentWorkspaceGroup[],
+  providerFilter: AgentProviderId | null = null,
 ): AgentAttentionSections {
   const sections: AgentAttentionSections = {
     needsYou: [],
-    working: [],
     ready: [],
+    working: [],
+    recent: [],
   };
   for (const group of groups) {
     for (const item of group.sessions) {
+      if (providerFilter && item.provider !== providerFilter) continue;
       const state = agentSessionState(item.session);
-      if (state === "idle") continue;
       const entry = {
         item,
         group,
         state,
-        since: stateSince(item.session, state),
+        since: agentSessionStateSince(item.session, state),
       };
       if (agentSessionNeedsOwner(state)) sections.needsYou.push(entry);
+      else if (state === "unread") sections.ready.push(entry);
       else if (state === "working") sections.working.push(entry);
-      else sections.ready.push(entry);
+      else sections.recent.push(entry);
     }
   }
   for (const list of Object.values(sections)) {
@@ -158,4 +166,25 @@ export function formatAgentWorkingTime(elapsedMs: number): string {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/** A compact age for list rows, such as "now", "5m", "3h", "2d" or "Oct 4". */
+export function formatAgentSessionAge(timestamp: number, now: number): string {
+  const elapsed = Math.max(0, now - timestamp);
+  if (elapsed < MINUTE_MS) return "now";
+  if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)}m`;
+  if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)}h`;
+  if (elapsed < 7 * DAY_MS) return `${Math.floor(elapsed / DAY_MS)}d`;
+  if (elapsed < 5 * 7 * DAY_MS) return `${Math.floor(elapsed / (7 * DAY_MS))}w`;
+  const sameYear =
+    new Date(timestamp).getFullYear() === new Date(now).getFullYear();
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
 }

@@ -29,3 +29,19 @@ export function resolveInitialAgentSessionTitle({
       : null)
   );
 }
+
+/**
+ * Whether a session still shows the first line of its first message, so a
+ * generated title can replace it. Names set by the user or the agent stay.
+ */
+export function agentSessionNeedsGeneratedTitle({
+  name,
+  firstMessage,
+}: {
+  name: string | null;
+  firstMessage: string | null;
+}): boolean {
+  if (!firstMessage?.trim()) return false;
+  const current = name?.trim() ?? "";
+  return !current || current === deriveInitialAgentSessionTitle(firstMessage);
+}

@@ -8,9 +8,11 @@ import {
   agentAttentionSections,
   agentSessionHasUnseenTurn,
   agentSessionState,
+  formatAgentSessionAge,
   formatAgentWorkingTime,
   mostUrgentAgentSessionState,
 } from "./attention";
+import { searchAgentSessions } from "./search";
 import { recentAgentSetups } from "./setups";
 import { sidebarModeForPath } from "./sidebarMode";
 import { groupAgentWorkspaces } from "./workspaces";
@@ -95,6 +97,26 @@ describe("agent session state", () => {
   ])("formats %d ms of work as %s", (elapsed, label) => {
     expect(formatAgentWorkingTime(elapsed)).toBe(label);
   });
+
+  it.each([
+    [-5_000, "now"],
+    [30_000, "now"],
+    [5 * 60_000, "5m"],
+    [3 * 3_600_000, "3h"],
+    [2 * 86_400_000, "2d"],
+    [15 * 86_400_000, "2w"],
+  ])("formats an age of %d ms as %s", (elapsed, label) => {
+    const now = Date.UTC(2026, 9, 27, 12);
+    expect(formatAgentSessionAge(now - elapsed, now)).toBe(label);
+  });
+
+  it("formats older ages as a date", () => {
+    const now = new Date(2026, 9, 27, 12).getTime();
+    const age = formatAgentSessionAge(new Date(2026, 7, 3, 12).getTime(), now);
+    expect(age).toMatch(/Aug|8/);
+    expect(age).not.toMatch(/2026/);
+    expect(formatAgentSessionAge(new Date(2025, 7, 3).getTime(), now)).toMatch(/2025/);
+  });
 });
 
 function connection(
@@ -145,7 +167,7 @@ describe("agent attention sections", () => {
           session("working-new", { runtimeStatus: "running", turnStartedAt: 30 }),
           session("ready-old", { lastTurn: completed }),
           session("ready-new", { lastTurn: { ...completed, endedAt: 70 } }),
-          session("stopped", { lastTurn: stopped }),
+          session("stopped", { lastTurn: stopped, modifiedAt: 45 }),
         ],
       },
     ]),
@@ -167,7 +189,18 @@ describe("agent attention sections", () => {
       ["ready-new", "unread", 70],
       ["ready-old", "unread", 40],
     ]);
+    expect(ids(sections.recent)).toEqual([
+      ["stopped", "idle", 45],
+      ["idle", "idle", 40],
+    ]);
     expect(sections.ready[0]!.group.name).toBe("app");
+  });
+
+  it("lists one agent's sessions when filtered", () => {
+    const sections = agentAttentionSections(groupAgentWorkspaces(connections), "claude");
+    expect(
+      Object.values(sections).flat().map((entry) => entry.item.session.id).sort(),
+    ).toEqual(["ready-new", "ready-old", "stopped", "working-new"]);
   });
 
   it("counts sessions that need the owner and unseen results", () => {
@@ -219,5 +252,75 @@ describe("sidebar mode", () => {
     ["/settings/models", "chat", "chat"],
   ] as const)("shows %s from %s mode in %s mode", (path, current, mode) => {
     expect(sidebarModeForPath(path, current)).toBe(mode);
+  });
+});
+
+describe("agent session search", () => {
+  const groups = groupAgentWorkspaces([
+    connection("codex", [
+      {
+        id: "codex-app",
+        name: "app",
+        sessions: [
+          session("pagination", {
+            name: "Add cursor pagination",
+            createdAt: 30,
+            modifiedAt: 30,
+          }),
+          session("docs", {
+            name: "Write the docs",
+            firstMessage: "Document the Réglages page",
+            createdAt: 10,
+            modifiedAt: 60,
+          }),
+        ],
+      },
+    ]),
+    connection(
+      "claude",
+      [
+        {
+          id: "claude-api",
+          name: "api",
+          sessions: [
+            session("flaky", {
+              name: "Fix the flaky test",
+              createdAt: 20,
+              modifiedAt: 40,
+              lastTurn: { ...completed, endedAt: 50, preview: "Retried the socket handshake" },
+            }),
+          ],
+        },
+      ],
+      { id: "remote", transport: "ssh", sshAlias: "home-server", name: "home-server" },
+    ),
+  ]);
+  const search = (overrides: Partial<Parameters<typeof searchAgentSessions>[1]>) =>
+    searchAgentSessions(groups, {
+      query: "",
+      workspace: null,
+      provider: null,
+      sort: "activity",
+      ...overrides,
+    }).map((entry) => entry.item.session.id);
+
+  it("lists every session by latest activity, or by creation", () => {
+    expect(search({})).toEqual(["docs", "flaky", "pagination"]);
+    expect(search({ sort: "created" })).toEqual(["pagination", "flaky", "docs"]);
+  });
+
+  it("matches every word against titles, messages, replies and setup", () => {
+    expect(search({ query: "pagination" })).toEqual(["pagination"]);
+    expect(search({ query: "reglages" })).toEqual(["docs"]);
+    expect(search({ query: "SOCKET handshake" })).toEqual(["flaky"]);
+    expect(search({ query: "home-server" })).toEqual(["flaky"]);
+    expect(search({ query: "claude flaky" })).toEqual(["flaky"]);
+    expect(search({ query: "claude docs" })).toEqual([]);
+  });
+
+  it("filters by workspace and agent", () => {
+    const api = groups.find((group) => group.name === "api")!;
+    expect(search({ workspace: api.key })).toEqual(["flaky"]);
+    expect(search({ provider: "codex" })).toEqual(["docs", "pagination"]);
   });
 });

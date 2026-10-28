@@ -10,6 +10,7 @@ import {
   ListFilter,
   GripVertical,
   FolderPlus,
+  History,
   Library,
   MoreHorizontal,
   PanelLeft,
@@ -29,7 +30,11 @@ import {
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
-import { SidebarAgentAttention } from "@/components/SidebarAgentAttention";
+import { SidebarAgentStatusList } from "@/components/SidebarAgentStatusList";
+import {
+  useAgentSidebarGrouping,
+  type AgentSidebarGrouping,
+} from "@/components/agents/useAgentSidebarGrouping";
 import {
   SidebarModeToggle,
   useSidebarMode,
@@ -299,20 +304,34 @@ function AgentsSidebar({
           <span className="flex-1">New agent</span>
           <LinkPendingIndicator to="/agents" />
         </Link>
+        <Link
+          to="/agents/history"
+          onClick={closeMobile}
+          aria-current={pathname === "/agents/history" ? "page" : undefined}
+          className={cn(
+            "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+            pathname === "/agents/history" && "bg-sidebar-accent",
+          )}
+        >
+          <History className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">History</span>
+          <LinkPendingIndicator to="/agents/history" />
+        </Link>
       </nav>
-      <SidebarAgentAttention connections={connections} />
-      <AdminAgentWorkspaces connections={connections} isPending={isPending} />
+      <AgentSessionList connections={connections} isPending={isPending} />
     </>
   );
 }
 
-function AdminAgentWorkspaces({
+/** The agent sessions, grouped by status or by workspace. */
+function AgentSessionList({
   connections,
   isPending,
 }: {
   connections: AgentConnectionListItem[];
   isPending: boolean;
 }) {
+  const [grouping, setGrouping] = useAgentSidebarGrouping();
   const refresh = useRefreshAllAgentWorkspaces();
   const [organizing, setOrganizing] = useState(false);
   const doneRef = useRef<HTMLButtonElement>(null);
@@ -349,7 +368,7 @@ function AdminAgentWorkspaces({
   if (!hasWorkspaces) {
     return (
       <>
-        <SectionLabel>Agent workspaces</SectionLabel>
+        <AgentListLabel>Workspaces</AgentListLabel>
         {isPending ? (
           <p className="px-2 py-1.5 text-xs text-muted-foreground">
             Loading workspaces…
@@ -405,7 +424,7 @@ function AdminAgentWorkspaces({
 
   return (
     <>
-      <SectionLabel
+      <AgentListLabel
         action={
           organizing ? (
             <Button
@@ -424,13 +443,13 @@ function AdminAgentWorkspaces({
                   ref={optionsRef}
                   aria-label={
                     activeProviderFilter
-                      ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                      : "Agent workspace options"
+                      ? `Agent list options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "Agent list options"
                   }
                   title={
                     activeProviderFilter
-                      ? `Workspace options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                      : "Workspace options"
+                      ? `List options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "List options"
                   }
                   className={cn(
                     "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
@@ -453,6 +472,22 @@ function AdminAgentWorkspaces({
                         motionClasses.popup,
                       )}
                     >
+                      <Menu.RadioGroup
+                        value={grouping}
+                        onValueChange={(value) =>
+                          setGrouping(value as AgentSidebarGrouping)
+                        }
+                      >
+                        <Menu.GroupLabel className="px-2 pt-1 pb-0.5 text-xs text-muted-foreground">
+                          Group by
+                        </Menu.GroupLabel>
+                        <RadioMenuItem value="status" label="Status" />
+                        <RadioMenuItem
+                          value="workspace"
+                          label="Workspace"
+                        />
+                      </Menu.RadioGroup>
+                      <Menu.Separator className="mx-1 my-1 h-px bg-border" />
                       <Menu.Item
                         render={
                           <Link
@@ -467,7 +502,11 @@ function AdminAgentWorkspaces({
                         <span>Add workspace…</span>
                       </Menu.Item>
                       <Menu.Item
-                        onClick={() => setOrganizing(true)}
+                        onClick={() => {
+                          // Workspaces are ordered in the workspace grouping.
+                          setGrouping("workspace");
+                          setOrganizing(true);
+                        }}
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
                         <GripVertical className="size-3.5 text-muted-foreground" />
@@ -502,12 +541,12 @@ function AdminAgentWorkspaces({
                                     )
                                   }
                                 >
-                                  <ProviderFilterMenuItem
+                                  <RadioMenuItem
                                     value="all"
                                     label="All agents"
                                   />
                                   {providers.map((provider) => (
-                                    <ProviderFilterMenuItem
+                                    <RadioMenuItem
                                       key={provider}
                                       value={provider}
                                       label={
@@ -544,18 +583,25 @@ function AdminAgentWorkspaces({
           )
         }
       >
-        Agent workspaces
-      </SectionLabel>
-      <SidebarAgentWorkspaces
-        connections={connections}
-        providerFilter={activeProviderFilter}
-        organizing={organizing}
-      />
+        {grouping === "workspace" ? "Workspaces" : "Sessions"}
+      </AgentListLabel>
+      {grouping === "workspace" ? (
+        <SidebarAgentWorkspaces
+          connections={connections}
+          providerFilter={activeProviderFilter}
+          organizing={organizing}
+        />
+      ) : (
+        <SidebarAgentStatusList
+          connections={connections}
+          providerFilter={activeProviderFilter}
+        />
+      )}
     </>
   );
 }
 
-function ProviderFilterMenuItem({
+function RadioMenuItem({
   value,
   label,
 }: {
@@ -595,6 +641,23 @@ function SectionLabel({
         </span>
         {badge}
       </div>
+      {action}
+    </div>
+  );
+}
+
+function AgentListLabel({
+  children,
+  action,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mt-3 mb-0.5 flex min-h-6 items-center gap-2 px-2">
+      <h2 className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+        {children}
+      </h2>
       {action}
     </div>
   );

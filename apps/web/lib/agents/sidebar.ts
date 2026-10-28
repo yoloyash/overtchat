@@ -7,7 +7,7 @@ import {
 } from "@overtchat/agent-bridge";
 import { agentSessionState } from "@/lib/agents/attention";
 
-export const AGENT_SESSION_PREVIEW_COUNT = 5;
+export const AGENT_SESSION_PREVIEW_COUNT = 7;
 
 export function agentSessionDisplayTitle(
   session: Pick<AgentSessionListItem, "name" | "firstMessage">,

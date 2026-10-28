@@ -388,6 +388,8 @@ export const agentSessions = sqliteTable(
     lastTurn: text("last_turn", { mode: "json" }).$type<AgentTurnSummary>(),
     /** End of the latest turn the owner has seen, on the connector's clock. */
     readTurnEndedAt: integer("read_turn_ended_at"),
+    /** When OvertChat replaced the first-line title with a generated one. */
+    titleGeneratedAt: integer("title_generated_at", { mode: "timestamp_ms" }),
     lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
