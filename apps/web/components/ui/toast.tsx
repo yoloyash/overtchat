@@ -12,8 +12,13 @@ type ToastInput =
       title: ReactNode;
       description?: ReactNode;
       timeout?: number;
+      /** Replaces the icon the type implies. */
+      icon?: ReactNode;
+      /** A button under the text. */
+      action?: { label: string; onClick: () => void };
     };
 type ToastOptions = Exclude<ToastInput, string>;
+type ToastData = { icon?: ReactNode };
 
 const toastManager = ToastPrimitive.createToastManager();
 
@@ -41,6 +46,15 @@ export const toast = {
       ...options,
       type: "warning",
       timeout: options.timeout ?? 6000,
+    });
+  },
+  /** Something to know about, with a way to get there. */
+  notice(input: ToastInput) {
+    const options = normalizeInput(input);
+    toastManager.add({
+      ...options,
+      type: "notice",
+      timeout: options.timeout ?? 8000,
     });
   },
 };
@@ -75,11 +89,14 @@ function ToastList() {
       )}
     >
       <ToastPrimitive.Content className="flex gap-3 p-3">
-        <ToastIcon type={item.type} />
+        {(item.data as ToastData | undefined)?.icon ?? <ToastIcon type={item.type} />}
         <div className="min-w-0 flex-1">
           <ToastPrimitive.Title className="text-sm font-medium text-foreground" />
           {item.description != null && (
             <ToastPrimitive.Description className="mt-0.5 text-xs leading-relaxed text-muted-foreground" />
+          )}
+          {item.actionProps && (
+            <ToastPrimitive.Action className="mt-2 inline-flex h-7 items-center rounded-md border bg-background px-2.5 text-xs font-medium text-foreground outline-none motion-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50" />
           )}
         </div>
         <ToastPrimitive.Close
@@ -104,7 +121,14 @@ function ToastIcon({ type }: { type?: string }) {
   return <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-ring" />;
 }
 
-function normalizeInput(input: ToastInput): ToastOptions {
-  if (typeof input === "string") return { title: input };
-  return { ...input };
+function normalizeInput(input: ToastInput) {
+  const { icon, action, ...options }: ToastOptions =
+    typeof input === "string" ? { title: input } : input;
+  return {
+    ...options,
+    ...(icon ? { data: { icon } satisfies ToastData } : {}),
+    ...(action
+      ? { actionProps: { children: action.label, onClick: action.onClick } }
+      : {}),
+  };
 }

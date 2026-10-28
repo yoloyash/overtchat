@@ -106,6 +106,34 @@ describe("agent connection session-directory stream", () => {
     expect(mocks.unsubscribeDirectory).toHaveBeenCalledOnce();
   });
 
+  it("passes alerts for the stream's client along, until it disconnects", async () => {
+    const { agentClientRegistry } = await import("@/lib/notifications/presence");
+    const notification = {
+      sessionId: "session",
+      reason: "completed" as const,
+      eventId: "session:1",
+      title: "Finished: Fix tests",
+      body: "Done.",
+      provider: "codex" as const,
+    };
+    const response = await GET(
+      new Request("http://server.test/api/agent-connections/events?client=tab-00000001"),
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    expect(agentClientRegistry.deliver("owner", "tab-00000001", notification)).toBe(true);
+    const delivered = new TextDecoder().decode((await reader.read()).value);
+    expect(delivered).toBe(`event: notification\ndata: ${JSON.stringify(notification)}\n\n`);
+    await reader.cancel();
+    expect(agentClientRegistry.deliver("owner", "tab-00000001", notification)).toBe(false);
+    // Streams without a client id, or with a malformed one, are not told.
+    const anonymous = await GET(
+      new Request("http://server.test/api/agent-connections/events?client=x"),
+    );
+    await anonymous.body!.getReader().cancel();
+    expect(agentClientRegistry.deliver("owner", "x", notification)).toBe(false);
+  });
+
   it("does not expose the directory to non-admin users", async () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "member", role: "user" },

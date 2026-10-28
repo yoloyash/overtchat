@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { SettingsChoiceGroup } from "../SettingsChoiceGroup";
 import { AccentPicker } from "./AccentPicker";
+import { AgentAlertsSection } from "./AgentAlertsSection";
 import { Switch } from "@/components/ui/switch";
 import {
   SettingsPage,
@@ -211,6 +212,8 @@ export function GeneralForm() {
           />
         </SettingsRow>
       </SettingsSection>
+
+      <AgentAlertsSection />
     </SettingsPage>
   );
 }

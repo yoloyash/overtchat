@@ -32,6 +32,7 @@ import {
 } from "@/components/SidebarProjects";
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
 import { SidebarAgentStatusList } from "@/components/SidebarAgentStatusList";
+import { AgentAlerts } from "@/components/agents/AgentAlerts";
 import {
   useAgentSidebarGrouping,
   type AgentSidebarGrouping,
@@ -273,6 +274,7 @@ function AdminSidebarBody({ chat }: { chat: React.ReactNode }) {
   );
   return (
     <>
+      <AgentAlerts connections={connections} />
       <SidebarModeToggle mode={mode} agentCounts={agentCounts} />
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         {mode === "agents" ? (

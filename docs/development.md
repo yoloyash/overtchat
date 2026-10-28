@@ -1586,6 +1586,45 @@ agent, with the filters kept in the URL.
 `apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
 session-list and event-stream responses.
 
+#### Agent alerts
+
+The server turns live status updates into one alert per request or finished
+turn (`apps/web/lib/notifications/agentAttention.ts`): an approval or question
+at once, a failed turn at once, a completed turn after five quiet seconds, and
+nothing for a turn the owner stopped. Directory snapshots only set a baseline,
+so reconnects never alert twice. Each alert is titled like a sidebar row
+("Needs approval: Upgrade the parser") with the request, reply or error as its
+body.
+
+Who is told follows presence. Web and desktop clients post
+`/api/agent-presence` every half minute while visible, at once when that or
+the open session changes, and the desktop app also while the computer is in
+use with the window in the background. Nobody is told while a present client
+shows the session; otherwise the server sends the alert over the event stream
+of the client used most recently that wants alerts; phones get a push only
+when no such client is present. Push text names the session and what it needs
+when the device allows previews, and says only "An agent needs approval" or
+"An agent finished" otherwise. Every agent alert keeps the Android channel
+`agent-idle`, now named "Agent activity", so phones that predate this still
+show it. Notifications never carry an approval action.
+
+Settings → General → Agent alerts is per device and off by default: a chime
+(rising for a request, falling for a finished turn) and system notifications,
+which need notification permission. In front, an alert is a toast with an
+Open button; in the background, a system notification whose click reveals the
+window. The favicon and the desktop dock or taskbar icon count sessions that
+need input, failed, or finished unseen, whatever the device wants. The
+desktop bridge gained optional `setBadge`, `revealWindow` and
+`getSystemIdleSeconds`; the UI treats them as absent on older apps. Mobile
+marks a session read when it is open in the foreground and whenever a turn
+ends while it is open. `apps/web/e2e/agent-notifications.spec.ts` streams a
+scripted alert and checks the heartbeat, the badge, both settings and both
+presentations.
+
+```sh
+npx vitest run --root apps/web lib/notifications app/api/agent-presence
+```
+
 ```sh
 npm run test -w packages/agent-runtime -- src/runtime/attention.test.ts src/runtime/registry.test.ts
 RUN_ATTENTION_INTEGRATION=claude,codex,omp npm run test -w packages/agent-runtime -- src/runtime/attention.integration.test.ts

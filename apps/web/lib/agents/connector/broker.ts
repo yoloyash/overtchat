@@ -1,5 +1,5 @@
-import { AgentIdleNotifications } from "@/lib/notifications/agentIdle";
-import { notifyAgentIdle } from "@/lib/notifications/sender";
+import { AgentAttentionNotifications } from "@/lib/notifications/agentAttention";
+import { notifyAgentAttention } from "@/lib/notifications/sender";
 import "server-only";
 import {
   HOST_CONNECTOR_CAPABILITIES,
@@ -120,11 +120,13 @@ export class HostConnectorBroker {
     string,
     Map<string, number>
   >();
-  private readonly idleNotifications = new AgentIdleNotifications((id) => {
-    void notifyAgentIdle(id).catch(() =>
-      console.error("[push] Could not send agent notification."),
-    );
-  });
+  private readonly attentionNotifications = new AgentAttentionNotifications(
+    (event) => {
+      void notifyAgentAttention(event).catch(() =>
+        console.error("[push] Could not send agent notification."),
+      );
+    },
+  );
   private readonly sessionDirectory = new Map<
     string,
     { connectorId: string; session: AgentSessionDirectoryEntry }
@@ -340,7 +342,7 @@ export class HostConnectorBroker {
       connectorCapabilities.filter((capability) => supported.has(capability)),
     );
     const sessionIds = new Set(activeSessionIds);
-    for (const id of sessionIds) this.idleNotifications.reset(id);
+    for (const id of sessionIds) this.attentionNotifications.reset(id);
     const channel = { send, capabilities, sessionIds };
     this.channels.set(connectorId, channel);
     for (const sessionId of sessionIds) {
@@ -373,7 +375,7 @@ export class HostConnectorBroker {
     return () => {
       if (this.channels.get(connectorId) !== channel) return;
       this.channels.delete(connectorId);
-      for (const id of channel.sessionIds) this.idleNotifications.reset(id);
+      for (const id of channel.sessionIds) this.attentionNotifications.reset(id);
       for (const watch of this.gitWatches.values()) {
         if (watch.connectorId !== connectorId) continue;
         watch.generation += 1;
@@ -400,10 +402,10 @@ export class HostConnectorBroker {
       request.type === "session_command" &&
       request.command.type === "abort"
     ) {
-      this.idleNotifications.suppress(request.session.sessionId);
+      this.attentionNotifications.suppress(request.session.sessionId);
     }
     if (request.type === "stop_session")
-      this.idleNotifications.suppress(request.sessionId);
+      this.attentionNotifications.suppress(request.sessionId);
 
     const replaySafe =
       isLedgerProtectedCommand(request) &&
@@ -626,9 +628,9 @@ export class HostConnectorBroker {
         freshNotification &&
         channel?.sessionIds.has(event.session.sessionId)
       ) {
-        this.idleNotifications.update(
+        this.attentionNotifications.update(
           event.session.sessionId,
-          event.session.runtimeStatus,
+          event.session,
         );
       }
       this.acceptSessionDirectory(connectorId, [event.session], false);
@@ -788,7 +790,7 @@ export class HostConnectorBroker {
     for (const session of sessions) {
       if (!channel.sessionIds.has(session.sessionId)) continue;
       if (baseline)
-        this.idleNotifications.reset(session.sessionId, session.runtimeStatus);
+        this.attentionNotifications.reset(session.sessionId, session);
       if (session.lastTurn) {
         try {
           recordAgentSessionLastTurn(session.sessionId, session.lastTurn);

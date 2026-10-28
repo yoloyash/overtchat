@@ -41,7 +41,11 @@ import {
   text,
   thinkingLabel,
 } from "@/lib/agents/model";
-import { useAgentCommand, useAgentSession } from "@/lib/queries/agents";
+import {
+  useAgentCommand,
+  useAgentSession,
+  useMarkAgentSessionSeen,
+} from "@/lib/queries/agents";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { useTheme } from "@/lib/theme";
 import { useSpeech } from "@/lib/useSpeech";
@@ -79,6 +83,7 @@ function AgentSession({
     "admin";
   useFocusEffect(useCallback(() => () => stopSpeech(), [stopSpeech]));
   const snapshot = session.snapshot;
+  useMarkAgentSessionSeen(id, snapshot?.status);
   const mutation = useAgentCommand(id);
   const { draft, setDraft, storageError, saveDraftToSession } =
     useAgentDraft(id);
