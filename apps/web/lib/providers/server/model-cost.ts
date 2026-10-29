@@ -1,5 +1,5 @@
 import "server-only";
-import type { LanguageModelUsage } from "ai";
+import type { ImageModelUsage, LanguageModelUsage } from "ai";
 import type { ModelPricing } from "@/lib/model-config/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import {
@@ -117,6 +117,43 @@ function estimateGenerationCostUnchecked({
     cacheWriteCostNanoUsd,
     totalCostNanoUsd,
   };
+}
+
+/**
+ * Image providers bill generated pixels as output tokens, so size and quality
+ * are already reflected in the reported counts.
+ */
+export function estimateImageGenerationCost({
+  providerId,
+  model,
+  usage,
+  pricing,
+}: {
+  providerId: ProviderId;
+  model: string;
+  usage: ImageModelUsage | undefined;
+  pricing?: ModelPricing | null;
+}): EstimatedGenerationCost | null {
+  if (!usage) return null;
+  return estimateGenerationCost({
+    providerId,
+    model,
+    pricing,
+    usage: {
+      inputTokens: usage.inputTokens,
+      inputTokenDetails: {
+        noCacheTokens: undefined,
+        cacheReadTokens: undefined,
+        cacheWriteTokens: undefined,
+      },
+      outputTokens: usage.outputTokens,
+      outputTokenDetails: {
+        textTokens: undefined,
+        reasoningTokens: undefined,
+      },
+      totalTokens: usage.totalTokens,
+    },
+  });
 }
 
 export function sumEstimatedGenerationCosts(

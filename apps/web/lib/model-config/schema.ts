@@ -60,7 +60,7 @@ export function supportsLocalReasoningConfig(
   apiFormat: string,
 ): boolean {
   return (
-    ["vllm", "llamacpp", "sglang"].includes(providerId) ||
+    ["vllm", "llamacpp", "sglang", "openrouter"].includes(providerId) ||
     (providerId === "custom" && apiFormat === "openai-chat")
   );
 }
@@ -210,7 +210,12 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
           discoveredContextWindow: null,
           discoveredCapabilities: null,
           reasoningOverride: null,
-          pricing: null,
+          // Custom image backends report no token usage to price. Image usage
+          // carries no cache tokens, so only input and output rates apply.
+          pricing:
+            value.providerId === "custom" || !value.pricing
+              ? null
+              : { ...value.pricing, cacheRead: 0, cacheWrite: 0 },
         }
       : value,
   );

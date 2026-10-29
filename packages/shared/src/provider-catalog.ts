@@ -6,6 +6,7 @@ export const PROVIDER_IDS = [
   "google",
   "deepseek",
   "bedrock",
+  "openrouter",
   "vllm",
   "llamacpp",
   "sglang",
@@ -82,6 +83,15 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     modelPlaceholder: "openai.gpt-5.6-terra",
     requiresApiKey: true,
   },
+  openrouter: {
+    id: "openrouter",
+    label: "OpenRouter",
+    iconId: "openrouter",
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "openai/gpt-5-mini",
+    requiresApiKey: true,
+  },
   vllm: {
     id: "vllm",
     label: "vLLM",
@@ -155,6 +165,15 @@ export const EXPLICIT_API_FORMAT_IDS = Object.keys(
 
 export function getProvider(providerId: ProviderId): ProviderDefinition {
   return PROVIDERS[providerId];
+}
+
+export function isProviderId(value: string): value is ProviderId {
+  return (PROVIDER_IDS as readonly string[]).includes(value);
+}
+
+/** Looks up a provider ID that may come from a newer server. */
+export function findProvider(providerId: string): ProviderDefinition | undefined {
+  return isProviderId(providerId) ? PROVIDERS[providerId] : undefined;
 }
 
 export function modelIconForModel(model: string): ModelBrandIconId | null {

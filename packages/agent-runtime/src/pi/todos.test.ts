@@ -120,6 +120,75 @@ it("preserves Pi native result identity before adding display-only task content"
   } finally { await client.stop(); }
 });
 
+describe("OMP task cards", () => {
+  const progress = (done: number) => ({ phases: [{ name: "Work", tasks: ["Inspect", "Implement", "Verify"]
+    .map((content, index) => ({ content, status: index < done ? "completed" : index === done ? "in_progress" : "pending" })) }] });
+  let clock = Date.parse("2026-10-27T00:00:00Z");
+  const todo = (id: string, done: number) => [
+    { role: "assistant", id: `call-${id}`, content: [{ type: "toolCall", id, name: "todo", arguments: {} }] },
+    result(id, progress(done), { timestamp: ++clock }),
+  ];
+  const user = (id: string) => ({ role: "user", id, content: id });
+  // The visible rows: user messages by ID and task cards by completed count.
+  const cards = (messages: unknown[]) => projectAgentTranscript(messages).flatMap((row) =>
+    row.type === "message" ? [String((row.message as { id: unknown }).id)]
+    : row.type === "task_list" ? [`${row.snapshot.tasks.filter((task) => task.status === "completed").length}/3`] : []);
+
+  function sendTodo(process: RpcProcess, id: string, done: number) {
+    const [call, native] = todo(id, done);
+    process.send({ type: "message_end", message: call });
+    process.send({ type: "tool_execution_end", toolName: "todo", toolCallId: id, result: native });
+    process.send({ type: "message_end", message: native });
+  }
+
+  it("renders successive snapshots in a turn as one card in its final state", async () => {
+    const { process, client, messages } = setup("omp");
+    try {
+      process.send({ type: "agent_start" });
+      process.send({ type: "message_end", message: user("first") });
+      for (const done of [0, 1, 2]) sendTodo(process, `todo-${done}`, done);
+      expect(cards(messages())).toEqual(["first", "2/3"]);
+      process.state = { todoPhases: progress(3).phases };
+      process.send({ type: "todo_reminder" });
+      await vi.waitFor(() => expect(cards(messages())).toEqual(["first", "3/3"]));
+      process.send({ type: "agent_end" });
+      expect(projectAgentTranscript(messages()).map((row) => row.type)).toEqual(["message", "task_list"]);
+
+      process.history = [user("first"), ...[0, 1, 2].flatMap((done) => todo(`todo-${done}`, done))];
+      const restored = (await client.getMessages()).messages;
+      expect(projectAgentTranscript(restored).map((row) => row.type)).toEqual(["message", "task_list"]);
+      expect(cards(restored)).toEqual(["first", "3/3"]);
+    } finally { await client.stop(); }
+  });
+
+  it("keeps each turn's card in its own turn when the list changes across turns", async () => {
+    const { process, client, messages } = setup("omp");
+    const taskKeys = () => projectAgentTranscript(messages()).flatMap((row) => row.type === "task_list" ? [row.key] : []);
+    try {
+      process.send({ type: "agent_start" });
+      process.send({ type: "message_end", message: user("first") });
+      sendTodo(process, "todo-0", 0);
+      sendTodo(process, "todo-1", 1);
+      process.send({ type: "agent_end" });
+      const [first] = taskKeys();
+
+      process.send({ type: "agent_start" });
+      process.send({ type: "message_end", message: user("second") });
+      sendTodo(process, "todo-2", 2);
+      sendTodo(process, "todo-3", 3);
+      expect(cards(messages())).toEqual(["first", "1/3", "second", "3/3"]);
+      expect(taskKeys()).toHaveLength(2);
+      expect(taskKeys()[0]).toBe(first);
+      expect(latestAgentTaskList(messages())?.tasks.every((task) => task.status === "completed")).toBe(true);
+
+      process.history = [user("first"), ...todo("todo-0", 0), ...todo("todo-1", 1),
+        user("second"), ...todo("todo-2", 2), ...todo("todo-3", 3)];
+      process.state = { todoPhases: progress(3).phases };
+      expect(cards((await client.getMessages()).messages)).toEqual(["first", "1/3", "second", "3/3"]);
+    } finally { await client.stop(); }
+  });
+});
+
 describe("OMP current task state", () => {
   it("logs a failed reminder refresh and recovers on the next runtime state refresh", async () => {
     const { process, client, messages } = setup("omp");

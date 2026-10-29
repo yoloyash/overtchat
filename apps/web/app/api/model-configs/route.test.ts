@@ -102,6 +102,44 @@ describe("model config save validation", () => {
   });
 });
 
+describe("admin model configs", () => {
+  const rows = [
+    { id: "router", providerId: "openrouter", apiFormat: "auto" },
+    { id: "local", providerId: "vllm", apiFormat: "auto" },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSession.mockResolvedValue({
+      user: { id: "admin", role: "admin" },
+    });
+    mocks.listModelConfigs.mockResolvedValue(rows);
+  });
+
+  it("shows clients without the client header only providers they know", async () => {
+    const response = await GET(
+      new Request("http://server.test/api/model-configs?admin=1"),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      modelConfigs: [
+        { id: "router", providerId: "custom", apiFormat: "openai-chat" },
+        { id: "local", providerId: "vllm", apiFormat: "auto" },
+      ],
+    });
+  });
+
+  it("returns stored providers to clients that send the header", async () => {
+    const response = await GET(
+      new Request("http://server.test/api/model-configs?admin=1", {
+        headers: { "X-OvertChat-Client": "mobile/1.20.1" },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ modelConfigs: rows });
+  });
+});
+
 describe("public model configs", () => {
   beforeEach(() => {
     vi.clearAllMocks();

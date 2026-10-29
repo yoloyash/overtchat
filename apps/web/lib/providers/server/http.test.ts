@@ -68,6 +68,67 @@ describe("provider model discovery", () => {
     );
   });
 
+  it("reads gateway context, output limits, and supported parameters", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          data: [
+            {
+              id: "vendor/tool-model",
+              context_length: 200_000,
+              architecture: {
+                input_modalities: ["text", "image"],
+                output_modalities: ["text"],
+              },
+              top_provider: {
+                context_length: 128_000,
+                max_completion_tokens: 32_000,
+              },
+              supported_parameters: [
+                "tools",
+                "tool_choice",
+                "reasoning",
+                "structured_outputs",
+              ],
+            },
+            {
+              id: "vendor/text-model",
+              context_length: 8192,
+              supported_parameters: ["temperature", "max_tokens"],
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      listOpenAIModels("https://gateway.example.test/api/v1", "secret"),
+    ).resolves.toEqual([
+      {
+        id: "vendor/text-model",
+        contextWindow: 8192,
+        capabilities: {
+          toolCalling: false,
+          reasoning: false,
+          structuredOutput: false,
+        },
+      },
+      {
+        id: "vendor/tool-model",
+        contextWindow: 200_000,
+        capabilities: {
+          maxOutputTokens: 32_000,
+          inputModalities: ["text", "image"],
+          outputModalities: ["text"],
+          toolCalling: true,
+          reasoning: true,
+          structuredOutput: true,
+        },
+      },
+    ]);
+  });
+
   it("paginates Anthropic models with native headers", async () => {
     const fetchMock = vi
       .fn()

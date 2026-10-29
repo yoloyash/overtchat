@@ -6,6 +6,13 @@
  */
 export const CLIENT_API_LEVEL = 5;
 
+/**
+ * Bundled clients send `<platform>/<version>` in this header. Its presence
+ * declares that the client renders model provider IDs added after its build.
+ * Servers give requests without it only provider IDs that older clients know.
+ */
+export const CLIENT_HEADER = "X-OvertChat-Client";
+
 export interface PingResponse {
   ok: true;
   name: "overtchat";

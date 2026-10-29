@@ -11,6 +11,7 @@ interface OpenAIModelList {
     owned_by?: unknown;
     max_model_len?: unknown;
     max_context_length?: unknown;
+    context_length?: unknown;
     max_output_tokens?: unknown;
     max_tokens?: unknown;
     input_modalities?: unknown;
@@ -18,6 +19,8 @@ interface OpenAIModelList {
     modalities?: unknown;
     architecture?: unknown;
     capabilities?: unknown;
+    top_provider?: unknown;
+    supported_parameters?: unknown;
   }>;
 }
 
@@ -88,7 +91,8 @@ async function listOpenAIModelsWithOptions(
       id: model.id,
       contextWindow:
         readPositiveInteger(model.max_model_len) ??
-        readPositiveInteger(model.max_context_length),
+        readPositiveInteger(model.max_context_length) ??
+        readPositiveInteger(model.context_length),
       capabilities: openAIModelCapabilities(model),
     })),
   );
@@ -279,10 +283,18 @@ function openAIModelCapabilities(
   const capabilities = isRecord(model.capabilities)
     ? model.capabilities
     : undefined;
+  const topProvider = isRecord(model.top_provider)
+    ? model.top_provider
+    : undefined;
+  // Gateways list the request parameters each model accepts.
+  const parameters = readStringArray(model.supported_parameters);
+  const supports = (parameter: string) =>
+    parameters ? parameters.includes(parameter) : undefined;
   return compactCapabilities({
     maxOutputTokens:
       readPositiveInteger(model.max_output_tokens) ??
-      readPositiveInteger(model.max_tokens),
+      readPositiveInteger(model.max_tokens) ??
+      readPositiveInteger(topProvider?.max_completion_tokens),
     inputModalities:
       readStringArray(model.input_modalities) ??
       readStringArray(modalities?.input_modalities) ??
@@ -295,11 +307,14 @@ function openAIModelCapabilities(
     toolCalling:
       readSupportedBoolean(capabilities?.tool_call) ??
       readSupportedBoolean(capabilities?.tool_calling) ??
-      readSupportedBoolean(capabilities?.tools),
-    reasoning: readSupportedBoolean(capabilities?.reasoning),
+      readSupportedBoolean(capabilities?.tools) ??
+      supports("tools"),
+    reasoning:
+      readSupportedBoolean(capabilities?.reasoning) ?? supports("reasoning"),
     structuredOutput:
       readSupportedBoolean(capabilities?.structured_output) ??
-      readSupportedBoolean(capabilities?.structured_outputs),
+      readSupportedBoolean(capabilities?.structured_outputs) ??
+      supports("structured_outputs"),
     temperature: readSupportedBoolean(capabilities?.temperature),
   });
 }

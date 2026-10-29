@@ -24,6 +24,35 @@ const requests: Array<{
 }> = [];
 const chatRequests: Array<Record<string, unknown>> = [];
 
+function imageModelId(): string {
+  const db = openE2eDatabase();
+  try {
+    return (
+      db
+        .prepare("SELECT id FROM model_configs WHERE model_type = 'image'")
+        .get() as { id: string }
+    ).id;
+  } finally {
+    db.close();
+  }
+}
+
+function imageUsageRows() {
+  const db = openE2eDatabase();
+  try {
+    return db
+      .prepare(
+        `SELECT provider_id AS providerId, model, input_tokens AS inputTokens,
+                output_tokens AS outputTokens, cost_source AS costSource,
+                total_cost_nano_usd AS totalCostNanoUsd
+         FROM generation_usage WHERE context = 'image'`,
+      )
+      .all();
+  } finally {
+    db.close();
+  }
+}
+
 test.beforeAll(async () => {
   provider = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -119,7 +148,11 @@ test.beforeAll(async () => {
               }
             : {
                 data: [{ b64_json: png }],
-                usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 },
+                usage: {
+                  input_tokens: 12,
+                  output_tokens: 4_160,
+                  total_tokens: 4_172,
+                },
               },
         ),
       );
@@ -504,6 +537,67 @@ test("retains a completed image when the subsequent chat model step fails", asyn
   await page.reload();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();
   expect(requests).toHaveLength(1);
+  expect(imageUsageRows()).toEqual([
+    expect.objectContaining({ model: "gpt-image-1", outputTokens: 4_160 }),
+  ]);
+});
+
+test("prices images at administrator rates and shows them beside chat usage", async ({
+  page,
+}) => {
+  await test.step("enter input and output rates for the image model", async () => {
+    await page.goto(`/settings/models/${imageModelId()}`);
+    const section = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Usage cost" }) });
+    await expect(section).toContainText("No catalog pricing");
+    await section.getByRole("switch", { name: "Custom pricing" }).click();
+    await expect(page.locator("#p-price-cache-read")).toHaveCount(0);
+    await expect(page.locator("#p-price-cache-write")).toHaveCount(0);
+    await page.locator("#p-price-input").fill("5");
+    await page.locator("#p-price-output").fill("40");
+    const save = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/model-configs/") &&
+        response.request().method() === "PATCH",
+    );
+    await page.getByRole("button", { name: "Save changes" }).click();
+    expect((await save).ok()).toBeTruthy();
+  });
+
+  await test.step("record the image apart from the unpriced chat model", async () => {
+    await page.goto("/");
+    await page.locator("textarea").fill("Generate an image of a red kite");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toBeVisible();
+    await expect.poll(imageUsageRows).toEqual([
+      {
+        providerId: "openai",
+        model: "gpt-image-1",
+        inputTokens: 12,
+        outputTokens: 4_160,
+        costSource: "model_config",
+        totalCostNanoUsd: 166_460_000,
+      },
+    ]);
+  });
+
+  await test.step("show image cost in the usage popover", async () => {
+    await page.reload();
+    const usage = page.getByTitle("Usage");
+    await expect(usage).toContainText("$0.166");
+    await usage.click();
+    await expect(page.getByRole("region", { name: "Session" })).toHaveCount(0);
+    const images = page.getByRole("region", { name: "Images" });
+    await expect(images).toContainText("1 image");
+    await expect(images).toContainText("$0.166");
+    await expect(images.getByText("Input").locator("..")).toContainText("12");
+    await expect(images.getByText("Output").locator("..")).toContainText(
+      "4,160",
+    );
+  });
 });
 
 test("deduplicates a repeated chat start and keeps temporary images out of saved chats", async ({

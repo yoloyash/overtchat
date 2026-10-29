@@ -2,6 +2,8 @@ import { Stack } from "expo-router";
 import { DrawerToggleButton } from "expo-router/build/react-navigation/drawer";
 import { useTheme } from "@/lib/theme";
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 export const unstable_settings = { initialRouteName: "index" };
 
 export default function AgentsLayout() {
