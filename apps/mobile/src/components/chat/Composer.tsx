@@ -23,6 +23,7 @@ import { toastError } from "@/lib/toast";
 import { useDictation } from "@/lib/useDictation";
 import { MessageQueue, type MessageQueueProps } from "./MessageQueue";
 import { AttachmentChip } from "./AttachmentChip";
+import { ChatUsageButton, type ChatUsageSummary } from "./ChatUsageButton";
 
 const AUDIO_LINES_PATHS = [
   "M2 10v3",
@@ -69,6 +70,8 @@ export function Composer({
   onPasteImages,
   onSubmit,
   onStop,
+  usage,
+  onOpenUsage,
 }: {
   chatQueue: MessageQueueProps;
   voiceInstalled?: boolean;
@@ -109,6 +112,8 @@ export function Composer({
   onPasteImages: (uris: string[]) => void;
   onSubmit: (text: string, attachments: FileUIPart[]) => void | boolean | Promise<boolean>;
   onStop: () => void;
+  usage?: ChatUsageSummary;
+  onOpenUsage?: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
   const [input, setInput] = useState("");
@@ -437,6 +442,10 @@ export function Composer({
           ) : null}
 
           <View style={styles.controlsSpacer} />
+
+          {usage && onOpenUsage ? (
+            <ChatUsageButton usage={usage} onPress={onOpenUsage} />
+          ) : null}
 
           {!voiceActive && !streaming && !canSend ? (
             <Pressable

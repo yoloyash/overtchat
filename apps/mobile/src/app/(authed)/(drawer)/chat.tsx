@@ -1,4 +1,3 @@
-import { ChatUsageBar } from "@/components/chat/ChatUsageBar";
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import {
@@ -40,6 +39,11 @@ import {
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
+import {
+  ChatUsageSheet,
+  useChatUsageSummary,
+  type ChatUsageSheetRef,
+} from "@/components/chat/ChatUsageSheet";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { VoiceControls } from "@/components/chat/VoiceControls";
 import { useMobileVoice } from "@/lib/voice/useMobileVoice";
@@ -223,6 +227,7 @@ function ChatSurface({
   const reasoningLevels = useReasoningLevels();
   const pickerRef = useRef<ModelPickerSheetRef>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
+  const usageSheetRef = useRef<ChatUsageSheetRef>(null);
 
   const transport = useMemo(
     () =>
@@ -361,6 +366,13 @@ function ChatSurface({
   const modelLoading =
     modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
+  const usage = useChatUsageSummary({
+    chatId,
+    persisted: chatPersisted,
+    streaming,
+    messages,
+    contextWindow: selectedModel?.contextWindow,
+  });
   const reasoningControls = selectedModel?.capabilities?.reasoningControls;
   const storedReasoningLevel = selectedId
     ? reasoningLevels[selectedId]
@@ -703,7 +715,6 @@ function ChatSurface({
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
-      <ChatUsageBar chatId={chatId} persisted={chatPersisted} streaming={streaming} messages={messages} contextWindow={selectedModel?.contextWindow} />
       <MiniSpeechPlayer speech={speech} />
       {messages.length === 0 ? (
         <View
@@ -874,6 +885,11 @@ function ChatSurface({
               Keyboard.dismiss();
               addSheetRef.current?.present();
             }}
+            usage={usage}
+            onOpenUsage={() => {
+              Keyboard.dismiss();
+              usageSheetRef.current?.present();
+            }}
             onRemoveAttachment={removeAttachment}
             onDismissUploadError={dismissUploadError}
             onPasteImages={(uris) => {
@@ -946,6 +962,8 @@ function ChatSurface({
           if (!voice.busy) setOpenuiRequested(next);
         }}
       />
+
+      <ChatUsageSheet ref={usageSheetRef} usage={usage} />
     </KeyboardAvoidingView>
     {documentTarget ? (
       <DocumentViewer
