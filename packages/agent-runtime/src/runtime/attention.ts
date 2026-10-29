@@ -175,6 +175,15 @@ export class AgentTurnTracker {
   }
 
   /**
+   * The turn's own command failed. Kept until the turn ends, because settling
+   * the turn clears the runtime error. Other commands failing mid-turn (a
+   * steer, a compaction, a state refresh) leave the turn to end on its own.
+   */
+  observeError(error: string): void {
+    if (this.status === "running") this.error = error;
+  }
+
+  /**
    * Records a finished assistant message. Providers can retry or fall back to
    * another model within a turn, so only the latest reply's error counts.
    */
@@ -215,7 +224,6 @@ export class AgentTurnTracker {
         this.replyError = undefined;
         this.stopRequested = false;
       }
-      if (observation.error) this.error = observation.error;
       return false;
     }
     if (previous !== "running") return false;
