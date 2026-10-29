@@ -182,13 +182,24 @@ describe("turn tracker", () => {
     ).toBe(false);
   });
 
-  it("keeps an error seen mid-turn after the runtime clears it", () => {
+  it("keeps the turn's own error after the runtime clears it", () => {
     const tracker = new AgentTurnTracker("idle", null);
     tracker.observe(running(), messages, 100);
-    tracker.observe(running("Rate limit reached"), messages, 150);
+    tracker.observeError("Rate limit reached");
     tracker.observe(running(), messages, 160);
     tracker.observe({ status: "idle", startedAt: null, error: undefined }, messages, 200);
     expect(tracker.lastTurn).toMatchObject({ outcome: "failed", error: "Rate limit reached" });
+  });
+
+  it("lets another command fail mid-turn without failing the turn", () => {
+    const tracker = new AgentTurnTracker("idle", null);
+    tracker.observe(running(), messages, 100);
+    // A refused steer or compaction shows as a runtime error while the turn goes on.
+    tracker.observe(running("Steer rejected"), messages, 150);
+    tracker.observe(running(), messages, 160);
+    tracker.observe({ status: "idle", startedAt: null, error: undefined }, messages, 200);
+    expect(tracker.lastTurn).toMatchObject({ outcome: "completed" });
+    expect(tracker.lastTurn?.error).toBeUndefined();
   });
 
   it("fails a turn the provider marked failed or that exits", () => {
