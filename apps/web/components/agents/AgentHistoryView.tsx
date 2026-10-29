@@ -87,8 +87,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   const query = typed.over === search.q ? typed.value : (search.q ?? "");
   const setQuery = (value: string) => setTyped({ value, over: search.q });
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const host =
-    search.host && hosts.some((item) => item.id === search.host) ? search.host : null;
+  const host = search.host && hosts.includes(search.host) ? search.host : null;
   const workspaces = useMemo(() => agentSessionWorkspaces(groups, host), [groups, host]);
   const workspace =
     search.workspace && workspaces.includes(search.workspace) ? search.workspace : null;
@@ -203,17 +202,13 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
             {hosts.length > 1 && (
               <Select value={host} onValueChange={selectHost}>
                 <SelectTrigger size="sm" className="max-w-48" aria-label="Machine">
-                  <SelectValue>
-                    {(value: string | null) =>
-                      hosts.find((item) => item.id === value)?.label ?? "All machines"
-                    }
-                  </SelectValue>
+                  <SelectValue>{(value: string | null) => value ?? "All machines"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={null}>All machines</SelectItem>
-                  {hosts.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label}
+                  {hosts.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
                     </SelectItem>
                   ))}
                 </SelectContent>

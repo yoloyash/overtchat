@@ -53,10 +53,10 @@ export function AgentSetupPicker({
   const current = setups.find((setup) => setup.workspaceId === workspaceId);
   if (!current) return null;
   const hosts = agentSetupHosts(setups);
-  const workspaces = agentSetupWorkspaces(setups, current.hostId);
+  const workspaces = agentSetupWorkspaces(setups, current.hostKey);
   const agents = agentSetupsForWorkspace(
     setups,
-    current.hostId,
+    current.hostKey,
     current.workspacePath,
   );
   // The marks the connection settings use: this server, or a machine over SSH.
@@ -79,10 +79,10 @@ export function AgentSetupPicker({
     <>
       {hosts.length > 1 && (
         <Select
-          value={current.hostId}
+          value={current.hostKey}
           // A machine opens with the folder and agent last used on it.
-          onValueChange={(hostId) =>
-            open(hostId ? agentSetupWorkspaces(setups, hostId)[0] : undefined)
+          onValueChange={(hostKey) =>
+            open(hostKey ? agentSetupWorkspaces(setups, hostKey)[0] : undefined)
           }
         >
           <SelectTrigger size="sm" aria-label="Machine" title="Machine" className={PILL}>
@@ -97,7 +97,7 @@ export function AgentSetupPicker({
           </SelectTrigger>
           <SelectContent align="start" alignItemWithTrigger={false} className={POPUP}>
             {hosts.map((host) => (
-              <SelectItem key={host.hostId} value={host.hostId}>
+              <SelectItem key={host.hostKey} value={host.hostKey}>
                 {host.hostLabel}
               </SelectItem>
             ))}
@@ -110,7 +110,7 @@ export function AgentSetupPicker({
         onValueChange={(path) =>
           open(
             path
-              ? agentSetupForWorkspace(setups, current.hostId, path, current.provider)
+              ? agentSetupForWorkspace(setups, current.hostKey, path, current.provider)
               : undefined,
           )
         }

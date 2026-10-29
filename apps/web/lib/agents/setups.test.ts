@@ -18,7 +18,7 @@ function setup(
     provider,
     workspaceName,
     workspacePath: `/srv/${workspaceName}`,
-    hostId: `host-${hostLabel}`,
+    hostKey: `host-${hostLabel}`,
     hostLabel,
     transport: hostLabel === "macbook" ? "local" : "ssh",
     activityAt: 0,
@@ -38,8 +38,8 @@ const setups = [
 describe("agentSetupHosts", () => {
   it("lists each machine once, most recently used first", () => {
     expect(agentSetupHosts(setups)).toEqual([
-      { hostId: "host-macbook", hostLabel: "macbook", transport: "local" },
-      { hostId: "host-home-server", hostLabel: "home-server", transport: "ssh" },
+      { hostKey: "host-macbook", hostLabel: "macbook", transport: "local" },
+      { hostKey: "host-home-server", hostLabel: "home-server", transport: "ssh" },
     ]);
   });
 });

@@ -12,7 +12,7 @@ export type AgentSessionSort = "activity" | "created";
 
 export type AgentSessionSearch = {
   query: string;
-  /** A host id, or null for every machine. */
+  /** A machine's name, or null for every machine. */
   host: string | null;
   /** A folder name, or null for every folder. */
   workspace: string | null;
@@ -20,17 +20,17 @@ export type AgentSessionSearch = {
   sort: AgentSessionSort;
 };
 
-export type AgentSessionHost = { id: string; label: string };
-
-/** Each machine with sessions, once, in list order. */
-export function agentSessionHosts(
-  groups: readonly AgentWorkspaceGroup[],
-): AgentSessionHost[] {
-  const hosts: AgentSessionHost[] = [];
+/**
+ * Each machine with sessions, by name, in list order. Every agent on a
+ * machine has its own host row, so rows cannot tell machines apart; names
+ * can, and two machines named alike are filtered together, like folders.
+ */
+export function agentSessionHosts(groups: readonly AgentWorkspaceGroup[]): string[] {
+  const hosts: string[] = [];
   for (const group of groups) {
     if (group.sessions.length === 0) continue;
-    if (hosts.some((host) => host.id === group.host.id)) continue;
-    hosts.push({ id: group.host.id, label: agentHostLabel(group.host) });
+    const label = agentHostLabel(group.host);
+    if (!hosts.includes(label)) hosts.push(label);
   }
   return hosts;
 }
@@ -43,7 +43,7 @@ export function agentSessionWorkspaces(
   const names = new Set<string>();
   for (const group of groups) {
     if (group.sessions.length === 0) continue;
-    if (host && group.host.id !== host) continue;
+    if (host && agentHostLabel(group.host) !== host) continue;
     names.add(group.name);
   }
   return [...names].sort((left, right) => left.localeCompare(right));
@@ -57,7 +57,7 @@ export function agentSessionProviders(
 ): AgentProviderId[] {
   const providers = new Set<AgentProviderId>();
   for (const group of groups) {
-    if (host && group.host.id !== host) continue;
+    if (host && agentHostLabel(group.host) !== host) continue;
     if (workspace && group.name !== workspace) continue;
     for (const item of group.sessions) providers.add(item.provider);
   }
@@ -106,7 +106,7 @@ export function searchAgentSessions(
   const words = fold(search.query).split(/\s+/).filter(Boolean);
   const results: AgentAttentionItem[] = [];
   for (const group of groups) {
-    if (search.host && group.host.id !== search.host) continue;
+    if (search.host && agentHostLabel(group.host) !== search.host) continue;
     if (search.workspace && group.name !== search.workspace) continue;
     for (const item of group.sessions) {
       if (search.provider && item.provider !== search.provider) continue;
