@@ -34,6 +34,13 @@ export type AgentWorkspaceProviderTarget = {
   workspace: AgentWorkspaceListItem;
 };
 
+/** How a machine is named everywhere: its SSH alias, else its name. */
+export function agentHostLabel(
+  host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
+): string {
+  return host.sshAlias || host.name || "This server";
+}
+
 export function agentTargetKey(target: AgentDiscoveryTarget): string {
   return JSON.stringify([
     target.connectorId,

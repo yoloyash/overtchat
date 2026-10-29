@@ -60,7 +60,7 @@ export function NewAgentSessionView({
   workspacePath: string;
   /** Session-storage draft holding the conversation being forked. */
   forkId: string | null;
-  /** Focus the workspace picker so a fork can move to another workspace. */
+  /** Focus the folder picker so a fork can move to another workspace. */
   chooseWorkspace: boolean;
 }) {
   const navigate = useNavigate();
@@ -71,16 +71,7 @@ export function NewAgentSessionView({
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
   const connections = useAgentConnections();
-  const [targetWorkspaceId, setTargetWorkspaceId] = useState(workspaceId);
-  const workspaceOptions = (connections.data ?? [])
-    .filter((connection) => connection.provider === provider)
-    .flatMap((connection) =>
-      connection.workspaces.map((workspace) => ({
-        id: workspace.id,
-        label: `${workspace.name} · ${connection.host.name}`,
-      })),
-    );
-  const catalog = useAgentWorkspaceCatalog(targetWorkspaceId, provider);
+  const catalog = useAgentWorkspaceCatalog(workspaceId, provider);
   const setups = useMemo(
     () => recentAgentSetups(connections.data ?? []),
     [connections.data],
@@ -219,7 +210,7 @@ export function NewAgentSessionView({
     let sessionId: string;
     try {
       sessionId = await createSession.mutateAsync({
-        workspaceId: targetWorkspaceId,
+        workspaceId,
         provider,
         launchConfig,
       });
@@ -305,12 +296,19 @@ export function NewAgentSessionView({
           </h1>
           {/* The first pill's icon lines up with the title and the composer's content. */}
           <div className="mb-4 flex min-w-0 flex-wrap items-center gap-1 px-1.5">
-            {forkId || !setups.some((setup) => setup.workspaceId === workspaceId) ? (
+            {setups.some((setup) => setup.workspaceId === workspaceId) ? (
+              <AgentSetupPicker
+                setups={setups}
+                workspaceId={workspaceId}
+                // A fork keeps its agent: its history and launch settings belong to it.
+                lockedProvider={forkId ? provider : null}
+                fork={forkId}
+                focusWorkspace={chooseWorkspace}
+              />
+            ) : (
               <p className="truncate px-2 text-sm leading-7 text-muted-foreground">
                 {workspaceName}
               </p>
-            ) : (
-              <AgentSetupPicker setups={setups} workspaceId={workspaceId} />
             )}
           </div>
           {forkError && (
@@ -322,27 +320,6 @@ export function NewAgentSessionView({
                 <RefreshCw /> Retry
               </Button>
             } />
-          )}
-          {forkContext && (
-            <label className="mb-3 block text-sm">
-              Workspace
-              <select
-                autoFocus={chooseWorkspace}
-                aria-label="Fork workspace"
-                className="mt-1 block w-full rounded-md border bg-background p-2"
-                value={targetWorkspaceId}
-                onChange={(event) => setTargetWorkspaceId(event.target.value)}
-              >
-                {!workspaceOptions.some(
-                  (workspace) => workspace.id === workspaceId,
-                ) && <option value={workspaceId}>{workspaceName}</option>}
-                {workspaceOptions.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.label}
-                  </option>
-                ))}
-              </select>
-            </label>
           )}
           {forkContext && (
             <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
@@ -415,13 +392,7 @@ export function NewAgentSessionView({
             onDeleteQueued={async () => false}
             onSteerQueued={async () => false}
             draftUserId={authSession?.user.id}
-            // A fork's history lives only in this tab, so its message is not
-            // saved where a later ordinary new session would restore it.
-            draftScope={
-              forkId
-                ? null
-                : newAgentComposerDraftScope(workspaceId, provider)
-            }
+            draftScope={newAgentComposerDraftScope(forkId)}
           />
         </div>
       </main>

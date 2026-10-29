@@ -15,6 +15,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { recentAgentSetups } from "@/lib/agents/setups";
 import { agentSessionDisplayTitle } from "@/lib/agents/sidebar";
+import { agentHostLabel } from "@/lib/agents/workspaces";
 import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
 import {
   ActivityPending,
@@ -97,14 +98,21 @@ export const agentsHomeRoute = createRoute({
   },
 });
 
-/** Every agent session, searchable by title, message, workspace and agent. */
+/** Every agent session, searchable by title, message, machine, workspace and agent. */
 export const agentHistoryRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/agents/history",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { q?: string; workspace?: string; provider?: string; sort?: string } => ({
+  ): {
+    q?: string;
+    host?: string;
+    workspace?: string;
+    provider?: string;
+    sort?: string;
+  } => ({
     q: optionalString(search.q),
+    host: optionalString(search.host),
     workspace: optionalString(search.workspace),
     provider: optionalString(search.provider),
     sort: optionalString(search.sort),
@@ -147,7 +155,9 @@ export const newAgentSessionRoute = createRoute({
     const connection = await findInListQuery(
       context.queryClient,
       agentConnectionListQuery,
-      (item) => item.workspaces.some((workspace) => workspace.id === workspaceId),
+      (item) =>
+        item.provider === provider &&
+        item.workspaces.some((workspace) => workspace.id === workspaceId),
     );
     const workspace = connection?.workspaces.find((item) => item.id === workspaceId);
     if (!workspace) throw redirect({ to: "/agents", replace: true });
@@ -200,7 +210,7 @@ export const agentSessionRoute = createRoute({
     }
     return {
       provider: connection.provider,
-      hostLabel: connection.host.sshAlias || connection.host.name,
+      hostLabel: agentHostLabel(connection.host),
       workspace,
       initialSessionName: agentSessionDisplayTitle(session) ?? "",
     };

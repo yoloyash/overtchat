@@ -5,15 +5,12 @@ import { useLocation } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronRight,
-  CircleAlert,
-  CircleCheck,
-  CircleDot,
-  CircleX,
 } from "lucide-react";
 import type {
   AgentConnectionListItem,
   AgentProviderId,
 } from "@overtchat/agent-bridge";
+import { AgentSessionStatusIcon } from "@/components/agents/AgentSessionStatus";
 import {
   AgentSessionListToggle,
   AgentSessionRow,
@@ -23,13 +20,11 @@ import {
   type AgentAttentionItem,
   type AgentAttentionSections,
 } from "@/lib/agents/attention";
+import { AGENT_SESSION_PREVIEW_COUNT } from "@/lib/agents/sidebar";
 import { groupAgentWorkspaces } from "@/lib/agents/workspaces";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useNow } from "@/lib/useNow";
 import { cn } from "@/lib/utils";
-
-/** Done sessions listed before "Show more"; the other groups list everything. */
-export const DONE_PREVIEW_COUNT = 7;
 
 const COLLAPSED_GROUPS_KEY = "overtchat:agent-status-collapsed";
 const NO_COLLAPSED_GROUPS: string[] = [];
@@ -41,31 +36,12 @@ const STATUS_GROUPS: {
   label: string;
   icon: React.ReactNode;
 }[] = [
-  {
-    key: "needsInput",
-    label: "Needs input",
-    icon: <CircleAlert aria-hidden="true" className="size-3.5 text-amber-500" />,
-  },
-  {
-    key: "failed",
-    label: "Failed",
-    icon: <CircleX aria-hidden="true" className="size-3.5 text-red-500 dark:text-red-400" />,
-  },
-  {
-    key: "ready",
-    label: "Ready to review",
-    icon: <CircleCheck aria-hidden="true" className="size-3.5 text-green-600 dark:text-green-500" />,
-  },
-  {
-    key: "working",
-    label: "Working",
-    icon: <CircleDot aria-hidden="true" className="size-3.5 text-blue-500 dark:text-blue-400" />,
-  },
-  {
-    key: "done",
-    label: "Done",
-    icon: <CircleCheck aria-hidden="true" className="size-3.5" />,
-  },
+  // Each header wears the mark its rows do.
+  { key: "needsInput", label: "Needs input", icon: <AgentSessionStatusIcon state="approval" /> },
+  { key: "failed", label: "Failed", icon: <AgentSessionStatusIcon state="failed" /> },
+  { key: "ready", label: "Ready to review", icon: <AgentSessionStatusIcon state="unread" /> },
+  { key: "working", label: "Working", icon: <AgentSessionStatusIcon state="working" /> },
+  { key: "done", label: "Done", icon: <AgentSessionStatusIcon state="idle" /> },
 ];
 
 /** Every agent session, grouped by what it needs from its owner. */
@@ -95,7 +71,7 @@ export function SidebarAgentStatusList({
     ? sections.done
     : sections.done.filter(
         ({ item }, index) =>
-          index < DONE_PREVIEW_COUNT ||
+          index < AGENT_SESSION_PREVIEW_COUNT ||
           pathname === `/agents/${item.session.id}`,
       );
 
@@ -127,7 +103,7 @@ export function SidebarAgentStatusList({
             listId={key === "done" ? doneListId : undefined}
             footer={
               key === "done" &&
-              sections.done.length > DONE_PREVIEW_COUNT && (
+              sections.done.length > AGENT_SESSION_PREVIEW_COUNT && (
                 <AgentSessionListToggle
                   expanded={showAllDone}
                   hiddenCount={sections.done.length - done.length}

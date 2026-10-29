@@ -17,11 +17,12 @@ export function agentComposerDraftScope(sessionId: string): string {
   return `agent:${sessionId}`;
 }
 
-export function newAgentComposerDraftScope(
-  workspaceId: string,
-  provider: string,
-): string {
-  return `new:agent:${workspaceId}:${provider}`;
+/**
+ * One draft for the new-session page, so it survives switching the machine,
+ * folder or agent. A fork keeps its own: its history lives only in its tab.
+ */
+export function newAgentComposerDraftScope(fork: string | null = null): string {
+  return fork ? `new:agent:fork:${fork}` : "new:agent";
 }
 
 export function readComposerDraft(

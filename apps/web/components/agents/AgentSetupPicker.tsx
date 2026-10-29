@@ -1,8 +1,8 @@
 "use client";
 
 import { useNavigate } from "@tanstack/react-router";
-import { Folder, Monitor, Server } from "lucide-react";
-import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import { Folder, Server, Wifi } from "lucide-react";
+import { agentProviderMetadata, type AgentProviderId } from "@overtchat/agent-bridge";
 import {
   Select,
   SelectContent,
@@ -31,13 +31,25 @@ const POPUP = "w-auto max-w-[min(28rem,calc(100vw-2rem))]";
  * one. Every list is ordered by last use.
  */
 export function AgentSetupPicker({
-  setups,
+  setups: allSetups,
   workspaceId,
+  lockedProvider = null,
+  fork = null,
+  focusWorkspace = false,
 }: {
   setups: AgentSetup[];
   workspaceId: string;
+  /** Keep this agent and offer only its machines and folders. */
+  lockedProvider?: AgentProviderId | null;
+  /** The forked conversation to carry along when the setup changes. */
+  fork?: string | null;
+  /** Land on the folder pill, for moving a fork elsewhere. */
+  focusWorkspace?: boolean;
 }) {
   const navigate = useNavigate();
+  const setups = lockedProvider
+    ? allSetups.filter((setup) => setup.provider === lockedProvider)
+    : allSetups;
   const current = setups.find((setup) => setup.workspaceId === workspaceId);
   if (!current) return null;
   const hosts = agentSetupHosts(setups);
@@ -47,13 +59,18 @@ export function AgentSetupPicker({
     current.hostId,
     current.workspacePath,
   );
-  const HostIcon = current.transport === "ssh" ? Server : Monitor;
+  // The marks the connection settings use: this server, or a machine over SSH.
+  const HostIcon = current.transport === "ssh" ? Wifi : Server;
 
   function open(setup: AgentSetup | undefined) {
     if (!setup || setup.workspaceId === workspaceId) return;
     void navigate({
       to: "/agents/new",
-      search: { workspaceId: setup.workspaceId, provider: setup.provider },
+      search: {
+        workspaceId: setup.workspaceId,
+        provider: setup.provider,
+        fork: fork ?? undefined,
+      },
       replace: true,
     });
   }
@@ -98,7 +115,13 @@ export function AgentSetupPicker({
           )
         }
       >
-        <SelectTrigger size="sm" aria-label="Workspace" title="Workspace" className={PILL}>
+        <SelectTrigger
+          size="sm"
+          aria-label="Workspace"
+          title="Workspace"
+          className={PILL}
+          autoFocus={focusWorkspace}
+        >
           <SelectValue className="min-w-0 gap-1.5">
             {() => (
               <>
@@ -125,33 +148,35 @@ export function AgentSetupPicker({
           ))}
         </SelectContent>
       </Select>
-      <Select
-        value={workspaceId}
-        onValueChange={(id) => open(setups.find((setup) => setup.workspaceId === id))}
-      >
-        <SelectTrigger size="sm" aria-label="Agent" title="Agent" className={PILL}>
-          <SelectValue className="min-w-0 gap-1.5">
-            {() => (
-              <>
-                <AgentProviderLogo provider={current.provider} className="opacity-100" />
+      {!lockedProvider && (
+        <Select
+          value={workspaceId}
+          onValueChange={(id) => open(setups.find((setup) => setup.workspaceId === id))}
+        >
+          <SelectTrigger size="sm" aria-label="Agent" title="Agent" className={PILL}>
+            <SelectValue className="min-w-0 gap-1.5">
+              {() => (
+                <>
+                  <AgentProviderLogo provider={current.provider} className="opacity-100" />
+                  <span className="truncate">
+                    {agentProviderMetadata(current.provider).label}
+                  </span>
+                </>
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start" alignItemWithTrigger={false} className={POPUP}>
+            {agents.map((setup) => (
+              <SelectItem key={setup.workspaceId} value={setup.workspaceId}>
+                <AgentProviderLogo provider={setup.provider} className="opacity-100" />
                 <span className="truncate">
-                  {agentProviderMetadata(current.provider).label}
+                  {agentProviderMetadata(setup.provider).label}
                 </span>
-              </>
-            )}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent align="start" alignItemWithTrigger={false} className={POPUP}>
-          {agents.map((setup) => (
-            <SelectItem key={setup.workspaceId} value={setup.workspaceId}>
-              <AgentProviderLogo provider={setup.provider} className="opacity-100" />
-              <span className="truncate">
-                {agentProviderMetadata(setup.provider).label}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
     </>
   );
 }
