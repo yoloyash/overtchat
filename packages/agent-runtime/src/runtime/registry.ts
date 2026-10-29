@@ -521,6 +521,7 @@ export class AgentSessionRuntime {
             this.pendingSubmissions.delete(submission.id);
           } else {
             this.error = event.error;
+            this.turns.observeError(event.error);
             if (submission?.published) {
               this.rejectSubmission(submission.id);
             }
@@ -532,6 +533,11 @@ export class AgentSessionRuntime {
           this.promptSubmissionId = undefined;
         } else {
           this.error = event.error;
+          // Only the turn's own command fails the turn; a refused steer,
+          // compaction or state refresh leaves it to end on its own.
+          if (event.command === "prompt" || event.command === "turn") {
+            this.turns.observeError(event.error);
+          }
         }
       }
       if (event.type === "turn_end" && event.status === "failed") {
