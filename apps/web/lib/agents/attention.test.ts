@@ -12,7 +12,12 @@ import {
   formatAgentWorkingTime,
   mostUrgentAgentSessionState,
 } from "./attention";
-import { searchAgentSessions } from "./search";
+import {
+  agentSessionHosts,
+  agentSessionProviders,
+  agentSessionWorkspaces,
+  searchAgentSessions,
+} from "./search";
 import { recentAgentSetups } from "./setups";
 import { sidebarModeForPath } from "./sidebarMode";
 import { groupAgentWorkspaces } from "./workspaces";
@@ -280,6 +285,7 @@ describe("agent session search", () => {
           }),
         ],
       },
+      { id: "codex-empty", name: "empty", sessions: [] },
     ]),
     connection(
       "claude",
@@ -303,6 +309,7 @@ describe("agent session search", () => {
   const search = (overrides: Partial<Parameters<typeof searchAgentSessions>[1]>) =>
     searchAgentSessions(groups, {
       query: "",
+      host: null,
       workspace: null,
       provider: null,
       sort: "activity",
@@ -323,9 +330,22 @@ describe("agent session search", () => {
     expect(search({ query: "claude docs" })).toEqual([]);
   });
 
-  it("filters by workspace and agent", () => {
-    const api = groups.find((group) => group.name === "api")!;
-    expect(search({ workspace: api.key })).toEqual(["flaky"]);
+  it("filters by machine, folder and agent", () => {
+    expect(search({ host: "remote" })).toEqual(["flaky"]);
+    expect(search({ workspace: "api" })).toEqual(["flaky"]);
+    expect(search({ host: "host", workspace: "api" })).toEqual([]);
     expect(search({ provider: "codex" })).toEqual(["docs", "pagination"]);
+  });
+
+  it("offers only the machines, folders and agents that have sessions", () => {
+    expect(agentSessionHosts(groups)).toEqual([
+      { id: "host", transport: "local", label: "This machine" },
+      { id: "remote", transport: "ssh", label: "home-server" },
+    ]);
+    expect(agentSessionWorkspaces(groups, null)).toEqual(["api", "app"]);
+    expect(agentSessionWorkspaces(groups, "remote")).toEqual(["api"]);
+    expect(agentSessionProviders(groups, null, null)).toEqual(["claude", "codex"]);
+    expect(agentSessionProviders(groups, "host", null)).toEqual(["codex"]);
+    expect(agentSessionProviders(groups, null, "api")).toEqual(["claude"]);
   });
 });

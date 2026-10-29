@@ -31,6 +31,9 @@ import {
 } from "@/lib/agents/attention";
 import {
   agentSessionCreatedAt,
+  agentSessionHosts,
+  agentSessionProviders,
+  agentSessionWorkspaces,
   agentWorkspaceHostLabel,
   searchAgentSessions,
   type AgentSessionSort,
@@ -46,6 +49,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 
 export type AgentHistorySearch = {
   q?: string;
+  host?: string;
   workspace?: string;
   provider?: string;
   sort?: string;
@@ -66,24 +70,32 @@ const SORT_LABELS: Record<AgentSessionSort, string> = {
   created: "Created",
 };
 
-/** Every agent session, searchable and filterable by workspace and agent. */
+/**
+ * Every agent session, searchable, with filters that narrow in the same order
+ * as the new-session pickers: the machine, a folder on it, then an agent with
+ * sessions there. A filter outside that scope is ignored.
+ */
 export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   const navigate = useNavigate();
   const { data: connections = [], isPending } = useAgentConnections();
   const groups = useMemo(() => groupAgentWorkspaces(connections), [connections]);
-  const providers = useMemo(
-    () =>
-      [...new Set(groups.flatMap((group) => group.sessions.map(({ provider }) => provider)))].sort(),
-    [groups],
-  );
+  const hosts = useMemo(() => agentSessionHosts(groups), [groups]);
+  const allProviders = useMemo(() => agentSessionProviders(groups, null, null), [groups]);
   const [query, setQuery] = useState(search.q ?? "");
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const host =
+    search.host && hosts.some((item) => item.id === search.host) ? search.host : null;
+  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host), [groups, host]);
   const workspace =
-    search.workspace && groups.some((group) => group.key === search.workspace)
-      ? search.workspace
-      : null;
+    search.workspace && workspaces.includes(search.workspace) ? search.workspace : null;
+  const providers = useMemo(
+    () => agentSessionProviders(groups, host, workspace),
+    [groups, host, workspace],
+  );
   const provider: AgentProviderId | null =
-    search.provider && isAgentProviderId(search.provider) ? search.provider : null;
+    search.provider && isAgentProviderId(search.provider) && providers.includes(search.provider)
+      ? search.provider
+      : null;
   const sort: AgentSessionSort = search.sort === "created" ? "created" : "activity";
   const now = useNow(30_000);
 
@@ -94,6 +106,28 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
       search: (previous: AgentHistorySearch) => withSearch(previous, patch),
       replace: true,
     });
+  }
+
+  /** The agent filter, if it still has sessions in the narrowed scope. */
+  function keptProvider(nextHost: string | null, nextWorkspace: string | null) {
+    return provider && agentSessionProviders(groups, nextHost, nextWorkspace).includes(provider)
+      ? provider
+      : undefined;
+  }
+
+  // Changing the machine drops a folder or agent that has no sessions on it.
+  function selectHost(next: string | null) {
+    const nextWorkspace =
+      workspace && agentSessionWorkspaces(groups, next).includes(workspace) ? workspace : null;
+    updateSearch({
+      host: next ?? undefined,
+      workspace: nextWorkspace ?? undefined,
+      provider: keptProvider(next, nextWorkspace),
+    });
+  }
+
+  function selectWorkspace(next: string | null) {
+    updateSearch({ workspace: next ?? undefined, provider: keptProvider(host, next) });
   }
 
   // The list filters as you type; the address follows once typing pauses.
@@ -111,8 +145,8 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   }, [navigate, query, search.q]);
 
   const results = useMemo(
-    () => searchAgentSessions(groups, { query, workspace, provider, sort }),
-    [groups, query, workspace, provider, sort],
+    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }),
+    [groups, query, host, workspace, provider, sort],
   );
   const shown = results.slice(0, limit);
   const buckets = groupByDate(
@@ -123,7 +157,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
     now,
   );
   const totalSessions = groups.reduce((total, group) => total + group.sessions.length, 0);
-  const filtered = Boolean(query.trim() || workspace || provider);
+  const filtered = Boolean(query.trim() || host || workspace || provider);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -162,49 +196,56 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={workspace ?? "all"}
-              onValueChange={(value) =>
-                updateSearch({ workspace: value && value !== "all" ? value : undefined })
-              }
-            >
-              <SelectTrigger size="sm" className="max-w-64" aria-label="Workspace">
+            {hosts.length > 1 && (
+              <Select value={host} onValueChange={selectHost}>
+                <SelectTrigger size="sm" className="max-w-48" aria-label="Machine">
+                  <SelectValue>
+                    {(value: string | null) =>
+                      hosts.find((item) => item.id === value)?.label ?? "All machines"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={null}>All machines</SelectItem>
+                  {hosts.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Select value={workspace} onValueChange={selectWorkspace}>
+              <SelectTrigger size="sm" className="max-w-56" aria-label="Workspace">
                 <SelectValue>
-                  {(value: string) => {
-                    const group = groups.find((item) => item.key === value);
-                    return group
-                      ? `${group.name} · ${agentWorkspaceHostLabel(group)}`
-                      : "All workspaces";
-                  }}
+                  {(value: string | null) => value ?? "All workspaces"}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All workspaces</SelectItem>
-                {groups.map((group) => (
-                  <SelectItem key={group.key} value={group.key}>
-                    {group.name} · {agentWorkspaceHostLabel(group)}
+                <SelectItem value={null}>All workspaces</SelectItem>
+                {workspaces.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {providers.length > 1 && (
+            {allProviders.length > 1 && (
               <Select
-                value={provider ?? "all"}
-                onValueChange={(value) =>
-                  updateSearch({ provider: value && value !== "all" ? value : undefined })
-                }
+                value={provider}
+                onValueChange={(value) => updateSearch({ provider: value ?? undefined })}
               >
                 <SelectTrigger size="sm" aria-label="Agent">
                   <SelectValue>
-                    {(value: string) =>
-                      isAgentProviderId(value)
+                    {(value: string | null) =>
+                      value && isAgentProviderId(value)
                         ? agentProviderMetadata(value).label
                         : "All agents"
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All agents</SelectItem>
+                  <SelectItem value={null}>All agents</SelectItem>
                   {providers.map((item) => (
                     <SelectItem key={item} value={item}>
                       {agentProviderMetadata(item).label}
@@ -258,7 +299,12 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                   className="mt-3"
                   onClick={() => {
                     setQuery("");
-                    updateSearch({ q: undefined, workspace: undefined, provider: undefined });
+                    updateSearch({
+                      q: undefined,
+                      host: undefined,
+                      workspace: undefined,
+                      provider: undefined,
+                    });
                   }}
                 >
                   Clear filters

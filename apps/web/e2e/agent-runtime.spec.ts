@@ -546,9 +546,11 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
     .click();
   await page.waitForURL("**/agents/new?**");
   await expect(page.getByText("Chat history attached")).toBeVisible();
-  await expect(
-    page.getByRole("combobox", { name: "Fork workspace" }),
-  ).toHaveValue("workspace");
+  // "Fork in another workspace" lands on the folder pill; the agent is fixed.
+  const forkWorkspace = page.getByRole("combobox", { name: "Workspace", exact: true });
+  await expect(forkWorkspace).toContainText("Runtime test");
+  await expect(forkWorkspace).toBeFocused();
+  await expect(page.getByRole("combobox", { name: "Agent", exact: true })).toHaveCount(0);
   await expect(composer).toHaveValue("");
   expect(createdSessions).toBe(1);
   expect(submittedCommands.at(-1)).toMatchObject({

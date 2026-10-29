@@ -103,8 +103,15 @@ export const agentHistoryRoute = createRoute({
   path: "/agents/history",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { q?: string; workspace?: string; provider?: string; sort?: string } => ({
+  ): {
+    q?: string;
+    host?: string;
+    workspace?: string;
+    provider?: string;
+    sort?: string;
+  } => ({
     q: optionalString(search.q),
+    host: optionalString(search.host),
     workspace: optionalString(search.workspace),
     provider: optionalString(search.provider),
     sort: optionalString(search.sort),
@@ -147,7 +154,9 @@ export const newAgentSessionRoute = createRoute({
     const connection = await findInListQuery(
       context.queryClient,
       agentConnectionListQuery,
-      (item) => item.workspaces.some((workspace) => workspace.id === workspaceId),
+      (item) =>
+        item.provider === provider &&
+        item.workspaces.some((workspace) => workspace.id === workspaceId),
     );
     const workspace = connection?.workspaces.find((item) => item.id === workspaceId);
     if (!workspace) throw redirect({ to: "/agents", replace: true });

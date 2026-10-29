@@ -184,14 +184,36 @@ test("history searches every session by title, message, workspace and agent", as
   await page.waitForURL((url) => url.searchParams.get("q") === "cursor pagination");
 
   await page.getByRole("searchbox", { name: "Search sessions" }).fill("");
-  await page.getByRole("combobox", { name: "Workspace" }).click();
-  await page.getByRole("option", { name: "app · This machine" }).click();
+  // Filters narrow in order: the machine, a folder on it, then an agent with sessions there.
+  await page.getByRole("combobox", { name: "Machine" }).click();
+  await page.getByRole("option", { name: "This machine" }).click();
   await expect(results).toHaveCount(3);
+  await page.getByRole("combobox", { name: "Workspace" }).click();
+  await expect(page.getByRole("option")).toHaveText(["All workspaces", "app"]);
+  await page.getByRole("option", { name: "app" }).click();
+  await expect(results).toHaveCount(3);
+  await page.waitForURL(
+    (url) =>
+      url.searchParams.get("host") === "local-host" &&
+      url.searchParams.get("workspace") === "app",
+  );
+  // Another machine drops the folder it does not have.
+  await page.getByRole("combobox", { name: "Machine" }).click();
+  await page.getByRole("option", { name: "home-server" }).click();
+  await expect(results).toHaveCount(2);
+  await expect(page.getByRole("combobox", { name: "Workspace" })).toContainText("All workspaces");
+  await page.waitForURL(
+    (url) => url.searchParams.get("host") === "ssh-host" && !url.searchParams.has("workspace"),
+  );
   await page.getByRole("combobox", { name: "Agent" }).click();
+  await expect(page.getByRole("option")).toHaveText(["All agents", "Claude Code"]);
   await page.getByRole("option", { name: "Claude Code" }).click();
+  await expect(results).toHaveCount(2);
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("npm ci");
   await expect(page.getByText("No sessions match.")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(results).toHaveCount(5);
+  await page.waitForURL((url) => [...url.searchParams.keys()].length === 0);
 
   // Filters live in the address, so a reload or a shared link keeps them.
   await page.goto("/agents/history?provider=claude&sort=created");

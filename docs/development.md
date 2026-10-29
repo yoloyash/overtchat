@@ -1582,9 +1582,10 @@ Opening a session while the page is visible marks its latest turn read.
 pickers above the composer switch the machine (shown only when there is more
 than one), a folder on it, then an agent that has that folder. A new machine
 opens with what was last used on it; a new folder keeps the agent when the
-folder has it. `/agents/history`
-searches every session by title, first message, last reply, workspace, host and
-agent, with the filters kept in the URL.
+folder has it. Forking into another workspace uses the same pickers with the
+agent fixed. `/agents/history` searches every session by title, first message,
+last reply, workspace, host and agent; its filters narrow in the same order
+(machine, folder, agent) and are kept in the URL.
 `apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
 session-list and event-stream responses.
 

@@ -3,6 +3,7 @@ import type {
   AgentProviderId,
 } from "@overtchat/agent-bridge";
 import { agentSessionActivityAt } from "@/lib/agents/attention";
+import { agentHostLabel } from "@/lib/agents/workspaces";
 
 /** An agent and workspace a new session can start with. */
 export type AgentSetup = {
@@ -33,7 +34,7 @@ export function recentAgentSetups(
         workspaceName: workspace.name,
         workspacePath: workspace.path,
         hostId: connection.host.id,
-        hostLabel: connection.host.sshAlias || connection.host.name,
+        hostLabel: agentHostLabel(connection.host),
         transport: connection.host.transport,
         activityAt: Math.max(
           0,
