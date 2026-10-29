@@ -96,12 +96,29 @@ function entryCwd(entries) {
   return entries.find((entry) => typeof entry.cwd === "string")?.cwd || null;
 }
 
+const tokenCount = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+
 function normalized(entries) {
   const messages = [];
+  // Claude journals /compact as a command echo followed by its output.
+  let compactCommandOutput = false;
   for (const entry of entries) {
-    if (entry.isSidechain || !entry.message || !["user", "assistant"].includes(entry.type)) continue;
-    const message = entry.message;
+    if (entry.isSidechain) continue;
     const timestamp = Number.isFinite(Date.parse(entry.timestamp)) ? Date.parse(entry.timestamp) : Date.now();
+    if (entry.type === "system" && entry.subtype === "compact_boundary") {
+      const metadata = entry.compactMetadata || entry.compact_metadata || {};
+      const trigger = metadata.trigger === "manual" || metadata.trigger === "auto" ? metadata.trigger : undefined;
+      // postTokens omits the system prompt and tools that preTokens includes.
+      const tokensBefore = tokenCount(metadata.preTokens ?? metadata.pre_tokens);
+      messages.push({
+        id: "compaction:" + (entry.uuid || messages.length), role: "compactionSummary", timestamp, status: "completed",
+        ...(trigger ? { trigger } : {}),
+        ...(tokensBefore === undefined ? {} : { tokensBefore }),
+      });
+      continue;
+    }
+    if (!entry.message || !["user", "assistant"].includes(entry.type)) continue;
+    const message = entry.message;
     if (entry.type === "assistant") {
       const content = Array.isArray(message.content) ? message.content.flatMap((part) => {
         if (part?.type === "text" && typeof part.text === "string") return [{ type: "text", text: clip(part.text) }];
@@ -128,7 +145,18 @@ function normalized(entries) {
       }
     }
     const body = text(message.content);
-    if (body && !entry.isSynthetic) messages.push({ role: "user", id: entry.uuid, content: [{ type: "text", text: body }], timestamp });
+    // Claude Code never shows meta entries or the compaction summary as user turns.
+    if (!body || entry.isSynthetic || entry.isMeta || entry.isCompactSummary) continue;
+    if (body.startsWith("<command-name>/compact</command-name>")) {
+      compactCommandOutput = true;
+      continue;
+    }
+    if (compactCommandOutput && body.startsWith("<local-command-stdout>")) {
+      compactCommandOutput = false;
+      continue;
+    }
+    compactCommandOutput = false;
+    messages.push({ role: "user", id: entry.uuid, content: [{ type: "text", text: body }], timestamp });
   }
   return messages.slice(-1500);
 }
