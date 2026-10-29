@@ -82,8 +82,9 @@ export function agentAttentionFixture(): AgentConnectionListItem[] {
       executable: "omp",
       detectedVersion: "1.0",
       lastValidatedAt: null,
+      // Every connection has its own host row, even on the same machine.
       host: {
-        id: "local-host",
+        id: "omp-host",
         connectorId: "connector",
         name: "This machine",
         transport: "local",

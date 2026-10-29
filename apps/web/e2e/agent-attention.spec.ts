@@ -194,7 +194,7 @@ test("history searches every session and filters by machine, folder and agent", 
   await expect(results).toHaveCount(3);
   await page.waitForURL(
     (url) =>
-      url.searchParams.get("host") === "local-host" &&
+      url.searchParams.get("host") === "This machine" &&
       url.searchParams.get("workspace") === "app",
   );
   // Another machine drops the folder it does not have.
@@ -203,7 +203,7 @@ test("history searches every session and filters by machine, folder and agent", 
   await expect(results).toHaveCount(2);
   await expect(page.getByRole("combobox", { name: "Workspace" })).toContainText("All workspaces");
   await page.waitForURL(
-    (url) => url.searchParams.get("host") === "ssh-host" && !url.searchParams.has("workspace"),
+    (url) => url.searchParams.get("host") === "home-server" && !url.searchParams.has("workspace"),
   );
   await page.getByRole("combobox", { name: "Agent" }).click();
   await expect(page.getByRole("option")).toHaveText(["All agents", "Claude Code"]);
