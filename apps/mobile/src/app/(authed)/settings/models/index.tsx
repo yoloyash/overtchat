@@ -1,11 +1,13 @@
-import { PROVIDERS } from "@overtchat/shared/provider-catalog";
 import { SettingsModelIcon } from "@/components/settings/SettingsModelIcon";
 import { SettingsStatus } from "@/components/settings/SettingsStatus";
 import { useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
-import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
+import {
+  providerLabel,
+  type SettingsModelConfig,
+} from "@/lib/settings-model";
 import { AdminGate } from "@/components/settings/AdminGate";
 import {
   SettingsPage,
@@ -31,7 +33,7 @@ export default function Models() {
   );
 }
 function ModelList() {
-  const query = useSettingsQuery<{ modelConfigs: AdminModelConfig[] }>(
+  const query = useSettingsQuery<{ modelConfigs: SettingsModelConfig[] }>(
     "/model-configs?admin=1",
     true,
   );
@@ -44,7 +46,7 @@ function ModelList() {
   useRefreshOnFocus(query.refetch);
   const models = query.data?.modelConfigs ?? [];
   const filtered = models.filter((m) =>
-    `${m.label} ${m.model} ${PROVIDERS[m.providerId].label}`
+    `${m.label} ${m.model} ${providerLabel(m)}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
@@ -166,7 +168,7 @@ function ModelList() {
                       model={m.model}
                     />
                   }
-                  detail={`${PROVIDERS[m.providerId].label} · ${m.modelType === "chat" ? "Chat" : "Image"}`}
+                  detail={`${providerLabel(m)} · ${m.modelType === "chat" ? "Chat" : "Image"}`}
                   status={
                     <SettingsStatus
                       label={`${m.enabled ? "Enabled" : "Disabled"}${m.taskModel ? " · Task model" : ""}`}

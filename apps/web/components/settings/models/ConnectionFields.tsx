@@ -4,12 +4,23 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+  useComboboxFilter,
+} from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
@@ -28,6 +39,7 @@ import { motionClasses } from "@/lib/motion";
 import {
   API_FORMATS,
   EXPLICIT_API_FORMAT_IDS,
+  findProvider,
   getProvider,
   modelIconForModel,
   PROVIDERS,
@@ -58,6 +70,8 @@ export interface ConnectionFieldsProps {
   onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
   imageModel?: boolean;
+  /** Names a provider that the desktop app's bundled catalog predates. */
+  providerLabel?: string;
 }
 
 export function ConnectionFields({
@@ -72,15 +86,20 @@ export function ConnectionFields({
   onCapabilitySuggestion,
   autoFetchModels = false,
   imageModel = false,
+  providerLabel,
 }: ConnectionFieldsProps) {
-  const provider = getProvider(draft.providerId);
-  const requiresKey = provider.requiresApiKey;
+  // Undefined in a desktop app older than the provider; the server validates it.
+  const provider = findProvider(draft.providerId);
+  const providerName = provider?.label ?? providerLabel ?? draft.providerId;
+  const requiresKey = provider?.requiresApiKey ?? false;
 
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [modelMode, setModelMode] = useState<"manual" | "list">("manual");
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState("");
+  const [modelQuery, setModelQuery] = useState("");
   const lastAutoProbeKeyRef = useRef("");
+  const { contains } = useComboboxFilter();
 
   const canProbe = Boolean(draft.baseUrl) && !(requiresKey && !draft.apiKey);
   const probeKey = [
@@ -223,6 +242,10 @@ export function ConnectionFields({
     return () => clearTimeout(t);
   }, [autoFetchModels, canProbe, probeKey]);
 
+  const modelIds = useMemo(() => models.map((model) => model.id), [models]);
+  const matchingModelIds = modelQuery
+    ? modelIds.filter((id) => contains(id, modelQuery))
+    : modelIds;
   const currentModelWasFetched = models.some(
     (model) => model.id === draft.model,
   );
@@ -258,14 +281,20 @@ export function ConnectionFields({
           }}
         >
           <SelectTrigger id="p-provider" className="w-full">
-            <ModelBrandIcon iconId={provider.iconId} />
+            <ModelBrandIcon iconId={provider?.iconId ?? null} />
             <SelectValue>
-              {imageModel && provider.id === "custom"
+              {imageModel && provider?.id === "custom"
                 ? "Custom (OpenAI-compatible)"
-                : provider.label}
+                : providerName}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
+            {!provider && (
+              <SelectItem value={draft.providerId}>
+                <ModelBrandIcon iconId={null} />
+                {providerName}
+              </SelectItem>
+            )}
             {PROVIDER_IDS.filter(
               (id) =>
                 !imageModel ||
@@ -327,7 +356,7 @@ export function ConnectionFields({
       <SettingsRow
         title="Endpoint"
         description={
-          provider.localRuntime
+          provider?.localRuntime
             ? "Base URL for the model API. If overtchat runs in Docker, use host.docker.internal instead of localhost."
             : "Base URL for the model API."
         }
@@ -338,7 +367,7 @@ export function ConnectionFields({
         <Input
           id="p-base-url"
           className="w-full"
-          placeholder={provider.defaultBaseUrl || "https://api.example.com/v1"}
+          placeholder={provider?.defaultBaseUrl || "https://api.example.com/v1"}
           required
           autoFocus={draft.providerId === "custom"}
           value={draft.baseUrl}
@@ -353,8 +382,10 @@ export function ConnectionFields({
         title="API key"
         description={
           requiresKey
-            ? `Required for ${provider.label}.`
-            : "Optional for local or custom endpoints."
+            ? `Required for ${providerName}.`
+            : provider
+              ? "Optional for local or custom endpoints."
+              : `Enter the key ${providerName} needs, if any.`
         }
         htmlFor="p-api-key"
         align="center"
@@ -412,27 +443,46 @@ export function ConnectionFields({
         <div className="w-full space-y-2">
           <div className="flex flex-col gap-2 @lg:flex-row">
             {showList ? (
-              <Select
+              <Combobox
+                items={modelIds}
+                // Filtered here so every opening starts a fresh search, even
+                // when it interrupts the previous close animation.
+                filteredItems={matchingModelIds}
+                inputValue={modelQuery}
+                onInputValueChange={setModelQuery}
+                onOpenChange={(open) => {
+                  if (open) setModelQuery("");
+                }}
                 value={draft.model}
                 onValueChange={(value) => {
                   if (value == null) return;
                   const model = models.find((item) => item.id === value);
                   if (model) selectDiscoveredModel(model);
                 }}
+                autoHighlight
               >
-                <SelectTrigger id="p-model" className="min-w-0 flex-1">
+                <ComboboxTrigger id="p-model" className="min-w-0 flex-1">
                   <ModelBrandIcon iconId={modelIconForModel(draft.model)} />
-                  <SelectValue>{draft.model}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      <ModelBrandIcon iconId={modelIconForModel(model.id)} />
-                      {model.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {draft.model}
+                  </span>
+                </ComboboxTrigger>
+                <ComboboxContent aria-label="Fetched models">
+                  <ComboboxInput
+                    placeholder="Search models"
+                    aria-label="Search models"
+                  />
+                  <ComboboxEmpty>No matching models.</ComboboxEmpty>
+                  <ComboboxList>
+                    {(id: string) => (
+                      <ComboboxItem key={id} value={id}>
+                        <ModelBrandIcon iconId={modelIconForModel(id)} />
+                        <span className="min-w-0 truncate">{id}</span>
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
             ) : (
               <Input
                 id="p-model"
@@ -444,7 +494,7 @@ export function ConnectionFields({
                       : draft.providerId === "google"
                         ? "gemini-3.1-flash-image"
                         : "gpt-image-1"
-                    : provider.modelPlaceholder
+                    : (provider?.modelPlaceholder ?? "model-id")
                 }
                 required
                 value={draft.model}

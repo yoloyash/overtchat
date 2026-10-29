@@ -31,6 +31,8 @@ export interface AdminModelConfig {
   id: string;
   label: string;
   providerId: ProviderId;
+  /** Label for clients that do not know `providerId`. Absent on older servers. */
+  displayProvider?: string;
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string | null;

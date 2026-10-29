@@ -181,6 +181,75 @@ describe("image tools", () => {
     );
     expect(mocks.store).not.toHaveBeenCalled();
   });
+
+  it("reports each provider charge at the image model's rates, even if storing fails", async () => {
+    mocks.config.mockReturnValue({
+      providerId: "google",
+      baseUrl: "http://images/v1beta",
+      apiKey: null,
+      model: "google/gemini-nano-banana-2.1",
+      pricing: { input: 1.5, output: 30, cacheRead: 0, cacheWrite: 0 },
+    });
+    mocks.generate.mockResolvedValue({
+      data: new Uint8Array([3, 4]),
+      mediaType: "image/png",
+      usage: { inputTokens: 10, outputTokens: 1_290, totalTokens: 1_300 },
+    });
+    mocks.store.mockRejectedValue(new Error("disk full"));
+    const onUsage = vi.fn();
+    const tools = createImageTools({
+      userId: "alice",
+      messages: [],
+      supportsImageInput: false,
+      onUsage,
+    });
+    await expect(
+      tools.generate_image.execute!(
+        { prompt: "A kite" },
+        { ...execution, toolCallId: "kite" },
+      ),
+    ).rejects.toThrow("disk full");
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith({
+      toolCallId: "kite",
+      occurredAt: expect.any(Date),
+      providerId: "google",
+      model: "google/gemini-nano-banana-2.1",
+      inputTokens: 10,
+      outputTokens: 1_290,
+      totalTokens: 1_300,
+      costSource: "model_config",
+      inputCostNanoUsd: 15_000,
+      outputCostNanoUsd: 38_700_000,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 38_715_000,
+    });
+  });
+
+  it("reports unpriced usage without tokens and nothing for failed requests", async () => {
+    const onUsage = vi.fn();
+    const tools = createImageTools({
+      userId: "alice",
+      messages: [],
+      supportsImageInput: false,
+      onUsage,
+    });
+    await tools.generate_image.execute!({ prompt: "A kite" }, execution);
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith({
+      toolCallId: "call",
+      occurredAt: expect.any(Date),
+      providerId: "openai",
+      model: "image-model",
+      inputTokens: undefined,
+      outputTokens: undefined,
+      totalTokens: undefined,
+    });
+    mocks.generate.mockRejectedValue(new Error("rate limited"));
+    await expect(
+      tools.generate_image.execute!({ prompt: "A kite" }, execution),
+    ).rejects.toThrow("rate limited");
+    expect(onUsage).toHaveBeenCalledOnce();
+  });
 });
 
 it("does not call an image provider after the active image model is disabled", async () => {

@@ -30,9 +30,13 @@ import {
   useCreateModelConfig,
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
-import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
+import { findProvider, isProviderId, PROVIDERS } from "@/lib/providers/catalog";
 import { ThinkingFields } from "./ThinkingFields";
-import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
+import {
+  AdvancedFields,
+  PricingRow,
+  type ModelPricingDraft,
+} from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { CustomImageFields } from "./CustomImageFields";
 import { ConnectionTester } from "./ConnectionTester";
@@ -152,7 +156,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const isImage = draft.modelType === "image";
   const isCustomImage = isImage && draft.providerId === "custom";
-  const requiresKey = getProvider(draft.providerId).requiresApiKey;
+  // The server validates providers that the desktop app's catalog predates.
+  const requiresKey = findProvider(draft.providerId)?.requiresApiKey ?? false;
   const parsedPricing =
     draft.pricing === null ? null : parsePricingDraft(draft.pricing);
   const pricingIsValid = draft.pricing === null || parsedPricing !== null;
@@ -175,7 +180,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
     !!draft.model &&
-    (isImage || pricingIsValid) &&
+    (isCustomImage || pricingIsValid) &&
     (isImage || !providerOptionsError) &&
     !(requiresKey && !draft.apiKey);
   const stillEditingOriginalConnection =
@@ -255,11 +260,22 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     }
 
     const pricing =
-      isImage || draft.pricing === null
+      isCustomImage || draft.pricing === null
         ? null
         : parsePricingDraft(draft.pricing);
-    if (!isImage && draft.pricing !== null && pricing === null) {
-      setSaveError("Enter all four pricing rates as nonnegative numbers.");
+    if (!isCustomImage && draft.pricing !== null && pricing === null) {
+      setSaveError(
+        isImage
+          ? "Enter input and output rates as nonnegative numbers."
+          : "Enter all four pricing rates as nonnegative numbers.",
+      );
+      return;
+    }
+
+    if (!isProviderId(draft.providerId)) {
+      setSaveError(
+        `Update the app to edit models that use ${existing?.displayProvider ?? draft.providerId}.`,
+      );
       return;
     }
 
@@ -346,6 +362,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                   modelType: value,
                   reasoningOverride: null,
                   providerOptions: null,
+                  pricing: null,
                   ...(current.providerId === "custom"
                     ? {
                         apiFormat:
@@ -384,6 +401,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <ConnectionFields
             key={draft.modelType}
             imageModel={isImage}
+            providerLabel={existing?.displayProvider}
             previouslyUsedApiKeys={previouslyUsedApiKeys}
             draft={{
               providerId: draft.providerId,
@@ -546,6 +564,22 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             />
           </SettingsRow>
         </SettingsSection>
+
+        {isImage && !isCustomImage && (
+          <SettingsSection
+            title="Usage cost"
+            description="Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
+          >
+            <PricingRow
+              pricing={draft.pricing}
+              catalogPricing={catalogPricingHint}
+              onPricingChange={(next) =>
+                setDraft((d) => ({ ...d, pricing: next }))
+              }
+              cacheRates={false}
+            />
+          </SettingsSection>
+        )}
 
         {!isImage && (
           <>

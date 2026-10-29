@@ -10,12 +10,14 @@ import {
   type ImageGenerationOptions,
   type ImageGenerationOutput,
 } from "@overtchat/shared";
+import type { CompletedImageUsage } from "@/lib/db/chatTurns";
 import { getImageModelConfig } from "@/lib/db/modelConfigs";
 import { readFetchedImage, storeFetchedImage } from "@/lib/db/uploads";
 import {
   runImageProvider,
   type ImageConnection,
 } from "@/lib/providers/server/image-generation";
+import { estimateImageGenerationCost } from "@/lib/providers/server/model-cost";
 import {
   customImageOptions,
   customImageSize,
@@ -106,13 +108,14 @@ export function createImageTools({
   messages,
   supportsImageInput,
   options,
-  onGenerate,
+  onUsage,
 }: {
   userId: string;
   messages: UIMessage[];
   supportsImageInput: boolean;
   options?: ImageGenerationOptions;
-  onGenerate?: () => void;
+  /** Reported once the provider returns, so a later failure cannot hide the charge. */
+  onUsage?: (usage: CompletedImageUsage) => void;
 }) {
   // Snapshot the provider for this turn so configuration changes cannot expose
   // editing for one backend and execute against another.
@@ -142,6 +145,7 @@ export function createImageTools({
       size?: ImageGenerationOptions["size"];
       quality?: ImageGenerationOptions["quality"];
     },
+    toolCallId: string,
     signal?: AbortSignal,
   ): Promise<ImageGenerationOutput> {
     if (++calls > 4)
@@ -183,12 +187,26 @@ export function createImageTools({
         : options?.quality !== undefined && options.quality !== "auto"
           ? options.quality
           : (input.quality ?? DEFAULT_IMAGE_OPTIONS.quality);
-    onGenerate?.();
     const generated = await runImageProvider(
       connection,
       { prompt: input.prompt, references, size, quality },
       signal,
     );
+    onUsage?.({
+      toolCallId,
+      occurredAt: new Date(),
+      providerId: connection.providerId,
+      model: connection.model,
+      inputTokens: generated.usage?.inputTokens,
+      outputTokens: generated.usage?.outputTokens,
+      totalTokens: generated.usage?.totalTokens,
+      ...(estimateImageGenerationCost({
+        providerId: connection.providerId,
+        model: connection.model,
+        usage: generated.usage,
+        pricing: config?.pricing,
+      }) ?? {}),
+    });
     const filename = `generated-image.${generated.mediaType.split("/")[1].replace("jpeg", "jpg")}`;
     const { uploadUrl } = await storeFetchedImage({
       userId,
@@ -272,7 +290,8 @@ export function createImageTools({
       inputSchema: customOptions
         ? z.object(fields).omit({ size: true, quality: true })
         : z.object(fields),
-      execute: (input, { abortSignal }) => execute(input, abortSignal),
+      execute: (input, { abortSignal, toolCallId }) =>
+        execute(input, toolCallId, abortSignal),
       toModelOutput,
     }),
     ...(!customOptions || customOptions.supportsEditing
@@ -298,7 +317,8 @@ export function createImageTools({
                 .min(1)
                 .max(8),
             }),
-            execute: (input, { abortSignal }) => execute(input, abortSignal),
+            execute: (input, { abortSignal, toolCallId }) =>
+              execute(input, toolCallId, abortSignal),
             toModelOutput,
           }),
         }

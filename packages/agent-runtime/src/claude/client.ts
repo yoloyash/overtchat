@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, type UUID } from "node:crypto";
 import {
   query as createSdkQuery,
   type CanUseTool,
@@ -113,6 +113,16 @@ type AssistantProjection = {
   timestamp: number;
   errorMessage?: string;
   overtchatProviderMessageId?: string;
+};
+
+/** The transcript divider shared with Pi/OMP compaction. */
+type CompactionDivider = {
+  id: string;
+  role: "compactionSummary";
+  timestamp: number;
+  status: "running" | "completed" | "failed" | "interrupted";
+  trigger?: "auto" | "manual";
+  tokensBefore?: number;
 };
 
 const INTERRUPT_SETTLE_MS = 5_000;
@@ -279,6 +289,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private readonly turnEndWaiters = new Set<() => void>();
   private activeTurnHasAssistantText = false;
   private compacting = false;
+  private compactionDivider?: CompactionDivider;
   private stopped = false;
   private restarting = false;
   private recentStderr = "";
@@ -485,7 +496,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       this.contextInputUsage = undefined;
       this.updateContextUsage(null);
       this.emit({ type: "compaction_start" });
-      return this.submit("/compact", [], {}, false);
+      // The divider stands in for the command, as it does for Pi/OMP.
+      this.openCompactionDivider("manual");
+      this.send("/compact", randomUUID(), false);
     });
   }
 
@@ -809,12 +822,21 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     };
     this.messages.push(user);
     this.emit({ type: "message_end", message: user });
+    this.send(content, user.id, steering);
+  }
+
+  private send(
+    content: string | unknown[],
+    uuid: UUID,
+    steering: boolean,
+  ): void {
+    if (this.stopped) throw new Error("Claude session is stopped.");
     this.startTurn();
     this.input.push({
       type: "user",
       message: { role: "user", content } as SDKUserMessage["message"],
       parent_tool_use_id: null,
-      uuid: user.id,
+      uuid,
       origin: { kind: "human" },
       ...(steering ? { priority: "next" as const } : {}),
     });
@@ -972,7 +994,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         this.contextInputUsage = undefined;
         this.updateContextUsage(null);
         this.emit({ type: "compaction_start" });
-      } else if (message.status === null && this.compacting) {
+      }
+      // Claude repeats "compacting" every 30 seconds; only one divider opens.
+      if (message.status === "compacting") this.openCompactionDivider();
+      else if (message.status === null && this.compacting) {
         this.compacting = false;
         this.emit({
           type: "compaction_end",
@@ -981,14 +1006,30 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
             : {}),
         });
       }
+      // A successful status precedes compact_boundary, which carries the counts.
+      if (message.status === null &&
+        (message.compact_result === "failed" || typeof message.compact_error === "string")) {
+        this.settleCompactionDivider({ status: "failed" });
+      }
       return;
     }
     if (subtype === "compact_boundary") {
       this.contextBoundarySeen = true;
       const metadata = record(message.compact_metadata);
       const postTokens = metadata?.post_tokens ?? metadata?.postTokens;
+      const preTokens = this.usageNumber(metadata?.pre_tokens ?? metadata?.preTokens);
       this.contextInputUsage = undefined;
       this.updateContextUsage(this.usageNumber(postTokens));
+      if (!this.compactionDivider) this.openCompactionDivider();
+      this.settleCompactionDivider({
+        status: "completed",
+        ...(metadata?.trigger === "manual" || metadata?.trigger === "auto"
+          ? { trigger: metadata.trigger }
+          : {}),
+        // pre_tokens is the whole context, but post_tokens omits the system
+        // prompt and tools, so "before → after" would overstate the saving.
+        ...(preTokens === null ? {} : { tokensBefore: preTokens }),
+      });
       if (this.compacting) {
         this.compacting = false;
         this.emit({ type: "compaction_end" });
@@ -1385,9 +1426,40 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       this.currentStreamMessageId = undefined;
     }
     this.activeTurnHasAssistantText = false;
+    // A compaction reports its outcome before the turn's result.
+    this.settleCompactionDivider({ status: "interrupted" });
     if (!this.active) return;
     this.endActivity();
     this.emit({ type: "turn_end" });
+  }
+
+  private openCompactionDivider(trigger?: "auto" | "manual"): void {
+    if (this.compactionDivider) return;
+    this.compactionDivider = {
+      id: `compaction:${randomUUID()}`,
+      role: "compactionSummary",
+      timestamp: Date.now(),
+      status: "running",
+      ...(trigger ? { trigger } : {}),
+    };
+    this.publishCompactionDivider(this.compactionDivider);
+  }
+
+  private settleCompactionDivider(
+    outcome: Pick<CompactionDivider, "status"> &
+      Partial<Pick<CompactionDivider, "trigger" | "tokensBefore">>,
+  ): void {
+    if (!this.compactionDivider) return;
+    const divider = { ...this.compactionDivider, ...outcome };
+    this.compactionDivider = undefined;
+    this.publishCompactionDivider(divider);
+  }
+
+  private publishCompactionDivider(divider: CompactionDivider): void {
+    const index = this.messages.findIndex((value) => record(value)?.id === divider.id);
+    if (index >= 0) this.messages[index] = divider;
+    else this.messages.push(divider);
+    this.emit({ type: "message_end", message: divider });
   }
 
   private startTurn(): void {
@@ -1422,6 +1494,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.endActivity();
     this.backgroundTasks.clear();
     this.compacting = false;
+    this.settleCompactionDivider({ status: "interrupted" });
     this.activeTurnHasAssistantText = false;
     this.currentStreamMessageId = undefined;
   }

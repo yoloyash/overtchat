@@ -623,6 +623,86 @@ describe("transactional chat turns", () => {
     });
   });
 
+  it("records image charges against the image model when the chat model fails", () => {
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "image-stream",
+        clientRequestId: "request-image-stream",
+        requestFingerprint: "fingerprint-image-stream",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Draw two kites" }],
+        },
+      }),
+    ).toBe("committed");
+    const image = {
+      occurredAt: new Date("2026-10-27T12:00:00.000Z"),
+      providerId: "google" as const,
+      model: "gemini-3.1-flash-image",
+    };
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "image-stream",
+        status: "error",
+        error: "Provider stream failed.",
+        assistantMessage: {
+          id: "assistant-message",
+          parts: [{ type: "text", text: "Kites" }],
+        },
+        imageUsage: [
+          {
+            ...image,
+            toolCallId: "first",
+            inputTokens: 10,
+            outputTokens: 1_290,
+            totalTokens: 1_300,
+            costSource: "models.dev",
+            inputCostNanoUsd: 5_000,
+            outputCostNanoUsd: 77_400_000,
+            cacheReadCostNanoUsd: 0,
+            cacheWriteCostNanoUsd: 0,
+            totalCostNanoUsd: 77_405_000,
+          },
+          { ...image, toolCallId: "second" },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      raw
+        .prepare(
+          `SELECT id, context, message_id AS messageId, provider_id AS providerId,
+                  model, output_tokens AS outputTokens,
+                  total_cost_nano_usd AS totalCostNanoUsd
+           FROM generation_usage ORDER BY id`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: "image-stream:first",
+        context: "image",
+        messageId: "assistant-message",
+        providerId: "google",
+        model: "gemini-3.1-flash-image",
+        outputTokens: 1_290,
+        totalCostNanoUsd: 77_405_000,
+      },
+      {
+        id: "image-stream:second",
+        context: "image",
+        messageId: "assistant-message",
+        providerId: "google",
+        model: "gemini-3.1-flash-image",
+        outputTokens: null,
+        totalCostNanoUsd: null,
+      },
+    ]);
+  });
+
   it("keeps assistant persistence when usage insertion fails", () => {
     expect(
       chatTurns.commitChatTurn({
