@@ -16,7 +16,7 @@ import {
   formatAgentWorkingTime,
   type AgentAttentionItem,
 } from "@/lib/agents/attention";
-import { agentWorkspaceHostLabel } from "@/lib/agents/search";
+import { agentHostLabel } from "@/lib/agents/workspaces";
 import { agentSessionDisplayTitle } from "@/lib/agents/sidebar";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +41,7 @@ export function agentSessionRowMeta(
     return [attention.title, attention.detail].filter(Boolean).join(" · ");
   }
   return context === "all"
-    ? `${group.name} · ${agentWorkspaceHostLabel(group)}`
+    ? `${group.name} · ${agentHostLabel(group.host)}`
     : agentProviderMetadata(item.provider).label;
 }
 
@@ -81,7 +81,7 @@ export function AgentSessionRow({
           closeMobile();
         }}
         aria-current={active ? "page" : undefined}
-        title={`${title} · ${agentProviderMetadata(provider).label} · ${group.name} · ${agentWorkspaceHostLabel(group)}`}
+        title={`${title} · ${agentProviderMetadata(provider).label} · ${group.name} · ${agentHostLabel(group.host)}`}
         className={cn(
           "flex min-w-0 items-start gap-2 rounded-lg py-2 pr-2 pl-4 outline-none motion-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring",
           active && "bg-sidebar-accent",

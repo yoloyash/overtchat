@@ -1,7 +1,7 @@
 "use client";
 
 import { useNavigate } from "@tanstack/react-router";
-import { Folder, Monitor, Server } from "lucide-react";
+import { Folder, Server, Wifi } from "lucide-react";
 import { agentProviderMetadata, type AgentProviderId } from "@overtchat/agent-bridge";
 import {
   Select,
@@ -59,7 +59,8 @@ export function AgentSetupPicker({
     current.hostId,
     current.workspacePath,
   );
-  const HostIcon = current.transport === "ssh" ? Server : Monitor;
+  // The marks the connection settings use: this server, or a machine over SSH.
+  const HostIcon = current.transport === "ssh" ? Wifi : Server;
 
   function open(setup: AgentSetup | undefined) {
     if (!setup || setup.workspaceId === workspaceId) return;

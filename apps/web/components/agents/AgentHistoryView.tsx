@@ -34,11 +34,10 @@ import {
   agentSessionHosts,
   agentSessionProviders,
   agentSessionWorkspaces,
-  agentWorkspaceHostLabel,
   searchAgentSessions,
   type AgentSessionSort,
 } from "@/lib/agents/search";
-import { groupAgentWorkspaces } from "@/lib/agents/workspaces";
+import { agentHostLabel, groupAgentWorkspaces } from "@/lib/agents/workspaces";
 import { groupByDate } from "@/lib/dateGroups";
 import { useAgentConnections } from "@/lib/queries/agentConnections";
 import { useNow } from "@/lib/useNow";
@@ -80,8 +79,13 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   const { data: connections = [], isPending } = useAgentConnections();
   const groups = useMemo(() => groupAgentWorkspaces(connections), [connections]);
   const hosts = useMemo(() => agentSessionHosts(groups), [groups]);
+  const allWorkspaces = useMemo(() => agentSessionWorkspaces(groups, null), [groups]);
   const allProviders = useMemo(() => agentSessionProviders(groups, null, null), [groups]);
-  const [query, setQuery] = useState(search.q ?? "");
+  // What was typed, over which address; the History link or going back changes
+  // the address underneath, and the box follows it.
+  const [typed, setTyped] = useState({ value: search.q ?? "", over: search.q });
+  const query = typed.over === search.q ? typed.value : (search.q ?? "");
+  const setQuery = (value: string) => setTyped({ value, over: search.q });
   const [limit, setLimit] = useState(PAGE_SIZE);
   const host =
     search.host && hosts.some((item) => item.id === search.host) ? search.host : null;
@@ -215,21 +219,23 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                 </SelectContent>
               </Select>
             )}
-            <Select value={workspace} onValueChange={selectWorkspace}>
-              <SelectTrigger size="sm" className="max-w-56" aria-label="Workspace">
-                <SelectValue>
-                  {(value: string | null) => value ?? "All workspaces"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={null}>All workspaces</SelectItem>
-                {workspaces.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {allWorkspaces.length > 1 && (
+              <Select value={workspace} onValueChange={selectWorkspace}>
+                <SelectTrigger size="sm" className="max-w-56" aria-label="Workspace">
+                  <SelectValue>
+                    {(value: string | null) => value ?? "All workspaces"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={null}>All workspaces</SelectItem>
+                  {workspaces.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {allProviders.length > 1 && (
               <Select
                 value={provider}
@@ -283,7 +289,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
               <History aria-hidden="true" className="size-8 text-muted-foreground" />
               <h2 className="mt-3 text-base font-semibold">No agent sessions yet</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Sessions you start or run on your hosts are listed here.
+                Sessions you start or run on your machines are listed here.
               </p>
               <Link to="/agents" className={cn(buttonVariants({ size: "sm" }), "mt-4")}>
                 New agent
@@ -387,7 +393,7 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
           <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <AgentProviderLogo provider={provider} />
             <span className="truncate">
-              {agentProviderMetadata(provider).label} · {group.name} · {agentWorkspaceHostLabel(group)}
+              {agentProviderMetadata(provider).label} · {group.name} · {agentHostLabel(group.host)}
             </span>
           </span>
           {snippet && (

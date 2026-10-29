@@ -1576,7 +1576,8 @@ status by default: needs input (an approval or a question), failed, ready to
 review (an unseen result), working, then done, by recent activity. Only Done is
 shortened, and each group folds from its header. Its list options switch to
 grouping by workspace, kept per device, and mark every finished session read.
-While in Chat mode, the Agents toggle counts sessions that need input or failed.
+While in Chat mode, the Agents toggle counts sessions that need input or failed,
+or shows a dot when finished results wait.
 Opening a session while the page is visible marks its latest turn read.
 `/agents` opens a new session with the most recently used agent and workspace;
 pickers above the composer switch the machine (shown only when there is more
@@ -1584,7 +1585,7 @@ than one), a folder on it, then an agent that has that folder. A new machine
 opens with what was last used on it; a new folder keeps the agent when the
 folder has it. Forking into another workspace uses the same pickers with the
 agent fixed. `/agents/history` searches every session by title, first message,
-last reply, workspace, host and agent; its filters narrow in the same order
+last reply, workspace, path, host and agent; its filters narrow in the same order
 (machine, folder, agent) and are kept in the URL.
 `apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
 session-list and event-stream responses.

@@ -133,7 +133,7 @@ export function SidebarModeToggle({
                 {badge.needsYou > 9 ? "9+" : badge.needsYou}
               </span>
             ) : badge && badge.unread > 0 ? (
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-green-600 dark:bg-green-500" />
             ) : null}
           </button>
         );

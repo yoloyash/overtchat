@@ -1,7 +1,4 @@
-import type {
-  AgentConnectionListItem,
-  AgentProviderId,
-} from "@overtchat/agent-bridge";
+import type { AgentProviderId } from "@overtchat/agent-bridge";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
   agentSessionActivityAt,
@@ -23,16 +20,7 @@ export type AgentSessionSearch = {
   sort: AgentSessionSort;
 };
 
-export function agentWorkspaceHostLabel(
-  group: Pick<AgentWorkspaceGroup, "host">,
-): string {
-  return agentHostLabel(group.host);
-}
-
-export type AgentSessionHost = Pick<
-  AgentConnectionListItem["host"],
-  "id" | "transport"
-> & { label: string };
+export type AgentSessionHost = { id: string; label: string };
 
 /** Each machine with sessions, once, in list order. */
 export function agentSessionHosts(
@@ -42,11 +30,7 @@ export function agentSessionHosts(
   for (const group of groups) {
     if (group.sessions.length === 0) continue;
     if (hosts.some((host) => host.id === group.host.id)) continue;
-    hosts.push({
-      id: group.host.id,
-      transport: group.host.transport,
-      label: agentHostLabel(group.host),
-    });
+    hosts.push({ id: group.host.id, label: agentHostLabel(group.host) });
   }
   return hosts;
 }
@@ -101,7 +85,7 @@ function searchableText(entry: AgentAttentionItem): string {
       session.attention?.detail,
       group.name,
       group.path,
-      agentWorkspaceHostLabel(group),
+      agentHostLabel(group.host),
       agentProviderMetadata(item.provider).label,
     ]
       .filter(Boolean)

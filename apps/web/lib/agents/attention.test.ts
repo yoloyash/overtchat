@@ -339,8 +339,8 @@ describe("agent session search", () => {
 
   it("offers only the machines, folders and agents that have sessions", () => {
     expect(agentSessionHosts(groups)).toEqual([
-      { id: "host", transport: "local", label: "This machine" },
-      { id: "remote", transport: "ssh", label: "home-server" },
+      { id: "host", label: "This machine" },
+      { id: "remote", label: "home-server" },
     ]);
     expect(agentSessionWorkspaces(groups, null)).toEqual(["api", "app"]);
     expect(agentSessionWorkspaces(groups, "remote")).toEqual(["api"]);

@@ -15,6 +15,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { recentAgentSetups } from "@/lib/agents/setups";
 import { agentSessionDisplayTitle } from "@/lib/agents/sidebar";
+import { agentHostLabel } from "@/lib/agents/workspaces";
 import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
 import {
   ActivityPending,
@@ -97,7 +98,7 @@ export const agentsHomeRoute = createRoute({
   },
 });
 
-/** Every agent session, searchable by title, message, workspace and agent. */
+/** Every agent session, searchable by title, message, machine, workspace and agent. */
 export const agentHistoryRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/agents/history",
@@ -209,7 +210,7 @@ export const agentSessionRoute = createRoute({
     }
     return {
       provider: connection.provider,
-      hostLabel: connection.host.sshAlias || connection.host.name,
+      hostLabel: agentHostLabel(connection.host),
       workspace,
       initialSessionName: agentSessionDisplayTitle(session) ?? "",
     };

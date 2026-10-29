@@ -163,7 +163,7 @@ test("the Agents home explains how to start when no folder is connected", async 
   await page.waitForURL("**/settings/connections?add=1");
 });
 
-test("history searches every session by title, message, workspace and agent", async ({
+test("history searches every session and filters by machine, folder and agent", async ({
   page,
 }) => {
   await setupAgentAttention(page);

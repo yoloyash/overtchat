@@ -31,7 +31,7 @@ import {
   agentSessionStateSince,
   mostUrgentAgentSessionState,
 } from "@/lib/agents/attention";
-import { agentWorkspaceHostLabel } from "@/lib/agents/search";
+import { agentHostLabel } from "@/lib/agents/workspaces";
 import {
   agentConnectionTarget,
   groupAgentWorkspaces,
@@ -489,7 +489,7 @@ function WorkspaceNode({
                 ? "pr-14 max-md:pr-[5.5rem]"
                 : "pr-7 max-md:pr-11",
           )}
-          title={`${group.path} · ${agentWorkspaceHostLabel(group)}`}
+          title={`${group.path} · ${agentHostLabel(group.host)}`}
         >
           <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
             <ChevronRight
@@ -523,9 +523,9 @@ function WorkspaceNode({
                   "truncate",
                   gitStatus?.isGit && "max-w-[45%]",
                 )}
-                title={agentWorkspaceHostLabel(group)}
+                title={agentHostLabel(group.host)}
               >
-                {agentWorkspaceHostLabel(group)}
+                {agentHostLabel(group.host)}
               </span>
               {gitStatus?.isGit && (
                 <span aria-hidden="true" className="text-muted-foreground/50">
@@ -670,11 +670,7 @@ function WorkspaceNode({
             if (!next) onExpandedChange(true);
           }}
           targets={sessionTargets}
-          machineLabel={
-            group.host.transport === "local"
-              ? "This server"
-              : `ssh ${group.host.sshAlias}`
-          }
+          machineLabel={agentHostLabel(group.host)}
         />
       )}
     </li>
