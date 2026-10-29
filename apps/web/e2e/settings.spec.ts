@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { resetE2eDatabase, setupUrl } from "./helpers/database";
 import { accentBackgrounds } from "@overtchat/shared/theme-backgrounds";
+import {
+  expectRandomUuidFallback,
+  removeRandomUuid,
+} from "./helpers/insecure-origin";
 import { promptedOrigins } from "./helpers/storage";
 
 test.beforeEach(async ({ page }) => {
@@ -142,6 +146,23 @@ test("all settings pages fit narrow screens and MCP transport preserves draft fi
   await page.screenshot({ path: testInfo.outputPath("mcp-mobile.png") });
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/tools$/);
+});
+
+test("the MCP server form opens on plain-HTTP LAN origins", async ({ page }) => {
+  await removeRandomUuid(page);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/settings/tools");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Add MCP server" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Add argument", exact: true }).click();
+  await expect(
+    page.getByLabel("Arguments value 2", { exact: true }),
+  ).toBeVisible();
+  await expectRandomUuidFallback(page);
+  expect(errors).toEqual([]);
 });
 
 test("accent palettes update live, persist, and stay local to a browser", async ({ page, context, browser }) => {

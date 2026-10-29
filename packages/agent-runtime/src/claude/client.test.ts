@@ -302,6 +302,84 @@ describe("Claude parent turns and background work", () => {
   });
 });
 
+describe("Claude compaction divider", () => {
+  const dividers = (messages: unknown[]) =>
+    messages.filter((message) => (message as { role?: string }).role === "compactionSummary");
+
+  it("replaces the /compact command with one divider that settles on the boundary", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "compact" });
+      expect(replica().messages).toEqual([
+        expect.objectContaining({ role: "compactionSummary", status: "running", trigger: "manual" }),
+      ]);
+
+      // Live order from Claude Code 2.1.310: status repeats, success precedes the boundary.
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      query.push({ type: "system", subtype: "status", status: null, compact_result: "success" });
+      await nextTask();
+      expect(dividers(replica().messages)).toEqual([expect.objectContaining({ status: "running" })]);
+
+      query.push({
+        type: "system", subtype: "compact_boundary", uuid: "boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 20_713, post_tokens: 1_999 },
+      });
+      query.push({
+        type: "user", uuid: "summary",
+        message: { role: "user", content: "This session is being continued from a previous conversation." },
+      });
+      query.push({ type: "user", message: { role: "user", content: "<local-command-stdout>Compacted </local-command-stdout>" } });
+      query.push({ ...successfulResult, result: "" });
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(replica().messages).toEqual([{
+        id: expect.stringMatching(/^compaction:/), role: "compactionSummary", timestamp: expect.any(Number),
+        status: "completed", trigger: "manual", tokensBefore: 20_713,
+      }]);
+    } finally { await runtime.stop(); }
+  });
+
+  it("marks automatic compaction inside a turn", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Keep working" });
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      await nextTask();
+      expect(dividers(replica().messages)).toEqual([
+        expect.not.objectContaining({ trigger: expect.anything() }),
+      ]);
+      query.push({ type: "system", subtype: "status", status: null, compact_result: "success" });
+      query.push({
+        type: "system", subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 967_944, post_tokens: 20_949 },
+      });
+      await nextTask();
+      expect(runtime.snapshot().status).toBe("running");
+      expect(dividers(replica().messages)).toEqual([expect.objectContaining({
+        status: "completed", trigger: "auto", tokensBefore: 967_944,
+      })]);
+      expect(dividers(replica().messages)[0]).not.toHaveProperty("tokensAfter");
+    } finally { await runtime.stop(); }
+  });
+
+  it.each([
+    ["fails", { type: "system", subtype: "status", status: null, compact_result: "failed", compact_error: "Not enough messages to compact." }, "failed"],
+    ["stops", { type: "system", subtype: "status", status: null }, "interrupted"],
+  ])("shows a compaction that %s without a boundary", async (_name, status, outcome) => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "compact" });
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      query.push(status);
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(replica().messages).toEqual([
+        expect.objectContaining({ role: "compactionSummary", status: outcome, trigger: "manual" }),
+      ]);
+    } finally { await runtime.stop(); }
+  });
+});
+
 describe("Claude runtime client", () => {
   it.each(["automatic", "manual"])(
     "keeps %s compaction separate from turn completion",

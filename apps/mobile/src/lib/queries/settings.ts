@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiError } from "@overtchat/shared";
-import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
+import type { SettingsModelConfig } from "@/lib/settings-model";
 import { getAuthClient } from "@/lib/auth/client";
 import { authFetch, getApiBase } from "@/lib/api";
 import { queryKeys } from "./keys";
@@ -83,7 +83,7 @@ export function useReorderSettingsModels() {
     onMutate: async (modelIds) => {
       await client.cancelQueries({ queryKey: key });
       const previous = client.getQueryData<{
-        modelConfigs: AdminModelConfig[];
+        modelConfigs: SettingsModelConfig[];
       }>(key);
       if (previous) {
         const positions = new Map(modelIds.map((id, index) => [id, index]));

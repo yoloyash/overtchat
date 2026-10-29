@@ -240,7 +240,7 @@ export function ChatArea({
           : chatComposerDraftScope(chatId),
   );
   const [chatPersisted, setChatPersisted] = useState(!isNew);
-  const { data: sessionUsage } = useChatUsage(
+  const { data: chatUsage } = useChatUsage(
     chatId,
     sessionCostEnabled && chatPersisted && !temporary,
   );
@@ -965,7 +965,8 @@ export function ChatArea({
             : undefined
         }
         contextUsage={contextUsage}
-        sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
+        sessionUsage={sessionCostEnabled ? chatUsage?.usage : undefined}
+        imageUsage={sessionCostEnabled ? chatUsage?.images : undefined}
         showTempToggle={canToggleTemporary}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}

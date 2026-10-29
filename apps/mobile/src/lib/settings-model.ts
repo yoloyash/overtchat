@@ -1,14 +1,19 @@
 import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
 import {
   EXPLICIT_API_FORMAT_IDS,
+  findProvider,
   PROVIDERS,
   PROVIDER_IDS,
   type ApiFormat,
   type ExplicitApiFormat,
   type ProviderId,
 } from "@overtchat/shared/provider-catalog";
+/** A newer server can send provider IDs this build does not know. */
+export type SettingsModelConfig = Omit<AdminModelConfig, "providerId"> & {
+  providerId: string;
+};
 export type ModelDraft = Pick<
-  AdminModelConfig,
+  SettingsModelConfig,
   | "modelType"
   | "label"
   | "providerId"
@@ -26,7 +31,7 @@ export type ModelDraft = Pick<
   | "toolCallingEnabled"
   | "enabled"
 >;
-export function modelDraft(model?: AdminModelConfig): ModelDraft {
+export function modelDraft(model?: SettingsModelConfig): ModelDraft {
   if (!model)
     return {
       modelType: "chat",
@@ -83,6 +88,15 @@ export function modelDraft(model?: AdminModelConfig): ModelDraft {
     enabled,
   };
 }
+export function providerLabel(
+  model: Pick<SettingsModelConfig, "providerId" | "displayProvider">,
+): string {
+  return (
+    findProvider(model.providerId)?.label ??
+    model.displayProvider ??
+    model.providerId
+  );
+}
 /** Providers the server accepts for each model type. */
 export function modelProviders(modelType: ModelDraft["modelType"]) {
   return modelType === "image"
@@ -112,7 +126,7 @@ export function changeModelType(
   draft: ModelDraft,
   modelType: ModelDraft["modelType"],
 ): ModelDraft {
-  if (!(modelProviders(modelType) as readonly ProviderId[]).includes(draft.providerId))
+  if (!(modelProviders(modelType) as readonly string[]).includes(draft.providerId))
     return changeModelProvider({ ...draft, modelType }, "openai");
   return {
     ...draft,
@@ -152,7 +166,8 @@ export function parseModelDraft(
   const url = new URL(draft.baseUrl.trim());
   if (!["http:", "https:"].includes(url.protocol))
     throw new Error("Use an HTTP or HTTPS endpoint.");
-  if (PROVIDERS[draft.providerId].requiresApiKey && !draft.apiKey?.trim())
+  // The server validates providers this build does not know.
+  if (findProvider(draft.providerId)?.requiresApiKey && !draft.apiKey?.trim())
     throw new Error("Enter the provider API key.");
   let providerOptions: Record<string, unknown> | null = null;
   if (options.trim()) {

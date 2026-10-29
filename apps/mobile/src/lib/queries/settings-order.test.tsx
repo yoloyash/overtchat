@@ -3,8 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
-import { modelDraft } from "@/lib/settings-model";
+import { modelDraft, type SettingsModelConfig } from "@/lib/settings-model";
 import { queryKeys } from "./keys";
 
 vi.mock("@/lib/auth/client", () => ({ getAuthClient: vi.fn() }));
@@ -16,7 +15,7 @@ import { authFetch } from "@/lib/api";
 import { useReorderSettingsModels } from "./settings";
 
 const key = queryKeys.settings("/model-configs?admin=1");
-const models: AdminModelConfig[] = ["first", "second", "image"].map(
+const models: SettingsModelConfig[] = ["first", "second", "image"].map(
   (id, index) => ({
     ...modelDraft(),
     id,
@@ -41,7 +40,7 @@ function Harness() {
 }
 function order() {
   return client
-    .getQueryData<{ modelConfigs: AdminModelConfig[] }>(key)
+    .getQueryData<{ modelConfigs: SettingsModelConfig[] }>(key)
     ?.modelConfigs.map((m) => m.id);
 }
 beforeEach(async () => {
@@ -105,7 +104,7 @@ it("moves optimistically, sends every model ID, and refreshes both model lists",
     modelIds: ["second", "first", "image"],
   });
   expect(
-    client.getQueryData<{ modelConfigs: AdminModelConfig[] }>(key)
+    client.getQueryData<{ modelConfigs: SettingsModelConfig[] }>(key)
       ?.modelConfigs[0],
   ).toMatchObject({ apiKey: "preserved-key", enabled: false, sortOrder: 0 });
   await act(async () => {

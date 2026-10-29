@@ -327,6 +327,18 @@ describe("image model configuration", () => {
     );
   });
   it.each(["openai", "google"])(
+    "keeps %s image token rates without cache rates",
+    (providerId) => {
+      expect(
+        ModelConfigSchema.parse({
+          ...image,
+          providerId,
+          pricing: { input: 1.5, output: 30, cacheRead: 0.15, cacheWrite: 2 },
+        }).pricing,
+      ).toEqual({ input: 1.5, output: 30, cacheRead: 0, cacheWrite: 0 });
+    },
+  );
+  it.each(["openai", "google"])(
     "lets the admin assign any model ID to %s image generation",
     (providerId) => {
       for (const model of ["studio-art", "gemini-2.5-flash", "gpt-4o"]) {
@@ -358,6 +370,14 @@ describe("custom image configuration", () => {
         extraBody: {},
       },
     });
+  });
+  it("drops pricing because custom backends report no token usage", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...custom,
+        pricing: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+      }).pricing,
+    ).toBeNull();
   });
   it("preserves backend settings through save and re-save", () => {
     const parsed = ModelConfigSchema.parse({

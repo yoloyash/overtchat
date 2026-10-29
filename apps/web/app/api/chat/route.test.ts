@@ -2565,6 +2565,69 @@ describe("chat route setup boundary", () => {
     );
   });
 
+  it("keeps the chat model's cost and records image charges separately", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      pricing: { input: 2, output: 8, cacheRead: 0.2, cacheWrite: 2.5 },
+    });
+
+    await POST(request());
+    const { onUsage } = mocks.createImageTools.mock.calls[0][0] as {
+      onUsage: (usage: Record<string, unknown>) => void;
+    };
+    const image = {
+      toolCallId: "kite",
+      occurredAt: new Date("2026-10-27T12:00:00.000Z"),
+      providerId: "google",
+      model: "gemini-3.1-flash-image",
+      outputTokens: 1_290,
+      totalCostNanoUsd: 77_405_000,
+    };
+    onUsage(image);
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => unknown;
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+
+    messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 100,
+          inputTokenDetails: {
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            noCacheTokens: 100,
+          },
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      },
+    });
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Here is your kite" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: expect.objectContaining({
+          model: modelConfig.model,
+          totalCostNanoUsd: 280_000,
+        }),
+        imageUsage: [image],
+      }),
+    );
+  });
+
   it("uses latest-step context and prices each tool-loop request tier", async () => {
     mocks.getModelConfig.mockResolvedValue({
       ...modelConfig,

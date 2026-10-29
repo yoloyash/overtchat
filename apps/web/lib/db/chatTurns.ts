@@ -24,6 +24,11 @@ export type CompletedGenerationUsage = {
   finishReason?: string;
 } & Partial<EstimatedGenerationCost>;
 
+/** One image tool operation, billed to the image model rather than the chat model. */
+export type CompletedImageUsage = CompletedGenerationUsage & {
+  toolCallId: string;
+};
+
 export type CommitChatTurnResult =
   | "committed"
   | "duplicate"
@@ -282,6 +287,7 @@ export function completeChatStream({
   streamId,
   assistantMessage,
   usage,
+  imageUsage = [],
   status = assistantMessage ? "complete" : "error",
   error,
 }: {
@@ -293,6 +299,8 @@ export function completeChatStream({
     metadata?: Record<string, unknown>;
   };
   usage?: CompletedGenerationUsage;
+  /** Completed images are kept with the reply even when the chat model fails. */
+  imageUsage?: CompletedImageUsage[];
   status?: Exclude<ChatGenerationStatus, "running">;
   error?: string;
 }): boolean {
@@ -383,6 +391,19 @@ export function completeChatStream({
       context: "chat",
       ...usage,
     });
+  }
+
+  if (assistantMessage) {
+    for (const { toolCallId, ...image } of imageUsage) {
+      tryRecordGenerationUsage({
+        id: `${streamId}:${toolCallId}`,
+        userId: completed.userId,
+        chatId,
+        messageId: assistantMessage.id,
+        context: "image",
+        ...image,
+      });
+    }
   }
 
   return true;

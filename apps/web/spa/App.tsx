@@ -1,3 +1,4 @@
+import "@/lib/random-uuid-fallback";
 import { useState } from "react";
 import { RouterProvider, type RouterHistory } from "@tanstack/react-router";
 import { QueryProvider } from "@/components/QueryProvider";

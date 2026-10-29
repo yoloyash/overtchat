@@ -4,9 +4,10 @@ import {
   changeModelType,
   modelDraft,
   parseModelDraft,
+  providerLabel,
+  type SettingsModelConfig,
 } from "./settings-model";
-import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
-const existing: AdminModelConfig = {
+const existing: SettingsModelConfig = {
   ...modelDraft(),
   id: "model",
   updatedAt: 1,
@@ -71,6 +72,22 @@ describe("native model edits", () => {
     expect(image).toMatchObject({ providerId: "custom", apiFormat: "openai-images" });
     expect(changeModelType(image, "chat").apiFormat).toBe("openai-chat");
     expect(changeModelProvider(image, "custom").apiFormat).toBe("openai-images");
+  });
+  it("saves models from providers added after this build", () => {
+    const future = { ...existing, providerId: "future", apiKey: null };
+    const input = parseModelDraft(
+      { ...modelDraft(future), label: "Renamed" },
+      "",
+      "",
+    );
+    expect(input).toMatchObject({ providerId: "future", label: "Renamed" });
+  });
+  it("labels providers added after this build", () => {
+    expect(providerLabel({ providerId: "openai" })).toBe("OpenAI");
+    expect(
+      providerLabel({ providerId: "future", displayProvider: "Future" }),
+    ).toBe("Future");
+    expect(providerLabel({ providerId: "future" })).toBe("future");
   });
   it.each(["[]", "null", '"string"', "{broken"])(
     "rejects invalid provider options %s",

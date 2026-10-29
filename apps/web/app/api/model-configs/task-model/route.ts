@@ -4,6 +4,7 @@ import {
   setTaskModelConfig,
   toAdminModelConfig,
 } from "@/lib/db/modelConfigs";
+import { adminModelConfigForClient } from "@/lib/model-config/legacy-clients";
 
 const TaskModelSelectionSchema = z.object({
   modelConfigId: z.string().trim().min(1).nullable(),
@@ -38,7 +39,7 @@ export async function PUT(req: Request) {
 
   return Response.json({
     taskModel: result.modelConfig
-      ? toAdminModelConfig(result.modelConfig)
+      ? adminModelConfigForClient(req, toAdminModelConfig(result.modelConfig))
       : null,
   });
 }
