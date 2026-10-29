@@ -1626,7 +1626,7 @@ scripted alert and checks the heartbeat, the badge, both settings and both
 presentations.
 
 ```sh
-npx vitest run --root apps/web lib/notifications app/api/agent-presence
+npm run test -w apps/web -- lib/notifications app/api/agent-presence
 ```
 
 ```sh

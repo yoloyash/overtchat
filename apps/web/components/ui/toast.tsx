@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
-import { AlertTriangle, CheckCircle2, X, XCircle } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, X, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 
@@ -116,6 +116,9 @@ function ToastIcon({ type }: { type?: string }) {
   }
   if (type === "warning") {
     return <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />;
+  }
+  if (type === "notice") {
+    return <Bell className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
   }
 
   return <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-ring" />;

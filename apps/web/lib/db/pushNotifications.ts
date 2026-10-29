@@ -57,6 +57,7 @@ export function agentNotificationSession(id: string) {
       firstMessage: agentSessions.firstMessage,
       workspaceName: agentWorkspaces.name,
       hostName: agentHosts.name,
+      hostSshAlias: agentHosts.sshAlias,
       provider: agentConnections.provider,
     })
     .from(agentSessions)

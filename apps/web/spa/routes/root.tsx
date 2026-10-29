@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AgentLiveState } from "@/components/agents/AgentAlerts";
 import { AppError } from "@/components/AppError";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { TwoFactorPrompt } from "@/components/auth/TwoFactorPrompt";
@@ -75,6 +76,7 @@ function AppLayout() {
     <AppShell sidebar={<Sidebar isAdmin={isAdmin} />}>
       <Outlet />
       <TwoFactorPrompt key={session.user.id} />
+      {isAdmin && <AgentLiveState />}
     </AppShell>
   );
 }

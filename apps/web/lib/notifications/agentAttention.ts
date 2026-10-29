@@ -35,6 +35,12 @@ export class AgentAttentionNotifications {
     this.cancel(state);
   }
 
+  /** The Stop was refused, so the turn's end is news after all. */
+  resume(id: string) {
+    const state = this.states.get(id);
+    if (state) state.suppressed = false;
+  }
+
   update(id: string, entry: AgentSessionDirectoryEntry) {
     const previous = this.states.get(id);
     if (!previous) {
@@ -56,11 +62,12 @@ export class AgentAttentionNotifications {
     const attention = entry.attention;
     if (attention && attention.id !== before.attention?.id) {
       this.cancel(state);
-      // Request ids are only unique within a session (Codex counts from 0).
+      // Request ids repeat across sessions and runtimes (Codex counts from 0
+      // in each process), so the time of asking tells repeats apart.
       this.notify({
         sessionId: id,
         reason: attention.kind,
-        eventId: `${id}:${attention.id}`,
+        eventId: `${id}:${attention.id}:${attention.requestedAt}`,
         attention,
       });
       return;
@@ -69,6 +76,12 @@ export class AgentAttentionNotifications {
     if (turn) {
       if (turn.endedAt <= (before.lastTurn?.endedAt ?? -Infinity)) return;
       if (turn.outcome === "stopped" || state.suppressed) return;
+      // A connector can report one turn's end and the next one's start at
+      // once (a queued message). The owner moved on; only a failure is news.
+      if (turn.outcome === "completed" && entry.runtimeStatus === "running") {
+        this.cancel(state);
+        return;
+      }
       const event: AgentAttentionEvent = {
         sessionId: id,
         reason: turn.outcome,

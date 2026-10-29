@@ -398,19 +398,19 @@ export class HostConnectorBroker {
     const requestId = crypto.randomUUID();
     const sessionId = sessionIdForRequest(request);
     if (sessionId) channel.sessionIds.add(sessionId);
-    if (
-      request.type === "session_command" &&
-      request.command.type === "abort"
-    ) {
-      this.attentionNotifications.suppress(request.session.sessionId);
-    }
-    if (request.type === "stop_session")
-      this.attentionNotifications.suppress(request.sessionId);
+    // The owner's own Stop makes the turn's end no news, unless it is refused.
+    const stopping =
+      request.type === "session_command" && request.command.type === "abort"
+        ? request.session.sessionId
+        : request.type === "stop_session"
+          ? request.sessionId
+          : null;
+    if (stopping) this.attentionNotifications.suppress(stopping);
 
     const replaySafe =
       isLedgerProtectedCommand(request) &&
       channel.capabilities.has("command-wal-v1");
-    return new Promise<T>((resolve, reject) => {
+    const result = new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId);
         reject(
@@ -438,6 +438,10 @@ export class HostConnectorBroker {
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
+    if (stopping) {
+      result.catch(() => this.attentionNotifications.resume(stopping));
+    }
+    return result;
   }
 
   private reconcilePendingRequests(

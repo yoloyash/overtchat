@@ -50,7 +50,7 @@ describe("agent attention notifications", () => {
     expect(notify).toHaveBeenCalledExactlyOnceWith({
       sessionId: "a",
       reason: "approval",
-      eventId: "a:request-1",
+      eventId: "a:request-1:1000",
       attention: approval,
     });
     // Answering it is the owner's own doing; the next request is new.
@@ -64,7 +64,7 @@ describe("agent attention notifications", () => {
     );
     expect(notify).toHaveBeenCalledTimes(2);
     expect(notify).toHaveBeenLastCalledWith(
-      expect.objectContaining({ reason: "question", eventId: "a:request-2" }),
+      expect.objectContaining({ reason: "question", eventId: "a:request-2:1000" }),
     );
   });
 
@@ -107,6 +107,27 @@ describe("agent attention notifications", () => {
     );
   });
 
+  it("lets a finished turn go when the next one is already running", () => {
+    const { tracker, notify } = setup();
+    tracker.update("a", entry({ runtimeStatus: "running" }));
+    // One update carries the end of a turn and the start of the queued next one.
+    tracker.update("a", {
+      ...turn("completed", 5_000),
+      runtimeStatus: "running",
+      turnStartedAt: 5_010,
+    });
+    vi.advanceTimersByTime(10_000);
+    expect(notify).not.toHaveBeenCalled();
+    tracker.update("a", {
+      ...turn("failed", 9_000),
+      runtimeStatus: "running",
+      turnStartedAt: 9_010,
+    });
+    expect(notify).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ reason: "failed", eventId: "a:9000" }),
+    );
+  });
+
   it("stays quiet for stopped turns, snapshots, and disconnects", () => {
     const { tracker, notify } = setup();
     tracker.update("a", entry({ runtimeStatus: "running" }));
@@ -128,7 +149,22 @@ describe("agent attention notifications", () => {
     tracker.update("a", turn("completed", 5_000));
     vi.advanceTimersByTime(5_000);
     expect(notify).not.toHaveBeenCalled();
+    // A refused Stop leaves the turn to end on its own.
     tracker.update("a", { ...turn("completed", 5_000), runtimeStatus: "running" });
+    tracker.suppress("a");
+    tracker.resume("a");
+    tracker.update("a", turn("completed", 7_000));
+    vi.advanceTimersByTime(5_000);
+    expect(notify).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ reason: "completed", eventId: "a:7000" }),
+    );
+    notify.mockClear();
+    tracker.update("a", { ...turn("completed", 7_000), runtimeStatus: "running" });
+    tracker.suppress("a");
+    tracker.update("a", turn("completed", 8_000));
+    vi.advanceTimersByTime(5_000);
+    expect(notify).not.toHaveBeenCalled();
+    tracker.update("a", { ...turn("completed", 8_000), runtimeStatus: "running" });
     tracker.update("a", turn("completed", 9_000));
     vi.advanceTimersByTime(5_000);
     expect(notify).toHaveBeenCalledExactlyOnceWith(

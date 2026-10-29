@@ -32,7 +32,6 @@ import {
 } from "@/components/SidebarProjects";
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
 import { SidebarAgentStatusList } from "@/components/SidebarAgentStatusList";
-import { AgentAlerts } from "@/components/agents/AgentAlerts";
 import {
   useAgentSidebarGrouping,
   type AgentSidebarGrouping,
@@ -52,7 +51,6 @@ import { useActiveChatIds, useChats } from "@/lib/queries/chats";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import { useProjects } from "@/lib/queries/projects";
 import {
-  useAgentConnectionSessionDirectory,
   useAgentConnections,
   useRefreshAllAgentWorkspaces,
 } from "@/lib/queries/agentConnections";
@@ -263,18 +261,16 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-/** Admins switch between chats and agents; agent state streams in both. */
+/** Admins switch between chats and agents; agent state shows in both. */
 function AdminSidebarBody({ chat }: { chat: React.ReactNode }) {
   const mode = useSidebarMode();
   const { data: connections = [], isPending } = useAgentConnections();
-  useAgentConnectionSessionDirectory(connections);
   const agentCounts = useMemo(
     () => agentAttentionCounts(connections),
     [connections],
   );
   return (
     <>
-      <AgentAlerts connections={connections} />
       <SidebarModeToggle mode={mode} agentCounts={agentCounts} />
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         {mode === "agents" ? (

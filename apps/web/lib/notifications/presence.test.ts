@@ -104,6 +104,35 @@ describe("the client registry", () => {
     expect(registry.deliver("v", "tab", notification)).toBe(false);
   });
 
+  it("keeps a client attached until its last stream closes, telling the newest", () => {
+    const registry = new AgentClientRegistry();
+    registry.record("u", { clientId: "page", visible: true, viewing: null, notify: true }, 1_000);
+    const notification = {
+      sessionId: "s",
+      reason: "approval" as const,
+      eventId: "e",
+      title: "Needs approval: s",
+      body: "Allow Bash",
+      provider: "codex" as const,
+    };
+    // A phone's drawer runs a second copy of the sidebar, with its own stream.
+    const panel = vi.fn();
+    const drawer = vi.fn();
+    const stopPanel = registry.subscribe("u", "page", panel, 1_000);
+    const stopDrawer = registry.subscribe("u", "page", drawer, 1_500);
+    expect(registry.deliver("u", "page", notification)).toBe(true);
+    expect(drawer).toHaveBeenCalledExactlyOnceWith(notification);
+    expect(panel).not.toHaveBeenCalled();
+    // Closing the drawer leaves the panel's stream, and the client's presence.
+    stopDrawer();
+    expect(registry.clients("u", 2_000)[0]).toMatchObject({ visible: true, notify: true });
+    expect(registry.deliver("u", "page", notification)).toBe(true);
+    expect(panel).toHaveBeenCalledExactlyOnceWith(notification);
+    stopPanel();
+    expect(registry.clients("u", 2_000)[0]).toMatchObject({ visible: false, notify: false });
+    expect(registry.deliver("u", "page", notification)).toBe(false);
+  });
+
   it("forgets clients that stopped reporting in", () => {
     const registry = new AgentClientRegistry();
     registry.record("u", { clientId: "old", visible: true, viewing: null, notify: true }, 1_000);

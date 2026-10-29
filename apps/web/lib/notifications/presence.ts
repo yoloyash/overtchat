@@ -49,7 +49,8 @@ export function planAgentNotification(
 type Sink = (notification: AgentNotification) => void;
 type ClientRecord = Omit<AgentClientPresence, "notify"> & {
   wantsAlerts: boolean;
-  sink?: Sink;
+  /** The client's open event streams, oldest first; the newest is told. */
+  sinks: Sink[];
 };
 
 /** Each owner's web and desktop clients: their heartbeats and event streams. */
@@ -75,24 +76,29 @@ export class AgentClientRegistry {
         visible: presence.visible,
         viewing: presence.viewing,
         wantsAlerts: presence.notify,
+        sinks: [],
       });
     }
     this.prune(userId, now);
   }
 
-  /** Attaches the client's event stream; a client is only told through one. */
+  /**
+   * Attaches one of the client's event streams. A page can hold more than one
+   * (a phone's drawer runs a second sidebar), so the client stays attached
+   * until its last stream closes, and is told through the newest.
+   */
   subscribe(userId: string, clientId: string, sink: Sink, now = Date.now()): () => void {
     const clients = this.clientsOf(userId);
     let record = clients.get(clientId);
     if (!record) {
-      record = { clientId, at: now, visible: false, viewing: null, wantsAlerts: false };
+      record = { clientId, at: now, visible: false, viewing: null, wantsAlerts: false, sinks: [] };
       clients.set(clientId, record);
     }
-    record.sink = sink;
+    record.sinks.push(sink);
     return () => {
-      if (record.sink !== sink) return;
+      record.sinks = record.sinks.filter((item) => item !== sink);
+      if (record.sinks.length > 0) return;
       // Without a stream the client cannot be looking at anything.
-      record.sink = undefined;
       record.visible = false;
       record.viewing = null;
     };
@@ -107,14 +113,14 @@ export class AgentClientRegistry {
         at: record.at,
         visible: record.visible,
         viewing: record.viewing,
-        notify: record.wantsAlerts && record.sink !== undefined,
+        notify: record.wantsAlerts && record.sinks.length > 0,
       });
     }
     return result;
   }
 
   deliver(userId: string, clientId: string, notification: AgentNotification): boolean {
-    const sink = this.users.get(userId)?.get(clientId)?.sink;
+    const sink = this.users.get(userId)?.get(clientId)?.sinks.at(-1);
     if (!sink) return false;
     sink(notification);
     return true;
@@ -133,7 +139,7 @@ export class AgentClientRegistry {
     const clients = this.users.get(userId);
     if (!clients) return;
     for (const [clientId, record] of clients) {
-      if (!record.sink && now - record.at > AGENT_PRESENCE_WINDOW_MS) {
+      if (record.sinks.length === 0 && now - record.at > AGENT_PRESENCE_WINDOW_MS) {
         clients.delete(clientId);
       }
     }

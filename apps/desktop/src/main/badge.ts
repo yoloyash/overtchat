@@ -2,6 +2,9 @@ import { app, nativeImage } from "electron";
 import type { DesktopBadge } from "@overtchat/shared/desktop";
 import { getMainWindow } from "./window";
 
+/** The drawn badge is a 32px PNG of a few kilobytes; anything larger is not ours. */
+const MAX_IMAGE_LENGTH = 64 * 1024;
+
 /** A count on the dock icon; Windows has no count, so it gets the drawn badge. */
 export function applyBadge(badge: DesktopBadge): void {
   const count =
@@ -12,12 +15,15 @@ export function applyBadge(badge: DesktopBadge): void {
     const image =
       count > 0 &&
       typeof badge.image === "string" &&
+      badge.image.length <= MAX_IMAGE_LENGTH &&
       badge.image.startsWith("data:image/png;base64,")
         ? nativeImage.createFromDataURL(badge.image)
         : null;
+    const overlay = image && !image.isEmpty() ? image : null;
+    // Without a drawn badge there is nothing to describe either.
     win.setOverlayIcon(
-      image,
-      count > 0 ? `${count} agent${count === 1 ? "" : "s"} need you` : "",
+      overlay,
+      overlay ? `${count} agent${count === 1 ? "" : "s"} need you` : "",
     );
     return;
   }

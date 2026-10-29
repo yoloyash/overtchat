@@ -24,6 +24,10 @@ import {
   unlockAgentAlertSound,
 } from "@/lib/notifications/sound";
 import { useAgentPresence } from "@/lib/notifications/useAgentPresence";
+import {
+  useAgentConnectionSessionDirectory,
+  useAgentConnections,
+} from "@/lib/queries/agentConnections";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 
 /** Alerts already shown this page load; a replayed stream shows none twice. */
@@ -57,6 +61,8 @@ export function AgentAlerts({
   useEffect(() => {
     showAgentAttentionBadge(counts.needsYou + counts.unread);
   }, [counts]);
+  // Signing out or losing admin rights takes the count off the icon too.
+  useEffect(() => () => showAgentAttentionBadge(0), []);
 
   useEffect(() => {
     if (!sound) return;
@@ -142,4 +148,15 @@ function showSystemNotification(
   } catch {
     // Some browsers expose Notification but refuse to show one.
   }
+}
+
+/**
+ * The page's live agent state, mounted once for admins: the session directory
+ * stream and the alerts it carries. The sidebar renders twice on phones (a
+ * panel and a drawer), so neither can own these.
+ */
+export function AgentLiveState() {
+  const { data: connections = [] } = useAgentConnections();
+  useAgentConnectionSessionDirectory(connections);
+  return <AgentAlerts connections={connections} />;
 }
