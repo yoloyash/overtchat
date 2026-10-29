@@ -1,24 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet } from "react-native";
-import type { ContextMeterValues } from "@overtchat/shared/context-meter";
-import { combinePricedUsage, type UsageTotals } from "@overtchat/shared/usage";
+import { Pressable } from "react-native";
+import { combinePricedUsage, formatNanoUsd } from "@overtchat/shared/usage";
 import { ContextRing } from "@/components/ui/ContextRing";
+import type { ChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { useTheme } from "@/lib/theme";
 
-export interface ChatUsageSummary {
-  /** Context-window usage measured at the last response. */
-  context?: ContextMeterValues;
-  /** Chat generations, present when any of them has a recorded price. */
-  session?: UsageTotals;
-  /** Image operations, present when any of them has a recorded price. */
-  images?: UsageTotals;
-}
-
-export function formatNanoUsd(nanoUsd: number): string {
-  return `$${(Math.max(0, nanoUsd) / 1e9).toFixed(3)}`;
-}
-
-/** Opens the usage sheet: the context ring, or a cost glyph without a meter. */
+/**
+ * Header action that opens the usage sheet: the context ring, or a cost glyph
+ * when the context meter is off but the chat has a recorded cost. Sized like
+ * the neighboring header icons.
+ */
 export function ChatUsageButton({
   usage,
   onPress,
@@ -43,25 +34,13 @@ export function ChatUsageButton({
       accessibilityRole="button"
       accessibilityLabel={`Usage: ${details.join("; ")}. Show details`}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.hitTarget,
-        { opacity: pressed ? 0.7 : 1 },
-      ]}
+      style={({ pressed }) => ({ padding: 12, opacity: pressed ? 0.7 : 1 })}
     >
       {usage.context ? (
-        <ContextRing values={usage.context} />
+        <ContextRing values={usage.context} size={22} />
       ) : (
-        <Ionicons name="cash-outline" size={20} color={colors.mutedForeground} />
+        <Ionicons name="cash-outline" size={22} color={colors.mutedForeground} />
       )}
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  hitTarget: {
-    width: 44,
-    height: 48,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});

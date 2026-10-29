@@ -4,76 +4,16 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import { forwardRef, useCallback, useEffect, useMemo } from "react";
+import { forwardRef, useCallback } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { UIMessage } from "ai";
-import {
-  getContextMeterValues,
-  type ContextMeterValues,
-} from "@overtchat/shared/context-meter";
-import { readMessageStats } from "@overtchat/shared/message-stats";
-import type { UsageTotals } from "@overtchat/shared/usage";
+import type { ContextMeterValues } from "@overtchat/shared/context-meter";
+import { formatNanoUsd, type UsageTotals } from "@overtchat/shared/usage";
 import { ContextRing, useContextTone } from "@/components/ui/ContextRing";
-import { useChatPreferences } from "@/lib/chatPreferences";
-import { useChatUsageTotals } from "@/lib/queries/chatUsage";
+import type { ChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { useTheme } from "@/lib/theme";
-import { formatNanoUsd, type ChatUsageSummary } from "./ChatUsageButton";
 
 export type ChatUsageSheetRef = BottomSheetModal;
-
-/**
- * Context usage from the newest assistant message that reported it, plus
- * recorded cost totals for a persisted chat. Honors the device's context-meter
- * and session-cost preferences; `undefined` means there is nothing to show.
- */
-export function useChatUsageSummary({
-  chatId,
-  persisted,
-  streaming,
-  messages,
-  contextWindow,
-}: {
-  chatId: string;
-  persisted: boolean;
-  streaming: boolean;
-  messages: UIMessage[];
-  contextWindow?: number;
-}): ChatUsageSummary | undefined {
-  const prefs = useChatPreferences();
-  const costEnabled = persisted && prefs.sessionCost;
-  const totals = useChatUsageTotals(chatId, costEnabled);
-  const refetch = totals.refetch;
-  useEffect(() => {
-    if (!streaming && costEnabled) void refetch();
-  }, [streaming, messages.length, costEnabled, refetch]);
-  const stats = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index--) {
-      const message = messages[index];
-      if (message.role !== "assistant") continue;
-      const read = readMessageStats(message);
-      if (read?.contextTokens !== undefined) return read;
-    }
-    return undefined;
-  }, [messages]);
-  const context =
-    prefs.contextMeter && stats?.contextTokens !== undefined
-      ? getContextMeterValues(
-          stats.contextTokens,
-          contextWindow ?? stats.contextWindow,
-        )
-      : undefined;
-  const session =
-    costEnabled && totals.data?.usage.pricedGenerations
-      ? totals.data.usage
-      : undefined;
-  const images =
-    costEnabled && totals.data?.images?.pricedGenerations
-      ? totals.data.images
-      : undefined;
-  if (!context && !session && !images) return undefined;
-  return { context, session, images };
-}
 
 function formatInteger(value: number): string {
   return Math.round(value).toLocaleString();
@@ -113,11 +53,12 @@ function ContextSection({ values }: { values: ContextMeterValues }) {
   const tone = useContextTone(values);
   const known = values.percentage !== undefined;
   return (
-    <View accessibilityLabel="Context" style={styles.section}>
+    <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <ContextRing values={values} size={40} />
         <View style={styles.sectionCopy}>
           <Text
+            accessibilityRole="header"
             style={[
               styles.sectionTitle,
               {
@@ -173,7 +114,6 @@ function CostSection({
   const cost = formatNanoUsd(usage.totalCostNanoUsd);
   return (
     <View
-      accessibilityLabel={title}
       style={[
         styles.section,
         divider && [styles.divider, { borderColor: colors.border }],
@@ -182,6 +122,7 @@ function CostSection({
       <View style={styles.sectionHeader}>
         <View style={styles.sectionCopy}>
           <Text
+            accessibilityRole="header"
             style={[
               styles.sectionTitle,
               { color: colors.popoverForeground, fontFamily: fonts.sansSemiBold },
@@ -286,6 +227,7 @@ export const ChatUsageSheet = forwardRef<
         style={[styles.body, { paddingBottom: 16 + insets.bottom }]}
       >
         <Text
+          accessibilityRole="header"
           style={[
             styles.title,
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },

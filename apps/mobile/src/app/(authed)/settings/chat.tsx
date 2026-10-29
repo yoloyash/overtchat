@@ -42,7 +42,7 @@ export default function ChatSettings() {
         />
         <Toggle
           title="Context meter"
-          detail="Context-window ring beside the message box."
+          detail="Context-window ring in the chat header."
           value={prefs.contextMeter}
           onChange={(contextMeter) => setChatPreferences({ contextMeter })}
         />

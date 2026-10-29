@@ -92,12 +92,9 @@ vi.mock("react-native", () => {
   };
 });
 
+import { useChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { ChatUsageButton } from "./ChatUsageButton";
-import {
-  ChatUsageSheet,
-  useChatUsageSummary,
-  type ChatUsageSheetRef,
-} from "./ChatUsageSheet";
+import { ChatUsageSheet, type ChatUsageSheetRef } from "./ChatUsageSheet";
 
 type SummaryInput = Parameters<typeof useChatUsageSummary>[0];
 
@@ -190,7 +187,6 @@ async function render(props: Partial<SummaryInput> = {}) {
         <Harness
           chatId="chat-1"
           persisted
-          streaming={false}
           messages={[]}
           {...props}
         />

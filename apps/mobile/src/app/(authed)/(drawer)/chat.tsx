@@ -39,9 +39,9 @@ import {
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
+import { ChatUsageButton } from "@/components/chat/ChatUsageButton";
 import {
   ChatUsageSheet,
-  useChatUsageSummary,
   type ChatUsageSheetRef,
 } from "@/components/chat/ChatUsageSheet";
 import { ErrorNotice } from "@/components/ErrorNotice";
@@ -62,6 +62,7 @@ import {
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useCapabilities } from "@/lib/queries/capabilities";
+import { useChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
@@ -304,6 +305,7 @@ function ChatSurface({
       setChatPersisted(true);
       void qc.invalidateQueries({ queryKey: queryKeys.chats() });
       void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.chatUsage(chatId) });
     },
   });
 
@@ -311,6 +313,7 @@ function ChatSurface({
     setChatPersisted(true);
     void qc.invalidateQueries({ queryKey: queryKeys.chats() });
     void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.chatUsage(chatId) });
   }, [chatId, qc]);
   const voice = useMobileVoice({
     chatId,
@@ -369,7 +372,6 @@ function ChatSurface({
   const usage = useChatUsageSummary({
     chatId,
     persisted: chatPersisted,
-    streaming,
     messages,
     contextWindow: selectedModel?.contextWindow,
   });
@@ -541,6 +543,15 @@ function ChatSurface({
           {chatPersisted && (
             <ShareChatButton chatId={chatId} disabled={streaming || voice.busy} />
           )}
+          {usage && (
+            <ChatUsageButton
+              usage={usage}
+              onPress={() => {
+                Keyboard.dismiss();
+                usageSheetRef.current?.present();
+              }}
+            />
+          )}
           <Pressable
             accessibilityRole="button"
             onPress={onNewChat}
@@ -552,7 +563,7 @@ function ChatSurface({
         </View>
       ),
     });
-  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy]);
+  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy, usage]);
 
   function requestBody(
     action: ChatRequestAction,
@@ -884,11 +895,6 @@ function ChatSurface({
             onOpenAddSheet={() => {
               Keyboard.dismiss();
               addSheetRef.current?.present();
-            }}
-            usage={usage}
-            onOpenUsage={() => {
-              Keyboard.dismiss();
-              usageSheetRef.current?.present();
             }}
             onRemoveAttachment={removeAttachment}
             onDismissUploadError={dismissUploadError}
