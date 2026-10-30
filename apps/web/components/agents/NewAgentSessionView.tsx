@@ -1,7 +1,7 @@
 "use client";
 
 import { ErrorNotice } from "@/components/ui/error-notice";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { generateId } from "ai";
@@ -43,8 +43,10 @@ import { authClient } from "@/lib/auth/client";
 import { newAgentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
-import { AgentComposer } from "./AgentComposer";
+import { FileDropZone } from "@/components/chat/FileDropZone";
+import { AgentComposer, type AgentComposerHandle } from "./AgentComposer";
 import { AgentSetupPicker } from "./AgentSetupPicker";
+import { agentImageDropLabels } from "@/lib/agents/imageDrop";
 
 export function NewAgentSessionView({
   provider,
@@ -144,6 +146,9 @@ export function NewAgentSessionView({
   const selectedModel = selection.model;
   const loadingDefaults = catalog.isFetching && !catalog.data;
   const pending = createSession.isPending || sendingFirstPrompt;
+  const supportsImages = selectedModel?.input.includes("image") === true;
+  const composerDisabled = !forkLoaded || forkError || loadingDefaults;
+  const composerRef = useRef<AgentComposerHandle>(null);
 
   useEffect(() => {
     document.title = `New ${providerMetadata.label} session · ${workspaceName}`;
@@ -253,7 +258,14 @@ export function NewAgentSessionView({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <FileDropZone
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      disabled={composerDisabled}
+      accepting={supportsImages}
+      kind="images"
+      onFiles={(files) => composerRef.current?.addFiles(files)}
+      {...agentImageDropLabels(providerMetadata.label)}
+    >
       <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
         <SidebarToggle />
         <div
@@ -340,15 +352,16 @@ export function NewAgentSessionView({
             </div>
           )}
           <AgentComposer
+            ref={composerRef}
             providerLabel={providerMetadata.label}
             commands={[]}
             queuedMessages={[]}
             supportsSteer={false}
-            supportsImages={selectedModel?.input.includes("image") === true}
+            supportsImages={supportsImages}
             running={false}
             pending={pending}
             stopping={false}
-            disabled={!forkLoaded || forkError || loadingDefaults}
+            disabled={composerDisabled}
             isAdmin={isAdmin}
             controls={{
               providerLabel: providerMetadata.label,
@@ -396,6 +409,6 @@ export function NewAgentSessionView({
           />
         </div>
       </main>
-    </div>
+    </FileDropZone>
   );
 }

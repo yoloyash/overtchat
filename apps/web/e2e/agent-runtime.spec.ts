@@ -1653,6 +1653,41 @@ test("shows durable turn activity without changing completed tool status", async
   });
   await page.getByRole("button", { name: "Done" }).click();
   await expect(composer).toBeEnabled();
+  // Dropping onto the session attaches images the way the picker and paste do.
+  const dragFile = (kind: "dragenter" | "drop", name: string, type: string) =>
+    composer.evaluate(
+      (element, file) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(["drop"], file.name, { type: file.type }));
+        element.dispatchEvent(
+          new DragEvent(file.kind, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: transfer,
+          }),
+        );
+      },
+      { kind, name, type },
+    );
+  await dragFile("dragenter", "dropped.png", "image/png");
+  await expect(page.getByText("Drop images to attach")).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-image-drop-overlay.png"),
+    fullPage: true,
+  });
+  await dragFile("drop", "dropped.png", "image/png");
+  await expect(page.getByText("Drop images to attach")).toHaveCount(0);
+  const droppedChip = page.getByRole("button", { name: /^Remove .+\.png$/ });
+  await expect(droppedChip).toBeVisible();
+  await droppedChip.click();
+  await expect(droppedChip).toHaveCount(0);
+  await dragFile("drop", "notes.pdf", "application/pdf");
+  // Earlier toasts may still fill the visible stack; the live region announces regardless.
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Codex accepts images only" }).first(),
+  ).toBeAttached();
+  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+
   await composer.evaluate(async (element) => {
     const canvas = document.createElement("canvas");
     canvas.width = 96;
