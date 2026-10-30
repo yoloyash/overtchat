@@ -51,7 +51,6 @@ import { useActiveChatIds, useChats } from "@/lib/queries/chats";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import { useProjects } from "@/lib/queries/projects";
 import {
-  useAgentConnectionSessionDirectory,
   useAgentConnections,
   useRefreshAllAgentWorkspaces,
 } from "@/lib/queries/agentConnections";
@@ -262,11 +261,10 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-/** Admins switch between chats and agents; agent state streams in both. */
+/** Admins switch between chats and agents; agent state shows in both. */
 function AdminSidebarBody({ chat }: { chat: React.ReactNode }) {
   const mode = useSidebarMode();
   const { data: connections = [], isPending } = useAgentConnections();
-  useAgentConnectionSessionDirectory(connections);
   const agentCounts = useMemo(
     () => agentAttentionCounts(connections),
     [connections],

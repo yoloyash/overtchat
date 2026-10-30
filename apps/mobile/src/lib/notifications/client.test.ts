@@ -86,7 +86,11 @@ describe("per-device push settings", () => {
     mocks.permissions.mockResolvedValue({ granted: false, canAskAgain: true });
     await changeNotificationPreferences(scope, { chats: true });
     expect(mocks.requestPermissions).toHaveBeenCalledTimes(1);
-    expect(mocks.channel).toHaveBeenCalledTimes(2);
+    // Android drops pushes on unknown channels, so the ids never change.
+    expect(mocks.channel.mock.calls.map(([id, options]) => [id, options.name])).toEqual([
+      ["chat-responses", "Chat responses"],
+      ["agent-idle", "Agent activity"],
+    ]);
     expect(notificationSettings(scope).chats).toBe(true);
     const [url, init] = mocks.authFetch.mock.calls[0];
     expect(url).toBe(`${scope.server}/api/push-devices`);

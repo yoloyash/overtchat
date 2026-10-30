@@ -10,7 +10,7 @@ import type {
 
 vi.mock("server-only", () => ({}));
 const notifications = vi.hoisted(() => ({
-  notifyAgentIdle: vi.fn().mockResolvedValue(undefined),
+  notifyAgentAttention: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/notifications/sender", () => notifications);
 const database = vi.hoisted(() => ({
@@ -1332,11 +1332,11 @@ describe("broker workspace git watches", () => {
   });
 });
 
-describe("broker idle notification integration", () => {
+describe("broker attention notification integration", () => {
   it("uses live updates without a detail subscription and ignores batch replays", async () => {
     vi.useFakeTimers();
     try {
-      notifications.notifyAgentIdle.mockClear();
+      notifications.notifyAgentAttention.mockClear();
       const broker = new HostConnectorBroker();
       const disconnect = broker.register("connector", ["session"], vi.fn());
       const batch: HostConnectorEvent[] = [
@@ -1364,12 +1364,12 @@ describe("broker idle notification integration", () => {
       ];
       await broker.acceptBatch("connector", "epoch", batch);
       vi.advanceTimersByTime(5000);
-      expect(notifications.notifyAgentIdle).toHaveBeenCalledExactlyOnceWith(
-        "session",
+      expect(notifications.notifyAgentAttention).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ sessionId: "session", reason: "completed" }),
       );
       await broker.acceptBatch("connector", "epoch", batch);
       vi.advanceTimersByTime(5000);
-      expect(notifications.notifyAgentIdle).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyAgentAttention).toHaveBeenCalledTimes(1);
       disconnect();
     } finally {
       vi.useRealTimers();

@@ -155,20 +155,38 @@ function directory(
   );
 }
 
+export type AgentPresenceHeartbeat = {
+  clientId: string;
+  visible: boolean;
+  viewing: string | null;
+  notify: boolean;
+};
+
+/**
+ * Signs in as an admin with the fixture's sessions scripted into the list
+ * and event stream. `streamed` is sent after the snapshot, as the server
+ * sends an alert.
+ */
 export async function setupAgentAttention(
   page: Page,
   connections = agentAttentionFixture(),
+  streamed = "",
 ) {
   const reads: Array<{ sessionId: string; read: boolean }> = [];
+  const presence: AgentPresenceHeartbeat[] = [];
   await page.context().route("**/api/agent-connections", (route) =>
     route.fulfill({ json: { connections } }),
   );
   await page.context().route("**/api/agent-connections/events*", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
-      body: `event: snapshot\ndata: ${JSON.stringify({ sessions: directory(connections) })}\n\n`,
+      body: `event: snapshot\ndata: ${JSON.stringify({ sessions: directory(connections) })}\n\n${streamed}`,
     }),
   );
+  await page.context().route("**/api/agent-presence", (route) => {
+    presence.push(route.request().postDataJSON() as AgentPresenceHeartbeat);
+    return route.fulfill({ status: 204 });
+  });
   await page.context().route("**/api/agent-connections/discover?*", (route) =>
     route.fulfill({
       json: {
@@ -209,7 +227,7 @@ export async function setupAgentAttention(
   await page.locator("#password").fill("test-password-123");
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
-  return { reads };
+  return { reads, presence };
 }
 
 /** Starts the agents sidebar grouped by workspace unless the test regroups it. */

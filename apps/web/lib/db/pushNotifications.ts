@@ -48,9 +48,18 @@ export function unregisterPushDevice(userId: string, id: string) {
     .run();
 }
 
-export function agentNotificationOwner(id: string) {
+/** The session an alert is about, with the names an alert shows. */
+export function agentNotificationSession(id: string) {
   return db
-    .select({ userId: agentHosts.userId, name: agentSessions.name })
+    .select({
+      userId: agentHosts.userId,
+      name: agentSessions.name,
+      firstMessage: agentSessions.firstMessage,
+      workspaceName: agentWorkspaces.name,
+      hostName: agentHosts.name,
+      hostSshAlias: agentHosts.sshAlias,
+      provider: agentConnections.provider,
+    })
     .from(agentSessions)
     .innerJoin(
       agentWorkspaces,
@@ -78,7 +87,7 @@ export function notificationDevices(
           .from(chats)
           .where(eq(chats.id, targetId))
           .get()
-      : agentNotificationOwner(targetId);
+      : agentNotificationSession(targetId);
   if (owner?.userId !== userId) return [];
   return db
     .select({ device: pushDevices, banned: user.banned, role: user.role })

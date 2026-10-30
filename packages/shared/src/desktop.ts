@@ -32,6 +32,13 @@ export interface DesktopWindowState {
   fullscreen: boolean;
 }
 
+/** What the dock or taskbar icon shows: a count, and on Windows its drawn form. */
+export interface DesktopBadge {
+  count: number;
+  /** A PNG data URL of the badge alone, or null for none. */
+  image: string | null;
+}
+
 /** Available only on shells with app-drawn window controls. */
 export interface DesktopWindowControls {
   getState(): Promise<DesktopWindowState>;
@@ -52,4 +59,10 @@ export interface DesktopBridge {
   checkForUpdates(): Promise<DesktopUpdateState>;
   downloadUpdate(): Promise<DesktopUpdateState>;
   installUpdate(): Promise<void>;
+  /** Counts what needs the user on the app icon. Absent in older apps. */
+  setBadge?(badge: DesktopBadge): Promise<void>;
+  /** Brings the window to the front, as when a notification is clicked. */
+  revealWindow?(): Promise<void>;
+  /** Seconds since the user last touched the computer. */
+  getSystemIdleSeconds?(): Promise<number>;
 }

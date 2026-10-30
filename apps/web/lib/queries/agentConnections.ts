@@ -42,6 +42,11 @@ import {
 } from "@/lib/agents/sidebar";
 import { apiUrl } from "@/lib/api-url";
 import type { AgentWorkspaceGroup } from "@/lib/agents/workspaces";
+import { isAgentNotification } from "@/lib/notifications/agentNotification";
+import {
+  agentClientId,
+  emitAgentStream,
+} from "@/lib/notifications/agentStream";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -93,11 +98,12 @@ export function useAgentConnectionSessionDirectory(
   );
   useEffect(() => {
     if (!sessionFingerprint && !gitWorkspaces) return;
+    // The client id lets the server send this page its alerts.
     const source = new EventSource(
       apiUrl(
-        gitWorkspaces
-          ? `/api/agent-connections/events?git=${encodeURIComponent(gitWorkspaces)}`
-          : "/api/agent-connections/events",
+        `/api/agent-connections/events?client=${encodeURIComponent(agentClientId())}${
+          gitWorkspaces ? `&git=${encodeURIComponent(gitWorkspaces)}` : ""
+        }`,
       ),
     );
     const parseEvent = (event: Event): unknown => {
@@ -143,16 +149,27 @@ export function useAgentConnectionSessionDirectory(
         queryClient.setQueryData(agentWorkspaceKeys.gitStatus(workspaceId), status);
       }
     };
+    const receiveNotification = (event: Event) => {
+      const value = parseEvent(event);
+      if (isAgentNotification(value)) {
+        emitAgentStream({ type: "notification", notification: value });
+      }
+    };
+    const opened = () => emitAgentStream({ type: "open" });
     // Pushes may be missed until the reconnected stream confirms them again.
     const interrupted = () => clearAgentWorkspaceGitLive();
     source.addEventListener("snapshot", receiveSnapshot);
     source.addEventListener("update", receiveUpdate);
     source.addEventListener("git", receiveGit);
+    source.addEventListener("notification", receiveNotification);
+    source.addEventListener("open", opened);
     source.addEventListener("error", interrupted);
     return () => {
       source.removeEventListener("snapshot", receiveSnapshot);
       source.removeEventListener("update", receiveUpdate);
       source.removeEventListener("git", receiveGit);
+      source.removeEventListener("notification", receiveNotification);
+      source.removeEventListener("open", opened);
       source.removeEventListener("error", interrupted);
       source.close();
       clearAgentWorkspaceGitLive();

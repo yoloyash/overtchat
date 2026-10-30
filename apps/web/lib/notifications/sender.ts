@@ -1,17 +1,33 @@
+import { agentHostLabel } from "@/lib/agents/workspaces";
 import "server-only";
 import { createHash } from "node:crypto";
+import type { AgentProviderId } from "@overtchat/agent-bridge";
 import {
-  agentNotificationOwner,
+  agentNotificationSession,
   notificationDevices,
   removeInvalidPushDevice,
 } from "@/lib/db/pushNotifications";
+import {
+  agentNotificationText,
+  type AgentAttentionEvent,
+  type AgentNotification,
+  type AgentNotificationReason,
+} from "./agentNotification";
+import { agentClientRegistry, planAgentNotification } from "./presence";
+import { resolveInitialAgentSessionTitle } from "@/lib/agents/sessionTitle";
 
-type PushNotification = {
+export type PushNotification = {
   userId: string;
   kind: "chat" | "agent";
   targetId: string;
   eventId: string;
+  /** What every device gets. */
+  title: string;
   body: string;
+  /** What devices that allow previews get instead. */
+  preview?: { title?: string; body?: string };
+  channelId: string;
+  data?: Record<string, string>;
 };
 type ExpoTicket = {
   status: "ok" | "error";
@@ -21,7 +37,7 @@ type ExpoTicket = {
 // Submit directly in batches and handle immediate Expo tickets.
 // Delivery is best-effort: there is no retry queue or receipt polling.
 export async function sendPushNotification(notification: PushNotification) {
-  const { userId, kind, targetId, eventId, body } = notification;
+  const { userId, kind, targetId, eventId } = notification;
   const devices = notificationDevices(userId, kind, targetId);
   const batches = [];
   for (let index = 0; index < devices.length; index += 100) {
@@ -31,25 +47,21 @@ export async function sendPushNotification(notification: PushNotification) {
     batches.map(async (batch) => {
       const messages = batch.map((device) => {
         const id = `${kind}:${eventId}:${device.id}`;
-        const preview = device.previews ? body : "";
+        const preview = device.previews ? notification.preview : undefined;
         return {
           to: device.token,
-          title: kind === "chat" ? "Your response is ready" : "Agent is idle",
-          body:
-            kind === "chat"
-              ? preview || "Tap to view your response."
-              : preview
-                ? `${preview} · Tap to view the session.`
-                : "Tap to view the session.",
+          title: preview?.title || notification.title,
+          body: preview?.body || notification.body,
           data: {
             kind,
             targetId,
             registrationId: device.id,
             notificationId: id,
+            ...notification.data,
           },
           collapseId: createHash("sha256").update(id).digest("hex"),
           tag: id,
-          channelId: kind === "chat" ? "chat-responses" : "agent-idle",
+          channelId: notification.channelId,
           sound: "default",
           priority: "high",
           ttl: 3600,
@@ -95,14 +107,56 @@ export async function sendPushNotification(notification: PushNotification) {
   );
 }
 
-export async function notifyAgentIdle(id: string) {
-  const owner = agentNotificationOwner(id);
-  if (!owner) return;
+/** What a phone shows when the device keeps previews off. */
+const PLAIN_PUSH: Record<AgentNotificationReason, { title: string; body: string }> = {
+  approval: { title: "An agent needs approval", body: "Tap to review the request." },
+  question: { title: "An agent has a question", body: "Tap to answer." },
+  completed: { title: "An agent finished", body: "Tap to view the session." },
+  failed: { title: "An agent failed", body: "Tap to view the session." },
+};
+
+/**
+ * Tells the owner about a request or a finished turn: the web or desktop
+ * client they used most recently if one is present, otherwise their phones.
+ */
+export async function notifyAgentAttention(event: AgentAttentionEvent) {
+  const session = agentNotificationSession(event.sessionId);
+  if (!session) return;
+  const text = agentNotificationText(event, {
+    title: resolveInitialAgentSessionTitle(session) ?? "New session",
+    workspaceName: session.workspaceName,
+    hostName: agentHostLabel({ name: session.hostName, sshAlias: session.hostSshAlias }),
+  });
+  const notification: AgentNotification = {
+    sessionId: event.sessionId,
+    reason: event.reason,
+    eventId: event.eventId,
+    ...text,
+    provider: session.provider as AgentProviderId,
+  };
+  const now = Date.now();
+  const plan = planAgentNotification(
+    agentClientRegistry.clients(session.userId, now),
+    event.sessionId,
+    now,
+  );
+  if (
+    plan.recipient &&
+    agentClientRegistry.deliver(session.userId, plan.recipient, notification)
+  ) {
+    return;
+  }
+  // A client whose stream dropped since the plan leaves the phones to it.
+  if (!plan.recipient && !plan.push) return;
   await sendPushNotification({
-    userId: owner.userId,
+    userId: session.userId,
     kind: "agent",
-    targetId: id,
-    eventId: crypto.randomUUID(),
-    body: owner.name?.slice(0, 120) ?? "",
+    targetId: event.sessionId,
+    eventId: event.eventId,
+    ...PLAIN_PUSH[event.reason],
+    preview: text,
+    // One channel for every agent alert: phones predating this still show it.
+    channelId: "agent-idle",
+    data: { reason: event.reason },
   });
 }

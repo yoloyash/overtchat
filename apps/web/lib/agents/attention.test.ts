@@ -19,7 +19,7 @@ import {
   searchAgentSessions,
 } from "./search";
 import { recentAgentSetups } from "./setups";
-import { sidebarModeForPath } from "./sidebarMode";
+import { agentSessionIdForPath, sidebarModeForPath } from "./sidebarMode";
 import { groupAgentWorkspaces } from "./workspaces";
 
 function session(
@@ -262,6 +262,18 @@ describe("sidebar mode", () => {
     ["/settings/models", "chat", "chat"],
   ] as const)("shows %s from %s mode in %s mode", (path, current, mode) => {
     expect(sidebarModeForPath(path, current)).toBe(mode);
+  });
+
+  it.each([
+    ["/agents/123", "123"],
+    ["/agents/a%20b", "a b"],
+    ["/agents/new", null],
+    ["/agents/history", null],
+    ["/agents", null],
+    ["/agents/123/files", null],
+    ["/chat/123", null],
+  ] as const)("%s shows session %s", (path, id) => {
+    expect(agentSessionIdForPath(path)).toBe(id);
   });
 });
 

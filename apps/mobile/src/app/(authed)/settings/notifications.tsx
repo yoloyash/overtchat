@@ -43,7 +43,7 @@ export default function Notifications() {
         />
         <Toggle
           title="Agent activity"
-          detail="When a coding agent becomes idle."
+          detail="When an agent needs an approval or an answer, finishes, or fails."
           value={settings.agents}
           onChange={(agents) => change({ agents })}
           disabled={action.busy || !cookie}
@@ -52,7 +52,7 @@ export default function Notifications() {
       <Section title="Privacy">
         <Toggle
           title="Show previews"
-          detail="Include chat text and agent names. Previews pass through Expo and Apple or Google and may appear on your lock screen."
+          detail="Include chat text, agent session names and what agents ask or reply. Previews pass through Expo and Apple or Google and may appear on your lock screen."
           value={settings.previews}
           onChange={(previews) => change({ previews })}
           disabled={action.busy || !cookie}

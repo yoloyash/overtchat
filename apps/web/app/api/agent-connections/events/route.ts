@@ -11,6 +11,8 @@ import {
   getOwnedAgentWorkspace,
   listAgentConnections,
 } from "@/lib/db/agentConnections";
+import type { AgentNotification } from "@/lib/notifications/agentNotification";
+import { agentClientRegistry } from "@/lib/notifications/presence";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -23,6 +25,18 @@ function encodeEvent(event: AgentSessionDirectoryEvent): Uint8Array {
   return new TextEncoder().encode(
     `event: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`,
   );
+}
+
+function encodeNotification(notification: AgentNotification): Uint8Array {
+  return new TextEncoder().encode(
+    `event: notification\ndata: ${JSON.stringify(notification)}\n\n`,
+  );
+}
+
+/** The client's id from its presence heartbeats (`?client=id`), if given. */
+function notificationClientId(req: Request): string | null {
+  const id = new URL(req.url).searchParams.get("client") ?? "";
+  return /^[A-Za-z0-9_-]{8,64}$/.test(id) ? id : null;
 }
 
 function encodeGitEvent(
@@ -81,6 +95,7 @@ export async function GET(req: Request) {
     ),
   );
   const gitTargets = await gitWatchTargets(req, session.user.id);
+  const clientId = notificationClientId(req);
 
   let close = () => {};
   const body = new ReadableStream<Uint8Array>({
@@ -129,8 +144,19 @@ export async function GET(req: Request) {
           }
         }),
       );
+      const stopNotifications = clientId
+        ? agentClientRegistry.subscribe(session.user.id, clientId, (notification) => {
+            if (closed) return;
+            try {
+              controller.enqueue(encodeNotification(notification));
+            } catch {
+              finish();
+            }
+          })
+        : () => {};
       unsubscribe = () => {
         stopDirectory();
+        stopNotifications();
         for (const stop of stopGit) stop();
       };
       if (closed) unsubscribe();
