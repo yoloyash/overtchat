@@ -72,9 +72,14 @@ class OmpEventClassifier implements AgentRuntimeEventClassifier {
       (event.type === "prompt_result" &&
         (event.agentInvoked === false || event.sessionSettled === true));
     if (terminal) this.reset();
+    // Compaction is a turn of its own: the session is busy from start to end,
+    // so prompts queue behind it and the end settles the session like any run.
     return {
-      started: event.type === "agent_start" || event.type === "turn_start",
-      terminal,
+      started:
+        event.type === "agent_start" ||
+        event.type === "turn_start" ||
+        event.type === "compaction_start",
+      terminal: terminal || event.type === "compaction_end",
     };
   }
 }

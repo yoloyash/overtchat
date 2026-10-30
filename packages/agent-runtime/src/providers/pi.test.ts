@@ -8,6 +8,12 @@ import { piProviderAdapter } from "./pi";
 describe("Pi provider adapter", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("treats compaction as a turn so prompts queue behind it", () => {
+    const classifier = piProviderAdapter.createEventClassifier();
+    expect(classifier.classify({ type: "compaction_start", reason: "manual" })).toMatchObject({ started: true, terminal: false });
+    expect(classifier.classify({ type: "compaction_end" })).toMatchObject({ started: false, terminal: true });
+  });
+
   it("launches and resumes with the canonical compound model", () => {
     const client = {};
     mocks.startPi.mockReturnValue(client);
