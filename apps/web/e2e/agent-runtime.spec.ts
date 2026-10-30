@@ -747,6 +747,7 @@ test("shows durable turn activity without changing completed tool status", async
   let retryRequested = false;
   let interactionResponse: Record<string, unknown> | null = null;
   let runtimeAvailable = true;
+  let releaseCompact: (() => void) | null = null;
   const submittedCommands: Array<Record<string, unknown>> = [];
   const workspaceDirectoryRequests: string[] = [];
   const workspaceFileRequests: string[] = [];
@@ -846,6 +847,12 @@ test("shows durable turn activity without changing completed tool status", async
           command.type === "steer_queued_message"
         ) {
           await new Promise((resolve) => setTimeout(resolve, 750));
+        }
+        if (command.type === "compact") {
+          // Some providers answer a manual compaction only when it finishes.
+          await new Promise<void>((resolve) => {
+            releaseCompact = resolve;
+          });
         }
         const queueResult =
           command.type === "queue"
@@ -1789,21 +1796,49 @@ test("shows durable turn activity without changing completed tool status", async
     fullPage: true,
   });
 
-  await page.evaluate(() => {
-    const controls = (
-      window as unknown as {
-        __agentRuntimeControls: {
-          emit: (envelope: unknown) => void;
-        };
-      }
-    ).__agentRuntimeControls;
-    controls.emit({
-      epoch: "runtime-test",
-      sequence: 2,
-      type: "runtime_event",
-      data: { type: "compaction_start", reason: "auto" },
-    });
+  // A manual compaction keeps its request open until the provider finishes.
+  // The composer still accepts input meanwhile and queues it behind the
+  // compaction instead of ignoring it.
+  const emitCompaction = (sequence: number, type: string, reason: string) =>
+    page.evaluate(
+      ({ sequence, type, reason }) => {
+        const controls = (
+          window as unknown as {
+            __agentRuntimeControls: {
+              emit: (envelope: unknown) => void;
+            };
+          }
+        ).__agentRuntimeControls;
+        controls.emit({
+          epoch: "runtime-test",
+          sequence,
+          type: "runtime_event",
+          data: { type, reason },
+        });
+      },
+      { sequence, type, reason },
+    );
+  await composer.fill("/compact");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "compact",
   });
+  await emitCompaction(2, "compaction_start", "manual");
+  await expect(genericActivity).toContainText("Compacting");
+  await composer.fill("Continue after compaction");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "queue",
+    message: "Continue after compaction",
+  });
+  await expect(composer).toHaveValue("");
+  await expect(genericActivity).toContainText("Compacting");
+  await expect.poll(() => releaseCompact).not.toBeNull();
+  releaseCompact!();
+  await emitCompaction(3, "compaction_end", "manual");
+  await expect(genericActivity).toHaveCount(0, { timeout: 2_000 });
+
+  await emitCompaction(4, "compaction_start", "auto");
   await expect(genericActivity).toContainText("Compacting");
 
   await page.evaluate(async () => {
@@ -1817,7 +1852,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 3,
+      sequence: 5,
       type: "runtime_event",
       data: { type: "compaction_end", reason: "auto" },
     });
@@ -1899,7 +1934,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 4,
+      sequence: 6,
       type: "runtime_event",
       data: { type: "overtchat_status", status: "idle", startedAt: null },
     });
@@ -1995,7 +2030,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 5,
+      sequence: 7,
       type: "runtime_event",
       data: {
         type: "config_update",
@@ -2345,7 +2380,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 7,
+      sequence: 8,
       type: "snapshot",
       data: {
         ...initialSnapshot,

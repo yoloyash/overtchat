@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
   steer: vi.fn(),
   abort: vi.fn(),
+  compact: vi.fn(),
   forkSession: vi.fn(),
   rewind: vi.fn(),
   stop: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
         prompt: mocks.prompt,
         steer: mocks.steer,
         abort: mocks.abort,
+        compact: mocks.compact,
         setModel: mocks.setModel,
         setThinkingLevel: mocks.setThinkingLevel,
         setMode: mocks.setMode,
@@ -1029,6 +1031,112 @@ describe("agent runtime", () => {
     });
     await vi.waitFor(() => {
       expect(runtime.snapshot().queuedMessages).toEqual([]);
+    });
+    await registry.stopAll();
+  });
+
+  it("acknowledges a manual compaction once it starts and queues prompts behind it", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "omp",
+      target: { transport: "local" },
+      executable: "omp",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    let finishCompaction!: (result: unknown) => void;
+    mocks.compact.mockImplementation(() => {
+      mocks.eventSubscriber?.({ type: "compaction_start", reason: "manual" });
+      return new Promise((resolve) => {
+        finishCompaction = resolve;
+      });
+    });
+
+    await expect(runtime.command({ type: "compact" })).resolves.toBeUndefined();
+    expect(mocks.compact).toHaveBeenCalledWith(undefined);
+    expect(runtime.snapshot()).toMatchObject({
+      status: "running",
+      state: { isCompacting: true },
+    });
+
+    await runtime.command(
+      { type: "queue", message: "Continue after compaction" },
+      "after-compaction",
+    );
+    expect(runtime.snapshot().queuedMessages).toMatchObject([
+      { id: "after-compaction", status: "pending" },
+    ]);
+    expect(mocks.prompt).not.toHaveBeenCalled();
+
+    finishCompaction({ tokensBefore: 42_000 });
+    mocks.eventSubscriber?.({ type: "compaction_end" });
+    await vi.waitFor(() => {
+      expect(mocks.prompt).toHaveBeenCalledWith(
+        "Continue after compaction",
+        undefined,
+        { clientMessageId: "after-compaction" },
+      );
+    });
+    expect(runtime.snapshot().error).toBeUndefined();
+    await registry.stopAll();
+  });
+
+  it("rejects a compaction the provider refuses and reports one that fails after starting", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "omp",
+      target: { transport: "local" },
+      executable: "omp",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    const events: unknown[] = [];
+    runtime.subscribe((envelope) => events.push(envelope));
+
+    mocks.compact.mockRejectedValueOnce(new Error("Context compaction is already running."));
+    await expect(runtime.command({ type: "compact" })).rejects.toThrow(
+      "Context compaction is already running.",
+    );
+    expect(runtime.snapshot().error).toBeUndefined();
+
+    let failCompaction!: (error: Error) => void;
+    mocks.compact.mockImplementationOnce(() => {
+      mocks.eventSubscriber?.({ type: "compaction_start", reason: "manual" });
+      return new Promise((_resolve, reject) => {
+        failCompaction = reject;
+      });
+    });
+    await expect(runtime.command({ type: "compact", customInstructions: "Keep names" })).resolves.toBeUndefined();
+    expect(mocks.compact).toHaveBeenLastCalledWith("Keep names");
+    failCompaction(new Error("Summarizer unavailable."));
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().error).toBe("Summarizer unavailable.");
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "runtime_event",
+        data: { type: "rpc_error", command: "compact", error: "Summarizer unavailable." },
+      }),
+    );
+    mocks.eventSubscriber?.({ type: "compaction_end", error: "Summarizer unavailable." });
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().status).toBe("idle");
     });
     await registry.stopAll();
   });
