@@ -1,4 +1,3 @@
-import { ChatUsageBar } from "@/components/chat/ChatUsageBar";
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import {
@@ -40,6 +39,11 @@ import {
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
+import { ChatUsageButton } from "@/components/chat/ChatUsageButton";
+import {
+  ChatUsageSheet,
+  type ChatUsageSheetRef,
+} from "@/components/chat/ChatUsageSheet";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { VoiceControls } from "@/components/chat/VoiceControls";
 import { useMobileVoice } from "@/lib/voice/useMobileVoice";
@@ -58,6 +62,7 @@ import {
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useCapabilities } from "@/lib/queries/capabilities";
+import { useChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
@@ -223,6 +228,7 @@ function ChatSurface({
   const reasoningLevels = useReasoningLevels();
   const pickerRef = useRef<ModelPickerSheetRef>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
+  const usageSheetRef = useRef<ChatUsageSheetRef>(null);
 
   const transport = useMemo(
     () =>
@@ -299,6 +305,7 @@ function ChatSurface({
       setChatPersisted(true);
       void qc.invalidateQueries({ queryKey: queryKeys.chats() });
       void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.chatUsage(chatId) });
     },
   });
 
@@ -306,6 +313,7 @@ function ChatSurface({
     setChatPersisted(true);
     void qc.invalidateQueries({ queryKey: queryKeys.chats() });
     void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.chatUsage(chatId) });
   }, [chatId, qc]);
   const voice = useMobileVoice({
     chatId,
@@ -361,6 +369,12 @@ function ChatSurface({
   const modelLoading =
     modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
+  const usage = useChatUsageSummary({
+    chatId,
+    persisted: chatPersisted,
+    messages,
+    contextWindow: selectedModel?.contextWindow,
+  });
   const reasoningControls = selectedModel?.capabilities?.reasoningControls;
   const storedReasoningLevel = selectedId
     ? reasoningLevels[selectedId]
@@ -529,6 +543,15 @@ function ChatSurface({
           {chatPersisted && (
             <ShareChatButton chatId={chatId} disabled={streaming || voice.busy} />
           )}
+          {usage && (
+            <ChatUsageButton
+              usage={usage}
+              onPress={() => {
+                Keyboard.dismiss();
+                usageSheetRef.current?.present();
+              }}
+            />
+          )}
           <Pressable
             accessibilityRole="button"
             onPress={onNewChat}
@@ -540,7 +563,7 @@ function ChatSurface({
         </View>
       ),
     });
-  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy]);
+  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy, usage]);
 
   function requestBody(
     action: ChatRequestAction,
@@ -703,7 +726,6 @@ function ChatSurface({
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
-      <ChatUsageBar chatId={chatId} persisted={chatPersisted} streaming={streaming} messages={messages} contextWindow={selectedModel?.contextWindow} />
       <MiniSpeechPlayer speech={speech} />
       {messages.length === 0 ? (
         <View
@@ -946,6 +968,8 @@ function ChatSurface({
           if (!voice.busy) setOpenuiRequested(next);
         }}
       />
+
+      <ChatUsageSheet ref={usageSheetRef} usage={usage} />
     </KeyboardAvoidingView>
     {documentTarget ? (
       <DocumentViewer
