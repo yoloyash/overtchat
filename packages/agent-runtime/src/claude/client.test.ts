@@ -257,6 +257,18 @@ describe("Claude parent turns and background work", () => {
     } finally { await runtime.stop(); }
   });
 
+  it("fails the turn with the error of a failed result", async () => {
+    const { query, runtime } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Research" });
+      query.push({ type: "result", subtype: "error_max_turns", is_error: true, errors: ["Reached the maximum number of turns."], usage: {} });
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn).toMatchObject({ outcome: "failed", error: "Reached the maximum number of turns." }),
+      );
+      expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+    } finally { await runtime.stop(); }
+  });
+
   it("restarts the query when an interrupt does not end the turn", async () => {
     const { client, query, runtime } = await createRuntimeForTest();
     const queries = queryMock.mock.calls.length;
@@ -498,7 +510,7 @@ describe("Claude runtime client", () => {
       }
       expect(events).toContainEqual({ type: "turn_end" });
       expect((await client.getState()).isStreaming).toBe(false);
-      if (error) expect(events).toContainEqual({ type: "rpc_error", error: result });
+      if (error) expect(events).toContainEqual({ type: "rpc_error", command: "prompt", error: result });
     } finally {
       await client.stop();
     }

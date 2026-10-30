@@ -1321,7 +1321,7 @@ describe("agent runtime", () => {
       mocks.eventSubscriber?.({ type: "agent_start" });
       mocks.eventSubscriber?.({
         type: "rpc_error",
-        command: "turn",
+        command: "prompt",
         error: "Rate limit reached",
       });
       mocks.eventSubscriber?.({ type: "agent_end", messages: [] });

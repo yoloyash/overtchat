@@ -148,8 +148,9 @@ type TurnObservation = {
 };
 
 /**
- * Derives turn outcomes from runtime status transitions. Errors are recorded
- * while the turn runs because settling the turn clears the runtime error.
+ * Derives turn outcomes from runtime status transitions. The turn's own error
+ * is recorded while it runs: settling the turn clears the runtime error, and
+ * the runtime error can belong to another command.
  */
 export class AgentTurnTracker {
   private status: AgentRuntimeStatus;
@@ -227,7 +228,11 @@ export class AgentTurnTracker {
       return false;
     }
     if (previous !== "running") return false;
-    const error = this.error ?? observation.error ?? this.replyError;
+    // Only an exit's error is the turn's; another command may have left one.
+    const error =
+      this.error ??
+      (observation.status === "exited" ? observation.error : undefined) ??
+      this.replyError;
     const preview = lastAssistantPreview(messages());
     this.summary = {
       outcome: this.stopRequested
