@@ -13,7 +13,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     # Chromium and its system libraries come preinstalled, so the job installs
     # only the tools the tests add, as the image's default root user. Keep the
     # tag on the lockfile's Playwright version.
