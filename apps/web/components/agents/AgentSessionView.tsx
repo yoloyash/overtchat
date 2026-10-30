@@ -540,6 +540,12 @@ export function AgentSessionView({
     }
 
     if (input.type === "show_usage") return showUsage();
+    if (input.type === "compact") {
+      // Some providers answer a manual compaction only when it finishes.
+      // Release the composer now so follow-up messages queue behind it.
+      void run(input);
+      return true;
+    }
 
     const toastTitle =
       input.type === "set_session_name"
@@ -592,10 +598,12 @@ export function AgentSessionView({
     snapshot.error ??
     (session.error instanceof Error ? session.error.message : undefined);
   const pendingCommand = command.isPending ? command.variables?.type : null;
+  const compacting =
+    pendingCommand === "compact" || snapshot.state.isCompacting === true;
   const activity: AgentRunActivity | null =
     pendingCommand === "abort"
       ? "stopping"
-      : pendingCommand === "compact" || snapshot.state.isCompacting === true
+      : compacting
         ? "compacting"
         : session.streamStatus === "reconnecting"
           ? "reconnecting"
@@ -605,13 +613,18 @@ export function AgentSessionView({
   const activityStartedAt =
     activity === "working"
       ? snapshot.activeTurn?.startedAt ?? null
-      : (activity === "stopping" || pendingCommand === "compact") &&
-          command.submittedAt > 0
-        ? command.submittedAt
-        : null;
+      : activity === "compacting"
+        ? snapshot.activeTurn?.startedAt ??
+          (command.submittedAt > 0 ? command.submittedAt : null)
+        : activity === "stopping" && command.submittedAt > 0
+          ? command.submittedAt
+          : null;
   const composerDisabled =
     exited || Boolean(readOnly) || Boolean(snapshot.pendingInteraction);
   const controlsDisabled = composerDisabled || command.isPending;
+  // Compaction is a turn: the composer keeps accepting input and queues it,
+  // the same as while the agent is working.
+  const composerPending = command.isPending && pendingCommand !== "compact";
 
   return (
     <AgentWorkspaceNavigationProvider value={workspaceNavigation}>
@@ -763,7 +776,7 @@ export function AgentSessionView({
                 supportsSteer={snapshot.capabilities.steer}
                 supportsImages={selectedModel?.input.includes("image") === true}
                 running={running}
-                pending={command.isPending}
+                pending={composerPending}
                 stopping={pendingCommand === "abort"}
                 disabled={composerDisabled}
                 isAdmin={isAdmin}
