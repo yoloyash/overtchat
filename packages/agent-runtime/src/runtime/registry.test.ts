@@ -46,6 +46,9 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     provider,
     steering: provider === "hermes" ? "restart" : undefined,
     pollUsage: provider === "pi" || provider === "omp",
+    ...(provider === "opencode"
+      ? { busyFromState: (state: Record<string, unknown>) => state.isStreaming === true }
+      : {}),
     capabilities: { steer: true },
     probeConnection: vi.fn(),
     probeTarget: vi.fn(),
@@ -1359,6 +1362,155 @@ describe("agent runtime", () => {
     });
     expect(runtime.snapshot().queuedMessages).toEqual([]);
     await registry.stopAll();
+  });
+
+  describe("directory status", () => {
+    async function startCodex(provider: AgentProviderId = "codex") {
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+      const runtime = await registry.getOrStart({
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider,
+        target: { transport: "local" },
+        executable: provider,
+        cwd: "/workspace",
+        sessionId: "session",
+        providerSessionId: "provider-session",
+        providerSessionPath: "/sessions/provider-session.jsonl",
+        launchConfig: {},
+      });
+      return { registry, runtime };
+    }
+
+    it("reports a completed turn with a preview of the reply", async () => {
+      const { registry, runtime } = await startCodex();
+      expect(runtime.directoryStatus()).toEqual({
+        runtimeStatus: "idle",
+        turnStartedAt: null,
+        attention: null,
+        lastTurn: null,
+      });
+
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      const { turnStartedAt } = runtime.directoryStatus();
+      expect(runtime.directoryStatus()).toMatchObject({
+        runtimeStatus: "running",
+        turnStartedAt: expect.any(Number),
+      });
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      mocks.eventSubscriber?.({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Fixed the **flaky** test." }],
+        },
+      });
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn).toMatchObject({
+          outcome: "completed",
+          startedAt: turnStartedAt,
+          preview: "Fixed the flaky test.",
+        }),
+      );
+      expect(runtime.directoryStatus()).toMatchObject({
+        runtimeStatus: "idle",
+        turnStartedAt: null,
+      });
+      await registry.stopAll();
+    });
+
+    it("keeps a mid-turn provider error after settling clears it", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      mocks.eventSubscriber?.({
+        type: "rpc_error",
+        command: "prompt",
+        error: "Rate limit reached",
+      });
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn).toMatchObject({
+          outcome: "failed",
+          error: "Rate limit reached",
+        }),
+      );
+      expect(runtime.snapshot().error).toBeUndefined();
+      await registry.stopAll();
+    });
+
+    it("fails a turn whose end the provider reports as failed", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      mocks.eventSubscriber?.({ type: "turn_end", status: "failed" });
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn?.outcome).toBe("failed"),
+      );
+      await registry.stopAll();
+    });
+
+    it("reports a user abort as stopped", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      await runtime.command({ type: "abort" });
+
+      expect(runtime.directoryStatus().lastTurn).toMatchObject({
+        outcome: "stopped",
+      });
+      await registry.stopAll();
+    });
+
+    it("reports a stop as stopped when the provider settles after acknowledging it", async () => {
+      const { registry, runtime } = await startCodex("opencode");
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      // The provider still reports work right after acknowledging the abort.
+      mocks.getState.mockResolvedValueOnce({
+        isStreaming: true,
+        sessionId: "provider-session",
+        sessionFile: "/sessions/provider-session.jsonl",
+      });
+      await runtime.command({ type: "abort" });
+      expect(runtime.directoryStatus().runtimeStatus).toBe("running");
+
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn?.outcome).toBe("stopped"),
+      );
+      await registry.stopAll();
+    });
+
+    it("summarizes a pending approval until it resolves", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({
+        type: "interaction_request",
+        id: "approval",
+        method: "select",
+        title: "Allow Bash?",
+        approvalKind: "tool",
+        toolDetail: { type: "shell", command: "npm ci" },
+      });
+      expect(runtime.directoryStatus().attention).toEqual({
+        kind: "approval",
+        id: "approval",
+        requestedAt: expect.any(Number),
+        title: "Allow Bash",
+        detail: "npm ci",
+      });
+
+      mocks.eventSubscriber?.({ type: "interaction_resolved", id: "approval" });
+      expect(runtime.directoryStatus().attention).toBeNull();
+      await registry.stopAll();
+    });
   });
 
   it("stops the active turn without starting a replacement prompt", async () => {

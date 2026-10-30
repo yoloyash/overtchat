@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   command: vi.fn(),
   normalizeCommand: vi.fn(),
   snapshot: vi.fn(),
+  directoryStatus: vi.fn(),
   observe: vi.fn(),
   acquireLease: vi.fn(),
   listWorkspaceDirectory: vi.fn(),
@@ -99,12 +100,19 @@ const workspace = {
   cwd: session.cwd,
 };
 
-function runtime() {
+function runtime(snapshot: () => { status: string; activeTurn?: { startedAt: number } | null } = mocks.snapshot) {
   return {
     dbSessionId: "session",
     normalizeCommand: mocks.normalizeCommand,
     command: mocks.command,
-    snapshot: mocks.snapshot,
+    snapshot,
+    directoryStatus: () => ({
+      runtimeStatus: snapshot().status,
+      turnStartedAt: snapshot().activeTurn?.startedAt ?? null,
+      attention: null,
+      lastTurn: null,
+      ...mocks.directoryStatus(),
+    }),
     observe: mocks.observe,
     acquireLease: mocks.acquireLease,
   };
@@ -159,6 +167,7 @@ async function openJournal(): Promise<{
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.directoryStatus.mockReturnValue({});
   mocks.normalizeCommand.mockImplementation((value) => value);
   mocks.command.mockResolvedValue({ queued: true, id: "message-1" });
   mocks.snapshot.mockReturnValue({
@@ -420,10 +429,9 @@ describe("connector daemon command identity", () => {
       idle: { ...base, status: "idle", state: {}, queuedMessages: [] },
       remote: { ...base, status: "running", queuedMessages: [] },
     };
-    mocks.get.mockImplementation((sessionId: string) => ({
-      ...runtime(),
-      snapshot: () => snapshots[sessionId],
-    }));
+    mocks.get.mockImplementation((sessionId: string) =>
+      runtime(() => snapshots[sessionId] as { status: string }),
+    );
     mocks.switchGitBranch.mockResolvedValue({ status: "agent_running" });
     const daemon = new ConnectorDaemon(
       (event) => events.push(event),
@@ -948,40 +956,44 @@ describe("connector daemon command identity", () => {
       request: { type: "open_session", session },
     });
 
-    expect(emitted).toContainEqual({
+    const entry = (overrides: Record<string, unknown>) => ({
       type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "running" },
+      session: {
+        sessionId: "session",
+        runtimeStatus: "running",
+        turnStartedAt: 42,
+        attention: null,
+        lastTurn: null,
+        ...overrides,
+      },
     });
+    const event = (sequence: number) =>
+      observer?.({
+        epoch: "runtime-ephemeral",
+        sequence,
+        type: "runtime_event",
+        data: { type: "message_update" },
+      });
+    expect(emitted).toContainEqual(entry({}));
     emitted.length = 0;
-    observer?.({
-      epoch: "runtime-ephemeral",
-      sequence: 1,
-      type: "runtime_event",
-      data: { type: "overtchat_status", status: "idle" },
-    });
+    const lastTurn = { outcome: "completed", startedAt: 42, endedAt: 90, preview: "Done." };
+    mocks.directoryStatus.mockReturnValue({ runtimeStatus: "idle", turnStartedAt: null, lastTurn });
+    event(1);
     await timelines.flush("session");
-    await vi.waitFor(() => expect(emitted).toContainEqual({
-      type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "idle" },
-    }));
-    observer?.({
-      epoch: "runtime-ephemeral",
-      sequence: 2,
-      type: "runtime_event",
-      data: { type: "agent_start" },
-    });
-    // A repeated status does not republish the directory entry.
-    observer?.({
-      epoch: "runtime-ephemeral",
-      sequence: 3,
-      type: "runtime_event",
-      data: { type: "overtchat_status", status: "running" },
-    });
+    await vi.waitFor(() =>
+      expect(emitted).toContainEqual(entry({ runtimeStatus: "idle", turnStartedAt: null, lastTurn })),
+    );
+    // Envelopes that leave the summary unchanged do not republish it.
+    event(2);
+    event(3);
+    const attention = { kind: "approval", id: "request", requestedAt: 95, title: "Allow Bash", detail: "npm ci" };
+    mocks.directoryStatus.mockReturnValue({ turnStartedAt: 92, attention, lastTurn });
+    event(4);
+    event(5);
     await timelines.flush("session");
-    await vi.waitFor(() => expect(emitted).toContainEqual({
-      type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "running" },
-    }));
+    await vi.waitFor(() =>
+      expect(emitted).toContainEqual(entry({ turnStartedAt: 92, attention, lastTurn })),
+    );
     expect(emitted.filter((event) => event.type === "session_update")).toHaveLength(2);
     expect(emitted).not.toContainEqual(
       expect.objectContaining({ type: "session_event" }),

@@ -1361,8 +1361,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       const errors = Array.isArray(message.errors)
         ? message.errors.filter((value): value is string => typeof value === "string")
         : [];
+      // The result is the turn's own outcome, reported like a failed prompt.
       this.emit({
         type: "rpc_error",
+        command: "prompt",
         error: errors.join("\n") || String(message.result ?? "Claude Code turn failed."),
       });
     }

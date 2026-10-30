@@ -43,6 +43,20 @@ type Permission = {
   resolve: (response: RequestPermissionResponse) => void;
 };
 
+/** Explains a turn the agent ended early; normal ends and cancellations return null. */
+function stopReasonError(label: string, reason: unknown): string | null {
+  switch (reason) {
+    case "refusal":
+      return `${label} refused to continue this request.`;
+    case "max_tokens":
+      return `${label} stopped at its output token limit.`;
+    case "max_turn_requests":
+      return `${label} reached its limit of model requests for this turn.`;
+    default:
+      return null;
+  }
+}
+
 export class AcpRuntimeClient implements AgentRuntimeClient {
   private readonly subscribers = new Set<(event: AgentRuntimeEvent) => void>();
   private readonly ready: Promise<void>;
@@ -408,6 +422,10 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
             type: "usage_update",
             usage: { tokens: { ...this.tokens } },
           });
+        }
+        const stopped = stopReasonError(this.provider.label, response.stopReason);
+        if (stopped && !this.stopped) {
+          this.emit({ type: "rpc_error", command: "prompt", error: stopped });
         }
         // Hermes treats commands case-insensitively and only dispatches them
         // for text-only prompts. Media prompts remain ordinary conversations.

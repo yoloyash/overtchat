@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { isAgentRuntimeEnvelope } from "@overtchat/agent-bridge";
 import {
   configureProcessSpawner,
@@ -166,4 +166,100 @@ describe.runIf(enabled)("Hermes ACP on the execution host", () => {
       await rm(directory, { recursive: true });
     }
   }, 180_000);
+
+  it("summarizes a pending edit approval and how each turn ended", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-hermes-attention-"),
+    );
+    const host = new ConnectorProcessHost(directory);
+    configureProcessSpawner(host.spawn);
+    configureManagedProcessSpawner(host.spawnManaged);
+    const executable = process.env.HERMES_COMMAND ?? "hermes";
+    const cwd = (
+      await executeOnHost(target, {
+        command: "mktemp",
+        args: ["-d", "/tmp/overtchat-hermes-attention.XXXXXX"],
+      })
+    ).stdout.trim();
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+    });
+    let sessionId: string | undefined;
+    const settled = { timeout: 150_000, interval: 200 };
+    try {
+      // The default mode asks before edits.
+      const { runtime, session } = await registry.create(
+        "hermes-attention",
+        {
+          connectionId: "test",
+          workspaceId: "test",
+          provider: "hermes",
+          target,
+          executable,
+          cwd,
+        },
+      );
+      sessionId = session.providerSessionId;
+      await runtime.command({
+        type: "prompt",
+        message: "Reply with exactly ATTENTION_DONE and nothing else. Do not use tools.",
+      });
+      await vi.waitFor(() => {
+        expect(runtime.directoryStatus()).toMatchObject({
+          runtimeStatus: "idle",
+          attention: null,
+          lastTurn: {
+            outcome: "completed",
+            preview: expect.stringContaining("ATTENTION_DONE"),
+          },
+        });
+      }, settled);
+
+      const file = `${cwd}/note.txt`;
+      await runtime.command({
+        type: "prompt",
+        message:
+          `Use your file-writing tool to create ${file} containing exactly: hello. ` +
+          "Do not use the terminal and do not try alternatives.",
+      });
+      await vi.waitFor(() => {
+        expect(runtime.directoryStatus().attention).toMatchObject({
+          kind: "approval",
+        });
+      }, settled);
+      expect(JSON.stringify(runtime.directoryStatus().attention)).toContain(
+        "note.txt",
+      );
+      const request = runtime.snapshot().pendingInteraction!;
+      const deny = (
+        request.approvalChoices as Array<{ value: string; kind: string }>
+      ).find((choice) => choice.kind === "deny")!.value;
+      await runtime.command({
+        type: "interaction_response",
+        id: request.id,
+        value: deny,
+      });
+      await vi.waitFor(() => {
+        expect(runtime.directoryStatus()).toMatchObject({
+          runtimeStatus: "idle",
+          attention: null,
+          lastTurn: { outcome: "completed" },
+        });
+      }, settled);
+      expect(
+        (await executeOnHost(target, { command: "ls", args: ["-A", cwd] }))
+          .stdout,
+      ).not.toContain("note.txt");
+    } finally {
+      await registry.stopAll();
+      if (sessionId)
+        await executeOnHost(target, {
+          command: executable,
+          args: ["sessions", "delete", sessionId, "--yes"],
+        });
+      await executeOnHost(target, { command: "rm", args: ["-rf", "--", cwd] });
+      await host.stop();
+      await rm(directory, { recursive: true });
+    }
+  }, 360_000);
 });

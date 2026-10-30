@@ -1233,7 +1233,9 @@ The opt-in test uses the host's configured model credentials for a small
 conversation, creates a disposable workspace, and checks discovery, streaming,
 cancel-and-restart steering during a harmless sleep tool, process cleanup and
 persisted history after restart. It selects Don't Ask only in its disposable
-session. It deletes only its own test session and workspace. Unit tests use the
+session. A second case keeps the default mode, checks the finished-turn
+summary, and denies a file-write approval while checking its session-list
+summary. Each case deletes only its own test session and workspace. Unit tests use the
 actual ACP SDK with an in-memory stdio agent to cover approvals, cancellation,
 history, tool projection and
 replacement-turn approval, image steering and cancellation ordering. Runtime
@@ -1556,6 +1558,30 @@ survives the interrupt. Cleanup releases the test job and closes its query.
 Set `CLAUDE_COMMAND` or `CLAUDE_BACKGROUND_MODEL` to override the executable or
 model; existing sessions and settings are not changed. Validated with Claude
 Code 2.1.304.
+
+### Agent attention state
+
+Each runtime summarizes what session lists and notifications show: a pending
+approval or question, the active turn's start, and how the latest turn ended
+(completed, failed or stopped, with a reply preview or error). The connector
+publishes the summary with session-directory updates when it changes, and the
+web app stores the latest turn and a per-session read watermark on the
+connector's clock. The fields are optional, so older connectors and journals
+remain compatible.
+
+```sh
+npm run test -w packages/agent-runtime -- src/runtime/attention.test.ts src/runtime/registry.test.ts
+RUN_ATTENTION_INTEGRATION=claude,codex,omp npm run test -w packages/agent-runtime -- src/runtime/attention.integration.test.ts
+```
+
+The opt-in test makes real model requests with each listed provider's installed
+CLI and credentials, in a new session and temporary workspace per case. It
+checks a completed turn's preview, denies a command approval (Codex is asked to
+write outside its sandbox so that it requests escalation), and stops a running
+`sleep`. Set `ATTENTION_INTEGRATION_LOG` to a file path to record each status
+change, and `<PROVIDER>_COMMAND` to override an executable. Hermes is covered by
+the Hermes ACP validation above. Validated with Claude Code 2.1.310, Codex
+0.162.1, Oh My Pi 18.12.6 and Hermes 0.22.4.
 
 ### Claude context meter
 

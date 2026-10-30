@@ -1,8 +1,9 @@
-import type {
-  AgentConnectionListItem,
-  AgentSessionDirectoryEntry,
-  AgentSessionListItem,
-  AgentWorkspaceListItem,
+import {
+  applyAgentSessionDirectoryEntry,
+  type AgentConnectionListItem,
+  type AgentSessionDirectoryEntry,
+  type AgentSessionListItem,
+  type AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
 
 export const AGENT_SESSION_PREVIEW_COUNT = 5;
@@ -46,12 +47,19 @@ export function withAgentSessionDirectory(
       const workspaceSessions = workspace.sessions.map((session) => {
         const entry = directory.get(session.id);
         if (!entry) return session;
-        const { runtimeStatus } = entry;
-        if (runtimeStatus === session.runtimeStatus) return session;
+        const next = applyAgentSessionDirectoryEntry(session, entry);
+        if (
+          next.runtimeStatus === session.runtimeStatus &&
+          next.turnStartedAt === (session.turnStartedAt ?? null) &&
+          next.attention?.id === session.attention?.id &&
+          next.lastTurn?.endedAt === session.lastTurn?.endedAt
+        ) {
+          return session;
+        }
         changed = true;
         connectionChanged = true;
         workspaceChanged = true;
-        return { ...session, runtimeStatus };
+        return next;
       });
       return workspaceChanged
         ? { ...workspace, sessions: workspaceSessions }

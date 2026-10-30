@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   AgentDaemonSessionDescriptor,
   AgentRuntimeSnapshot,
+  AgentSessionDirectoryEntry,
   AgentWorkspaceGitStatus,
   HostConnectorCommand,
   HostConnectorEvent,
@@ -12,7 +13,11 @@ const notifications = vi.hoisted(() => ({
   notifyAgentIdle: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/notifications/sender", () => notifications);
+const database = vi.hoisted(() => ({
+  recordAgentSessionLastTurn: vi.fn(),
+}));
 vi.mock("@/lib/db/agentConnections", () => ({
+  recordAgentSessionLastTurn: database.recordAgentSessionLastTurn,
   updateAgentSessionMetadata: vi.fn(),
 }));
 
@@ -78,6 +83,50 @@ describe("host connector daemon broker", () => {
     expect(broker.supports("connector", "command-wal-v1")).toBe(false);
   });
 
+  it("records finished turns and republishes only meaningful changes", async () => {
+    const listener = vi.fn();
+    const broker = new HostConnectorBroker(0);
+    broker.subscribeSessionDirectory(["session"], listener);
+    broker.register("connector", ["session"], vi.fn());
+    listener.mockClear();
+    const attention = {
+      kind: "question",
+      id: "request",
+      requestedAt: 5,
+      title: "Route",
+    } as const;
+    const lastTurn = { outcome: "completed", startedAt: 1, endedAt: 4 } as const;
+    const update = (
+      sequence: number,
+      session: Omit<AgentSessionDirectoryEntry, "sessionId">,
+    ) =>
+      broker.acceptBatch("connector", "daemon-epoch", [
+        {
+          sequence,
+          payload: {
+            type: "session_update",
+            session: { sessionId: "session", ...session },
+          },
+        },
+      ]);
+
+    await update(1, { runtimeStatus: "running", turnStartedAt: 3, attention, lastTurn });
+    await update(2, {
+      runtimeStatus: "running",
+      turnStartedAt: 3,
+      attention: { ...attention },
+      lastTurn: { ...lastTurn },
+    });
+    await update(3, { runtimeStatus: "running", turnStartedAt: 3, attention: null, lastTurn });
+
+    expect(listener.mock.calls.map(([event]) => event.session.attention)).toEqual([
+      attention,
+      null,
+    ]);
+    expect(broker.sessionDirectoryEntry("session")).toMatchObject({ lastTurn });
+    expect(database.recordAgentSessionLastTurn).toHaveBeenCalledWith("session", lastTurn);
+  });
+
   it("projects the global session directory without a detail subscription", async () => {
     const listener = vi.fn();
     const broker = new HostConnectorBroker(0);
@@ -124,7 +173,12 @@ describe("host connector daemon broker", () => {
     });
     expect(listener).toHaveBeenLastCalledWith({
       type: "update",
-      session: { sessionId: "session", runtimeStatus: "exited" },
+      session: {
+        sessionId: "session",
+        runtimeStatus: "exited",
+        turnStartedAt: null,
+        attention: null,
+      },
     });
     unsubscribe();
     await broker.acceptBatch("connector", "daemon-epoch", [

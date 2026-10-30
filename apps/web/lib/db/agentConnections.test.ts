@@ -80,6 +80,8 @@ raw.exec(`
     message_count INTEGER NOT NULL DEFAULT 0,
     provider_created_at INTEGER,
     provider_modified_at INTEGER,
+    last_turn TEXT,
+    read_turn_ended_at INTEGER,
     last_synced_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
@@ -708,6 +710,60 @@ describe("agent connection persistence", () => {
     await expect(
       repository.getOwnedAgentWorkspace(other!.id, "alice"),
     ).resolves.not.toBeNull();
+  });
+
+  it("keeps the newest turn and a read watermark on the connector's clock", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/overtchat", name: "overtchat" },
+    );
+    const agentSession = await repository.upsertAgentSession(workspace!.id, {
+      providerSessionId: "session",
+      providerSessionPath: "/remote/session.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: null,
+    });
+    const listed = async () =>
+      (await repository.listAgentConnections("alice"))[0]!.workspaces[0]!
+        .sessions[0]!;
+
+    expect(repository.markAgentSessionUnread(agentSession.id)).toBe(false);
+    repository.markAgentSessionRead(agentSession.id);
+    await expect(listed()).resolves.toMatchObject({
+      lastTurn: null,
+      readTurnEndedAt: null,
+    });
+
+    const first = { outcome: "completed", startedAt: 100, endedAt: 200, preview: "Done." } as const;
+    const second = { outcome: "failed", startedAt: 300, endedAt: 400, error: "Boom" } as const;
+    repository.recordAgentSessionLastTurn(agentSession.id, first);
+    repository.recordAgentSessionLastTurn(agentSession.id, second);
+    // A replayed older result does not replace a newer one.
+    repository.recordAgentSessionLastTurn(agentSession.id, first);
+    await expect(listed()).resolves.toMatchObject({
+      lastTurn: second,
+      readTurnEndedAt: null,
+    });
+
+    repository.markAgentSessionRead(agentSession.id);
+    await expect(listed()).resolves.toMatchObject({ readTurnEndedAt: 400 });
+    expect(repository.markAgentSessionUnread(agentSession.id)).toBe(true);
+    await expect(listed()).resolves.toMatchObject({ readTurnEndedAt: 399 });
+    repository.markAgentSessionRead(agentSession.id);
+    repository.recordAgentSessionLastTurn(agentSession.id, {
+      ...first,
+      startedAt: 500,
+      endedAt: 600,
+    });
+    await expect(listed()).resolves.toMatchObject({
+      lastTurn: { endedAt: 600 },
+      readTurnEndedAt: 400,
+    });
   });
 
   it("reconciles only sessions still authorized for a connector", async () => {

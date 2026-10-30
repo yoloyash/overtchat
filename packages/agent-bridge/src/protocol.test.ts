@@ -223,6 +223,65 @@ describe("Host Connector protocol compatibility", () => {
     ).toBe(false);
   });
 
+  it("accepts attention fields as optional additions to directory entries", () => {
+    const attention = {
+      kind: "approval",
+      id: "request",
+      requestedAt: 1_000,
+      title: "Run command",
+      detail: "npm ci",
+    };
+    const lastTurn = {
+      outcome: "failed",
+      startedAt: 500,
+      endedAt: 900,
+      preview: "Partial reply",
+      error: "Rate limited",
+    };
+    expect(
+      isAgentSessionDirectoryEntry({
+        sessionId: "session",
+        runtimeStatus: "running",
+        turnStartedAt: 500,
+        attention,
+        lastTurn,
+      }),
+    ).toBe(true);
+    expect(
+      isAgentSessionDirectoryEntry({
+        sessionId: "session",
+        runtimeStatus: "idle",
+        turnStartedAt: null,
+        attention: null,
+        lastTurn: null,
+      }),
+    ).toBe(true);
+    // Future summary fields stay additive.
+    expect(
+      isAgentSessionDirectoryEntry({
+        sessionId: "session",
+        runtimeStatus: "idle",
+        lastTurn: { ...lastTurn, tokens: 12 },
+      }),
+    ).toBe(true);
+    for (const invalid of [
+      { turnStartedAt: "soon" },
+      { attention: { ...attention, kind: "nudge" } },
+      { attention: { ...attention, id: "" } },
+      { attention: { ...attention, title: "x".repeat(281) } },
+      { lastTurn: { ...lastTurn, outcome: "paused" } },
+      { lastTurn: { ...lastTurn, endedAt: undefined } },
+    ]) {
+      expect(
+        isAgentSessionDirectoryEntry({
+          sessionId: "session",
+          runtimeStatus: "idle",
+          ...invalid,
+        }),
+      ).toBe(false);
+    }
+  });
+
   it("validates provider catalogs at the connector boundary", () => {
     const catalog = {
       provider: "omp",

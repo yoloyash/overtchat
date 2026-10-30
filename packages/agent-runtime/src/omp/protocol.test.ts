@@ -76,6 +76,34 @@ describe("OMP RPC protocol", () => {
     });
   });
 
+  it("offers the session-wide approval newer OMP releases add", () => {
+    expect(
+      mapOmpUiRequest({
+        type: "extension_ui_request",
+        id: "approval",
+        method: "select",
+        title: "Allow tool: bash\nCommand: touch probe",
+        options: ["Approve", "Approve bash for this session", "Deny"],
+      }),
+    ).toMatchObject({
+      approvalKind: "tool",
+      toolDetail: { type: "shell", command: "touch probe" },
+      approveValue: "Approve",
+      alwaysValue: "Approve bash for this session",
+      alwaysLabel: "Allow for this session",
+      denyValue: "Deny",
+    });
+    expect(
+      mapOmpUiRequest({
+        type: "extension_ui_request",
+        id: "lookalike",
+        method: "select",
+        title: "Allow tool: bash\nCommand: touch probe",
+        options: ["Approve", "Approve edit for this session", "Deny"],
+      }),
+    ).not.toHaveProperty("approvalKind");
+  });
+
   it("preserves multiline commands and rejects approval lookalikes", () => {
     expect(
       mapOmpUiRequest({

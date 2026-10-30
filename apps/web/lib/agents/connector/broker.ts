@@ -7,6 +7,7 @@ import {
   isAgentSessionSync,
   isAgentWorkspaceGitStatus,
   isConnectorSshHost,
+  sameAgentSessionDirectoryEntry,
   type AgentDaemonRequest,
   type AgentDaemonSessionDescriptor,
   type AgentDaemonTarget,
@@ -21,7 +22,10 @@ import {
   type HostConnectorEventAck,
   type HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
-import { updateAgentSessionMetadata } from "@/lib/db/agentConnections";
+import {
+  recordAgentSessionLastTurn,
+  updateAgentSessionMetadata,
+} from "@/lib/db/agentConnections";
 
 const REQUEST_TIMEOUT_MS = 180_000;
 const CONNECTOR_DISCONNECT_GRACE_MS = 5_000;
@@ -149,8 +153,15 @@ export class HostConnectorBroker {
   runtimeStatusForSession(
     sessionId: string,
   ): AgentSessionDirectoryEntry["runtimeStatus"] {
+    return this.sessionDirectoryEntry(sessionId).runtimeStatus;
+  }
+
+  sessionDirectoryEntry(sessionId: string): AgentSessionDirectoryEntry {
     return (
-      this.sessionDirectory.get(sessionId)?.session.runtimeStatus ?? "idle"
+      this.sessionDirectory.get(sessionId)?.session ?? {
+        sessionId,
+        runtimeStatus: "idle",
+      }
     );
   }
 
@@ -165,10 +176,9 @@ export class HostConnectorBroker {
     this.directorySubscriptions.add(subscription);
     subscriber({
       type: "snapshot",
-      sessions: [...subscription.sessionIds].map((sessionId) => ({
-        sessionId,
-        runtimeStatus: this.runtimeStatusForSession(sessionId),
-      })),
+      sessions: [...subscription.sessionIds].map((sessionId) =>
+        this.sessionDirectoryEntry(sessionId),
+      ),
     });
     return () => {
       this.directorySubscriptions.delete(subscription);
@@ -779,6 +789,13 @@ export class HostConnectorBroker {
       if (!channel.sessionIds.has(session.sessionId)) continue;
       if (baseline)
         this.idleNotifications.reset(session.sessionId, session.runtimeStatus);
+      if (session.lastTurn) {
+        try {
+          recordAgentSessionLastTurn(session.sessionId, session.lastTurn);
+        } catch {
+          console.error("[agents] Could not record the latest turn.");
+        }
+      }
       this.upsertSessionDirectory(connectorId, session);
     }
   }
@@ -790,7 +807,7 @@ export class HostConnectorBroker {
     const current = this.sessionDirectory.get(session.sessionId);
     if (
       current?.connectorId === connectorId &&
-      current.session.runtimeStatus === session.runtimeStatus
+      sameAgentSessionDirectoryEntry(current.session, session)
     ) {
       return;
     }
@@ -893,8 +910,10 @@ export class HostConnectorBroker {
       for (const entry of this.sessionDirectory.values()) {
         if (entry.connectorId !== connectorId) continue;
         this.upsertSessionDirectory(connectorId, {
-          sessionId: entry.session.sessionId,
+          ...entry.session,
           runtimeStatus: "exited",
+          turnStartedAt: null,
+          attention: null,
         });
       }
     }, this.disconnectGraceMs);

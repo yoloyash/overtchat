@@ -183,6 +183,25 @@ async function idle(client: ReturnType<typeof startHermesRuntime>) {
 }
 
 describe("ACP runtime using the official SDK over stdio", () => {
+  it.each([
+    ["end_turn", []],
+    ["cancelled", []],
+    ["refusal", ["Hermes refused to continue this request."]],
+    ["max_tokens", ["Hermes stopped at its output token limit."]],
+    ["max_turn_requests", ["Hermes reached its limit of model requests for this turn."]],
+  ] as const)("reports a turn that ended with %s", async (stopReason, errors) => {
+    const setup = fixture({ prompt: async () => ({ stopReason }) });
+    const client = setup.start(true);
+    await client.getMessages();
+    const events: AgentRuntimeEvent[] = [];
+    client.onEvent((event) => events.push(event));
+    await client.prompt("New prompt");
+    await idle(client);
+    expect(
+      events.filter((event) => event.type === "rpc_error").map((event) => event.error),
+    ).toEqual(errors);
+  });
+
   it("records live message and completion times without timing replayed history", async () => {
     let now = 1_000;
     const setup = fixture({

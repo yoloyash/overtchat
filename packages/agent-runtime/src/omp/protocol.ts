@@ -165,19 +165,22 @@ export function mapOmpUiRequest(record: Record<string, unknown>): Record<string,
   if (record.type !== "extension_ui_request") return record;
   const options = record.options;
   const title = typeof record.title === "string" ? record.title : "";
-  const exactOptions =
-    record.method === "select" &&
-    Array.isArray(options) &&
-    options.length === 2 &&
-    options[0] === "Approve" &&
-    options[1] === "Deny";
-  if (!exactOptions) return { ...record, type: "interaction_request" };
   const firstBreak = title.search(/\r?\n/u);
   const heading = (firstBreak < 0 ? title : title.slice(0, firstBreak)).trim();
   if (!heading.startsWith("Allow tool: ")) {
     return { ...record, type: "interaction_request" };
   }
   const toolName = heading.slice("Allow tool: ".length).trim();
+  // Newer OMP releases offer approving the tool for the rest of the session.
+  const sessionOption = `Approve ${toolName} for this session`;
+  const exactOptions =
+    record.method === "select" &&
+    Array.isArray(options) &&
+    options[0] === "Approve" &&
+    options.at(-1) === "Deny" &&
+    (options.length === 2 ||
+      (options.length === 3 && options[1] === sessionOption));
+  if (!exactOptions) return { ...record, type: "interaction_request" };
   const body = firstBreak < 0 ? "" : title.slice(firstBreak).replace(/^\r?\n/u, "");
   const detail = parseOmpToolApproval(toolName, body);
   if (!detail) return { ...record, type: "interaction_request" };
@@ -190,6 +193,9 @@ export function mapOmpUiRequest(record: Record<string, unknown>): Record<string,
     toolName,
     toolDetail: detail.value,
     approveValue: "Approve",
+    ...(options.length === 3
+      ? { alwaysValue: sessionOption, alwaysLabel: "Allow for this session" }
+      : {}),
     denyValue: "Deny",
   };
 }

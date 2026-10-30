@@ -7,7 +7,6 @@ import type {
   AgentDaemonWorkspaceDescriptor,
   AgentPromptImage,
   AgentRuntimeEnvelope,
-  AgentRuntimeStatus,
   AgentSessionDirectoryEntry,
   HostConnectorCommand,
   HostConnectorEventPayload,
@@ -15,6 +14,7 @@ import type {
 import {
   isAgentProviderNotice,
   parseHostConnectorCapabilities,
+  sameAgentSessionDirectoryEntry,
 } from "@overtchat/agent-bridge";
 import {
   AgentRuntimeRegistry,
@@ -925,8 +925,7 @@ export class ConnectorDaemon {
       await capture.ready;
       this.assertAccepting();
       capture.initialized = true;
-      const snapshot = runtime.snapshot();
-      this.publishSessionStatus(sessionId, snapshot.status);
+      this.publishSessionStatus(sessionId, runtime);
       for (const envelope of capture.buffered.splice(0)) {
         this.commitCapturedEnvelope(sessionId, capture, envelope);
       }
@@ -964,7 +963,7 @@ export class ConnectorDaemon {
     try {
       operation = this.timelines.commit(sessionId, envelope).then((committed) => {
         if (committed) {
-          this.publishEnvelopeStatus(sessionId, committed);
+          this.publishSessionStatus(sessionId, capture.runtime);
         }
         return committed;
       });
@@ -981,35 +980,15 @@ export class ConnectorDaemon {
       .finally(() => capture.pending.delete(operation));
   }
 
-  private publishEnvelopeStatus(
-    sessionId: string,
-    envelope: AgentRuntimeEnvelope,
-  ): void {
-    if (envelope.type === "snapshot") {
-      this.publishSessionStatus(sessionId, envelope.data.status);
-      return;
-    }
-    if (envelope.data.type === "agent_start" || envelope.data.type === "turn_start") {
-      this.publishSessionStatus(sessionId, "running");
-      return;
-    }
-    if (
-      envelope.data.type === "overtchat_status" &&
-      ["idle", "running", "exited"].includes(String(envelope.data.status))
-    ) {
-      this.publishSessionStatus(
-        sessionId,
-        envelope.data.status as AgentRuntimeStatus,
-      );
-    }
-  }
-
+  /** Publishes list-visible status changes, deduplicated across envelopes. */
   private publishSessionStatus(
     sessionId: string,
-    status: AgentRuntimeStatus,
+    runtime: AgentSessionRuntime,
   ): void {
-    if (this.publishedSessions.get(sessionId)?.runtimeStatus === status) return;
-    const session = { sessionId, runtimeStatus: status };
+    const session = { sessionId, ...runtime.directoryStatus() };
+    if (sameAgentSessionDirectoryEntry(this.publishedSessions.get(sessionId), session)) {
+      return;
+    }
     this.publishedSessions.set(sessionId, session);
     this.emit({
       type: "session_update",
@@ -1018,10 +997,14 @@ export class ConnectorDaemon {
   }
 
   private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
-    const sessions = [...sessionIds].map((sessionId) => ({
-      sessionId,
-      runtimeStatus: this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
-    }));
+    const sessions: AgentSessionDirectoryEntry[] = [...sessionIds].map(
+      (sessionId) => {
+        const runtime = this.captures.get(sessionId)?.runtime;
+        return runtime
+          ? { sessionId, ...runtime.directoryStatus() }
+          : { sessionId, runtimeStatus: "idle" };
+      },
+    );
     this.publishedSessions.clear();
     for (const session of sessions) {
       this.publishedSessions.set(session.sessionId, session);

@@ -25,6 +25,7 @@ import type {
   AgentSessionLaunchConfig,
   AgentSessionListItem,
   AgentTransportId,
+  AgentTurnSummary,
 } from "@overtchat/agent-bridge";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 import { resolveInitialAgentSessionTitle } from "@/lib/agents/sessionTitle";
@@ -81,7 +82,8 @@ export type AgentWorkspaceInstallation = NewAgentConnection & {
 
 export type ProviderSessionMetadata = AgentProviderSessionMetadata;
 
-function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
+/** Stored session fields; callers overlay live connector state. */
+export function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
   return {
     id: row.id,
     providerSessionId: row.providerSessionId,
@@ -91,6 +93,10 @@ function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
     createdAt: row.providerCreatedAt?.getTime() ?? null,
     modifiedAt: row.providerModifiedAt?.getTime() ?? null,
     runtimeStatus: "idle",
+    turnStartedAt: null,
+    attention: null,
+    lastTurn: row.lastTurn ?? null,
+    readTurnEndedAt: row.readTurnEndedAt,
   };
 }
 
@@ -826,6 +832,48 @@ export async function updateAgentSessionMetadata(
       lastSyncedAt: new Date(),
     })
     .where(eq(agentSessions.id, id));
+}
+
+/** Stores a turn result unless a later one is already stored. */
+export function recordAgentSessionLastTurn(
+  id: string,
+  lastTurn: AgentTurnSummary,
+): void {
+  db.update(agentSessions)
+    .set({ lastTurn })
+    .where(
+      and(
+        eq(agentSessions.id, id),
+        sql`coalesce(json_extract(${agentSessions.lastTurn}, '$.endedAt'), -1) < ${lastTurn.endedAt}`,
+      ),
+    )
+    .run();
+}
+
+/** Marks the stored latest turn as seen; the watermark never moves back. */
+export function markAgentSessionRead(id: string): void {
+  db.update(agentSessions)
+    .set({
+      readTurnEndedAt: sql`max(coalesce(${agentSessions.readTurnEndedAt}, -1), json_extract(${agentSessions.lastTurn}, '$.endedAt'))`,
+    })
+    .where(
+      and(eq(agentSessions.id, id), isNotNull(agentSessions.lastTurn)),
+    )
+    .run();
+}
+
+/** Rewinds the watermark so the latest finished turn reads as unread. */
+export function markAgentSessionUnread(id: string): boolean {
+  const result = db
+    .update(agentSessions)
+    .set({
+      readTurnEndedAt: sql`json_extract(${agentSessions.lastTurn}, '$.endedAt') - 1`,
+    })
+    .where(
+      and(eq(agentSessions.id, id), isNotNull(agentSessions.lastTurn)),
+    )
+    .run();
+  return result.changes > 0;
 }
 
 export async function renameAgentSession(

@@ -15,6 +15,33 @@ export const AGENT_PROVIDER_IDS = [
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
 
+/** Longest status text a connector sends; clients truncate further for display. */
+export const AGENT_STATUS_TEXT_LIMIT = 280;
+const agentStatusTextSchema = z.string().max(AGENT_STATUS_TEXT_LIMIT);
+
+/** The request an agent is blocked on, summarized for lists and notifications. */
+export const agentSessionAttentionSchema = z.object({
+  kind: z.enum(["approval", "question"]),
+  /** Interaction id; a new id is a new request. */
+  id: z.string().min(1),
+  requestedAt: z.number().finite(),
+  /** One line, such as the question or the tool action. */
+  title: agentStatusTextSchema,
+  /** A command, path or other short detail. */
+  detail: agentStatusTextSchema.optional(),
+});
+export type AgentSessionAttention = z.infer<typeof agentSessionAttentionSchema>;
+
+export const agentTurnSummarySchema = z.object({
+  outcome: z.enum(["completed", "failed", "stopped"]),
+  startedAt: z.number().finite().nullable(),
+  endedAt: z.number().finite(),
+  /** Plain-text start of the final assistant reply. */
+  preview: agentStatusTextSchema.optional(),
+  error: agentStatusTextSchema.optional(),
+});
+export type AgentTurnSummary = z.infer<typeof agentTurnSummarySchema>;
+
 export const AGENT_THINKING_LEVELS = [
   "off",
   "minimal",
@@ -145,6 +172,12 @@ export type AgentSessionListItem = {
   createdAt: number | null;
   modifiedAt: number | null;
   runtimeStatus: AgentRuntimeStatus;
+  /** The fields below are absent from servers that predate attention state. */
+  turnStartedAt?: number | null;
+  attention?: AgentSessionAttention | null;
+  lastTurn?: AgentTurnSummary | null;
+  /** End of the latest turn the owner has seen, on the connector's clock. */
+  readTurnEndedAt?: number | null;
 };
 
 export type AgentProviderSessionMetadata = {

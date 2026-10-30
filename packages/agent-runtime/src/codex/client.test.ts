@@ -1473,6 +1473,25 @@ describe("CodexRuntimeClient", () => {
     ]);
   });
 
+  it("reports only errors Codex will not retry", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    const error = { message: "stream disconnected", codexErrorInfo: null, additionalDetails: null };
+
+    server.emit("error", { error, willRetry: true, threadId: "thread-1", turnId: "turn-1" });
+    expect(events.filter((event) => event.type === "rpc_error")).toEqual([]);
+
+    server.emit("error", { error, willRetry: false, threadId: "thread-1", turnId: "turn-1" });
+    expect(events.filter((event) => event.type === "rpc_error")).toEqual([
+      { type: "rpc_error", command: "prompt", error: "stream disconnected" },
+    ]);
+  });
+
   it("preserves streamed work when the completed turn only includes the final answer", async () => {
     const client = new CodexRuntimeClient(
       { transport: "local" },

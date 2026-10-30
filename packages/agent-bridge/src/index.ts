@@ -6,9 +6,12 @@ import type {
   AgentRuntimeCursor,
   AgentRuntimeEnvelope,
   AgentRuntimeStatus,
+  AgentSessionAttention,
   AgentSessionSync,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
+  AgentSessionListItem,
+  AgentTurnSummary,
   AgentWorkspaceGitBaseRef,
   AgentWorkspaceGitBranches,
   AgentWorkspaceGitStatus,
@@ -25,7 +28,9 @@ import {
   agentUsageUpdateSchema,
   agentDiscoveryTargetSchema,
   agentSessionCommandSchema,
+  agentSessionAttentionSchema,
   agentSessionLaunchConfigSchema,
+  agentTurnSummarySchema,
 } from "./agents";
 
 /** Increment only for a breaking web-to-connector wire contract change. */
@@ -100,6 +105,12 @@ export type AgentDaemonSessionDescriptor = AgentDaemonWorkspaceDescriptor & {
 export type AgentSessionDirectoryEntry = {
   sessionId: string;
   runtimeStatus: AgentRuntimeStatus;
+  /** Start of the active turn; older connectors omit it. */
+  turnStartedAt?: number | null;
+  /** What the agent is waiting on the user for; older connectors omit it. */
+  attention?: AgentSessionAttention | null;
+  /** How the latest turn ended; null until this runtime finishes a turn. */
+  lastTurn?: AgentTurnSummary | null;
 };
 
 export type AgentDaemonRequest =
@@ -554,13 +565,60 @@ export function isAgentRuntimeEnvelope(
         agentUsageUpdateSchema.safeParse(Reflect.get(value.data, "usage")).success);
 }
 
+/**
+ * Overlays live directory state on a list item. A runtime reports `lastTurn`
+ * only for turns it finished, so an older stored result survives restarts.
+ */
+export function applyAgentSessionDirectoryEntry(
+  session: AgentSessionListItem,
+  entry: AgentSessionDirectoryEntry,
+): AgentSessionListItem {
+  const lastTurn =
+    entry.lastTurn &&
+    entry.lastTurn.endedAt > (session.lastTurn?.endedAt ?? -Infinity)
+      ? entry.lastTurn
+      : (session.lastTurn ?? null);
+  return {
+    ...session,
+    runtimeStatus: entry.runtimeStatus,
+    turnStartedAt: entry.turnStartedAt ?? null,
+    attention: entry.attention ?? null,
+    lastTurn,
+  };
+}
+
+/** Whether two entries differ only in ways no session list or notification shows. */
+export function sameAgentSessionDirectoryEntry(
+  a: AgentSessionDirectoryEntry | undefined,
+  b: AgentSessionDirectoryEntry,
+): boolean {
+  return (
+    !!a &&
+    a.sessionId === b.sessionId &&
+    a.runtimeStatus === b.runtimeStatus &&
+    (a.turnStartedAt ?? null) === (b.turnStartedAt ?? null) &&
+    (a.attention?.id ?? null) === (b.attention?.id ?? null) &&
+    (a.lastTurn?.endedAt ?? null) === (b.lastTurn?.endedAt ?? null)
+  );
+}
+
 export function isAgentSessionDirectoryEntry(
   value: unknown,
 ): value is AgentSessionDirectoryEntry {
   return (
     isRecord(value) &&
     isNonEmptyString(value.sessionId) &&
-    ["idle", "running", "exited"].includes(String(value.runtimeStatus))
+    ["idle", "running", "exited"].includes(String(value.runtimeStatus)) &&
+    (value.turnStartedAt === undefined ||
+      value.turnStartedAt === null ||
+      (typeof value.turnStartedAt === "number" &&
+        Number.isFinite(value.turnStartedAt))) &&
+    (value.attention === undefined ||
+      value.attention === null ||
+      agentSessionAttentionSchema.safeParse(value.attention).success) &&
+    (value.lastTurn === undefined ||
+      value.lastTurn === null ||
+      agentTurnSummarySchema.safeParse(value.lastTurn).success)
   );
 }
 

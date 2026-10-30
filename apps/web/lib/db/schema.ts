@@ -22,6 +22,7 @@ import {
 import type { ModelPricing } from "@/lib/model-config/schema";
 import type { ReasoningOverride } from "@/lib/model-config/reasoning-override";
 import type { McpServerConfig } from "@/lib/mcp/schema";
+import type { AgentTurnSummary } from "@overtchat/agent-bridge";
 
 // One durable bootstrap record. A null nonce means setup is permanently closed.
 export const initialSetup = sqliteTable("initial_setup", {
@@ -383,6 +384,10 @@ export const agentSessions = sqliteTable(
     providerModifiedAt: integer("provider_modified_at", {
       mode: "timestamp_ms",
     }),
+    /** How the latest turn reported by a connector ended. */
+    lastTurn: text("last_turn", { mode: "json" }).$type<AgentTurnSummary>(),
+    /** End of the latest turn the owner has seen, on the connector's clock. */
+    readTurnEndedAt: integer("read_turn_ended_at"),
     lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

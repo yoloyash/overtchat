@@ -190,6 +190,13 @@
       "when": 1792823579434,
       "tag": "0026_agent_workspace_worktree_parent",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1793088444087,
+      "tag": "0027_agent_session_attention",
+      "breakpoints": true
     }
   ]
 }
