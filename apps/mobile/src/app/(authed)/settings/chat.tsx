@@ -42,13 +42,13 @@ export default function ChatSettings() {
         />
         <Toggle
           title="Context meter"
-          detail="Context-window usage above your conversation."
+          detail="Context-window ring in the chat header."
           value={prefs.contextMeter}
           onChange={(contextMeter) => setChatPreferences({ contextMeter })}
         />
         <Toggle
           title="Session cost"
-          detail="Recorded cost above your conversation, when pricing is available."
+          detail="Recorded cost in the usage details, when pricing is available."
           value={prefs.sessionCost}
           onChange={(sessionCost) => setChatPreferences({ sessionCost })}
         />
