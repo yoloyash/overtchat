@@ -29,6 +29,8 @@ vi.mock("@/lib/db/hostConnectors", () => ({
   listAvailableHostConnectors: mocks.listConnectors,
 }));
 
+import { HOST_CONNECTOR_RELEASE_VERSION } from "@overtchat/agent-bridge";
+
 import { DELETE, GET, POST } from "./route";
 
 function request(method = "GET", query = ""): Request {
@@ -82,8 +84,7 @@ describe("Host Connectors route", () => {
     await expect(response.json()).resolves.toEqual({
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
-      command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.16.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
+      command: `curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION} | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'`,
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
   });
@@ -157,9 +158,8 @@ describe("Host Connectors route", () => {
           lastSeenAt: 12_000,
           online: true,
           upgrade: {
-            version: "0.16.0",
-            command:
-              "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.16.0 | sh -s -- --upgrade",
+            version: HOST_CONNECTOR_RELEASE_VERSION,
+            command: `curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION} | sh -s -- --upgrade`,
           },
         },
       ],
@@ -172,14 +172,14 @@ describe("Host Connectors route", () => {
         id: "current",
         name: "Current",
         managed: false,
-        version: "0.16.0",
+        version: HOST_CONNECTOR_RELEASE_VERSION,
         lastSeenAt: null,
       },
       {
         id: "newer",
         name: "Newer",
         managed: false,
-        version: "0.16.0",
+        version: "99.0.0",
         lastSeenAt: null,
       },
     ]);
