@@ -63,7 +63,9 @@ import { motionClasses } from "@/lib/motion";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { usePaneResize } from "@/lib/usePaneResize";
 import { cn } from "@/lib/utils";
-import { AgentComposer } from "./AgentComposer";
+import { AgentComposer, type AgentComposerHandle } from "./AgentComposer";
+import { FileDropZone } from "@/components/chat/FileDropZone";
+import { agentImageDropLabels } from "@/lib/agents/imageDrop";
 import { terminalOutputQuote } from "./terminal-presentation";
 import {
   AgentInteractionDialog,
@@ -556,6 +558,8 @@ export function AgentSessionView({
     return run(input, { toastTitle });
   }
 
+  const composerRef = useRef<AgentComposerHandle>(null);
+
   if (session.isPending) {
     return <AgentSessionLoading providerLabel={providerLabel} />;
   }
@@ -625,11 +629,20 @@ export function AgentSessionView({
   // Compaction is a turn: the composer keeps accepting input and queues it,
   // the same as while the agent is working.
   const composerPending = command.isPending && pendingCommand !== "compact";
+  const supportsImages = selectedModel?.input.includes("image") === true;
 
   return (
     <AgentWorkspaceNavigationProvider value={workspaceNavigation}>
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <div data-titlebar-interior={filesOpen || undefined} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <FileDropZone
+          data-titlebar-interior={filesOpen || undefined}
+          className="flex min-w-0 flex-1 flex-col overflow-hidden"
+          disabled={composerDisabled}
+          accepting={supportsImages}
+          kind="images"
+          onFiles={(files) => composerRef.current?.addFiles(files)}
+          {...agentImageDropLabels(providerLabel)}
+        >
           <AgentSessionHeader
             provider={provider}
             workspaceId={workspaceId}
@@ -768,13 +781,14 @@ export function AgentSessionView({
               />
               <AgentComposer
                 key={sessionId}
+                ref={composerRef}
                 appendedDraft={terminalDraft?.sessionId === sessionId ? terminalDraft : null}
                 onAppendedDraftConsumed={consumeTerminalDraft}
                 providerLabel={providerLabel}
                 commands={snapshot.commands}
                 queuedMessages={snapshot.queuedMessages}
                 supportsSteer={snapshot.capabilities.steer}
-                supportsImages={selectedModel?.input.includes("image") === true}
+                supportsImages={supportsImages}
                 running={running}
                 pending={composerPending}
                 stopping={pendingCommand === "abort"}
@@ -976,7 +990,7 @@ export function AgentSessionView({
             stats={snapshot.stats}
             onOpenChange={setSessionUsageOpen}
           />
-        </div>
+        </FileDropZone>
 
         <button
           type="button"

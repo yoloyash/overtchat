@@ -2,9 +2,11 @@
 
 import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -69,32 +71,12 @@ function commandSource(source: AgentSlashCommand["source"]): string {
   return labels[source];
 }
 
-export function AgentComposer({
-  providerLabel,
-  commands,
-  queuedMessages,
-  supportsSteer,
-  supportsImages,
-  running,
-  pending,
-  stopping,
-  disabled,
-  isAdmin,
-  onBeforeDictate,
-  controls,
-  contextUsage,
-  onSubmit,
-  onStop,
-  onEditQueued,
-  onDeleteQueued,
-  onSteerQueued,
-  restoreDraftKey,
-  restoredDraft,
-  appendedDraft,
-  onAppendedDraftConsumed,
-  draftUserId,
-  draftScope,
-}: {
+export interface AgentComposerHandle {
+  /** Attaches dropped files the same way the picker and paste do. */
+  addFiles: (files: readonly File[]) => void;
+}
+
+interface AgentComposerProps {
   providerLabel: string;
   commands: AgentSlashCommand[];
   queuedMessages: AgentQueuedMessage[];
@@ -124,7 +106,37 @@ export function AgentComposer({
   /** Saves unsent text on this device so it survives navigation and reloads. */
   draftUserId?: string;
   draftScope?: string | null;
-}) {
+}
+
+export const AgentComposer = forwardRef<
+  AgentComposerHandle,
+  AgentComposerProps
+>(function AgentComposer({
+  providerLabel,
+  commands,
+  queuedMessages,
+  supportsSteer,
+  supportsImages,
+  running,
+  pending,
+  stopping,
+  disabled,
+  isAdmin,
+  onBeforeDictate,
+  controls,
+  contextUsage,
+  onSubmit,
+  onStop,
+  onEditQueued,
+  onDeleteQueued,
+  onSteerQueued,
+  restoreDraftKey,
+  restoredDraft,
+  appendedDraft,
+  onAppendedDraftConsumed,
+  draftUserId,
+  draftScope,
+}: AgentComposerProps, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const handleDraftRestore = useCallback(() => {
     requestAnimationFrame(() => {
@@ -323,12 +335,16 @@ export function AgentComposer({
         file.type as AgentPromptImage["mediaType"],
       ),
     );
-    if (images.length === 0) {
-      if (files.some((file) => file.type.startsWith("image/"))) {
-        toast.error({ title: "Use PNG, JPEG, GIF, or WebP images" });
-      }
-      return;
+    if (files.some((file) => !file.type.startsWith("image/"))) {
+      // Coding agents read other files from the workspace by path.
+      toast.error({
+        title: `${providerLabel} accepts images only`,
+        description: "Mention other files by their path instead.",
+      });
+    } else if (images.length === 0) {
+      toast.error({ title: "Use PNG, JPEG, GIF, or WebP images" });
     }
+    if (images.length === 0) return;
     if (!supportsImages) {
       toast.error({ title: "The selected model does not support images" });
       return;
@@ -359,6 +375,8 @@ export function AgentComposer({
     }
     addFiles(accepted);
   }
+
+  useImperativeHandle(ref, () => ({ addFiles: addImageFiles }));
 
   function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     const files = getDataTransferFiles(event.clipboardData);
@@ -758,7 +776,7 @@ export function AgentComposer({
       </div>
     </div>
   );
-}
+});
 
 function AgentImageChip({
   attachment,

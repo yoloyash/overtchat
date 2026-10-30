@@ -1,9 +1,9 @@
-import { act, type ComponentProps } from "react";
+import { act, createRef, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import type { Dictation } from "@/lib/useDictation";
-import { AgentComposer } from "@/components/agents/AgentComposer";
+import { AgentComposer, type AgentComposerHandle } from "@/components/agents/AgentComposer";
 
 // React selects its input-event implementation when the renderer loads.
 // Install the DOM first so keyboard events use the browser path.
@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   onSubmit: vi.fn(async () => true),
   beforeStart: vi.fn(),
+  toastError: vi.fn(),
+  addFiles: vi.fn(),
 }));
 vi.mock("@/lib/useDictation", () => ({
   useDictation: (onResult: (text: string) => void) => {
@@ -33,11 +35,11 @@ vi.mock("@/components/agents/AgentComposerControls", () => ({
   AgentComposerControls: () => null,
 }));
 vi.mock("@/components/chat/UsageIndicator", () => ({ UsageIndicator: () => null }));
-vi.mock("@/components/ui/toast", () => ({ toast: { error: vi.fn() } }));
+vi.mock("@/components/ui/toast", () => ({ toast: { error: mocks.toastError } }));
 vi.mock("@/components/chat/useChatAttachments", () => ({
   useChatAttachments: () => ({
     attachments: [], readyParts: [], uploading: false,
-    addFiles: vi.fn(), addReadyParts: vi.fn(), removeAttachment: vi.fn(), clearAttachments: vi.fn(),
+    addFiles: mocks.addFiles, addReadyParts: vi.fn(), removeAttachment: vi.fn(), clearAttachments: vi.fn(),
   }),
 }));
 
@@ -63,6 +65,7 @@ afterEach(async () => {
 });
 async function render(overrides: Partial<ComponentProps<typeof AgentComposer>> = {}) {
   await act(async () => root.render(<AgentComposer
+    ref={overrides.ref}
     providerLabel="Codex" commands={[]} queuedMessages={[]}
     supportsSteer={false} supportsImages={false} running={false}
     pending={false} stopping={false} disabled={false} isAdmin={false}
@@ -169,4 +172,32 @@ it("keeps each session's unsent message across remounts and clears it once sent"
   expect(mocks.onSubmit).toHaveBeenCalledWith("Half-written prompt", []);
   expect(textarea().value).toBe("");
   expect(values.size).toBe(0);
+});
+
+it("attaches dropped images through the handle and explains refused files", async () => {
+  const ref = createRef<AgentComposerHandle>();
+  const png = new File(["x"], "shot.png", { type: "image/png" });
+  const pdf = new File(["x"], "spec.pdf", { type: "application/pdf" });
+  const svg = new File(["x"], "logo.svg", { type: "image/svg+xml" });
+
+  await render({ ref, supportsImages: true });
+  await act(async () => ref.current?.addFiles([png, pdf]));
+  expect(mocks.addFiles).toHaveBeenCalledWith([png]);
+  expect(mocks.toastError).toHaveBeenCalledWith({
+    title: "Codex accepts images only",
+    description: "Mention other files by their path instead.",
+  });
+
+  mocks.addFiles.mockClear();
+  mocks.toastError.mockClear();
+  await act(async () => ref.current?.addFiles([svg]));
+  expect(mocks.addFiles).not.toHaveBeenCalled();
+  expect(mocks.toastError).toHaveBeenCalledWith({ title: "Use PNG, JPEG, GIF, or WebP images" });
+
+  mocks.addFiles.mockClear();
+  mocks.toastError.mockClear();
+  await render({ ref, supportsImages: false });
+  await act(async () => ref.current?.addFiles([png]));
+  expect(mocks.addFiles).not.toHaveBeenCalled();
+  expect(mocks.toastError).toHaveBeenCalledWith({ title: "The selected model does not support images" });
 });

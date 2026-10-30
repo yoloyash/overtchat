@@ -28,7 +28,6 @@ import {
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
-import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useOptionalProject } from "@/lib/queries/projects";
@@ -48,7 +47,6 @@ import {
 } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
-import { motionClasses } from "@/lib/motion";
 import {
   DEFAULT_WEB_SEARCH_ENABLED,
   WEB_SEARCH_ENABLED_STORAGE_KEY,
@@ -76,10 +74,7 @@ import {
   DEFAULT_SESSION_COST_ENABLED,
   SESSION_COST_STORAGE_KEY,
 } from "@/lib/chat/session-cost";
-import {
-  getDataTransferFiles,
-  hasDataTransferFiles,
-} from "@/lib/chat/attachments";
+import { FileDropOverlay, useFileDropZone } from "@/components/chat/FileDropZone";
 import {
   INFERENCE_ACTIVITY_DATA_TYPE,
   isInferenceActivity,
@@ -261,7 +256,6 @@ export function ChatArea({
   const [contextStatus, setContextStatus] = useState<ContextStatus | null>(
     null,
   );
-  const [dragDepth, setDragDepth] = useState(0);
 
   const isNewRef = useRef(isNew ?? false);
   const composerRef = useRef<ComposerHandle>(null);
@@ -563,38 +557,11 @@ export function ChatArea({
     },
     generation,
   });
-  const dropActive = dragDepth > 0;
 
-  function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDragDepth((depth) => depth + 1);
-  }
-
-  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "copy";
-  }
-
-  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDragDepth((depth) => Math.max(0, depth - 1));
-  }
-
-  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
-    if (voiceActive) return;
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDragDepth(0);
-    const files = getDataTransferFiles(e.dataTransfer);
-    if (files.length > 0) composerRef.current?.addFiles(files);
-  }
+  const fileDrop = useFileDropZone({
+    disabled: voiceActive,
+    onFiles: (files) => composerRef.current?.addFiles(files),
+  });
 
   function handleStop() {
     chatQueue.queue.pause();
@@ -863,7 +830,7 @@ export function ChatArea({
       imageConfiguredSize={imageCapability?.configuredSize}
       imageOptions={imageAvailable ? imageOptions : undefined}
       onImageOptions={setImageOptions}
-      dropActive={dropActive}
+      dropActive={fileDrop.active}
       models={models}
       selectedModelId={selectedId}
       reasoningControls={reasoningControls}
@@ -945,10 +912,7 @@ export function ChatArea({
     <div
       data-titlebar-interior={panel ? "" : undefined}
       className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      {...fileDrop.handlers}
     >
       <ChatHeader
         shareChatId={chatPersisted && !temporary ? chatId : undefined}
@@ -974,22 +938,11 @@ export function ChatArea({
 
       <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
 
-      {dropActive && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px] motion-overlay">
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-ring bg-background/90 px-8 py-6 text-center shadow-lg ring-1 ring-ring/20">
-            <div
-              className={`flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ${motionClasses.dropIcon}`}
-            >
-              <FileUp className="size-6" />
-            </div>
-            <div>
-              <div className="text-sm font-medium">Drop files to attach</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Images, PDFs, docs, spreadsheets, and text files
-              </div>
-            </div>
-          </div>
-        </div>
+      {fileDrop.active && (
+        <FileDropOverlay
+          title="Drop files to attach"
+          description="Images, PDFs, docs, spreadsheets, and text files"
+        />
       )}
 
       {showEmptyState && renderEmptyState && !showOnboarding ? (
