@@ -581,10 +581,18 @@ replaced.
 Android signing files and the Android Firebase push configuration are local and
 gitignored at `apps/mobile/credentials.json`,
 `apps/mobile/credentials/android/keystore.jks`, and
-`apps/mobile/google-services.json`. A self-hosted runner supplies them from
-`$HOME/.overtchat/mobile-credentials`, including `google-services.json`, because
-the release workflow installs and evaluates them before the build. Retrieve a
-missing local copy through EAS credentials rather than committing it.
+`apps/mobile/google-services.json`. The release workflow writes them on a
+GitHub-hosted runner from these repository secrets before it evaluates the
+Expo config:
+
+- `ANDROID_CREDENTIALS_JSON`: the complete `credentials.json`, whose
+  `keystorePath` stays `credentials/android/keystore.jks`.
+- `ANDROID_KEYSTORE_BASE64`: the upload keystore, base64-encoded without line
+  wraps.
+- `ANDROID_GOOGLE_SERVICES_JSON`: the complete `google-services.json`.
+
+Set each through `gh secret set <name>` from standard input. Retrieve a missing
+local copy through EAS credentials rather than committing it.
 
 The root `.easignore` preserves the root and mobile Git exclusions but includes
 `apps/mobile/google-services.json` in the EAS build archive. Keep these exclusions

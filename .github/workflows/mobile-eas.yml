@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build-android:
     if: github.event_name == 'push' || (inputs.platform != 'ios' && inputs.platform != 'ios-release')
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -71,16 +71,22 @@ jobs:
 
       # The gate below evaluates the Expo config, so gitignored mobile secret
       # material must be installed before any config evaluation.
-      - name: Install local Android credentials
+      - name: Install Android release credentials
+        working-directory: apps/mobile
+        env:
+          ANDROID_CREDENTIALS_JSON: ${{ secrets.ANDROID_CREDENTIALS_JSON }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
         run: |
-          CREDENTIALS_DIR="${OVERTCHAT_MOBILE_CREDENTIALS_DIR:-$HOME/.overtchat/mobile-credentials}"
-          if [[ ! -f apps/mobile/credentials.json ]]; then
-            cp "$CREDENTIALS_DIR/credentials.json" apps/mobile/credentials.json
-            cp -R "$CREDENTIALS_DIR/credentials" apps/mobile/credentials
+          if [[ -z "$ANDROID_CREDENTIALS_JSON" || -z "$ANDROID_KEYSTORE_BASE64" || -z "$ANDROID_GOOGLE_SERVICES_JSON" ]]; then
+            echo "::error::Configure ANDROID_CREDENTIALS_JSON, ANDROID_KEYSTORE_BASE64, and ANDROID_GOOGLE_SERVICES_JSON in GitHub Actions secrets."
+            exit 1
           fi
-          if [[ ! -f apps/mobile/google-services.json ]]; then
-            cp "$CREDENTIALS_DIR/google-services.json" apps/mobile/google-services.json
-          fi
+          umask 077
+          mkdir -p credentials/android
+          printf '%s' "$ANDROID_CREDENTIALS_JSON" > credentials.json
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > credentials/android/keystore.jks
+          printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON" > google-services.json
 
       # A secret-visibility DSN is unreadable here and ships crash reporting
       # silently disabled, which is how 1.2.3 went out.
@@ -195,7 +201,7 @@ jobs:
   publish-android:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')
     needs: [build-android, smoke-android]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     defaults:
