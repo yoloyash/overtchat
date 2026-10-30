@@ -298,6 +298,7 @@ export class AgentSessionRuntime {
   private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
+  private readonly compactionStartWaiters = new Set<() => void>();
   private terminalDuringAbort = false;
   private readonly eventClassifier: AgentRuntimeEventClassifier;
   private pendingInteraction:
@@ -400,6 +401,10 @@ export class AgentSessionRuntime {
       };
       if (event.type === "usage_update") {
         this.receiveUsage(event);
+      }
+      if (event.type === "compaction_start") {
+        for (const waiter of this.compactionStartWaiters) waiter();
+        this.compactionStartWaiters.clear();
       }
       if (event.type === "compaction_start" && this.usagePoller) {
         this.usagePoller.stop();
@@ -868,7 +873,7 @@ export class AgentSessionRuntime {
             ),
           );
       case "compact":
-        return this.client.compact(command.customInstructions);
+        return this.startCompaction(command.customInstructions);
       case "set_auto_compaction":
         return this.client
           .setAutoCompaction(command.enabled)
@@ -1648,6 +1653,44 @@ export class AgentSessionRuntime {
         status: this.status,
         startedAt: this.activeTurnStartedAt,
       },
+    });
+  }
+
+  /**
+   * Acknowledge a manual compaction once the provider starts it. Providers
+   * that only answer when compaction ends would otherwise hold the command,
+   * and every later command for the session, for the whole compaction.
+   */
+  private startCompaction(customInstructions?: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      let acknowledged = false;
+      const onStart = () => {
+        acknowledged = true;
+        resolve(undefined);
+      };
+      this.compactionStartWaiters.add(onStart);
+      Promise.resolve()
+        .then(() => this.client.compact(customInstructions))
+        .then(
+        (result) => {
+          this.compactionStartWaiters.delete(onStart);
+          if (!acknowledged) resolve(result);
+        },
+        (error) => {
+          this.compactionStartWaiters.delete(onStart);
+          if (!acknowledged) {
+            reject(error);
+            return;
+          }
+          if (this.stopped || this.status === "exited") return;
+          this.error = errorMessage(error);
+          this.publish({
+            type: "runtime_event",
+            data: { type: "rpc_error", command: "compact", error: this.error },
+          });
+          this.publishStatus();
+        },
+      );
     });
   }
 
