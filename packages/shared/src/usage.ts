@@ -48,3 +48,11 @@ export function combinePricedUsage(
     ),
   };
 }
+
+const NANO_USD_PER_USD = 1_000_000_000;
+
+/** Dollar amount with three decimals; negative values clamp to zero. */
+export function formatNanoUsd(nanoUsd: number): string {
+  const usd = Math.max(0, nanoUsd) / NANO_USD_PER_USD;
+  return `$${usd.toFixed(3)}`;
+}
