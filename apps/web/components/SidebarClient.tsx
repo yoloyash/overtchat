@@ -6,18 +6,24 @@ import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
   Check,
+  CheckCheck,
   ChevronRight,
   ListFilter,
   GripVertical,
   FolderPlus,
+  History,
   Library,
   MoreHorizontal,
   PanelLeft,
   Pencil,
   RefreshCw,
   Search,
+  SquarePen,
 } from "lucide-react";
-import type { AgentProviderId } from "@overtchat/agent-bridge";
+import type {
+  AgentConnectionListItem,
+  AgentProviderId,
+} from "@overtchat/agent-bridge";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import { SidebarChatList, SidebarItem } from "@/components/SidebarChatList";
 import {
@@ -25,6 +31,21 @@ import {
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
+import { SidebarAgentStatusList } from "@/components/SidebarAgentStatusList";
+import {
+  useAgentSidebarGrouping,
+  type AgentSidebarGrouping,
+} from "@/components/agents/useAgentSidebarGrouping";
+import {
+  SidebarModeToggle,
+  useSidebarMode,
+} from "@/components/SidebarModeToggle";
+import {
+  agentAttentionCounts,
+  agentAttentionSections,
+} from "@/lib/agents/attention";
+import { groupAgentWorkspaces } from "@/lib/agents/workspaces";
+import { useSetAgentSessionRead } from "@/lib/queries/agentSessionRead";
 import { useSidebar } from "@/components/sidebar-context";
 import { useActiveChatIds, useChats } from "@/lib/queries/chats";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
@@ -110,6 +131,109 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
     }));
   }, [chats, projectOptions]);
 
+  const chatSidebar = (
+    <>
+      <nav className="flex flex-col gap-0.5 py-1">
+        <Link
+          to="/"
+          onClick={(e) => {
+            closeMobile();
+            if (pathname === "/") {
+              // Reloading `/` starts a new draft and keeps its project.
+              e.preventDefault();
+              void router.invalidate();
+            }
+          }}
+          className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
+        >
+          <Pencil className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">New chat</span>
+          <Shortcut keys={["Ctrl", "Shift", "O"]} />
+          <LinkPendingIndicator to="/" />
+        </Link>
+        <button
+          type="button"
+          onClick={() => {
+            closeMobile();
+            openPalette();
+          }}
+          className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
+        >
+          <Search className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1 text-left">Search chats</span>
+          <Shortcut keys={["Ctrl", "K"]} />
+        </button>
+        <Link
+          to="/library"
+          onClick={closeMobile}
+          aria-current={pathname === "/library" ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+            pathname === "/library" && "bg-sidebar-accent",
+          )}
+        >
+          <Library className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">Library</span>
+          <LinkPendingIndicator to="/library" />
+        </Link>
+        <Link
+          to="/activity"
+          onClick={closeMobile}
+          className={cn(
+            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+            pathname.startsWith("/activity") && "bg-sidebar-accent",
+          )}
+        >
+          <Activity className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">Activity</span>
+          <LinkPendingIndicator to="/activity" />
+        </Link>
+      </nav>
+
+      {chats.some((chat) => chat.pinned) && (
+        <section aria-label="Pinned chats">
+          <SectionLabel>Pinned</SectionLabel>
+          <ul className="flex flex-col gap-0.5">
+            {chats.filter((chat) => chat.pinned).map((chat) => (
+              <SidebarItem
+                key={chat.id}
+                chat={chat}
+                projects={projectOptions}
+                currentProjectId={chat.projectId}
+                generating={activeChats.has(chat.id)}
+                pinningSupported={pinningSupported}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <SectionLabel>Projects</SectionLabel>
+      <SidebarProjects
+        projects={projectsWithChats}
+        activeChatIds={activeChats}
+        pinningSupported={pinningSupported}
+      />
+      <button
+        type="button"
+        onClick={() => setCreatingProject(true)}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+      >
+        <FolderPlus className="size-4 shrink-0" />
+        <span>New project</span>
+      </button>
+
+
+      <SidebarChatList
+        chats={unprojected}
+        emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
+        projects={projectOptions}
+        activeChatIds={activeChats}
+        pinningSupported={pinningSupported}
+      />
+    </>
+  );
+
   return (
     <>
       <div data-titlebar data-titlebar-inset className="flex h-12 shrink-0 items-center justify-between px-3">
@@ -124,107 +248,11 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
-        <nav className="flex flex-col gap-0.5 py-1">
-          <Link
-            to="/"
-            onClick={(e) => {
-              closeMobile();
-              if (pathname === "/") {
-                // Reloading `/` starts a new draft and keeps its project.
-                e.preventDefault();
-                void router.invalidate();
-              }
-            }}
-            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
-          >
-            <Pencil className="size-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1">New chat</span>
-            <Shortcut keys={["Ctrl", "Shift", "O"]} />
-            <LinkPendingIndicator to="/" />
-          </Link>
-          <button
-            type="button"
-            onClick={() => {
-              closeMobile();
-              openPalette();
-            }}
-            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
-          >
-            <Search className="size-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1 text-left">Search chats</span>
-            <Shortcut keys={["Ctrl", "K"]} />
-          </button>
-          <Link
-            to="/library"
-            onClick={closeMobile}
-            aria-current={pathname === "/library" ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
-              pathname === "/library" && "bg-sidebar-accent",
-            )}
-          >
-            <Library className="size-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1">Library</span>
-            <LinkPendingIndicator to="/library" />
-          </Link>
-          <Link
-            to="/activity"
-            onClick={closeMobile}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
-              pathname.startsWith("/activity") && "bg-sidebar-accent",
-            )}
-          >
-            <Activity className="size-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1">Activity</span>
-            <LinkPendingIndicator to="/activity" />
-          </Link>
-        </nav>
-
-        {chats.some((chat) => chat.pinned) && (
-          <section aria-label="Pinned chats">
-            <SectionLabel>Pinned</SectionLabel>
-            <ul className="flex flex-col gap-0.5">
-              {chats.filter((chat) => chat.pinned).map((chat) => (
-                <SidebarItem
-                  key={chat.id}
-                  chat={chat}
-                  projects={projectOptions}
-                  currentProjectId={chat.projectId}
-                  generating={activeChats.has(chat.id)}
-                  pinningSupported={pinningSupported}
-                />
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <SectionLabel>Projects</SectionLabel>
-        <SidebarProjects
-          projects={projectsWithChats}
-          activeChatIds={activeChats}
-          pinningSupported={pinningSupported}
-        />
-        <button
-          type="button"
-          onClick={() => setCreatingProject(true)}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
-        >
-          <FolderPlus className="size-4 shrink-0" />
-          <span>New project</span>
-        </button>
-
-        {isAdmin && <AdminAgentWorkspaces />}
-
-        <SidebarChatList
-          chats={unprojected}
-          emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
-          projects={projectOptions}
-          activeChatIds={activeChats}
-          pinningSupported={pinningSupported}
-        />
-      </div>
+      {isAdmin ? (
+        <AdminSidebarBody chat={chatSidebar} />
+      ) : (
+        <div className="flex-1 overflow-y-auto px-2 pb-2">{chatSidebar}</div>
+      )}
 
       <CreateProjectDialog
         open={creatingProject}
@@ -234,8 +262,78 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function AdminAgentWorkspaces() {
+/** Admins switch between chats and agents; agent state streams in both. */
+function AdminSidebarBody({ chat }: { chat: React.ReactNode }) {
+  const mode = useSidebarMode();
   const { data: connections = [], isPending } = useAgentConnections();
+  useAgentConnectionSessionDirectory(connections);
+  const agentCounts = useMemo(
+    () => agentAttentionCounts(connections),
+    [connections],
+  );
+  return (
+    <>
+      <SidebarModeToggle mode={mode} agentCounts={agentCounts} />
+      <div className="flex-1 overflow-y-auto px-2 pb-2">
+        {mode === "agents" ? (
+          <AgentsSidebar connections={connections} isPending={isPending} />
+        ) : (
+          chat
+        )}
+      </div>
+    </>
+  );
+}
+
+function AgentsSidebar({
+  connections,
+  isPending,
+}: {
+  connections: AgentConnectionListItem[];
+  isPending: boolean;
+}) {
+  const { closeMobile } = useSidebar();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  return (
+    <>
+      <nav aria-label="Agents" className="flex flex-col gap-0.5 py-1">
+        <Link
+          to="/agents"
+          onClick={closeMobile}
+          className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
+        >
+          <SquarePen className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">New agent</span>
+          <LinkPendingIndicator to="/agents" />
+        </Link>
+        <Link
+          to="/agents/history"
+          onClick={closeMobile}
+          aria-current={pathname === "/agents/history" ? "page" : undefined}
+          className={cn(
+            "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+            pathname === "/agents/history" && "bg-sidebar-accent",
+          )}
+        >
+          <History className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">History</span>
+          <LinkPendingIndicator to="/agents/history" />
+        </Link>
+      </nav>
+      <AgentSessionList connections={connections} isPending={isPending} />
+    </>
+  );
+}
+
+/** The agent sessions, grouped by status or by workspace. */
+function AgentSessionList({
+  connections,
+  isPending,
+}: {
+  connections: AgentConnectionListItem[];
+  isPending: boolean;
+}) {
+  const [grouping, setGrouping] = useAgentSidebarGrouping();
   const refresh = useRefreshAllAgentWorkspaces();
   const [organizing, setOrganizing] = useState(false);
   const doneRef = useRef<HTMLButtonElement>(null);
@@ -246,7 +344,6 @@ function AdminAgentWorkspaces() {
     previousOrganizing.current = organizing;
     (organizing ? doneRef : optionsRef).current?.focus();
   }, [organizing]);
-  useAgentConnectionSessionDirectory(connections);
   const { closeMobile, drawerRef } = useSidebar();
   const [providerFilter, setProviderFilter] = useState<AgentProviderId | null>(
     null,
@@ -269,11 +366,20 @@ function AdminAgentWorkspaces() {
     providerFilter && providers.includes(providerFilter)
       ? providerFilter
       : null;
+  const setRead = useSetAgentSessionRead();
+  const readySessionIds = useMemo(
+    () =>
+      agentAttentionSections(
+        groupAgentWorkspaces(connections),
+        activeProviderFilter,
+      ).ready.map(({ item }) => item.session.id),
+    [connections, activeProviderFilter],
+  );
 
   if (!hasWorkspaces) {
     return (
       <>
-        <SectionLabel>Agent workspaces</SectionLabel>
+        <AgentListLabel>Workspaces</AgentListLabel>
         {isPending ? (
           <p className="px-2 py-1.5 text-xs text-muted-foreground">
             Loading workspaces…
@@ -281,7 +387,7 @@ function AdminAgentWorkspaces() {
         ) : (
           <>
             <p className="px-2 py-1 text-xs text-muted-foreground">
-              Connect a folder to start an agent chat.
+              Connect a folder to start an agent session.
             </p>
             <Link
               to="/settings/connections"
@@ -298,29 +404,29 @@ function AdminAgentWorkspaces() {
     );
   }
 
-  async function refreshAllChats() {
+  async function refreshSessions() {
     try {
       const result = await refresh.mutateAsync();
       const synced = result.created + result.refreshed;
       if (synced === 0) {
         toast.error({
-          title: "Chats could not be refreshed",
+          title: "Sessions could not be refreshed",
           description: result.failures[0]?.message,
         });
       } else if (result.failures.length > 0) {
         toast.warning({
-          title: "Chats refreshed with some errors",
+          title: "Sessions refreshed with some errors",
           description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced; ${result.failures.length} failed.`,
         });
       } else {
         toast.success({
-          title: "Chats refreshed",
+          title: "Sessions refreshed",
           description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced.`,
         });
       }
     } catch (error) {
       toast.error({
-        title: "Chats could not be refreshed",
+        title: "Sessions could not be refreshed",
         description:
           error instanceof Error ? error.message : "Refresh failed.",
       });
@@ -329,7 +435,7 @@ function AdminAgentWorkspaces() {
 
   return (
     <>
-      <SectionLabel
+      <AgentListLabel
         action={
           organizing ? (
             <Button
@@ -348,13 +454,13 @@ function AdminAgentWorkspaces() {
                   ref={optionsRef}
                   aria-label={
                     activeProviderFilter
-                      ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                      : "Agent workspace options"
+                      ? `Agent list options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "Agent list options"
                   }
                   title={
                     activeProviderFilter
-                      ? `Workspace options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                      : "Workspace options"
+                      ? `List options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "List options"
                   }
                   className={cn(
                     "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
@@ -377,31 +483,26 @@ function AdminAgentWorkspaces() {
                         motionClasses.popup,
                       )}
                     >
-                      <Menu.Item
-                        render={
-                          <Link
-                            to="/settings/connections"
-                            search={{ add: "1" }}
-                            onClick={closeMobile}
-                          />
+                      <Menu.RadioGroup
+                        value={grouping}
+                        onValueChange={(value) =>
+                          setGrouping(value as AgentSidebarGrouping)
                         }
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
-                        <FolderPlus className="size-3.5 text-muted-foreground" />
-                        <span>Add workspace…</span>
-                      </Menu.Item>
-                      <Menu.Item
-                        onClick={() => setOrganizing(true)}
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                      >
-                        <GripVertical className="size-3.5 text-muted-foreground" />
-                        <span>Organize workspaces</span>
-                      </Menu.Item>
+                        <Menu.GroupLabel className="px-2 pt-1 pb-0.5 text-xs text-muted-foreground">
+                          Group by
+                        </Menu.GroupLabel>
+                        <RadioMenuItem value="status" label="Status" />
+                        <RadioMenuItem
+                          value="workspace"
+                          label="Workspace"
+                        />
+                      </Menu.RadioGroup>
                       {providers.length > 1 && (
                         <Menu.SubmenuRoot>
                           <Menu.SubmenuTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[popup-open]:bg-accent">
                             <ListFilter className="size-3.5 text-muted-foreground" />
-                            <span>Filter chats</span>
+                            <span>Filter by agent</span>
                             <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
                           </Menu.SubmenuTrigger>
                           <Menu.Portal container={drawerRef}>
@@ -426,12 +527,12 @@ function AdminAgentWorkspaces() {
                                     )
                                   }
                                 >
-                                  <ProviderFilterMenuItem
+                                  <RadioMenuItem
                                     value="all"
                                     label="All agents"
                                   />
                                   {providers.map((provider) => (
-                                    <ProviderFilterMenuItem
+                                    <RadioMenuItem
                                       key={provider}
                                       value={provider}
                                       label={
@@ -446,9 +547,44 @@ function AdminAgentWorkspaces() {
                         </Menu.SubmenuRoot>
                       )}
                       <Menu.Separator className="mx-1 my-1 h-px bg-border" />
+                      {readySessionIds.length > 0 && (
+                        <Menu.Item
+                          onClick={() => {
+                            for (const sessionId of readySessionIds) {
+                              setRead.mutate({ sessionId, read: true });
+                            }
+                          }}
+                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        >
+                          <CheckCheck className="size-3.5 text-muted-foreground" />
+                          <span>Mark all as read</span>
+                        </Menu.Item>
+                      )}
+                      {grouping === "workspace" && (
+                        <Menu.Item
+                          onClick={() => setOrganizing(true)}
+                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        >
+                          <GripVertical className="size-3.5 text-muted-foreground" />
+                          <span>Organize workspaces</span>
+                        </Menu.Item>
+                      )}
+                      <Menu.Item
+                        render={
+                          <Link
+                            to="/settings/connections"
+                            search={{ add: "1" }}
+                            onClick={closeMobile}
+                          />
+                        }
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <FolderPlus className="size-3.5 text-muted-foreground" />
+                        <span>Add workspace…</span>
+                      </Menu.Item>
                       <Menu.Item
                         disabled={refresh.isPending}
-                        onClick={() => void refreshAllChats()}
+                        onClick={() => void refreshSessions()}
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
                         <RefreshCw
@@ -458,7 +594,7 @@ function AdminAgentWorkspaces() {
                               "animate-spin motion-reduce:animate-none",
                           )}
                         />
-                        <span>Refresh all chats</span>
+                        <span>Refresh sessions</span>
                       </Menu.Item>
                     </Menu.Popup>
                   </Menu.Positioner>
@@ -468,18 +604,25 @@ function AdminAgentWorkspaces() {
           )
         }
       >
-        Agent workspaces
-      </SectionLabel>
-      <SidebarAgentWorkspaces
-        connections={connections}
-        providerFilter={activeProviderFilter}
-        organizing={organizing}
-      />
+        {grouping === "workspace" ? "Workspaces" : "Sessions"}
+      </AgentListLabel>
+      {grouping === "workspace" ? (
+        <SidebarAgentWorkspaces
+          connections={connections}
+          providerFilter={activeProviderFilter}
+          organizing={organizing}
+        />
+      ) : (
+        <SidebarAgentStatusList
+          connections={connections}
+          providerFilter={activeProviderFilter}
+        />
+      )}
     </>
   );
 }
 
-function ProviderFilterMenuItem({
+function RadioMenuItem({
   value,
   label,
 }: {
@@ -519,6 +662,23 @@ function SectionLabel({
         </span>
         {badge}
       </div>
+      {action}
+    </div>
+  );
+}
+
+function AgentListLabel({
+  children,
+  action,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mt-3 mb-0.5 flex min-h-6 items-center gap-2 px-2">
+      <h2 className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+        {children}
+      </h2>
       {action}
     </div>
   );

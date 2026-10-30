@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
+import { groupAgentsByWorkspace } from "./helpers/agent-attention";
 import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const workspaceNames = ["Alpha", "Beta", "Gamma"];
@@ -31,7 +32,9 @@ async function setup(
   page: Page,
   running = false,
   fixture?: AgentConnectionListItem[],
+  grouping: "status" | "workspace" = "workspace",
 ) {
+  if (grouping === "workspace") await groupAgentsByWorkspace(page);
   let names = [...workspaceNames];
   await page.context().route("**/api/agent-connections", (route) => {
     const items = fixture ?? connections(names);
@@ -71,12 +74,20 @@ async function setup(
     .route("**/api/agent-workspaces/*/git-status", (route) =>
       route.fulfill({ json: { status: { isGit: false } } }),
     );
+  await page
+    .context()
+    .route("**/api/agent-workspaces/*/catalog?*", (route) =>
+      route.fulfill({ json: { provider: "codex", models: [], modes: [] } }),
+    );
   await page.goto(await setupUrl());
   await page.locator("#name").fill("Workspace Admin");
   await page.locator("#email").fill("workspace-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
+  // Agent workspaces are listed in the sidebar's Agents mode.
+  await page.goto("/agents");
+  await page.waitForURL(/\/agents\/new\?/);
   return (next: string[]) => {
     names = next;
   };
@@ -105,7 +116,7 @@ async function expectOrder(page: Page, names: string[]) {
 async function organize(page: Page) {
   if (await page.getByRole("button", { name: "Done", exact: true }).isVisible())
     return;
-  await page.getByRole("button", { name: /^Agent workspace options/ }).click();
+  await page.getByRole("button", { name: /^Agent list options/ }).click();
   await page.getByRole("menuitem", { name: "Organize workspaces" }).click();
   await expect(
     page.getByRole("button", { name: "Done", exact: true }),
@@ -206,12 +217,12 @@ function sidebarDesignFixture(): AgentConnectionListItem[] {
 }
 
 for (const mobile of [false, true]) {
-  test(`compact workspace rows expose activity, recent chats, and persistent expansion${mobile ? " on mobile" : ""}`, async ({
+  test(`sessions group by status or workspace with compact rows and persistent expansion${mobile ? " on mobile" : ""}`, async ({
     page,
   }, testInfo) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
-    await setup(page, false, sidebarDesignFixture());
+    await setup(page, false, sidebarDesignFixture(), "status");
     await page
       .context()
       .route("**/api/agent-workspaces/*/git-status", (route) =>
@@ -241,8 +252,14 @@ for (const mobile of [false, true]) {
     if (mobile)
       await page.getByRole("button", { name: "Open sidebar" }).click();
 
-    const recent = page.getByRole("list", { name: "Recent agent chats" });
-    await expect(recent.getByRole("link")).toHaveCount(5);
+    // Sessions are grouped by status first, each listed once.
+    const working = page.getByRole("region", { name: "Working", exact: true });
+    await expect(working.getByRole("link")).toHaveCount(1);
+    await expect(working.getByRole("link")).toHaveAccessibleName(
+      /^Working: Run the release checks \d+[smh]/,
+    );
+    const recent = page.getByRole("region", { name: "Done", exact: true });
+    await expect(recent.getByRole("link")).toHaveCount(7);
     expect(
       await recent
         .getByRole("link")
@@ -253,16 +270,41 @@ for (const mobile of [false, true]) {
       "/agents/local-2",
       "/agents/local-3",
       "/agents/local-4",
+      "/agents/local-5",
+      "/agents/local-6",
     ]);
     await expect(recent).toContainText("overtchat · home-server-2");
     await expect(recent).toContainText("overtchat · macbook");
+    await recent.getByRole("button", { name: "Show 1 more" }).click();
+    await expect(recent.getByRole("link")).toHaveCount(8);
+    await recent.getByRole("button", { name: "Show less" }).click();
+    await expect(recent.getByRole("link")).toHaveCount(7);
+    const sidebarPanel = mobile
+      ? page.getByRole("dialog", { name: "Navigation" })
+      : page.locator("[data-desktop-sidebar-panel]");
+    expect(
+      await recent.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    await sidebarPanel.screenshot({
+      path: testInfo.outputPath(
+        `status-design-${mobile ? "mobile" : "desktop"}.png`,
+      ),
+    });
 
+    // The workspace grouping lists the same sessions under their folders.
+    await page
+      .getByRole("button", { name: "Agent list options", exact: true })
+      .click();
+    await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+    await expect(recent).toHaveCount(0);
     const expand = list(page)
       .getByRole("button", { name: "Expand overtchat", exact: true })
       .first();
     await expect(expand).toContainText("macbook");
     await expect(
-      expand.getByRole("status", { name: "1 running chat in overtchat" }),
+      expand.getByRole("status", { name: "Working in overtchat" }),
     ).toBeVisible();
     await expect(
       expand.getByLabel("3 changed files", { exact: true }),
@@ -270,14 +312,14 @@ for (const mobile of [false, true]) {
     expect((await expand.boundingBox())!.height).toBe(mobile ? 44 : 40);
     await expand.click();
     const local = list(page).locator(":scope > li").first();
-    await expect(local.getByRole("link")).toHaveCount(6);
+    await expect(local.getByRole("link")).toHaveCount(7);
     await expect(
       local.locator('a[href="/agents/local-7"]'),
     ).toBeVisible();
-    await local.getByRole("button", { name: "Show 2 more" }).click();
+    await local.getByRole("button", { name: "Show 1 more" }).click();
     await expect(local.getByRole("link")).toHaveCount(8);
     await local.getByRole("button", { name: "Show less" }).click();
-    await expect(local.getByRole("link")).toHaveCount(6);
+    await expect(local.getByRole("link")).toHaveCount(7);
 
     // Long names and metadata must fit the sidebar, including on touch screens.
     expect(
@@ -285,44 +327,34 @@ for (const mobile of [false, true]) {
         (element) => element.scrollWidth <= element.clientWidth,
       ),
     ).toBe(true);
-    await (
-      mobile
-        ? page.getByRole("dialog", { name: "Navigation" })
-        : page.locator("[data-desktop-sidebar-panel]")
-    ).screenshot({
+    await sidebarPanel.screenshot({
       path: testInfo.outputPath(
         `workspace-design-${mobile ? "mobile" : "desktop"}.png`,
       ),
     });
+    // The grouping and each workspace's expansion survive a reload.
     await page.reload();
     if (mobile)
       await page.getByRole("button", { name: "Open sidebar" }).click();
     await expect(
       local.getByRole("button", { name: "Collapse overtchat" }),
     ).toHaveAttribute("aria-expanded", "true");
-    await expect(local.getByRole("link")).toHaveCount(6);
-
-    await page.getByRole("button", { name: "Recent chats", exact: true }).click();
-    await expect(recent).toBeHidden();
-    await page.reload();
-    if (mobile)
-      await page.getByRole("button", { name: "Open sidebar" }).click();
-    await expect(recent).toBeHidden();
-    await page.getByRole("button", { name: "Recent chats", exact: true }).click();
+    await expect(local.getByRole("link")).toHaveCount(7);
 
     await page
-      .getByRole("button", { name: "Agent workspace options", exact: true })
+      .getByRole("button", { name: "Agent list options", exact: true })
       .click();
-    const filter = page.getByRole("menuitem", { name: "Filter chats" });
+    const filter = page.getByRole("menuitem", { name: "Filter by agent" });
     if (mobile) await filter.click();
     else await filter.hover();
     await page.getByRole("menuitemradio", { name: "Pi", exact: true }).click();
-    await expect(recent.getByRole("link")).toHaveCount(1);
-    await expect(recent).toContainText("Review the sidebar design");
-    await expect(local.getByRole("status")).toHaveCount(0);
+    await expect(local.getByRole("link")).toHaveCount(1);
+    await expect(local).toContainText("Review the sidebar design");
+    await expect(
+      local.getByRole("status", { name: "Working in overtchat" }),
+    ).toHaveCount(0);
 
-    await local.getByRole("button", { name: "Collapse overtchat" }).click();
-    await recent.getByRole("link").click();
+    await local.getByRole("link").click();
     await page.waitForURL("**/agents/pi-session");
     if (mobile) {
       await expect(
@@ -334,14 +366,10 @@ for (const mobile of [false, true]) {
       local.getByRole("button", { name: "Collapse overtchat" }),
     ).toHaveAttribute("aria-expanded", "true");
     await expect(
-      local.getByRole("link", {
-        name: "Review the sidebar design",
-        exact: true,
-      }),
+      local.getByRole("link", { name: /^Review the sidebar design / }),
     ).toHaveAttribute("aria-current", "page");
 
-    // A saved collapse must not hide a chat reached outside the Recent list,
-    // including a selected chat older than the five-row preview.
+    // A saved collapse must not hide a chat reached from elsewhere.
     await local.getByRole("button", { name: "Collapse overtchat" }).click();
     await page.goto("/agents/local-6");
     if (mobile)
@@ -380,7 +408,7 @@ test("mouse and keyboard reorder grouped workspaces, persist locally, and preser
   await expect(
     list(page).getByRole("button", { name: "Collapse Gamma" }),
   ).toBeVisible();
-  await expect(list(page).getByText("No agent chats")).toHaveCount(1);
+  await expect(list(page).getByText("No sessions")).toHaveCount(1);
   await list(page).screenshot({
     path: test.info().outputPath("workspace-order.png"),
   });
@@ -513,6 +541,10 @@ test("invalid saved data and unavailable storage do not break the sidebar", asyn
     };
   });
   await page.reload();
+  // Without storage the sidebar opens in its default grouping; switching
+  // still works for the rest of the visit.
+  await page.getByRole("button", { name: "Agent list options", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Workspace" }).click();
   await expectOrder(page, workspaceNames);
   await drag(page, "Gamma", "Alpha");
   await expectOrder(page, ["Gamma", "Alpha", "Beta"]);
@@ -521,7 +553,7 @@ test("invalid saved data and unavailable storage do not break the sidebar", asyn
 test("saved order updates another open tab", async ({ page, context }) => {
   await setup(page);
   const second = await context.newPage();
-  await second.goto("/");
+  await second.goto("/agents");
   await expectOrder(second, workspaceNames);
   await drag(page, "Gamma", "Alpha");
   await expectOrder(second, ["Gamma", "Alpha", "Beta"]);
@@ -588,7 +620,7 @@ test("Organize controls stay on the right and Done restores the normal sidebar",
   ).toBeVisible();
 });
 
-test("Filter chats submenu retains the provider selection", async ({
+test("Filter by agent submenu retains the provider selection", async ({
   page,
 }) => {
   await setup(page);
@@ -596,27 +628,27 @@ test("Filter chats submenu retains the provider selection", async ({
     .getByRole("button", { name: "Expand Alpha", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Agent workspace options", exact: true })
+    .getByRole("button", { name: "Agent list options", exact: true })
     .click();
   await expect(
     page.getByRole("menuitemradio", { name: "Codex", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await page.getByRole("menuitemradio", { name: "Codex", exact: true }).click();
-  await expect(list(page).getByText("No Codex chats")).toBeVisible();
+  await expect(list(page).getByText("No Codex sessions")).toBeVisible();
   const options = page.getByRole("button", {
-    name: "Agent workspace options, filtered by Codex",
+    name: "Agent list options, filtered by Codex",
     exact: true,
   });
   await options.click();
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await expect(
     page.getByRole("menuitemradio", { name: "Codex", exact: true }),
   ).toHaveAttribute("aria-checked", "true");
   await page
     .getByRole("menuitemradio", { name: "All agents", exact: true })
     .click();
-  await expect(list(page).getByText("No agent chats")).toBeVisible();
+  await expect(list(page).getByText("No sessions")).toBeVisible();
 });
 
 for (const mobile of [false, true]) {
@@ -721,7 +753,11 @@ test("removing the last workspace retries a partial failure using only workspace
   await expect(dialog).toBeHidden();
   expect(deleted).toEqual(["codex-Gamma", "pi-Gamma"]);
   await expect(list(page)).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Add workspace", exact: true }))
+  await expect(
+    page
+      .getByRole("complementary")
+      .getByRole("link", { name: "Add workspace", exact: true }),
+  )
     .toHaveAttribute("href", "/settings/connections?add=1");
 });
 
@@ -782,7 +818,7 @@ for (const mobile of [false, true]) {
     if (mobile)
       await page.getByRole("button", { name: "Open sidebar" }).click();
     const options = page.getByRole("button", {
-      name: "Agent workspace options",
+      name: "Agent list options",
       exact: true,
     });
     await options.focus();
@@ -801,7 +837,12 @@ for (const mobile of [false, true]) {
       name: "Add workspace…",
       exact: true,
     });
-    await expect(page.getByRole("menuitem").first()).toHaveText("Add workspace…");
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Filter by agent",
+      "Organize workspaces",
+      "Add workspace…",
+      "Refresh sessions",
+    ]);
     await expect(addWorkspace).toHaveAttribute("href", "/settings/connections?add=1");
     await addWorkspace.focus();
     await page.keyboard.press("Enter");

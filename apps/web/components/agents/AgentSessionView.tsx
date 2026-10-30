@@ -76,6 +76,7 @@ import { AgentMessageList } from "./AgentMessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import { useSpeech } from "@/lib/useSpeech";
 import { authClient } from "@/lib/auth/client";
+import { useMarkAgentSessionSeen } from "@/lib/queries/agentSessionRead";
 import type { AgentRunActivity } from "./AgentActivity";
 import { AgentSessionContext } from "./AgentSessionContext";
 import { AgentSessionHeader } from "./AgentSessionHeader";
@@ -251,6 +252,7 @@ export function AgentSessionView({
   const providerLabel = agentProviderMetadata(provider).label;
   const navigate = useNavigate();
   const session = useAgentSession(sessionId);
+  useMarkAgentSessionSeen(sessionId);
   const speech = useSpeech();
   const stopSpeech = speech.stop;
   useEffect(() => () => stopSpeech(), [sessionId, stopSpeech]);

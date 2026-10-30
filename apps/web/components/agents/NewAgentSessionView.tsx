@@ -32,6 +32,7 @@ import {
   resolveAgentSessionDraftSelection,
 } from "@/lib/agents/sessionDraft";
 import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
+import { recentAgentSetups } from "@/lib/agents/setups";
 import {
   useAgentWorkspaceCatalog,
   useAgentConnections,
@@ -43,6 +44,7 @@ import { newAgentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
+import { AgentSetupPicker } from "./AgentSetupPicker";
 
 export function NewAgentSessionView({
   provider,
@@ -58,7 +60,7 @@ export function NewAgentSessionView({
   workspacePath: string;
   /** Session-storage draft holding the conversation being forked. */
   forkId: string | null;
-  /** Focus the workspace picker so a fork can move to another workspace. */
+  /** Focus the folder picker so a fork can move to another workspace. */
   chooseWorkspace: boolean;
 }) {
   const navigate = useNavigate();
@@ -69,16 +71,11 @@ export function NewAgentSessionView({
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
   const connections = useAgentConnections();
-  const [targetWorkspaceId, setTargetWorkspaceId] = useState(workspaceId);
-  const workspaceOptions = (connections.data ?? [])
-    .filter((connection) => connection.provider === provider)
-    .flatMap((connection) =>
-      connection.workspaces.map((workspace) => ({
-        id: workspace.id,
-        label: `${workspace.name} · ${connection.host.name}`,
-      })),
-    );
-  const catalog = useAgentWorkspaceCatalog(targetWorkspaceId, provider);
+  const catalog = useAgentWorkspaceCatalog(workspaceId, provider);
+  const setups = useMemo(
+    () => recentAgentSetups(connections.data ?? []),
+    [connections.data],
+  );
   const createSession = useCreateAgentSession();
   const [sendingFirstPrompt, setSendingFirstPrompt] = useState(false);
   const [modelId, setModelId] = useState("");
@@ -213,7 +210,7 @@ export function NewAgentSessionView({
     let sessionId: string;
     try {
       sessionId = await createSession.mutateAsync({
-        workspaceId: targetWorkspaceId,
+        workspaceId,
         provider,
         launchConfig,
       });
@@ -291,131 +288,112 @@ export function NewAgentSessionView({
         </span>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col">
-        <div className="flex flex-1 items-center justify-center px-6 text-center">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              New {providerMetadata.label} session
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {workspaceName}
-            </p>
+      {/* The title and setup sit on the composer, centred; on phones they drop to the thumb. */}
+      <main className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:justify-center md:pb-[12vh]">
+        <div className="mx-auto w-full max-w-3xl">
+          <h1 className="mb-8 pl-3.5 text-2xl tracking-tight max-md:sr-only">
+            New {providerMetadata.label} session
+          </h1>
+          {/* The first pill's icon lines up with the title and the composer's content. */}
+          <div className="mb-4 flex min-w-0 flex-wrap items-center gap-1 px-1.5">
+            {setups.some((setup) => setup.workspaceId === workspaceId) ? (
+              <AgentSetupPicker
+                setups={setups}
+                workspaceId={workspaceId}
+                // A fork keeps its agent: its history and launch settings belong to it.
+                lockedProvider={forkId ? provider : null}
+                fork={forkId}
+                focusWorkspace={chooseWorkspace}
+              />
+            ) : (
+              <p className="truncate px-2 text-sm leading-7 text-muted-foreground">
+                {workspaceName}
+              </p>
+            )}
           </div>
-        </div>
-
-        <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto max-w-3xl">
-            {forkError && (
-              <ErrorNotice className="mb-3" message="Could not restore the forked conversation. Return to the original session and fork again." />
-            )}
-            {catalog.isError && !catalog.data && (
-              <ErrorNotice className="mb-3" message={catalog.error} fallback="Model defaults could not be loaded." actions={
-                <Button type="button" variant="outline" size="sm" disabled={catalog.isFetching} onClick={() => void catalog.refetch()}>
-                  <RefreshCw /> Retry
-                </Button>
-              } />
-            )}
-            {forkContext && (
-              <label className="mb-3 block text-sm">
-                Workspace
-                <select
-                  autoFocus={chooseWorkspace}
-                  aria-label="Fork workspace"
-                  className="mt-1 block w-full rounded-md border bg-background p-2"
-                  value={targetWorkspaceId}
-                  onChange={(event) => setTargetWorkspaceId(event.target.value)}
-                >
-                  {!workspaceOptions.some(
-                    (workspace) => workspace.id === workspaceId,
-                  ) && <option value={workspaceId}>{workspaceName}</option>}
-                  {workspaceOptions.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {forkContext && (
-              <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                <span>Chat history attached</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setForkContext(null);
-                    if (forkId)
-                      window.sessionStorage.removeItem(
-                        agentForkDraftKey(forkId),
-                      );
-                  }}
-                >
-                  Remove
-                </Button>
-              </div>
-            )}
-            <AgentComposer
-              providerLabel={providerMetadata.label}
-              commands={[]}
-              queuedMessages={[]}
-              supportsSteer={false}
-              supportsImages={selectedModel?.input.includes("image") === true}
-              running={false}
-              pending={pending}
-              stopping={false}
-              disabled={!forkLoaded || forkError || loadingDefaults}
-              isAdmin={isAdmin}
-              controls={{
-                providerLabel: providerMetadata.label,
-                models: catalog.data?.models ?? [],
-                currentModel: selectedModel
-                  ? { provider: selectedModel.provider, id: selectedModel.id }
-                  : null,
-                thinkingLevel: selection.thinkingOptionId || null,
-                thinkingOptions: selectedModel?.thinkingOptions ?? [],
-                collaborationMode: "default",
-                collaborationModes: [],
-                fastModeEnabled: false,
-                fastModeAvailable: false,
-                modeId: selection.modeId,
-                modes: selection.modes,
-                disabled: pending,
-                modelLoading: loadingDefaults,
-                onSelectModel: (model) => {
-                  setModelId(model.id);
-                  setThinkingOptionId("");
-                  updateProviderPreferences({ model: model.id });
-                },
-                onSelectThinking: (level) => {
-                  if (!selectedModel) return;
-                  setThinkingOptionId(level);
-                  updateProviderPreferences({
-                    model: selectedModel.id,
-                    thinkingByModel: { [selectedModel.id]: level },
-                  });
-                },
-                onSelectCollaborationMode: () => undefined,
-                onToggleFastMode: () => undefined,
-                onSelectMode: (selectedModeId) => {
-                  setModeId(selectedModeId);
-                  updateProviderPreferences({ mode: selectedModeId });
-                },
-              }}
-              onSubmit={submit}
-              onStop={() => undefined}
-              onEditQueued={async () => false}
-              onDeleteQueued={async () => false}
-              onSteerQueued={async () => false}
-              draftUserId={authSession?.user.id}
-              // A fork's history lives only in this tab, so its message is not
-              // saved where a later ordinary new session would restore it.
-              draftScope={
-                forkId
-                  ? null
-                  : newAgentComposerDraftScope(workspaceId, provider)
-              }
-            />
-          </div>
+          {forkError && (
+            <ErrorNotice className="mb-3" message="Could not restore the forked conversation. Return to the original session and fork again." />
+          )}
+          {catalog.isError && !catalog.data && (
+            <ErrorNotice className="mb-3" message={catalog.error} fallback="Model defaults could not be loaded." actions={
+              <Button type="button" variant="outline" size="sm" disabled={catalog.isFetching} onClick={() => void catalog.refetch()}>
+                <RefreshCw /> Retry
+              </Button>
+            } />
+          )}
+          {forkContext && (
+            <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+              <span>Chat history attached</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setForkContext(null);
+                  if (forkId)
+                    window.sessionStorage.removeItem(
+                      agentForkDraftKey(forkId),
+                    );
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          )}
+          <AgentComposer
+            providerLabel={providerMetadata.label}
+            commands={[]}
+            queuedMessages={[]}
+            supportsSteer={false}
+            supportsImages={selectedModel?.input.includes("image") === true}
+            running={false}
+            pending={pending}
+            stopping={false}
+            disabled={!forkLoaded || forkError || loadingDefaults}
+            isAdmin={isAdmin}
+            controls={{
+              providerLabel: providerMetadata.label,
+              models: catalog.data?.models ?? [],
+              currentModel: selectedModel
+                ? { provider: selectedModel.provider, id: selectedModel.id }
+                : null,
+              thinkingLevel: selection.thinkingOptionId || null,
+              thinkingOptions: selectedModel?.thinkingOptions ?? [],
+              collaborationMode: "default",
+              collaborationModes: [],
+              fastModeEnabled: false,
+              fastModeAvailable: false,
+              modeId: selection.modeId,
+              modes: selection.modes,
+              disabled: pending,
+              modelLoading: loadingDefaults,
+              onSelectModel: (model) => {
+                setModelId(model.id);
+                setThinkingOptionId("");
+                updateProviderPreferences({ model: model.id });
+              },
+              onSelectThinking: (level) => {
+                if (!selectedModel) return;
+                setThinkingOptionId(level);
+                updateProviderPreferences({
+                  model: selectedModel.id,
+                  thinkingByModel: { [selectedModel.id]: level },
+                });
+              },
+              onSelectCollaborationMode: () => undefined,
+              onToggleFastMode: () => undefined,
+              onSelectMode: (selectedModeId) => {
+                setModeId(selectedModeId);
+                updateProviderPreferences({ mode: selectedModeId });
+              },
+            }}
+            onSubmit={submit}
+            onStop={() => undefined}
+            onEditQueued={async () => false}
+            onDeleteQueued={async () => false}
+            onSteerQueued={async () => false}
+            draftUserId={authSession?.user.id}
+            draftScope={newAgentComposerDraftScope(forkId)}
+          />
         </div>
       </main>
     </div>

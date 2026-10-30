@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { groupAgentsByWorkspace } from "./helpers/agent-attention";
 import { _electron, expect, test, type ElectronApplication, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
@@ -54,6 +55,7 @@ const textModel: AgentRuntimeSnapshot["models"][number] = {
 };
 
 test.beforeEach(resetE2eDatabase);
+test.beforeEach(({ page }) => groupAgentsByWorkspace(page));
 
 async function expectHorizontalMessageActions(actions: Locator) {
   const buttons = actions.getByRole("button");
@@ -544,9 +546,11 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
     .click();
   await page.waitForURL("**/agents/new?**");
   await expect(page.getByText("Chat history attached")).toBeVisible();
-  await expect(
-    page.getByRole("combobox", { name: "Fork workspace" }),
-  ).toHaveValue("workspace");
+  // "Fork in another workspace" lands on the folder pill; the agent is fixed.
+  const forkWorkspace = page.getByRole("combobox", { name: "Workspace", exact: true });
+  await expect(forkWorkspace).toContainText("Runtime test");
+  await expect(forkWorkspace).toBeFocused();
+  await expect(page.getByRole("combobox", { name: "Agent", exact: true })).toHaveCount(0);
   await expect(composer).toHaveValue("");
   expect(createdSessions).toBe(1);
   expect(submittedCommands.at(-1)).toMatchObject({
@@ -610,7 +614,10 @@ test("keeps unsent agent messages per session and new-session page", async ({
   );
   const composer = page.getByTestId("agent-composer").getByRole("combobox");
   const sessionLink = (name: string) =>
-    page.getByRole("link", { name, exact: true }).first();
+    page
+      .getByRole("list", { name: "Agent workspaces", exact: true })
+      .getByRole("link", { name: new RegExp(`^(\\w+: )?${name} `) })
+      .first();
 
   await page.goto(`/agents/${SESSION_ID}`);
   await composer.fill("  Unsent runtime prompt\n\n  with indentation  ");
@@ -1147,7 +1154,7 @@ test("shows durable turn activity without changing completed tool status", async
 
   const sessionActivity = page
     .getByRole("list", { name: "Agent workspaces", exact: true })
-    .getByRole("status", { name: "Runtime activity is working" });
+    .getByRole("link", { name: /^Working: Runtime activity / });
   await expect(sessionActivity).toBeVisible();
   const agentHeader = page.getByTestId("agent-session-header");
   const agentComposer = page.getByTestId("agent-composer");
@@ -1492,7 +1499,7 @@ test("shows durable turn activity without changing completed tool status", async
 
   await page.getByRole("button", { name: "Collapse Runtime test" }).click();
   const workspaceActivity = page.getByRole("status", {
-    name: "1 running chat in Runtime test",
+    name: "Working in Runtime test",
   });
   await expect(workspaceActivity).toBeVisible();
   const [activityBox, newSessionBox] = await Promise.all([
@@ -3021,20 +3028,22 @@ test("ends OMP turns when the agent yields to background work and starts a new t
     const prompts = async () => (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8"))
       .split("\n").filter((line) => line === "prompt").length;
     const indicator = page.getByTestId("agent-run-activity");
-    const sidebarWorking = page.getByRole("status", { name: /is working$/ });
+    const sidebarWorking = page
+      .getByRole("complementary")
+      .getByRole("link", { name: /^Working: / });
     const stopButton = page.getByRole("button", { name: "Stop Oh My Pi", exact: true });
     await composer.fill("Start background work");
     await composer.press("Enter");
-    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-message-list").getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
     // The agent handed control back, so its background job does not hold the turn.
     await expect(indicator).toHaveCount(0);
     await expect(stopButton).toHaveCount(0);
     await expect(sidebarWorking).toHaveCount(0);
     await page.reload();
-    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-message-list").getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
     await expect(indicator).toHaveCount(0);
     // Directory activity follows a wake without an open transcript stream.
-    await page.goto("/");
+    await page.goto("/agents");
     await writeFile(control, "wake");
     await expect(sidebarWorking.first()).toBeVisible();
     await writeFile(control, "wait");
@@ -3043,7 +3052,7 @@ test("ends OMP turns when the agent yields to background work and starts a new t
     // A message sends right away while the job keeps running.
     await composer.fill("Next");
     await composer.press("Enter");
-    await expect(page.getByText("Queued message answered.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-message-list").getByText("Queued message answered.", { exact: true })).toBeVisible();
     await expect(indicator).toHaveCount(0);
     expect(await prompts()).toBe(2);
     // Stop ends a woken turn; the native abort leaves the job running.
@@ -3365,7 +3374,7 @@ test("worktrees nest under their workspace and are created and removed from the 
   ]);
 
   // Removing an OvertChat worktree warns about uncommitted changes and deletes it from the host.
-  await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await page.getByRole("button", { name: "Agent list options" }).click();
   await page.getByRole("menuitem", { name: "Organize workspaces" }).click();
   await page.getByRole("button", { name: "Remove topic" }).click();
   const removal = page.getByRole("alertdialog");
