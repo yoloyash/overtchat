@@ -202,6 +202,15 @@ describe("turn tracker", () => {
     expect(tracker.lastTurn?.error).toBeUndefined();
   });
 
+  it("does not fail a turn with the runtime error another command left", () => {
+    const tracker = new AgentTurnTracker("idle", null);
+    tracker.observe(running(), messages, 100);
+    // The runtime still carries a refused steer's error as the turn settles.
+    tracker.observe({ status: "idle", startedAt: null, error: "Steer rejected" }, messages, 200);
+    expect(tracker.lastTurn).toMatchObject({ outcome: "completed" });
+    expect(tracker.lastTurn?.error).toBeUndefined();
+  });
+
   it("fails a turn the provider marked failed or that exits", () => {
     const failed = new AgentTurnTracker("running", 50);
     failed.markFailed();
