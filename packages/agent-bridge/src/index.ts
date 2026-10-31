@@ -324,13 +324,72 @@ function isLoopbackHostname(hostname: string): boolean {
   );
 }
 
-export function normalizeHostConnectorServerUrl(value: string): string {
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("OvertChat URL must use HTTP or HTTPS.");
+export type HostConnectorServerUrlErrorCode =
+  | "invalid_connector_url"
+  | "unsupported_connector_url_protocol"
+  | "insecure_connector_url";
+
+export class HostConnectorServerUrlError extends Error {
+  readonly code: HostConnectorServerUrlErrorCode;
+
+  constructor(code: HostConnectorServerUrlErrorCode, message: string) {
+    super(message);
+    this.name = "HostConnectorServerUrlError";
+    this.code = code;
   }
-  if (url.protocol === "http:" && !isLoopbackHostname(url.hostname)) {
-    throw new Error("Non-local OvertChat URLs must use HTTPS.");
+}
+
+/**
+ * Connector CLI flag that pairs over cleartext HTTP to a non-loopback server.
+ * The server appends it to the install command only when the operator opted
+ * in, so the connector host sees the same decision the server made.
+ */
+export const HOST_CONNECTOR_INSECURE_HTTP_FLAG = "--allow-insecure-http";
+
+export type HostConnectorServerUrlOptions = {
+  /** Accept `http://` to a non-loopback host. Off unless the operator opted in. */
+  allowInsecureHttp?: boolean;
+};
+
+function parseHostConnectorServerUrl(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new HostConnectorServerUrlError(
+      "invalid_connector_url",
+      "OvertChat URL is not a valid URL.",
+    );
+  }
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new HostConnectorServerUrlError(
+      "unsupported_connector_url_protocol",
+      "OvertChat URL must use HTTP or HTTPS.",
+    );
+  }
+  return url;
+}
+
+/** True for cleartext HTTP to anything other than this machine. */
+export function isInsecureHostConnectorServerUrl(value: string): boolean {
+  const url = parseHostConnectorServerUrl(value);
+  return url.protocol === "http:" && !isLoopbackHostname(url.hostname);
+}
+
+export function normalizeHostConnectorServerUrl(
+  value: string,
+  options: HostConnectorServerUrlOptions = {},
+): string {
+  const url = parseHostConnectorServerUrl(value);
+  if (
+    url.protocol === "http:" &&
+    !isLoopbackHostname(url.hostname) &&
+    !options.allowInsecureHttp
+  ) {
+    throw new HostConnectorServerUrlError(
+      "insecure_connector_url",
+      "Non-local OvertChat URLs must use HTTPS.",
+    );
   }
   url.username = "";
   url.password = "";

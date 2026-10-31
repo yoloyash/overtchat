@@ -89,6 +89,60 @@ describe("Host Connectors route", () => {
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
   });
 
+  it("refuses to pair over cleartext HTTP to another machine with a 400, not a crash", async () => {
+    vi.stubEnv("HOST_CONNECTOR_URL", "http://192.168.0.5:4718");
+
+    const response = await POST(request("POST"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "insecure_connector_url",
+      error: expect.stringContaining("HOST_CONNECTOR_ALLOW_INSECURE_HTTP"),
+    });
+    expect(mocks.createPairing).not.toHaveBeenCalled();
+  });
+
+  it("pairs over cleartext HTTP when the operator opts in and tells the connector", async () => {
+    vi.stubEnv("HOST_CONNECTOR_URL", "http://192.168.0.5:4718/");
+    vi.stubEnv("HOST_CONNECTOR_ALLOW_INSECURE_HTTP", "true");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const response = await POST(request("POST"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      command: `curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION} | sh -s -- --server 'http://192.168.0.5:4718' --pair-code 'ocp_pair.secret' --allow-insecure-http`,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("cleartext HTTP"),
+    );
+    warn.mockRestore();
+  });
+
+  it("keeps loopback and HTTPS install commands unchanged when the opt-in is set", async () => {
+    vi.stubEnv("HOST_CONNECTOR_ALLOW_INSECURE_HTTP", "1");
+
+    const local = await (await POST(request("POST"))).json();
+    vi.stubEnv("HOST_CONNECTOR_URL", "https://chat.example.com");
+    const remote = await (await POST(request("POST"))).json();
+
+    expect(local.command).not.toContain("--allow-insecure-http");
+    expect(remote.command).toContain("--server 'https://chat.example.com'");
+    expect(remote.command).not.toContain("--allow-insecure-http");
+  });
+
+  it("reports an unusable connector URL instead of a 500", async () => {
+    vi.stubEnv("HOST_CONNECTOR_URL", "chat.example.com");
+
+    const response = await POST(request("POST"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "invalid_connector_url",
+    });
+    expect(mocks.createPairing).not.toHaveBeenCalled();
+  });
+
   it("lists connectors available to the current administrator", async () => {
     mocks.listConnectors.mockReturnValue([
       {
