@@ -6,11 +6,12 @@ connector_version="0.17.0"
 server=""
 pair_code=""
 connector_name=""
+allow_insecure_http="false"
 upgrade="false"
 
 usage() {
   echo "Usage:" >&2
-  echo "  install-connector.sh --server URL --pair-code CODE [--name NAME]" >&2
+  echo "  install-connector.sh --server URL --pair-code CODE [--name NAME] [--allow-insecure-http]" >&2
   echo "  install-connector.sh --upgrade" >&2
 }
 
@@ -31,6 +32,10 @@ while [ "$#" -gt 0 ]; do
       connector_name=$2
       shift 2
       ;;
+    --allow-insecure-http)
+      allow_insecure_http="true"
+      shift
+      ;;
     --upgrade)
       upgrade="true"
       shift
@@ -43,7 +48,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$upgrade" = "true" ]; then
-  [ -z "$server" ] && [ -z "$pair_code" ] && [ -z "$connector_name" ] || {
+  [ -z "$server" ] && [ -z "$pair_code" ] && [ -z "$connector_name" ] && [ "$allow_insecure_http" = "false" ] || {
     usage
     exit 2
   }
@@ -540,19 +545,13 @@ if [ "$upgrade" = "true" ]; then
     fi
     exit 1
   fi
-elif [ -n "$connector_name" ]; then
-  install -m 0755 "$candidate" "$install_path"
-  payload_in_use="true"
-  "$install_path" install \
-    --server "$server" \
-    --pair-code "$pair_code" \
-    --name "$connector_name"
 else
   install -m 0755 "$candidate" "$install_path"
   payload_in_use="true"
-  "$install_path" install \
-    --server "$server" \
-    --pair-code "$pair_code"
+  set -- --server "$server" --pair-code "$pair_code"
+  [ -z "$connector_name" ] || set -- "$@" --name "$connector_name"
+  [ "$allow_insecure_http" = "false" ] || set -- "$@" --allow-insecure-http
+  "$install_path" install "$@"
 fi
 
 if [ "$upgrade" = "false" ] && [ "$platform" = "linux" ] && command -v loginctl >/dev/null 2>&1; then

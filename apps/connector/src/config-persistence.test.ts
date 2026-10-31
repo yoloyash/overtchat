@@ -39,3 +39,16 @@ it.each(["write", "sync", "rename"])("preserves the complete previous pairing on
   await writeConnectorConfig({ ...previous, token: "oct_old.changed" });
   expect((await readConnectorConfig()).token).toBe("oct_old.changed");
 }, 15_000);
+
+it("refuses a hand-edited cleartext LAN address unless pairing opted in", async () => {
+  root = await mkdtemp(path.join(os.tmpdir(), "connector-config-"));
+  const file = path.join(root, "connector.json");
+  vi.stubEnv("OVERTCHAT_CONNECTOR_CONFIG", file);
+  const paired = { serverUrl: "http://192.168.0.5:4718", connectorId: "lan", token: "oct_lan.fixture" };
+  await writeConnectorConfig(paired);
+  await expect(readConnectorConfig()).rejects.toThrow("Non-local OvertChat URLs must use HTTPS.");
+  await writeConnectorConfig({ ...paired, allowInsecureHttp: true });
+  expect(await readConnectorConfig()).toEqual({ ...paired, allowInsecureHttp: true });
+  await writeConnectorConfig({ ...paired, allowInsecureHttp: "yes" as unknown as true });
+  await expect(readConnectorConfig()).rejects.toThrow("Invalid connector configuration");
+});
