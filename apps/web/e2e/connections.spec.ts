@@ -61,7 +61,7 @@ async function startHostConnector(
   await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Not installed on this server. Run: overtchat setup",
+      "Not installed. Run overtchat setup on this server, or pair a connector on another computer.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -72,16 +72,20 @@ async function startHostConnector(
     page.getByRole("heading", { name: "Agent workspaces" }),
   ).toHaveCount(0);
 
-  // Managed setup is the only user-facing installation path. Provision an
-  // unmanaged connector through the authenticated API solely as an E2E fixture
-  // so the connector transport and agent flows below remain covered.
-  const { pairCode } = await page.evaluate(async () => {
-    const response = await fetch("/api/host-connectors", { method: "POST" });
-    if (!response.ok) {
-      throw new Error(`Could not create connector fixture: ${response.status}`);
-    }
-    return (await response.json()) as { pairCode: string };
-  });
+  // Pair the way a Compose operator does: the install command shown in the
+  // panel carries the pair code the connector needs.
+  await page.getByRole("button", { name: "Pair a connector" }).click();
+  const command = await page
+    .getByLabel("Host Connector install command")
+    .textContent();
+  const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
+  if (!pairCode) {
+    throw new Error(`Install command has no pair code: ${command}`);
+  }
+  // The Playwright server leaves HOST_CONNECTOR_URL at its loopback default,
+  // so the command names 127.0.0.1 and carries no cleartext opt-in.
+  expect(command).not.toContain("--allow-insecure-http");
+  await expect(page.getByText("Waiting for connection…")).toBeVisible();
 
   const server = new URL(page.url()).origin;
   const configPath = testInfo.outputPath("host-connector.json");
@@ -338,13 +342,16 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Not installed on this server. Run: overtchat setup",
+      "Not installed. Run overtchat setup on this server, or pair a connector on another computer.",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Set up" }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Pair a connector" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Agent workspaces" }),
   ).toHaveCount(0);
