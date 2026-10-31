@@ -82,6 +82,7 @@ export function ConnectionsPanel({
   const deleteConnectorMutation = useDeleteHostConnector();
   const [addOpen, setAddOpen] = useState(initialAddOpen);
   const [pairing, setPairing] = useState<HostConnectorPairing | null>(null);
+  const [pairingError, setPairingError] = useState("");
   const [commandCopied, setCommandCopied] = useState(false);
   const [upgradeCopied, setUpgradeCopied] = useState(false);
   const [pendingDetach, setPendingDetach] = useState<PendingDetach | null>(null);
@@ -140,15 +141,16 @@ export function ConnectionsPanel({
     deleteConnectorMutation.isPending;
 
   async function createPairing() {
+    setPairingError("");
     try {
       setPairing(await pairingMutation.mutateAsync());
       setCommandCopied(false);
     } catch (cause) {
-      toast.error({
-        title: "Pairing failed",
-        description:
-          cause instanceof Error ? cause.message : "Could not create a pairing code.",
-      });
+      // The usual cause is a server-side HOST_CONNECTOR_URL problem, which
+      // the operator needs to read in full rather than catch in a toast.
+      setPairingError(
+        cause instanceof Error ? cause.message : "Could not create a pairing code.",
+      );
     }
   }
 
@@ -294,8 +296,8 @@ export function ConnectionsPanel({
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-3 px-4 py-4">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
                 <Server className="size-4" />
               </span>
@@ -304,11 +306,29 @@ export function ConnectionsPanel({
                   OvertChat host
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  Not installed on this server. Run: overtchat setup
+                  Not installed. Run overtchat setup on this server, or pair a connector on another computer.
                 </span>
               </span>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pairingMutation.isPending}
+              onClick={() => void createPairing()}
+            >
+              {pairingMutation.isPending ? (
+                <Loader2 className="animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Link2 />
+              )}
+              Pair a connector
+            </Button>
           </div>
+        )}
+        {pairingError && (
+          <SettingsNotice tone="error" className="border-t px-4 py-3 text-xs">
+            {pairingError}
+          </SettingsNotice>
         )}
         {connector?.upgrade && (
           <div className="border-t px-4 py-4">

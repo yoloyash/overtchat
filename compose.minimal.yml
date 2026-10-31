@@ -31,6 +31,10 @@ services:
       BETTER_AUTH_URL: https://chat.example.com
       # Lets a Host Connector on another computer reach this server.
       HOST_CONNECTOR_URL: https://chat.example.com
+      # Plain http:// above only works for this machine (127.0.0.1). For a
+      # LAN address such as http://192.168.0.5:4718, uncomment this to accept
+      # that anyone on the network path can read the connector token.
+      # HOST_CONNECTOR_ALLOW_INSECURE_HTTP: "true"
       # No bundled search or speech containers in this stack.
       OVERTCHAT_INSTALLED_CAPABILITIES: ""
       REDIS_URL: redis://redis:6379

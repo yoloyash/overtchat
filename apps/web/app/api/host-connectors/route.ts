@@ -1,5 +1,8 @@
 import {
+  HOST_CONNECTOR_INSECURE_HTTP_FLAG,
   HOST_CONNECTOR_RELEASE_VERSION,
+  HostConnectorServerUrlError,
+  isInsecureHostConnectorServerUrl,
   normalizeHostConnectorServerUrl,
 } from "@overtchat/agent-bridge";
 import { auth } from "@/lib/auth/server";
@@ -16,24 +19,60 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function connectorServerUrl(): string {
-  return normalizeHostConnectorServerUrl(
-    process.env.HOST_CONNECTOR_URL ?? "http://127.0.0.1:4718",
+function allowInsecureHttp(): boolean {
+  return ["1", "true", "yes"].includes(
+    (process.env.HOST_CONNECTOR_ALLOW_INSECURE_HTTP ?? "").trim().toLowerCase(),
   );
+}
+
+type ConnectorServerTarget = { url: string; insecure: boolean };
+
+let warnedInsecure = false;
+
+/** Throws HostConnectorServerUrlError when HOST_CONNECTOR_URL is unusable. */
+function connectorServerTarget(): ConnectorServerTarget {
+  const configured = process.env.HOST_CONNECTOR_URL ?? "http://127.0.0.1:4718";
+  const url = normalizeHostConnectorServerUrl(configured, {
+    allowInsecureHttp: allowInsecureHttp(),
+  });
+  const insecure = isInsecureHostConnectorServerUrl(url);
+  if (insecure && !warnedInsecure) {
+    warnedInsecure = true;
+    console.warn(
+      `[host-connectors] HOST_CONNECTOR_ALLOW_INSECURE_HTTP is set: connectors pair with ${url} over cleartext HTTP. Anyone on that network path can read the connector token.`,
+    );
+  }
+  return { url, insecure };
+}
+
+function connectorUrlProblem(error: HostConnectorServerUrlError): string {
+  const configured = process.env.HOST_CONNECTOR_URL ?? "";
+  switch (error.code) {
+    case "insecure_connector_url":
+      return `HOST_CONNECTOR_URL (${configured}) uses plain HTTP to an address other than this machine. Use an HTTPS address, or set HOST_CONNECTOR_ALLOW_INSECURE_HTTP=true on the server if this is a trusted private network.`;
+    case "unsupported_connector_url_protocol":
+      return `HOST_CONNECTOR_URL (${configured}) must start with http:// or https://.`;
+    case "invalid_connector_url":
+      return `HOST_CONNECTOR_URL (${configured}) is not a valid URL.`;
+  }
 }
 
 function connectorInstallerUrl(): string {
   return `https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION}`;
 }
 
-function installCommand(pairCode: string): string {
+function installCommand(
+  target: ConnectorServerTarget,
+  pairCode: string,
+): string {
   return [
     "curl --proto '=https' --tlsv1.2 -fsSL ",
     connectorInstallerUrl(),
     " | sh -s -- --server ",
-    shellQuote(connectorServerUrl()),
+    shellQuote(target.url),
     " --pair-code ",
     shellQuote(pairCode),
+    target.insecure ? ` ${HOST_CONNECTOR_INSECURE_HTTP_FLAG}` : "",
   ].join("");
 }
 
@@ -111,11 +150,21 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
+  let target: ConnectorServerTarget;
+  try {
+    target = connectorServerTarget();
+  } catch (error) {
+    if (!(error instanceof HostConnectorServerUrlError)) throw error;
+    return Response.json(
+      { error: connectorUrlProblem(error), code: error.code },
+      { status: 400 },
+    );
+  }
   const pairing = createHostConnectorPairing(result.user.id);
   return Response.json({
     pairCode: pairing.pairCode,
     expiresAt: pairing.expiresAt.getTime(),
-    command: installCommand(pairing.pairCode),
+    command: installCommand(target, pairing.pairCode),
   });
 }
 
