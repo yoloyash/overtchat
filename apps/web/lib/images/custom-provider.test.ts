@@ -117,6 +117,36 @@ describe("custom OpenAI Images HTTP contract", () => {
     expect(JSON.parse(requests[0].body).response_format).toBe("url");
     expect(image.data).toEqual(Buffer.from(png, "base64"));
   });
+  it.each([
+    { input_tokens: 10, output_tokens: 1_290, total_tokens: 1_300 },
+    { prompt_tokens: 10, completion_tokens: 1_290, total_tokens: 1_300 },
+    { prompt_tokens: 10, completion_tokens: 1_290 },
+  ])("preserves reported token usage %j", async (usage) => {
+    reply = { data: [{ b64_json: png }], usage };
+    expect((await runImageProvider(connection(), input)).usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 1_290,
+      totalTokens: 1_300,
+    });
+  });
+  it("reports no usage when the backend omits or malforms it", async () => {
+    for (const usage of [
+      undefined,
+      null,
+      "lots",
+      [12],
+      { input_tokens: -1 },
+      { total_tokens: 1.5 },
+    ]) {
+      reply = {
+        data: [{ b64_json: png }],
+        ...(usage === undefined ? {} : { usage }),
+      };
+      expect(
+        (await runImageProvider(connection(), input)).usage,
+      ).toBeUndefined();
+    }
+  });
   it("sends multipart edits only when enabled", async () => {
     const edit = { ...input, references: [Buffer.from(png, "base64")] };
     await expect(runImageProvider(connection(), edit)).rejects.toThrow(

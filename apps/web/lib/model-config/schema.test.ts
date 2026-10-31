@@ -371,13 +371,14 @@ describe("custom image configuration", () => {
       },
     });
   });
-  it("drops pricing because custom backends report no token usage", () => {
+  it("keeps token rates without cache rates for backends that report usage", () => {
     expect(
       ModelConfigSchema.parse({
         ...custom,
-        pricing: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+        pricing: { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 3 },
       }).pricing,
-    ).toBeNull();
+    ).toEqual({ input: 1, output: 2, cacheRead: 0, cacheWrite: 0 });
+    expect(ModelConfigSchema.parse(custom).pricing).toBeNull();
   });
   it("preserves backend settings through save and re-save", () => {
     const parsed = ModelConfigSchema.parse({
