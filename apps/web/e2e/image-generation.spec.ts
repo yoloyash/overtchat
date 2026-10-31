@@ -58,6 +58,78 @@ test.beforeAll(async () => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = Buffer.concat(chunks).toString();
+    if (req.url === "/v1/images/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          data: [
+            {
+              id: "qwen/qwen-image-2.1-turbo",
+              architecture: {
+                input_modalities: ["text", "image"],
+                output_modalities: ["image"],
+              },
+            },
+            {
+              id: "openai/gpt-5-image",
+              architecture: {
+                input_modalities: ["text", "image"],
+                output_modalities: ["image"],
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+    if (req.url === "/v1/images" && req.method === "POST") {
+      requests.push({
+        url: req.url,
+        body,
+        contentType: String(req.headers["content-type"]),
+        authorization: req.headers.authorization,
+      });
+      const payload = JSON.parse(body);
+      const editing = Array.isArray(payload.input_references);
+      const valid =
+        payload.model === "qwen/qwen-image-2.1-turbo" &&
+        payload.n === 1 &&
+        req.headers.authorization === "Bearer private-router-key" &&
+        (!editing ||
+          payload.input_references[0]?.image_url?.url ===
+            `data:image/png;base64,${png}`);
+      res.writeHead(valid ? 200 : 400, {
+        "Content-Type": "application/json",
+      });
+      res.end(
+        JSON.stringify(
+          valid
+            ? {
+                created: 1,
+                data: [{ b64_json: png, media_type: "image/png" }],
+                usage: {
+                  prompt_tokens: 12,
+                  completion_tokens: 4_175,
+                  total_tokens: 4_187,
+                  cost: 0.0184,
+                  is_byok: false,
+                  cost_details: {
+                    upstream_inference_cost: 0.0184,
+                    upstream_inference_prompt_cost: 0,
+                    upstream_inference_completions_cost: 0.0184,
+                  },
+                },
+              }
+            : {
+                error: {
+                  message: "Unexpected OpenRouter image request",
+                  code: 400,
+                },
+              },
+        ),
+      );
+      return;
+    }
     if (req.url?.includes("/images/")) {
       requests.push({
         url: req.url,
@@ -1002,6 +1074,113 @@ for (const responseFormat of ["b64_json", "url"] as const) {
     });
   });
 }
+
+test("OpenRouter image models are discovered, billed at the reported charge, and edited inline", async ({
+  page,
+}) => {
+  await test.step("add an OpenRouter image model from its image listing", async () => {
+    await page.goto("/settings/models/new");
+    await page.locator("#p-model-type").click();
+    await page.getByRole("option", { name: "Image", exact: true }).click();
+    await page.locator("#p-provider").click();
+    await page.getByRole("option", { name: "OpenRouter", exact: true }).click();
+    await page.locator("#p-base-url").fill(baseUrl);
+    await page.locator("#p-api-key").fill("private-router-key");
+    // Discovery reads the image listing, not the chat listing the GET stub serves.
+    const trigger = page.locator("#p-model");
+    await expect(trigger).toContainText("openai/gpt-5-image");
+    await trigger.click();
+    await page
+      .getByRole("option", { name: "qwen/qwen-image-2.1-turbo", exact: true })
+      .click();
+    await expect(trigger).toContainText("qwen/qwen-image-2.1-turbo");
+    await page.locator("#p-label").fill("Router pictures");
+    const cost = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Usage cost" }) });
+    await expect(cost).toContainText("charge OpenRouter reports");
+    await expect(
+      cost.getByRole("switch", { name: "Custom pricing" }),
+    ).toHaveCount(0);
+    const save = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/api/model-configs") &&
+        res.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Add model", exact: true }).click();
+    const response = await save;
+    expect(response.ok()).toBe(true);
+    expect((await response.json()).modelConfig).toMatchObject({
+      providerId: "openrouter",
+      apiFormat: "auto",
+      model: "qwen/qwen-image-2.1-turbo",
+      pricing: null,
+      enabled: true,
+    });
+    const capabilities = await (
+      await page.request.get("/api/capabilities")
+    ).json();
+    expect(capabilities.capabilities.images).toEqual({
+      available: true,
+      model: "qwen/qwen-image-2.1-turbo",
+      supportsQuality: true,
+    });
+  });
+
+  await test.step("generate through the images endpoint and record the reported charge", async () => {
+    await page.goto("/");
+    await page.locator("textarea").fill("Generate an image of a red kite");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toBeVisible();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe("/v1/images");
+    expect(JSON.parse(requests[0].body)).toEqual({
+      model: "qwen/qwen-image-2.1-turbo",
+      prompt: "A red kite",
+      n: 1,
+    });
+    await expect.poll(imageUsageRows).toEqual([
+      {
+        providerId: "openrouter",
+        model: "qwen/qwen-image-2.1-turbo",
+        inputTokens: 12,
+        outputTokens: 4_175,
+        costSource: "provider",
+        totalCostNanoUsd: 18_400_000,
+      },
+    ]);
+  });
+
+  await test.step("edit with the stored image as an inline reference", async () => {
+    await page.locator("textarea").fill("Make the kite blue");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toHaveCount(2);
+    expect(requests).toHaveLength(2);
+    const edit = JSON.parse(requests[1].body);
+    expect(edit).toMatchObject({
+      model: "qwen/qwen-image-2.1-turbo",
+      prompt: "Make the kite blue",
+      n: 1,
+    });
+    expect(edit.input_references).toEqual([
+      { type: "image_url", image_url: { url: `data:image/png;base64,${png}` } },
+    ]);
+  });
+
+  await test.step("show the reported charges in the usage popover", async () => {
+    await page.reload();
+    const usage = page.getByTitle("Usage");
+    await expect(usage).toContainText("$0.037");
+    await usage.click();
+    const images = page.getByRole("region", { name: "Images" });
+    await expect(images).toContainText("2 images");
+    await expect(images).toContainText("$0.037");
+  });
+});
 
 test("custom editing size persists and routes generation and edits at different sizes", async ({
   page,

@@ -296,6 +296,23 @@ ID. The server appends `/images/generations`. A configured size such as
 **Usage cost** rates apply to the token usage the backend reports with each
 image (`input_tokens` or `prompt_tokens`, and `output_tokens` or
 `completion_tokens`); a backend that reports none leaves images unpriced.
+
+## OpenRouter image model validation
+
+Image models can use **OpenRouter**. Discovery reads `/images/models`, which
+lists dedicated image models that the chat listing omits. Generation and
+editing post to `/images`: chat sizes map to `aspect_ratio` (`1:1`, `3:2`,
+`2:3`), quality is forwarded, and reference images travel inline as data URLs.
+Each response reports token usage and the charge in USD, which chat usage
+records with cost source `provider`, so the editor offers no rates for
+OpenRouter image models. `e2e/image-generation.spec.ts` covers the flow against
+a stub. To exercise the real endpoint, export `OPENROUTER_LIVE_API_KEY`
+(optionally `OPENROUTER_LIVE_IMAGE_MODEL`; the default
+`qwen/qwen-image-2.1-turbo` costs about two cents per image) and run:
+
+```bash
+npm run test -w apps/web -- lib/images/openrouter-images.live.test.ts
+```
 Extra request parameters are a JSON object for settings such as `seed` or
 `quality`. They cannot replace the model, prompt, size, response format, image
 count, streaming mode, or reference images. Custom providers expose editing

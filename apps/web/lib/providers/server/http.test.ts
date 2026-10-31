@@ -9,6 +9,7 @@ import {
   listGoogleModels,
   listLlamaCppModels,
   listOpenAIModels,
+  listOpenRouterImageModels,
 } from "./http";
 
 afterEach(() => {
@@ -180,6 +181,48 @@ describe("provider model discovery", () => {
           toolCalling: true,
           reasoning: true,
           structuredOutput: true,
+        },
+      },
+    ]);
+  });
+
+  it("lists OpenRouter image models from the images listing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            id: "qwen/qwen-image-2.1-turbo",
+            architecture: {
+              input_modalities: ["text", "image"],
+              output_modalities: ["image"],
+            },
+            supported_parameters: { aspect_ratio: { type: "enum" } },
+          },
+          { id: "bytedance-seed/seedream-4.5" },
+          { id: "" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const models = await listOpenRouterImageModels(
+      "https://openrouter.ai/api/v1/",
+      "router-key",
+    );
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://openrouter.ai/api/v1/images/models");
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer router-key",
+    );
+    expect(models).toEqual([
+      {
+        id: "bytedance-seed/seedream-4.5",
+        capabilities: { outputModalities: ["image"] },
+      },
+      {
+        id: "qwen/qwen-image-2.1-turbo",
+        capabilities: {
+          inputModalities: ["text", "image"],
+          outputModalities: ["image"],
         },
       },
     ]);

@@ -543,7 +543,7 @@ export const generationUsage = sqliteTable(
     cacheWriteTokens: integer("cache_write_tokens"),
     totalTokens: integer("total_tokens"),
     costSource: text("cost_source", {
-      enum: ["models.dev", "model_config"],
+      enum: ["models.dev", "model_config", "provider"],
     }),
     inputCostNanoUsd: integer("input_cost_nano_usd"),
     outputCostNanoUsd: integer("output_cost_nano_usd"),

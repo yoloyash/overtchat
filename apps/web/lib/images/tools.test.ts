@@ -357,6 +357,58 @@ it("prices custom backend usage at administrator rates", async () => {
   );
 });
 
+it("records OpenRouter images at the charge the provider reports", async () => {
+  mocks.config.mockReturnValue({
+    providerId: "openrouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    apiKey: "router-key",
+    model: "qwen/qwen-image-2.1-turbo",
+    pricing: null,
+  });
+  mocks.generate.mockResolvedValue({
+    data: new Uint8Array([3, 4]),
+    mediaType: "image/png",
+    usage: { inputTokens: 12, outputTokens: 4_175, totalTokens: 4_187 },
+    reportedCost: {
+      inputCostNanoUsd: 0,
+      outputCostNanoUsd: 18_400_000,
+      totalCostNanoUsd: 18_400_000,
+    },
+  });
+  const onUsage = vi.fn();
+  const tools = createImageTools({
+    userId: "alice",
+    messages: [],
+    supportsImageInput: false,
+    onUsage,
+  });
+  expect(tools.edit_image).toBeDefined();
+  await tools.generate_image.execute!(
+    { prompt: "A kite", quality: "high" },
+    execution,
+  );
+  expect(mocks.generate).toHaveBeenCalledWith(
+    expect.objectContaining({ providerId: "openrouter" }),
+    expect.objectContaining({ size: "auto", quality: "high" }),
+    undefined,
+  );
+  expect(onUsage).toHaveBeenCalledExactlyOnceWith({
+    toolCallId: "call",
+    occurredAt: expect.any(Date),
+    providerId: "openrouter",
+    model: "qwen/qwen-image-2.1-turbo",
+    inputTokens: 12,
+    outputTokens: 4_175,
+    totalTokens: 4_187,
+    costSource: "provider",
+    inputCostNanoUsd: 0,
+    outputCostNanoUsd: 18_400_000,
+    cacheReadCostNanoUsd: 0,
+    cacheWriteCostNanoUsd: 0,
+    totalCostNanoUsd: 18_400_000,
+  });
+});
+
 it("only exposes custom editing when explicitly enabled", () => {
   mocks.config.mockReturnValue({
     providerId: "custom",
