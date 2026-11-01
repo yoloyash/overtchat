@@ -535,6 +535,40 @@ describe("provider registry", () => {
     });
   });
 
+  it("sends OpenRouter's unified reasoning parameter for detected levels", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json(
+          { error: { message: "intentional test response" } },
+          { status: 400 },
+        );
+      }),
+    );
+    for (const reasoningLevel of ["high", "off", "default"] as const) {
+      const configured = createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "vendor/model",
+        reasoningLevel,
+      });
+      await expect(
+        generateText({ model: configured.model, prompt: "Hello" }),
+      ).rejects.toThrow("intentional test response");
+    }
+
+    expect(bodies[0]).toMatchObject({ reasoning: { effort: "high" } });
+    expect(bodies[1]).toMatchObject({ reasoning: { effort: "none" } });
+    expect(bodies[2]).not.toHaveProperty("reasoning");
+    for (const body of bodies) {
+      expect(body).not.toHaveProperty("reasoning_effort");
+      expect(body).not.toHaveProperty("chat_template_kwargs");
+    }
+  });
+
   it("rejects malformed endpoints and missing registered-provider credentials", () => {
     expect(() =>
       validateProviderConnection({

@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   createTemplateRenderer,
+  gatewayReasoningControls,
   listAnthropicModels,
   listGoogleModels,
   listLlamaCppModels,
@@ -66,6 +67,61 @@ describe("provider model discovery", () => {
         headers: { Authorization: "Bearer secret" },
       }),
     );
+  });
+
+  it("turns gateway reasoning metadata into thinking controls", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          data: [
+            {
+              id: "vendor/optional-thinking",
+              context_length: 1_048_576,
+              supported_parameters: ["reasoning", "reasoning_effort", "tools"],
+              reasoning: {
+                mandatory: false,
+                default_enabled: true,
+                supported_efforts: ["max", "high", "low", "none"],
+                default_effort: "max",
+              },
+            },
+            {
+              id: "vendor/toggle-only",
+              supported_parameters: ["reasoning"],
+              reasoning: { mandatory: false, default_enabled: true },
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      listOpenAIModels("https://gateway.example.test/api/v1", "secret"),
+    ).resolves.toEqual([
+      {
+        id: "vendor/optional-thinking",
+        contextWindow: 1_048_576,
+        capabilities: {
+          toolCalling: true,
+          reasoning: true,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "max",
+            efforts: ["low", "high", "max"],
+          },
+          structuredOutput: false,
+        },
+      },
+      {
+        id: "vendor/toggle-only",
+        capabilities: {
+          toolCalling: false,
+          reasoning: true,
+          structuredOutput: false,
+        },
+      },
+    ]);
   });
 
   it("reads gateway context, output limits, and supported parameters", async () => {
@@ -428,5 +484,51 @@ describe("chat template rendering", () => {
       "m",
     );
     await expect(render({})).resolves.toBeUndefined();
+  });
+});
+
+describe("gatewayReasoningControls", () => {
+  it("hides the off level when reasoning is mandatory", () => {
+    expect(
+      gatewayReasoningControls({
+        mandatory: true,
+        supported_efforts: ["xhigh", "high", "medium", "low", "none"],
+        default_effort: "medium",
+      }),
+    ).toEqual({
+      toggle: false,
+      defaultLevel: "medium",
+      efforts: ["low", "medium", "high", "xhigh"],
+    });
+  });
+
+  it("defaults to off when the model starts with reasoning disabled", () => {
+    expect(
+      gatewayReasoningControls({
+        mandatory: false,
+        default_enabled: false,
+        supported_efforts: ["high", "medium", "low", "none"],
+        default_effort: "medium",
+      }),
+    ).toEqual({
+      toggle: true,
+      defaultLevel: "off",
+      efforts: ["low", "medium", "high"],
+    });
+  });
+
+  it("ignores unknown efforts and incomplete metadata", () => {
+    expect(
+      gatewayReasoningControls({
+        supported_efforts: ["ultra", "none"],
+        default_effort: "ultra",
+      }),
+    ).toBeUndefined();
+    expect(
+      gatewayReasoningControls({ supported_efforts: ["high", "low"] }),
+    ).toBeUndefined();
+    expect(gatewayReasoningControls({ mandatory: true })).toBeUndefined();
+    expect(gatewayReasoningControls(null)).toBeUndefined();
+    expect(gatewayReasoningControls("high")).toBeUndefined();
   });
 });
