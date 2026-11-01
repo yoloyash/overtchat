@@ -1,5 +1,10 @@
 import "server-only";
-import type { ModelCapabilities } from "@overtchat/shared";
+import {
+  REASONING_EFFORTS,
+  type ModelCapabilities,
+  type ModelReasoningControls,
+  type ReasoningEffort,
+} from "@overtchat/shared";
 import type { DiscoveredModel } from "@/lib/providers/server/types";
 
 const MODEL_LIST_TIMEOUT_MS = 10_000;
@@ -21,6 +26,7 @@ interface OpenAIModelList {
     capabilities?: unknown;
     top_provider?: unknown;
     supported_parameters?: unknown;
+    reasoning?: unknown;
   }>;
 }
 
@@ -311,12 +317,39 @@ function openAIModelCapabilities(
       supports("tools"),
     reasoning:
       readSupportedBoolean(capabilities?.reasoning) ?? supports("reasoning"),
+    reasoningControls: gatewayReasoningControls(model.reasoning),
     structuredOutput:
       readSupportedBoolean(capabilities?.structured_output) ??
       readSupportedBoolean(capabilities?.structured_outputs) ??
       supports("structured_outputs"),
     temperature: readSupportedBoolean(capabilities?.temperature),
   });
+}
+
+/**
+ * Per-model reasoning metadata from gateways such as OpenRouter: the efforts a
+ * model accepts, the one applied when reasoning is on, and whether it can be
+ * turned off. Effort names already match the product's levels. Models that
+ * only report a toggle, or whose default is unknown, keep no selector.
+ */
+export function gatewayReasoningControls(
+  value: unknown,
+): ModelReasoningControls | undefined {
+  if (!isRecord(value)) return undefined;
+  const supported = readStringArray(value.supported_efforts);
+  if (!supported) return undefined;
+  const efforts = REASONING_EFFORTS.filter((effort) =>
+    supported.includes(effort),
+  );
+  if (efforts.length === 0) return undefined;
+  const toggle = supported.includes("none") && value.mandatory !== true;
+  const defaultEffort = efforts.find(
+    (effort) => effort === value.default_effort,
+  ) as ReasoningEffort | undefined;
+  const defaultLevel =
+    value.default_enabled === false && toggle ? "off" : defaultEffort;
+  if (!defaultLevel) return undefined;
+  return { toggle, defaultLevel, efforts };
 }
 
 function anthropicModelCapabilities(
