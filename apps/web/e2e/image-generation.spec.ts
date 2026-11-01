@@ -532,7 +532,7 @@ test("retains a completed image when the subsequent chat model step fails", asyn
   await expect(
     page
       .getByRole("alert")
-      .filter({ hasText: "Couldn't complete the response. Please try again." }),
+      .filter({ hasText: "Chat model failed after image creation" }),
   ).toBeVisible();
   await page.reload();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();
