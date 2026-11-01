@@ -17,7 +17,10 @@ import {
   runImageProvider,
   type ImageConnection,
 } from "@/lib/providers/server/image-generation";
-import { estimateImageGenerationCost } from "@/lib/providers/server/model-cost";
+import {
+  estimateImageGenerationCost,
+  PROVIDER_COST_SOURCE,
+} from "@/lib/providers/server/model-cost";
 import {
   customImageOptions,
   customImageSize,
@@ -37,6 +40,7 @@ function imageConnection(
     !config ||
     (config.providerId !== "openai" &&
       config.providerId !== "google" &&
+      config.providerId !== "openrouter" &&
       config.providerId !== "custom")
   ) {
     throw new Error(
@@ -200,12 +204,19 @@ export function createImageTools({
       inputTokens: generated.usage?.inputTokens,
       outputTokens: generated.usage?.outputTokens,
       totalTokens: generated.usage?.totalTokens,
-      ...(estimateImageGenerationCost({
-        providerId: connection.providerId,
-        model: connection.model,
-        usage: generated.usage,
-        pricing: config?.pricing,
-      }) ?? {}),
+      ...(generated.reportedCost
+        ? {
+            costSource: PROVIDER_COST_SOURCE,
+            ...generated.reportedCost,
+            cacheReadCostNanoUsd: 0,
+            cacheWriteCostNanoUsd: 0,
+          }
+        : (estimateImageGenerationCost({
+            providerId: connection.providerId,
+            model: connection.model,
+            usage: generated.usage,
+            pricing: config?.pricing,
+          }) ?? {})),
     });
     const filename = `generated-image.${generated.mediaType.split("/")[1].replace("jpeg", "jpg")}`;
     const { uploadUrl } = await storeFetchedImage({

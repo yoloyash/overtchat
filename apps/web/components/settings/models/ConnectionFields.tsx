@@ -157,6 +157,7 @@ export function ConnectionFields({
           apiFormat: connection.apiFormat,
           baseUrl: connection.baseUrl,
           apiKey: connection.apiKey,
+          modelType: imageModel ? "image" : "chat",
         });
         const discovered = imageModel
           ? allModels.filter((model) => {
@@ -300,6 +301,7 @@ export function ConnectionFields({
                 !imageModel ||
                 id === "openai" ||
                 id === "google" ||
+                id === "openrouter" ||
                 id === "custom",
             ).map((id) => (
               <SelectItem key={id} value={id}>
@@ -493,7 +495,9 @@ export function ConnectionFields({
                       ? "model-id"
                       : draft.providerId === "google"
                         ? "gemini-3.1-flash-image"
-                        : "gpt-image-1"
+                        : draft.providerId === "openrouter"
+                          ? "google/gemini-2.5-flash-image"
+                          : "gpt-image-1"
                     : (provider?.modelPlaceholder ?? "model-id")
                 }
                 required

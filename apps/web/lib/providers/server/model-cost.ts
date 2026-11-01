@@ -9,10 +9,13 @@ import {
 
 export const MODEL_CATALOG_COST_SOURCE = "models.dev" as const;
 export const MODEL_CONFIG_COST_SOURCE = "model_config" as const;
+/** The provider reported the charge itself, so nothing was estimated. */
+export const PROVIDER_COST_SOURCE = "provider" as const;
 
 export type GenerationCostSource =
   | typeof MODEL_CATALOG_COST_SOURCE
-  | typeof MODEL_CONFIG_COST_SOURCE;
+  | typeof MODEL_CONFIG_COST_SOURCE
+  | typeof PROVIDER_COST_SOURCE;
 
 export type EstimatedGenerationCost = {
   costSource: GenerationCostSource;

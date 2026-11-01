@@ -100,7 +100,12 @@ export function providerLabel(
 /** Providers the server accepts for each model type. */
 export function modelProviders(modelType: ModelDraft["modelType"]) {
   return modelType === "image"
-    ? (["openai", "google", "custom"] as const satisfies ProviderId[])
+    ? ([
+        "openai",
+        "google",
+        "openrouter",
+        "custom",
+      ] as const satisfies ProviderId[])
     : PROVIDER_IDS;
 }
 

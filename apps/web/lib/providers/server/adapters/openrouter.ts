@@ -3,6 +3,10 @@ import type { ChatReasoningLevel } from "@overtchat/shared";
 import { createOpenAICompatibleAdapter } from "@/lib/providers/server/adapters/openai-compatible";
 import { applyLocalReasoningLevel } from "@/lib/providers/server/adapters/local-reasoning";
 import type { ReasoningRequestFields } from "@/lib/model-config/reasoning-override";
+import {
+  listOpenAIModels,
+  listOpenRouterImageModels,
+} from "@/lib/providers/server/http";
 
 /**
  * OpenRouter's unified reasoning parameter. Effort names match the levels its
@@ -18,6 +22,11 @@ export function openRouterReasoningFields(
 
 export const openRouterAdapter = createOpenAICompatibleAdapter("openrouter", {
   acceptsReasoningLevel: true,
+  // Dedicated image models are absent from the chat listing.
+  listModels: (connection, options) =>
+    options?.modelType === "image"
+      ? listOpenRouterImageModels(connection.baseUrl, connection.apiKey)
+      : listOpenAIModels(connection.baseUrl, connection.apiKey),
   transformRequestBody: (body, config) =>
     applyLocalReasoningLevel(
       body,

@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth/server";
-import { ProviderConnectionSchema } from "@/lib/model-config/schema";
+import { ModelDiscoverySchema } from "@/lib/model-config/schema";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import {
   catalogCapabilitiesFor,
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = ProviderConnectionSchema.safeParse(body);
+  const parsed = ModelDiscoverySchema.safeParse(body);
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
@@ -32,7 +32,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const models = (await listProviderModels(parsed.data)).map((model) => {
+    const { modelType, ...connection } = parsed.data;
+    const models = (
+      await listProviderModels(connection, { modelType })
+    ).map((model) => {
       const catalogContextWindow = catalogContextWindowFor(
         parsed.data.providerId,
         model.id,

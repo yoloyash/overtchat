@@ -66,6 +66,12 @@ describe("native model edits", () => {
       providerId: "openai",
       apiFormat: "auto",
     });
+    const router = changeModelProvider(modelDraft(existing), "openrouter");
+    expect(changeModelType(router, "image")).toMatchObject({
+      modelType: "image",
+      providerId: "openrouter",
+      apiFormat: "auto",
+    });
     const custom = changeModelProvider(modelDraft(existing), "custom");
     expect(custom.apiFormat).toBe("openai-chat");
     const image = changeModelType(custom, "image");

@@ -7,13 +7,21 @@ import { MAX_BYTES_IMAGE } from "@/lib/extract";
 import { assertFetchedImageContent } from "@/lib/image-content";
 
 import { runCustomImageProvider } from "./custom-image-generation";
+import { runOpenRouterImageProvider } from "./openrouter-image-generation";
 
 export interface ImageConnection {
-  providerId: "openai" | "google" | "custom";
+  providerId: "openai" | "google" | "openrouter" | "custom";
   providerOptions?: Record<string, unknown> | null;
   baseUrl: string;
   apiKey: string | null;
   model: string;
+}
+
+/** The charge a provider reports for one image, in nano USD. */
+export interface ReportedImageCost {
+  inputCostNanoUsd: number;
+  outputCostNanoUsd: number;
+  totalCostNanoUsd: number;
 }
 
 // Image responses contain base64. Bound the response before JSON parsing as
@@ -61,6 +69,13 @@ export async function runImageProvider(
   try {
     if (connection.providerId === "custom")
       return await runCustomImageProvider(
+        connection,
+        input,
+        boundedFetch,
+        abortSignal,
+      );
+    if (connection.providerId === "openrouter")
+      return await runOpenRouterImageProvider(
         connection,
         input,
         boundedFetch,
@@ -140,6 +155,7 @@ export async function runImageProvider(
       data: image.uint8Array,
       mediaType: image.mediaType,
       usage: result.usage,
+      reportedCost: undefined,
     };
   } catch (error) {
     if (signal?.aborted) throw new Error("Image generation stopped.");

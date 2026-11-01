@@ -156,6 +156,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const isImage = draft.modelType === "image";
   const isCustomImage = isImage && draft.providerId === "custom";
+  const isOpenRouterImage = isImage && draft.providerId === "openrouter";
   // The server validates providers that the desktop app's catalog predates.
   const requiresKey = findProvider(draft.providerId)?.requiresApiKey ?? false;
   const parsedPricing =
@@ -370,6 +371,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                   ...(value === "image" &&
                   current.providerId !== "openai" &&
                   current.providerId !== "google" &&
+                  current.providerId !== "openrouter" &&
                   current.providerId !== "custom"
                     ? {
                         providerId: "openai",
@@ -567,19 +569,27 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <SettingsSection
             title="Usage cost"
             description={
-              isCustomImage
-                ? "Estimates image cost from the token usage the backend reports with each image. Images stay unpriced when it reports none."
-                : "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
+              isOpenRouterImage
+                ? "Chat usage records each image at the charge OpenRouter reports with it."
+                : isCustomImage
+                  ? "Estimates image cost from the token usage the backend reports with each image. Images stay unpriced when it reports none."
+                  : "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
             }
           >
-            <PricingRow
-              pricing={draft.pricing}
-              catalogPricing={catalogPricingHint}
-              onPricingChange={(next) =>
-                setDraft((d) => ({ ...d, pricing: next }))
-              }
-              cacheRates={false}
-            />
+            {isOpenRouterImage ? (
+              <SettingsNotice>
+                No rates are needed for OpenRouter image models.
+              </SettingsNotice>
+            ) : (
+              <PricingRow
+                pricing={draft.pricing}
+                catalogPricing={catalogPricingHint}
+                onPricingChange={(next) =>
+                  setDraft((d) => ({ ...d, pricing: next }))
+                }
+                cacheRates={false}
+              />
+            )}
           </SettingsSection>
         )}
 

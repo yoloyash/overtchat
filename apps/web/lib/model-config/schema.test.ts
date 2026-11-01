@@ -315,6 +315,23 @@ describe("image model configuration", () => {
       ModelConfigSchema.parse({ ...image, modelType: undefined }).modelType,
     ).toBe("chat");
   });
+  it("needs no rates for OpenRouter, which reports each image's charge", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...image,
+        providerId: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "qwen/qwen-image-2.1-turbo",
+        pricing: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+      }),
+    ).toMatchObject({
+      modelType: "image",
+      providerId: "openrouter",
+      apiFormat: "auto",
+      pricing: null,
+      providerOptions: null,
+    });
+  });
   it.each([
     { providerId: "anthropic" },
     { model: "" },

@@ -43,6 +43,11 @@ export const ProviderConnectionSchema = ProviderConnectionObject.superRefine(
   validateProviderConnection,
 );
 
+/** Discovery input; image models can live behind a separate listing. */
+export const ModelDiscoverySchema = ProviderConnectionObject.extend({
+  modelType: z.enum(["chat", "image"]).optional(),
+}).superRefine(validateProviderConnection);
+
 const RuntimeModelFields = {
   model: z.string().trim().min(1, "Model is required"),
   providerOptions: z
@@ -147,12 +152,14 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
       });
     }
     if (value.modelType === "image") {
-      if (!["openai", "google", "custom"].includes(value.providerId)) {
+      if (
+        !["openai", "google", "openrouter", "custom"].includes(value.providerId)
+      ) {
         context.addIssue({
           code: "custom",
           path: ["providerId"],
           message:
-            "Image models support OpenAI, Google Gemini, and custom OpenAI-compatible providers.",
+            "Image models support OpenAI, Google Gemini, OpenRouter, and custom OpenAI-compatible providers.",
         });
       }
       if (value.providerId === "custom") {
@@ -211,10 +218,12 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
           discoveredCapabilities: null,
           reasoningOverride: null,
           // Image usage carries no cache tokens, so only input and output
-          // rates apply. Custom backends are priced from the usage they report.
-          pricing: value.pricing
-            ? { ...value.pricing, cacheRead: 0, cacheWrite: 0 }
-            : null,
+          // rates apply. OpenRouter reports each image's charge, so it takes
+          // no rates; custom backends are priced from the usage they report.
+          pricing:
+            value.pricing && value.providerId !== "openrouter"
+              ? { ...value.pricing, cacheRead: 0, cacheWrite: 0 }
+              : null,
         }
       : value,
   );
@@ -226,6 +235,7 @@ export interface ModelDiscoveryInput {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey?: string | null;
+  modelType?: "chat" | "image";
 }
 
 function validateProviderConnection(

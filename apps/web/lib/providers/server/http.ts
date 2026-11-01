@@ -30,6 +30,13 @@ interface OpenAIModelList {
   }>;
 }
 
+interface OpenRouterImageModelList {
+  data?: Array<{
+    id?: unknown;
+    architecture?: unknown;
+  }>;
+}
+
 interface AnthropicModelList {
   data?: Array<{
     id?: unknown;
@@ -75,6 +82,33 @@ export async function listOpenAIModels(
   apiKey: string | null | undefined,
 ): Promise<DiscoveredModel[]> {
   return listOpenAIModelsWithOptions(baseUrl, apiKey, false);
+}
+
+/** OpenRouter's image listing; every entry generates images. */
+export async function listOpenRouterImageModels(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+): Promise<DiscoveredModel[]> {
+  const json = await fetchJson<OpenRouterImageModelList>(
+    appendPath(baseUrl, "images/models"),
+    { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} },
+  );
+  return normalizeDiscoveredModels(
+    json.data?.map((model) => {
+      const architecture = isRecord(model.architecture)
+        ? model.architecture
+        : undefined;
+      return {
+        id: model.id,
+        capabilities: compactCapabilities({
+          inputModalities: readStringArray(architecture?.input_modalities),
+          outputModalities: readStringArray(
+            architecture?.output_modalities,
+          ) ?? ["image"],
+        }),
+      };
+    }),
+  );
 }
 
 export async function listLlamaCppModels(

@@ -32,6 +32,27 @@ describe("provider registry", () => {
       max_tokens: 32, continue_final_message: true, add_generation_prompt: false,
     } });
   });
+  it("lists OpenRouter image models apart from its chat models", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(Response.json({ data: [{ id: "a-model" }] })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const connection = {
+      providerId: "openrouter" as const,
+      apiFormat: "auto" as const,
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "router-key",
+    };
+    const adapter = getProviderAdapter("openrouter");
+    await adapter.listModels(connection, { modelType: "image" });
+    await adapter.listModels(connection, { modelType: "chat" });
+    await adapter.listModels(connection);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://openrouter.ai/api/v1/images/models",
+      "https://openrouter.ai/api/v1/models",
+      "https://openrouter.ai/api/v1/models",
+    ]);
+  });
   it("maps every catalog provider to its matching adapter", () => {
     for (const providerId of PROVIDER_IDS) {
       expect(getProviderAdapter(providerId).id).toBe(providerId);
