@@ -898,8 +898,7 @@ export async function runChat(
       generateMessageId: () => crypto.randomUUID(),
       // This formatter also receives ordinary tool-error parts. Fatal provider
       // errors are recorded by observeChatStream before conversion.
-      onError: (error) =>
-        error instanceof Error ? error.message : "Something went wrong.",
+      onError: streamErrorText,
       messageMetadata: ({ part }) => {
         if (part.type === "start" && manualCompaction)
           return { contextStatus: "manual-compacting" };
@@ -1301,6 +1300,25 @@ function observeChatStream(
       return reader.cancel(reason);
     },
   });
+}
+
+/**
+ * Text shown for a failed stream. Providers reject requests either with an
+ * exception or with an error chunk inside the stream; both carry a message.
+ */
+export function streamErrorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (isRecord(error)) {
+    if (typeof error.message === "string") return error.message;
+    if (isRecord(error.error) && typeof error.error.message === "string") {
+      return error.error.message;
+    }
+  }
+  return "Something went wrong.";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export function chatErrorResponse(error: unknown): Response {
