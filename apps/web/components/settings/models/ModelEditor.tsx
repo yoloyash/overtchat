@@ -180,7 +180,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
     !!draft.model &&
-    (isCustomImage || pricingIsValid) &&
+    pricingIsValid &&
     (isImage || !providerOptionsError) &&
     !(requiresKey && !draft.apiKey);
   const stillEditingOriginalConnection =
@@ -260,10 +260,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     }
 
     const pricing =
-      isCustomImage || draft.pricing === null
-        ? null
-        : parsePricingDraft(draft.pricing);
-    if (!isCustomImage && draft.pricing !== null && pricing === null) {
+      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+    if (draft.pricing !== null && pricing === null) {
       setSaveError(
         isImage
           ? "Enter input and output rates as nonnegative numbers."
@@ -565,10 +563,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           </SettingsRow>
         </SettingsSection>
 
-        {isImage && !isCustomImage && (
+        {isImage && (
           <SettingsSection
             title="Usage cost"
-            description="Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
+            description={
+              isCustomImage
+                ? "Estimates image cost from the token usage the backend reports with each image. Images stay unpriced when it reports none."
+                : "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
+            }
           >
             <PricingRow
               pricing={draft.pricing}

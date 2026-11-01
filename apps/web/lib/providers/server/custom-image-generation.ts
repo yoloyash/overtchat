@@ -104,7 +104,48 @@ export async function runCustomImageProvider(
   const mediaType = imageMediaType(data);
   if (declaredMediaType && mediaType !== declaredMediaType)
     throw new Error("The image provider returned mismatched image content.");
-  return { data, mediaType, usage: undefined };
+  return { data, mediaType, usage: readImageUsage(payload) };
+}
+
+/**
+ * Token usage from an OpenAI Images response. Gateways that proxy image
+ * models through chat billing report the chat field names instead.
+ */
+function readImageUsage(payload: object) {
+  const usage =
+    "usage" in payload &&
+    payload.usage &&
+    typeof payload.usage === "object" &&
+    !Array.isArray(payload.usage)
+      ? (payload.usage as Record<string, unknown>)
+      : undefined;
+  if (!usage) return undefined;
+  const count = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = usage[key];
+      if (
+        typeof value === "number" &&
+        Number.isSafeInteger(value) &&
+        value >= 0
+      )
+        return value;
+    }
+    return undefined;
+  };
+  const inputTokens = count("input_tokens", "prompt_tokens");
+  const outputTokens = count("output_tokens", "completion_tokens");
+  const totalTokens =
+    count("total_tokens") ??
+    (inputTokens !== undefined && outputTokens !== undefined
+      ? inputTokens + outputTokens
+      : undefined);
+  if (
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    totalTokens === undefined
+  )
+    return undefined;
+  return { inputTokens, outputTokens, totalTokens };
 }
 
 function imageMediaType(data: Uint8Array): string {

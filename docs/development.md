@@ -293,6 +293,9 @@ Image models can use **Custom (OpenAI-compatible)** with an optional API key,
 base URL ending at the API root (for example, `http://host:8731/v1`), and a model
 ID. The server appends `/images/generations`. A configured size such as
 `512x512` overrides chat and model suggestions; blank uses the backend default.
+**Usage cost** rates apply to the token usage the backend reports with each
+image (`input_tokens` or `prompt_tokens`, and `output_tokens` or
+`completion_tokens`); a backend that reports none leaves images unpriced.
 Extra request parameters are a JSON object for settings such as `seed` or
 `quality`. They cannot replace the model, prompt, size, response format, image
 count, streaming mode, or reference images. Custom providers expose editing

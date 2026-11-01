@@ -127,6 +127,11 @@ test.beforeAll(async () => {
                       ? { url: `data:image/png;base64,${png}` }
                       : { b64_json: png },
                   ],
+                  usage: {
+                    prompt_tokens: 7,
+                    completion_tokens: 1_000,
+                    total_tokens: 1_007,
+                  },
                 }
               : { error: "Invalid Halogen-compatible request" },
           ),
@@ -862,6 +867,13 @@ for (const responseFormat of ["b64_json", "url"] as const) {
       page.getByRole("switch", { name: "Supports image editing", exact: true }),
     ).not.toBeChecked();
     await expect(page.locator("#p-api-key")).toHaveValue("");
+    const cost = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Usage cost" }) });
+    await expect(cost).toContainText("No catalog pricing");
+    await cost.getByRole("switch", { name: "Custom pricing" }).click();
+    await page.locator("#p-price-input").fill("5");
+    await page.locator("#p-price-output").fill("40");
     await page.screenshot({
       path: `/tmp/overtchat-custom-image-settings-${responseFormat}.png`,
       fullPage: true,
@@ -879,6 +891,7 @@ for (const responseFormat of ["b64_json", "url"] as const) {
       providerId: "custom",
       apiFormat: "openai-images",
       apiKey: "",
+      pricing: { input: 5, output: 40, cacheRead: 0, cacheWrite: 0 },
       providerOptions: {
         size: "512x512",
         responseFormat,
@@ -939,6 +952,16 @@ for (const responseFormat of ["b64_json", "url"] as const) {
       response_format: responseFormat,
     });
     expect(requests[0].authorization).toBeUndefined();
+    await expect.poll(imageUsageRows).toEqual([
+      {
+        providerId: "custom",
+        model: "flux2-klein-4b",
+        inputTokens: 7,
+        outputTokens: 1_000,
+        costSource: "model_config",
+        totalCostNanoUsd: 40_035_000,
+      },
+    ]);
     const tools = chatRequests[0].tools as Array<{
       function: {
         name: string;
@@ -1037,14 +1060,12 @@ test("custom editing size persists and routes generation and edits at different 
   await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
     "512x512",
   );
-  const imageSettings = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "Image API settings",
-        exact: true,
-      }),
-    });
+  const imageSettings = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Image API settings",
+      exact: true,
+    }),
+  });
   await imageSettings.screenshot({
     path: "/tmp/overtchat-edit-size-desktop.png",
   });

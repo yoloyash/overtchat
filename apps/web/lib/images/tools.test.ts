@@ -320,6 +320,43 @@ it("keeps custom provider settings authoritative and omits unsupported editing",
   );
 });
 
+it("prices custom backend usage at administrator rates", async () => {
+  mocks.config.mockReturnValue({
+    providerId: "custom",
+    baseUrl: "http://images/v1",
+    apiKey: null,
+    model: "flux2-klein-4b",
+    providerOptions: {},
+    pricing: { input: 5, output: 40, cacheRead: 0, cacheWrite: 0 },
+  });
+  mocks.generate.mockResolvedValue({
+    data: new Uint8Array([3, 4]),
+    mediaType: "image/png",
+    usage: { inputTokens: 7, outputTokens: 1_000, totalTokens: 1_007 },
+  });
+  const onUsage = vi.fn();
+  const tools = createImageTools({
+    userId: "alice",
+    messages: [],
+    supportsImageInput: false,
+    onUsage,
+  });
+  await tools.generate_image.execute!({ prompt: "A kite" }, execution);
+  expect(onUsage).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      providerId: "custom",
+      model: "flux2-klein-4b",
+      inputTokens: 7,
+      outputTokens: 1_000,
+      totalTokens: 1_007,
+      costSource: "model_config",
+      inputCostNanoUsd: 35_000,
+      outputCostNanoUsd: 40_000_000,
+      totalCostNanoUsd: 40_035_000,
+    }),
+  );
+});
+
 it("only exposes custom editing when explicitly enabled", () => {
   mocks.config.mockReturnValue({
     providerId: "custom",
