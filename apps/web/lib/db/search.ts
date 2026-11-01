@@ -36,8 +36,16 @@ export async function searchChats(
   const match = toMatchQuery(q);
   const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
 
-  // Top-ranked FTS hit per chat. `bm25` returns lower = better; we flip sign
-  // so we can ORDER BY the score descending after the GROUP BY window.
+  // Top-ranked FTS hit per chat. `bm25` returns lower = better, so ordering
+  // by score ascending puts the best match first.
+  //
+  // The FTS5 auxiliary functions (`snippet`, `bm25`) must run inside the
+  // MATCH scan itself. Putting them in the same SELECT as a window function
+  // does not work: SQLite materializes the scan first and evaluates the
+  // remaining expressions afterwards, when the FTS cursor is gone, and fails
+  // with "unable to use function snippet in the requested context". So the
+  // scan computes the snippet and score in its own CTE and the window
+  // function ranks that materialized result.
   const rows = match
     ? await db.all<{
         chatId: string;
@@ -47,17 +55,22 @@ export async function searchChats(
         snippet: string | null;
         score: number;
       }>(sql`
-        WITH hits AS (
+        WITH ranked AS (
           SELECT
             fts.chat_id AS chatId,
             fts.message_id AS messageId,
             snippet(messages_fts, 0, '<mark>', '</mark>', '…', 12) AS snippet,
-            bm25(messages_fts) AS score,
-            ROW_NUMBER() OVER (
-              PARTITION BY fts.chat_id ORDER BY bm25(messages_fts)
-            ) AS rn
+            bm25(messages_fts) AS score
           FROM messages_fts fts
           WHERE messages_fts MATCH ${match} AND fts.user_id = ${userId}
+        ),
+        hits AS (
+          SELECT
+            ranked.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY ranked.chatId ORDER BY ranked.score
+            ) AS rn
+          FROM ranked
         )
         SELECT
           h.chatId,
