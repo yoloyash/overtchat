@@ -460,11 +460,22 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
 
   await page.goto("/agents/new?workspaceId=workspace&provider=codex");
   const composer = page.getByTestId("agent-composer").getByRole("combobox");
-  await expect(composer).toBeDisabled();
-  releaseCatalog();
+  const send = page.getByRole("button", { name: "Send message" });
+  // Typing starts before the model catalog answers; only sending waits on it.
   await expect(composer).toBeEnabled();
-  await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
+  await expect(composer).toBeFocused();
   await composer.fill("First agent prompt over HTTP");
+  await expect(send).toBeDisabled();
+  await expect(send).toHaveAttribute("title", "Model defaults are still loading");
+  await composer.press("Enter");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Model defaults are still loading" }).first(),
+  ).toBeVisible();
+  expect(createdSessions).toBe(0);
+  await expect(composer).toHaveValue("First agent prompt over HTTP");
+  releaseCatalog();
+  await expect(send).toBeEnabled();
+  await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
   await composer.press("Enter");
   await expect.poll(() => submittedCommands.length).toBe(1);
   await page.waitForURL(`**/agents/${SESSION_ID}`);

@@ -147,7 +147,8 @@ export function NewAgentSessionView({
   const loadingDefaults = catalog.isFetching && !catalog.data;
   const pending = createSession.isPending || sendingFirstPrompt;
   const supportsImages = selectedModel?.input.includes("image") === true;
-  const composerDisabled = !forkLoaded || forkError || loadingDefaults;
+  // Typing stays open while the model catalog loads; only sending waits on it.
+  const composerDisabled = !forkLoaded || forkError;
   const composerRef = useRef<AgentComposerHandle>(null);
 
   useEffect(() => {
@@ -260,7 +261,7 @@ export function NewAgentSessionView({
   return (
     <FileDropZone
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      disabled={composerDisabled}
+      disabled={composerDisabled || loadingDefaults}
       accepting={supportsImages}
       kind="images"
       onFiles={(files) => composerRef.current?.addFiles(files)}
@@ -362,6 +363,10 @@ export function NewAgentSessionView({
             pending={pending}
             stopping={false}
             disabled={composerDisabled}
+            sendDisabledReason={
+              loadingDefaults ? AGENT_MODEL_DEFAULTS_LOADING_MESSAGE : null
+            }
+            autoFocus={!chooseWorkspace}
             isAdmin={isAdmin}
             controls={{
               providerLabel: providerMetadata.label,
