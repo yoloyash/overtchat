@@ -86,6 +86,13 @@ interface AgentComposerProps {
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
+  /**
+   * Blocks sending while typing stays open, with the reason shown on the send
+   * button. Used while a new session is still loading its model defaults.
+   */
+  sendDisabledReason?: string | null;
+  /** Focus the textarea once it first becomes enabled so typing can start right away. */
+  autoFocus?: boolean;
   isAdmin: boolean;
   /** Stops text-to-speech before dictation so playback is not transcribed. */
   onBeforeDictate?: () => void;
@@ -121,6 +128,8 @@ export const AgentComposer = forwardRef<
   pending,
   stopping,
   disabled,
+  sendDisabledReason = null,
+  autoFocus = false,
   isAdmin,
   onBeforeDictate,
   controls,
@@ -152,6 +161,15 @@ export const AgentComposer = forwardRef<
   });
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  // The textarea can mount disabled for a tick (fork draft loading), which
+  // defeats the DOM autofocus attribute, so focus on the first enabled render.
+  const textareaEnabled = !(disabled || pending || submitting);
+  const autoFocusedRef = useRef(false);
+  useEffect(() => {
+    if (!autoFocus || !textareaEnabled || autoFocusedRef.current) return;
+    autoFocusedRef.current = true;
+    textareaRef.current?.focus();
+  }, [autoFocus, textareaEnabled]);
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const appliedAppendRef = useRef<number | null>(null);
@@ -757,16 +775,19 @@ export const AgentComposer = forwardRef<
                 pending ||
                 submitting ||
                 dictation.status !== "idle" ||
-                disabled
+                disabled ||
+                Boolean(sendDisabledReason)
               }
               onClick={submit}
               aria-label={
                 running ? `Queue message for ${providerLabel}` : "Send message"
               }
               title={
-                running
-                  ? `Queue after ${providerLabel} finishes`
-                  : "Send message"
+                sendDisabledReason
+                  ? sendDisabledReason
+                  : running
+                    ? `Queue after ${providerLabel} finishes`
+                    : "Send message"
               }
             >
               <ArrowUp />

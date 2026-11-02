@@ -704,14 +704,15 @@ test("groups providers by directory, filters chats, refreshes globally, and open
       name: "Model defaults are still loading",
     }),
   ).toBeVisible();
-  await expect(composer.getByRole("combobox")).toBeDisabled();
+  // Typing is open while the catalog loads; only sending waits on it.
+  await expect(composer.getByRole("combobox")).toBeEnabled();
+  await composer.getByRole("combobox").fill("Ready when I choose to send");
   await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
   expect(sessionCreateRequests).toBe(0);
 
   releaseCatalog();
-  await expect(composer.getByRole("combobox")).toBeEnabled();
-  await composer.getByRole("combobox").fill("Ready when I choose to send");
   await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  await expect(composer.getByRole("combobox")).toHaveValue("Ready when I choose to send");
   expect(sessionCreateRequests).toBe(0);
   await expect(composer.getByTestId("agent-model-effort-trigger")).toBeVisible();
   await expect(composer.getByTestId("agent-access-mode-trigger")).toBeVisible();
