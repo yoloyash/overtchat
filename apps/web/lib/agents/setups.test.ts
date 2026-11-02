@@ -1,5 +1,7 @@
+import type { AgentProviderSnapshot } from "@overtchat/agent-bridge";
 import { describe, expect, it } from "vitest";
 import {
+  agentSetupAgentsForWorkspace,
   agentSetupForWorkspace,
   agentSetupHosts,
   agentSetupWorkspaces,
@@ -21,9 +23,25 @@ function setup(
     hostKey: `host-${hostLabel}`,
     hostLabel,
     transport: hostLabel === "macbook" ? "local" : "ssh",
+    target:
+      hostLabel === "macbook"
+        ? { connectorId: "connector", transport: "local" }
+        : { connectorId: "connector", transport: "ssh", sshAlias: hostLabel },
     activityAt: 0,
   };
 }
+
+/** What the macbook's last detection found: Claude Code too, but no Hermes. */
+const macbookSnapshot: AgentProviderSnapshot = {
+  target: { connectorId: "connector", transport: "local" },
+  refreshedAt: 1,
+  providers: (["claude", "codex", "hermes", "omp", "opencode", "pi"] as const).map(
+    (provider) =>
+      provider === "hermes" || provider === "opencode"
+        ? { provider, status: "unavailable" }
+        : { provider, status: "ready", executable: provider, version: "1", shellMode: "login" },
+  ),
+};
 
 // Already in most-recently-used order, as recentAgentSetups returns them.
 const setups = [
@@ -69,19 +87,65 @@ describe("agentSetupsForWorkspace", () => {
   });
 });
 
+describe("agentSetupAgentsForWorkspace", () => {
+  it("lists the folder's agents first, then the rest the machine has", () => {
+    expect(
+      agentSetupAgentsForWorkspace(setups, "host-macbook", "/srv/site", macbookSnapshot),
+    ).toEqual([
+      { provider: "pi", workspaceId: "pi-site-mac", detected: true },
+      // Agents the folder lacks start from its most recently used record.
+      { provider: "claude", workspaceId: "pi-site-mac", detected: true },
+      { provider: "codex", workspaceId: "pi-site-mac", detected: true },
+      { provider: "omp", workspaceId: "pi-site-mac", detected: true },
+      { provider: "hermes", workspaceId: "pi-site-mac", detected: false },
+      { provider: "opencode", workspaceId: "pi-site-mac", detected: false },
+    ]);
+  });
+
+  it("keeps an agent the folder has even when detection no longer finds it", () => {
+    const snapshot: AgentProviderSnapshot = {
+      ...macbookSnapshot,
+      providers: macbookSnapshot.providers.map((entry) =>
+        entry.provider === "pi" ? { provider: "pi", status: "unavailable" } : entry,
+      ),
+    };
+    expect(
+      agentSetupAgentsForWorkspace(setups, "host-macbook", "/srv/site", snapshot)[0],
+    ).toEqual({ provider: "pi", workspaceId: "pi-site-mac", detected: true });
+  });
+
+  it("knows only the folder's agents before detection, and none for a folder it lacks", () => {
+    expect(
+      agentSetupAgentsForWorkspace(setups, "host-macbook", "/srv/site", undefined),
+    ).toEqual([{ provider: "pi", workspaceId: "pi-site-mac", detected: true }]);
+    expect(
+      agentSetupAgentsForWorkspace(setups, "host-home-server", "/srv/site", macbookSnapshot),
+    ).toEqual([]);
+  });
+});
+
 describe("agentSetupForWorkspace", () => {
   it("keeps the chosen agent when the folder has it", () => {
-    expect(agentSetupForWorkspace(setups, "host-macbook", "/srv/app", "codex")).toBe(
-      setups[4],
-    );
+    expect(
+      agentSetupForWorkspace(setups, "host-macbook", "/srv/app", "codex", undefined),
+    ).toEqual({ provider: "codex", workspaceId: "codex-app-mac", detected: true });
+  });
+
+  it("keeps the chosen agent when the machine has it", () => {
+    expect(
+      agentSetupForWorkspace(setups, "host-macbook", "/srv/site", "codex", macbookSnapshot),
+    ).toEqual({ provider: "codex", workspaceId: "pi-site-mac", detected: true });
   });
 
   it("falls back to the folder's most recently used agent", () => {
-    expect(agentSetupForWorkspace(setups, "host-macbook", "/srv/site", "codex")).toBe(
-      setups[5],
-    );
     expect(
-      agentSetupForWorkspace(setups, "host-home-server", "/srv/site", "codex"),
+      agentSetupForWorkspace(setups, "host-macbook", "/srv/site", "codex", undefined),
+    ).toEqual({ provider: "pi", workspaceId: "pi-site-mac", detected: true });
+    expect(
+      agentSetupForWorkspace(setups, "host-macbook", "/srv/site", "hermes", macbookSnapshot),
+    ).toEqual({ provider: "pi", workspaceId: "pi-site-mac", detected: true });
+    expect(
+      agentSetupForWorkspace(setups, "host-home-server", "/srv/site", "codex", undefined),
     ).toBeUndefined();
   });
 });

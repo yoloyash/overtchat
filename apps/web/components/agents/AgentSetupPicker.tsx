@@ -11,12 +11,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  agentSetupAgentsForWorkspace,
   agentSetupForWorkspace,
   agentSetupHosts,
   agentSetupWorkspaces,
-  agentSetupsForWorkspace,
   type AgentSetup,
+  type AgentSetupAgent,
 } from "@/lib/agents/setups";
+import { useAgentProviderSnapshot } from "@/lib/queries/agentConnections";
 import { AgentProviderLogo } from "./AgentSessionStatus";
 
 /** A borderless pill, so the pickers read as settings rather than form fields. */
@@ -26,19 +28,21 @@ const PILL =
 const POPUP = "w-auto max-w-[min(28rem,calc(100vw-2rem))]";
 
 /**
- * Switches a new session to another machine, a folder on it, then an agent
- * that has that folder. The machine is only offered when there is more than
- * one. Every list is ordered by last use.
+ * Switches a new session to another machine, a folder on it, then any agent
+ * the machine has. The machine is only offered when there is more than one.
+ * Every list is ordered by last use.
  */
 export function AgentSetupPicker({
   setups: allSetups,
   workspaceId,
+  provider,
   lockedProvider = null,
   fork = null,
   focusWorkspace = false,
 }: {
   setups: AgentSetup[];
   workspaceId: string;
+  provider: AgentProviderId;
   /** Keep this agent and offer only its machines and folders. */
   lockedProvider?: AgentProviderId | null;
   /** The forked conversation to carry along when the setup changes. */
@@ -51,24 +55,34 @@ export function AgentSetupPicker({
     ? allSetups.filter((setup) => setup.provider === lockedProvider)
     : allSetups;
   const current = setups.find((setup) => setup.workspaceId === workspaceId);
+  // A locked agent needs no detection: it only moves between its own folders.
+  const snapshot = useAgentProviderSnapshot(
+    lockedProvider ? null : (current?.target ?? null),
+  ).data;
   if (!current) return null;
   const hosts = agentSetupHosts(setups);
   const workspaces = agentSetupWorkspaces(setups, current.hostKey);
-  const agents = agentSetupsForWorkspace(
+  const agents = agentSetupAgentsForWorkspace(
     setups,
     current.hostKey,
     current.workspacePath,
+    snapshot,
   );
   // The marks the connection settings use: this server, or a machine over SSH.
   const HostIcon = current.transport === "ssh" ? Wifi : Server;
 
-  function open(setup: AgentSetup | undefined) {
-    if (!setup || setup.workspaceId === workspaceId) return;
+  function open(agent: Pick<AgentSetupAgent, "workspaceId" | "provider"> | undefined) {
+    if (
+      !agent ||
+      (agent.workspaceId === workspaceId && agent.provider === provider)
+    ) {
+      return;
+    }
     void navigate({
       to: "/agents/new",
       search: {
-        workspaceId: setup.workspaceId,
-        provider: setup.provider,
+        workspaceId: agent.workspaceId,
+        provider: agent.provider,
         fork: fork ?? undefined,
       },
       replace: true,
@@ -106,11 +120,17 @@ export function AgentSetupPicker({
       )}
       <Select
         value={current.workspacePath}
-        // The agent stays if the folder has it; otherwise its last-used agent.
+        // The agent stays if the machine has it; otherwise the folder's last-used agent.
         onValueChange={(path) =>
           open(
             path
-              ? agentSetupForWorkspace(setups, current.hostKey, path, current.provider)
+              ? agentSetupForWorkspace(
+                  setups,
+                  current.hostKey,
+                  path,
+                  provider,
+                  snapshot,
+                )
               : undefined,
           )
         }
@@ -150,28 +170,35 @@ export function AgentSetupPicker({
       </Select>
       {!lockedProvider && (
         <Select
-          value={workspaceId}
-          onValueChange={(id) => open(setups.find((setup) => setup.workspaceId === id))}
+          value={provider}
+          onValueChange={(id) => open(agents.find((agent) => agent.provider === id))}
         >
           <SelectTrigger size="sm" aria-label="Agent" title="Agent" className={PILL}>
             <SelectValue className="min-w-0 gap-1.5">
               {() => (
                 <>
-                  <AgentProviderLogo provider={current.provider} className="opacity-100" />
+                  <AgentProviderLogo provider={provider} className="opacity-100" />
                   <span className="truncate">
-                    {agentProviderMetadata(current.provider).label}
+                    {agentProviderMetadata(provider).label}
                   </span>
                 </>
               )}
             </SelectValue>
           </SelectTrigger>
           <SelectContent align="start" alignItemWithTrigger={false} className={POPUP}>
-            {agents.map((setup) => (
-              <SelectItem key={setup.workspaceId} value={setup.workspaceId}>
-                <AgentProviderLogo provider={setup.provider} className="opacity-100" />
+            {agents.map((agent) => (
+              <SelectItem
+                key={agent.provider}
+                value={agent.provider}
+                disabled={!agent.detected}
+              >
+                <AgentProviderLogo provider={agent.provider} className="opacity-100" />
                 <span className="truncate">
-                  {agentProviderMetadata(setup.provider).label}
+                  {agentProviderMetadata(agent.provider).label}
                 </span>
+                {!agent.detected && (
+                  <span className="truncate text-muted-foreground">Not detected</span>
+                )}
               </SelectItem>
             ))}
           </SelectContent>

@@ -1,7 +1,13 @@
 import type {
   AgentConnectionListItem,
+  AgentDiscoveryTarget,
   AgentProviderId,
+  AgentProviderSnapshot,
 } from "@overtchat/agent-bridge";
+import {
+  agentWorkspaceAgents,
+  type AgentWorkspaceAgent,
+} from "@overtchat/shared/agent-creation";
 import { agentSessionActivityAt } from "@/lib/agents/attention";
 import {
   agentConnectionTarget,
@@ -22,9 +28,13 @@ export type AgentSetup = {
   hostKey: string;
   hostLabel: string;
   transport: AgentConnectionListItem["host"]["transport"];
+  /** The machine as the connector reaches it, for asking what it has. */
+  target: AgentDiscoveryTarget;
   /** Latest activity of the setup's sessions; 0 when it has none. */
   activityAt: number;
 };
+
+export type AgentSetupAgent = AgentWorkspaceAgent;
 
 /**
  * Every setup, most recently used first. Setups without sessions follow in
@@ -44,6 +54,7 @@ export function recentAgentSetups(
         hostKey: agentTargetKey(agentConnectionTarget(connection)),
         hostLabel: agentHostLabel(connection.host),
         transport: connection.host.transport,
+        target: agentConnectionTarget(connection),
         activityAt: Math.max(
           0,
           ...workspace.sessions.map(agentSessionActivityAt),
@@ -102,17 +113,41 @@ export function agentSetupsForWorkspace(
 }
 
 /**
- * The setup to open when the folder changes: the agent already chosen if the
- * folder has it, otherwise the folder's most recently used agent.
+ * The agents a new session can start with in the folder: those with the
+ * folder in last-used order, then the rest the machine has.
+ */
+export function agentSetupAgentsForWorkspace(
+  setups: readonly AgentSetup[],
+  hostKey: string,
+  workspacePath: string,
+  snapshot: AgentProviderSnapshot | undefined,
+): AgentSetupAgent[] {
+  return agentWorkspaceAgents(
+    agentSetupsForWorkspace(setups, hostKey, workspacePath),
+    snapshot,
+  );
+}
+
+/**
+ * The agent to open when the folder changes: the agent already chosen when
+ * the folder's machine has it, otherwise the folder's most recently used
+ * agent.
  */
 export function agentSetupForWorkspace(
   setups: readonly AgentSetup[],
   hostKey: string,
   workspacePath: string,
   provider: AgentProviderId,
-): AgentSetup | undefined {
-  const candidates = agentSetupsForWorkspace(setups, hostKey, workspacePath);
+  snapshot: AgentProviderSnapshot | undefined,
+): AgentSetupAgent | undefined {
+  const agents = agentSetupAgentsForWorkspace(
+    setups,
+    hostKey,
+    workspacePath,
+    snapshot,
+  );
   return (
-    candidates.find((setup) => setup.provider === provider) ?? candidates[0]
+    agents.find((agent) => agent.provider === provider && agent.detected) ??
+    agents[0]
   );
 }

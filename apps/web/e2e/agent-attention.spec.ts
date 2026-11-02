@@ -43,7 +43,8 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   await expect(page.getByRole("option")).toHaveCount(2);
   await page.getByRole("option", { name: "site" }).click();
   await page.waitForURL("**/agents/new?workspaceId=claude-site&provider=claude");
-  // Back on this machine, the agent list holds only the agents that have the folder.
+  // Back on this machine, the agent list holds the agents that have the folder,
+  // then the rest the machine has; agents it lacks are shown but not offered.
   await machine.click();
   await page.getByRole("option", { name: "This machine" }).click();
   await page.waitForURL("**/agents/new?workspaceId=codex-app&provider=codex");
@@ -53,7 +54,28 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   const agent = page.getByRole("combobox", { name: "Agent" });
   await expect(agent).toContainText("Codex");
   await agent.click();
-  await expect(page.getByRole("option")).toHaveCount(2);
+  await expect(page.getByRole("option")).toHaveText([
+    "Codex",
+    "Oh My Pi",
+    "Claude Code",
+    "HermesNot detected",
+    "OpenCodeNot detected",
+    "PiNot detected",
+  ]);
+  await expect(page.getByRole("option", { name: "Hermes" })).toBeDisabled();
+  // An agent without a record of the folder starts from the folder's record.
+  await page.getByRole("option", { name: "Claude Code" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=codex-site&provider=claude");
+  await expect(page.getByRole("heading", { name: "New Claude Code session" })).toBeVisible();
+  await expect(agent).toContainText("Claude Code");
+  // The agent stays across folders the machine has it for.
+  await workspace.click();
+  await page.getByRole("option", { name: "app" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=codex-app&provider=claude");
+  await workspace.click();
+  await page.getByRole("option", { name: "site" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=codex-site&provider=claude");
+  await agent.click();
   await page.getByRole("option", { name: "Oh My Pi" }).click();
   await page.waitForURL("**/agents/new?workspaceId=omp-site&provider=omp");
   await expect(page.getByRole("heading", { name: "New Oh My Pi session" })).toBeVisible();

@@ -187,17 +187,26 @@ export async function setupAgentAttention(
     presence.push(route.request().postDataJSON() as AgentPresenceHeartbeat);
     return route.fulfill({ status: 204 });
   });
-  await page.context().route("**/api/agent-connections/discover?*", (route) =>
-    route.fulfill({
+  // What each machine has: this machine also has Claude Code, home-server only it.
+  await page.context().route("**/api/agent-connections/discover?*", (route) => {
+    const target = route.request().postDataJSON() as {
+      transport: "local" | "ssh";
+    };
+    const ready = target.transport === "local" ? ["claude", "codex", "omp"] : ["claude"];
+    return route.fulfill({
       json: {
         snapshot: {
-          target: { connectorId: "connector", transport: "local" },
-          providers: [],
+          target: { connectorId: "connector", ...target },
+          providers: ["claude", "codex", "hermes", "omp", "opencode", "pi"].map((provider) =>
+            ready.includes(provider)
+              ? { provider, status: "ready", executable: provider, version: "1", shellMode: "login" }
+              : { provider, status: "unavailable" },
+          ),
           refreshedAt: 1,
         },
       },
-    }),
-  );
+    });
+  });
   await page
     .context()
     .route("**/api/agent-workspaces/*/git-status", (route) =>
@@ -206,7 +215,13 @@ export async function setupAgentAttention(
   await page
     .context()
     .route("**/api/agent-workspaces/*/catalog?*", (route) =>
-      route.fulfill({ json: { provider: "codex", models: [], modes: [] } }),
+      route.fulfill({
+        json: {
+          provider: new URL(route.request().url()).searchParams.get("provider"),
+          models: [],
+          modes: [],
+        },
+      }),
     );
   await page.context().route("**/api/agent-sessions/*/read", (route) => {
     const sessionId = new URL(route.request().url()).pathname.split("/").at(-2)!;

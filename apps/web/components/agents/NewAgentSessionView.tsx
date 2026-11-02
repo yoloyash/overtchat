@@ -313,6 +313,7 @@ export function NewAgentSessionView({
               <AgentSetupPicker
                 setups={setups}
                 workspaceId={workspaceId}
+                provider={provider}
                 // A fork keeps its agent: its history and launch settings belong to it.
                 lockedProvider={forkId ? provider : null}
                 fork={forkId}
