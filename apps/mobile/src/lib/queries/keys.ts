@@ -14,6 +14,8 @@ export const queryKeys = {
     ["agents", server, "catalog", workspace, provider] as const,
   agentGitStatus: (server: string, workspace: string) =>
     ["agents", server, "git-status", workspace] as const,
+  agentProviderSnapshot: (server: string, target: string) =>
+    ["agents", server, "provider-snapshot", target] as const,
   modelConfigs: () => ["modelConfigs"] as const,
   modelPreferences: (server: string, userId: string) => ["modelPreferences", server, userId] as const,
   chats: () => ["chats"] as const,

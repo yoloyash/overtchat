@@ -3,7 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toastError } from "@/lib/toast";
-import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
+import type {
+  AgentConnectionListItem,
+  AgentProviderSnapshot,
+} from "@overtchat/agent-bridge";
 import type { AgentDraft } from "@/lib/agents/drafts";
 import { snapshot } from "@/lib/agents/test-fixtures";
 
@@ -56,11 +59,12 @@ const mocks = vi.hoisted(() => ({
     workspace: "workspace",
     name: "Project",
     provider: "codex",
-  },
+  } as Record<string, string | undefined>,
   api: vi.fn(),
   saveDraftToSession: vi.fn(),
   catalog: undefined as unknown,
   connections: [] as AgentConnectionListItem[],
+  providerSnapshot: undefined as AgentProviderSnapshot | undefined,
 }));
 
 // Native host primitives are adapted to DOM for interaction tests. Production
@@ -475,6 +479,11 @@ vi.mock("@/lib/queries/agents", () => ({
     data: { isGit: true, branch: "main", dirty: false },
   }),
   useAgentCatalog: () => ({ data: mocks.catalog, isPending: false }),
+  useAgentProviderSnapshot: () => ({
+    data: mocks.providerSnapshot,
+    isSuccess: true,
+    isError: false,
+  }),
 }));
 vi.mock("@/lib/agents/api", () => ({ agentJson: mocks.api }));
 vi.mock("@/lib/agents/drafts", async () => {
@@ -528,6 +537,7 @@ beforeEach(() => {
   mocks.pathname = "/chat";
   mocks.canGoBack = false;
   mocks.params = { id: "session", workspace: "workspace", name: "Project", provider: "codex" };
+  mocks.providerSnapshot = undefined;
   mocks.connections = [];
   mocks.copy.mockResolvedValue(undefined);
   mocks.uuid.mockReturnValue("message-id");
@@ -2098,10 +2108,64 @@ it("opens a single-agent workspace directly in the new chat composer", async () 
     },
   ];
   await render(<AgentsScreen />);
+  // The folder screen knows which agents the machine has, so it decides.
   await click("New chat in Solo");
-  expect(mocks.push).toHaveBeenCalledWith({
+  expect(mocks.push).toHaveBeenLastCalledWith({
+    pathname: "/agents/workspace",
+    params: { workspace: "workspace", name: "Solo", create: "1" },
+  });
+  mocks.params = { workspace: "workspace", name: "Solo", create: "1" };
+  await render(<AgentWorkspaceScreen />);
+  expect(mocks.push).toHaveBeenLastCalledWith({
     pathname: "/agents/new",
     params: { workspace: "workspace", provider: "codex", name: "Solo" },
+  });
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+});
+
+it("offers every agent the machine has, starting from the folder's record", async () => {
+  mocks.connections = [
+    {
+      id: "connection",
+      provider: "codex",
+      executable: "codex",
+      detectedVersion: null,
+      lastValidatedAt: null,
+      host: {
+        id: "host",
+        connectorId: "connector",
+        name: "Host",
+        transport: "local",
+        sshAlias: null,
+      },
+      workspaces: [
+        { id: "workspace", name: "Solo", path: "/solo", sessions: [] },
+      ],
+    },
+  ];
+  // Detection finds Claude Code on the machine though no chat used it here.
+  mocks.providerSnapshot = {
+    target: { connectorId: "connector", transport: "local" },
+    refreshedAt: 1,
+    providers: (["claude", "codex", "hermes", "omp", "opencode", "pi"] as const).map(
+      (provider) =>
+        provider === "claude" || provider === "codex"
+          ? { provider, status: "ready", executable: provider, version: "1", shellMode: "login" }
+          : { provider, status: "unavailable" },
+    ),
+  };
+  mocks.params = { workspace: "workspace", name: "Solo", create: "1" };
+  await render(<AgentWorkspaceScreen />);
+  const picker = container.querySelector('[role="dialog"]');
+  expect(
+    [...(picker?.querySelectorAll("button[aria-label]") ?? [])]
+      .map((button) => button.getAttribute("aria-label"))
+      .filter((label) => label !== "Close agent picker"),
+  ).toEqual(["Codex", "Claude Code"]);
+  await click("Claude Code");
+  expect(mocks.push).toHaveBeenLastCalledWith({
+    pathname: "/agents/new",
+    params: { workspace: "workspace", provider: "claude", name: "Solo" },
   });
 });
 

@@ -14,8 +14,10 @@ import {
 } from "@tanstack/react-query";
 import type {
   AgentConnectionListItem,
+  AgentDiscoveryTarget,
   AgentProviderCatalog,
   AgentProviderId,
+  AgentProviderSnapshot,
   AgentRuntimeStatus,
   AgentSessionReplica,
   AgentWorkspaceGitStatus,
@@ -236,6 +238,30 @@ export function useAgentCommand(id: string) {
         queryKey: queryKeys.agentConnections(server),
       });
     },
+  });
+}
+
+/**
+ * Which agents the machine has, as the connector last detected them. The
+ * connector keeps the answer until something asks it to look again.
+ */
+export function useAgentProviderSnapshot(target: AgentDiscoveryTarget | null) {
+  return useQuery({
+    queryKey: queryKeys.agentProviderSnapshot(
+      getApiBase(),
+      JSON.stringify(target),
+    ),
+    queryFn: async ({ signal }) =>
+      (
+        await agentJson<{ snapshot: AgentProviderSnapshot }>(
+          "/api/agent-connections/discover?refresh=0",
+          target,
+          signal,
+        )
+      ).snapshot,
+    enabled: target !== null,
+    staleTime: 60_000,
+    retry: false,
   });
 }
 
