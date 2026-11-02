@@ -18,8 +18,29 @@ export const searchOutput: WebSearchOutput = {
   ],
 };
 
+// The interactive answer is arithmetic the renderer shows as it would from a live model:
+// $400 a month at a steady 7% a year, compounded monthly. The program follows the
+// chat library spec in lib/openui and is validated by the e2e OpenUI suites.
+const savingsProgram = [
+  "root = Card([header, totals, chart, next])",
+  "header = CardHeader(\"$400 a month at 7% a year\", \"An illustration at a steady 7% a year, compounded monthly, before taxes, fees and inflation\")",
+  "totals = OverviewCardBlock([OverviewCardItem(\"y10\", Text(null, \"After 10 years\"), MetricIndicatorInline(\"$69,200\", \"$48,000 contributed\")), OverviewCardItem(\"y20\", Text(null, \"After 20 years\"), MetricIndicatorInline(\"$208,400\", \"$96,000 contributed\")), OverviewCardItem(\"y30\", Text(null, \"After 30 years\"), MetricIndicatorInline(\"$488,000\", \"$144,000 contributed\"))], \"grid\", false)",
+  "chart = LineChart([\"Start\", \"5 yrs\", \"10 yrs\", \"15 yrs\", \"20 yrs\", \"25 yrs\", \"30 yrs\"], [Series(\"Balance\", [0, 28.6, 69.2, 126.8, 208.4, 324, 488])], \"natural\", null, \"Thousands of dollars\", 200)",
+  "next = FollowUpBlock([FollowUpItem(\"What if I start with $5,000 already saved?\"), FollowUpItem(\"How much a month reaches $1M in 30 years?\")])",
+].join("\n");
+const savingsText = "After 10 years: about $69,200 ($48,000 contributed). After 20 years: about $208,400 ($96,000 contributed). After 30 years: about $488,000 ($144,000 contributed). Assumes a steady 7% a year compounded monthly, before taxes, fees and inflation.";
+
 // Editorial examples, not benchmark results or transcripts from live providers.
 const conversations: { id: string; title: string; kind?: "voice"; project?: string; messages: UIMessage[] }[] = [
+  {
+    id: "savings", title: "What $400 a month becomes",
+    messages: [
+      { id: "savings-user", role: "user", parts: [{ type: "text", text: "If I put $400 a month into an index fund, what does it look like after 10, 20 and 30 years? Assume 7% a year." }] },
+      { id: "savings-assistant", role: "assistant", parts: [
+        { type: "tool-present_openui", toolCallId: "savings-openui", state: "output-available", input: { ui: savingsProgram, text: savingsText }, output: { displayed: true, text: savingsText } },
+      ] },
+    ],
+  },
   {
     id: "local-ai", title: conversation.title, project: "homelab",
     messages: [
@@ -86,8 +107,8 @@ export function seedDemo(database: string) {
       db.prepare("INSERT INTO agent_hosts (id, user_id, connector_id, name, transport) VALUES ('demo-host', ?, 'demo-connector', 'Home workstation', 'local')").run(user.id);
       db.prepare("INSERT INTO agent_connections (id, host_id, provider, executable) VALUES ('demo-connection', 'demo-host', 'codex', 'codex')").run();
       db.prepare("INSERT INTO agent_workspaces (id, connection_id, path, name) VALUES ('demo-workspace', 'demo-connection', '/home/alex/projects/reading-room', 'reading-room')").run();
-      db.prepare(`INSERT INTO agent_sessions (id, workspace_id, provider_session_id, provider_session_path, name, first_message, message_count)
-        VALUES ('demo-agent', 'demo-workspace', 'demo-native', '/home/alex/projects/reading-room/session.jsonl', 'Make room for saved books', 'Add a reading list to the app.', 2)`).run();
+      db.prepare(`INSERT INTO agent_sessions (id, workspace_id, provider_session_id, provider_session_path, name, first_message, message_count, provider_created_at, provider_modified_at)
+        VALUES ('demo-agent', 'demo-workspace', 'demo-native', '/home/alex/projects/reading-room/session.jsonl', 'Make room for saved books', 'Add a reading list to the app.', 2, ?, ?)`).run(NOW - 3_600_000, NOW - 120_000);
     })();
   } finally { db.close(); }
 }
