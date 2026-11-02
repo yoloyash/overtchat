@@ -81,7 +81,8 @@
           }
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "./plugins/withAndroidGradleHeap"
     ],
     "experiments": {
       "typedRoutes": true,

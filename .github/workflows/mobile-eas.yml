@@ -21,6 +21,7 @@ jobs:
   build-android:
     if: github.event_name == 'push' || (inputs.platform != 'ios' && inputs.platform != 'ios-release')
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     permissions:
       contents: read
     outputs:
@@ -123,15 +124,38 @@ jobs:
             --platform android --profile production \
             --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab"
 
-      - name: Build APK locally
-        working-directory: apps/mobile
+      # The sideload APK comes from the store bundle, so both hold the same build
+      # and a second native compile cannot add time or fail on its own.
+      - name: Install bundletool
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUNDLETOOL_VERSION: 1.18.3
+          BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
         run: |
-          mkdir -p ../../dist/mobile
-          npx eas-cli@20 build --local --non-interactive \
-            --platform android --profile production-apk \
-            --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$RUNNER_TEMP/bundletool.jar" \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          echo "$BUNDLETOOL_SHA256  $RUNNER_TEMP/bundletool.jar" | sha256sum --check --strict
+
+      - name: Build APK from the AAB
+        working-directory: apps/mobile
+        run: |
+          umask 077
+          node -e '
+            const { keystorePassword, keyPassword } = require("./credentials.json").android.keystore;
+            const fs = require("node:fs");
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/ks-pass", keystorePassword);
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/key-pass", keyPassword);
+          '
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+            --mode=universal \
+            --bundle="../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab" \
+            --output="$RUNNER_TEMP/universal.apks" \
+            --ks=credentials/android/keystore.jks \
+            --ks-pass="file:$RUNNER_TEMP/ks-pass" \
+            --ks-key-alias="$(node -p 'require("./credentials.json").android.keystore.keyAlias')" \
+            --key-pass="file:$RUNNER_TEMP/key-pass"
+          rm -f "$RUNNER_TEMP/ks-pass" "$RUNNER_TEMP/key-pass"
+          unzip -p "$RUNNER_TEMP/universal.apks" universal.apk \
+            > "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
 
       - name: Verify Firebase configuration in the production APK
         run: node .github/scripts/check-mobile-push.mjs --apk "dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
