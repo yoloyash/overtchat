@@ -21,7 +21,7 @@ async function requireAdmin(req: Request) {
   return null;
 }
 
-/** Set one user's credential for a per-user model (the key is write-only). */
+/** Set one person's credential for a per-user model. An omitted key keeps the stored one. */
 export async function PUT(req: Request, { params }: Params) {
   const denied = await requireAdmin(req);
   if (denied) return denied;
@@ -57,10 +57,11 @@ export async function PUT(req: Request, { params }: Params) {
       ? (getModelUserCredential(id, userId)?.apiKey ?? null)
       : parsed.data.apiKey;
   try {
-    // The same provider checks a shared connection gets (required key, endpoint).
+    // The same provider checks a shared connection gets (required key,
+    // endpoint), on the connection this person would actually chat with.
     createConfiguredLanguageModel({
       ...row,
-      apiKey,
+      apiKey: apiKey ?? row.apiKey,
       baseUrl: parsed.data.baseUrl ?? row.baseUrl,
     });
   } catch (error) {

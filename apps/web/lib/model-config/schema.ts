@@ -21,10 +21,13 @@ export type {
 } from "@overtchat/shared/admin-settings";
 export { MODEL_CREDENTIAL_SCOPES };
 
-/** Admin-facing view of one user's credential. The key itself is write-only. */
+/**
+ * Admin-facing view of one person's credential. A null field means they use
+ * the model's own. Administrators see the key, as they do the model's.
+ */
 export interface AdminModelUserCredential {
   userId: string;
-  hasApiKey: boolean;
+  apiKey: string | null;
   baseUrl: string | null;
   updatedAt: number;
 }
@@ -256,7 +259,7 @@ export type ModelConfigInput = z.infer<typeof ModelConfigSchema>;
 
 /**
  * The connection to validate a model config with before save. A per-user model
- * may have no key of its own (each user brings one), so a placeholder stands
+ * may have no key of its own (each person brings one), so a placeholder stands
  * in for providers that require one; it is never stored or sent.
  */
 export function connectionForValidation(input: ModelConfigInput): ModelConfigInput {
@@ -266,8 +269,9 @@ export function connectionForValidation(input: ModelConfigInput): ModelConfigInp
 }
 
 /**
- * An administrator's write of one user's credential for a per-user model.
- * An omitted `apiKey` keeps the stored one; `null` or "" removes it.
+ * An administrator's write of one person's credential for a per-user model.
+ * An omitted `apiKey` keeps the stored one; `null` or "" removes it, so the
+ * person uses the model's own key again.
  */
 export const ModelUserCredentialSchema = z.object({
   apiKey: z

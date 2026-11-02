@@ -4,7 +4,7 @@ import {
   listModelUserCredentials,
 } from "@/lib/db/modelConfigs";
 
-/** Which users have a credential for a per-user model. Keys are never returned. */
+/** Each person's own credential for a per-user model, keys included (administrators only). */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },

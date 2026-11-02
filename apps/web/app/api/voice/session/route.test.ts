@@ -79,19 +79,6 @@ describe("voice session", () => {
     mocks.issueVoiceTicket.mockReturnValue({ token: "ticket" });
   });
 
-  it("refuses a per-user model the caller has no credential for", async () => {
-    mocks.modelConfigForUser.mockReturnValue(null);
-
-    const response = await POST(request());
-
-    expect(response.status).toBe(404);
-    expect(mocks.modelConfigForUser).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "model-1" }),
-      "user-1",
-    );
-    expect(mocks.issueVoiceTicket).not.toHaveBeenCalled();
-  });
-
   it("binds a new voice session to the requested empty chat", async () => {
     const response = await POST(request());
 

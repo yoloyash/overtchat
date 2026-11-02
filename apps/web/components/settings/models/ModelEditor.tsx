@@ -556,7 +556,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               htmlFor="p-credential-scope"
               description={
                 perUser
-                  ? "Each person chats with their own key, set under People. The key above is only used to set up and test this model."
+                  ? "Each person can have their own key and endpoint, set under People. Anyone without one uses the connection above."
                   : "Everyone chats with the connection above."
               }
             >
@@ -716,7 +716,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <UserCredentials modelId={modelId} defaultBaseUrl={draft.baseUrl} />
         ) : (
           <SettingsNotice>
-            Save this model, then add each person&apos;s key under People.
+            Save this model, then set each person&apos;s own key or endpoint under People.
           </SettingsNotice>
         ))}
     </SettingsPage>

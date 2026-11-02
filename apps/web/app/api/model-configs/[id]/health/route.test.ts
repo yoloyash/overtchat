@@ -36,21 +36,11 @@ describe("model health", () => {
     mocks.pingModel.mockResolvedValue({ ok: true, elapsedMs: 5 });
   });
 
-  it("tests a per-user model with the administrator's own credential", async () => {
+  it("tests a per-user model as the administrator would chat with it", async () => {
     mocks.modelConfigForUser.mockImplementation((row) => ({ ...row, apiKey: "admin-key" }));
 
     await expect((await POST(req(), params)).json()).resolves.toMatchObject({ ok: true });
     expect(mocks.modelConfigForUser).toHaveBeenCalledWith(expect.anything(), "admin");
     expect(mocks.pingModel).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "admin-key" }));
-  });
-
-  it("asks the administrator for their own credential rather than testing another key", async () => {
-    mocks.modelConfigForUser.mockReturnValue(null);
-
-    const json = await (await POST(req(), params)).json();
-
-    expect(json).toMatchObject({ ok: false });
-    expect(json.error).toMatch(/your own credential/);
-    expect(mocks.pingModel).not.toHaveBeenCalled();
   });
 });

@@ -248,22 +248,20 @@ export async function deleteModelConfig(id: string): Promise<void> {
 // --- per-user credentials --------------------------------------------------
 
 /**
- * The connection `userId` must use for `row`: the row itself for a shared
- * model, or the row with that user's key (and base URL, when set) for a
- * per-user model. `null` when the model is per-user and the user has no
- * credential, so callers treat it as unavailable rather than falling back to
- * the model's own key.
+ * The connection `userId` chats with on `row`: the row itself for a shared
+ * model. On a per-user model, that person's own key and base URL take over;
+ * whatever they have not set falls back to the model's own.
  */
 export function modelConfigForUser<T extends ModelConfigRow>(
   row: T,
   userId: string,
-): T | null {
+): T {
   if (row.credentialScope !== "user") return row;
   const credential = getModelUserCredential(row.id, userId);
-  if (!credential) return null;
+  if (!credential) return row;
   return {
     ...row,
-    apiKey: credential.apiKey,
+    apiKey: credential.apiKey ?? row.apiKey,
     baseUrl: credential.baseUrl ?? row.baseUrl,
   };
 }
@@ -283,24 +281,15 @@ export function getModelUserCredential(modelConfigId: string, userId: string) {
   );
 }
 
-/** Ids of the per-user models `userId` has a credential for. */
-export function listCredentialedModelIds(userId: string): Set<string> {
-  return new Set(
-    db
-      .select({ id: modelConfigUserCredentials.modelConfigId })
-      .from(modelConfigUserCredentials)
-      .where(eq(modelConfigUserCredentials.userId, userId))
-      .all()
-      .map((row) => row.id),
-  );
-}
-
-/** Whether `userId` may chat with `row`. */
-export function isModelAvailableToUser(
-  row: Pick<ModelConfigRow, "id" | "credentialScope">,
-  credentialed: Set<string>,
-): boolean {
-  return row.credentialScope !== "user" || credentialed.has(row.id);
+function toAdminModelUserCredential(
+  row: typeof modelConfigUserCredentials.$inferSelect,
+): AdminModelUserCredential {
+  return {
+    userId: row.userId,
+    apiKey: row.apiKey,
+    baseUrl: row.baseUrl,
+    updatedAt: row.updatedAt.getTime(),
+  };
 }
 
 export function listModelUserCredentials(
@@ -311,12 +300,7 @@ export function listModelUserCredentials(
     .from(modelConfigUserCredentials)
     .where(eq(modelConfigUserCredentials.modelConfigId, modelConfigId))
     .all()
-    .map((row) => ({
-      userId: row.userId,
-      hasApiKey: !!row.apiKey,
-      baseUrl: row.baseUrl,
-      updatedAt: row.updatedAt.getTime(),
-    }));
+    .map(toAdminModelUserCredential);
 }
 
 export function setModelUserCredential(
@@ -337,12 +321,7 @@ export function setModelUserCredential(
     })
     .returning()
     .get();
-  return {
-    userId: row.userId,
-    hasApiKey: !!row.apiKey,
-    baseUrl: row.baseUrl,
-    updatedAt: row.updatedAt.getTime(),
-  };
+  return toAdminModelUserCredential(row);
 }
 
 export function deleteModelUserCredential(

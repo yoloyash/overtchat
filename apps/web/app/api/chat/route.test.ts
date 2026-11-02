@@ -491,20 +491,10 @@ describe("chat route setup boundary", () => {
         baseUrl: "https://user.test/v1",
       }),
     );
-    // Title generation falls back to the same credential, never the model's own key.
+    // Title generation falls back to the same connection.
     expect(mocks.ensureChatTitle).toHaveBeenCalledWith(
       expect.objectContaining({ fallbackModelConfig: own }),
     );
-  });
-
-  it("treats a per-user model without the user's credential as unavailable", async () => {
-    mocks.modelConfigForUser.mockReturnValue(null);
-
-    const response = await POST(request());
-
-    expect(response.status).toBe(404);
-    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
-    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
   });
 
   it.each([false, true])(

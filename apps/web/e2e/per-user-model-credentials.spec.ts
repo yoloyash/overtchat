@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -62,7 +62,7 @@ function seedPerUserModel() {
       `INSERT INTO model_configs (
         id, label, provider_id, api_format, base_url, api_key, model,
         tool_calling_enabled, enabled, credential_scope, sort_order, created_at, updated_at
-      ) VALUES ('personal-model', 'Personal Model', 'custom', 'openai-chat', ?, NULL,
+      ) VALUES ('personal-model', 'Personal Model', 'custom', 'openai-chat', ?, 'shared-key',
         'personal-model', 0, 1, 'user', 0, ?, ?)`,
     ).run(`${modelOrigin}/shared/v1`, now, now);
   } finally {
@@ -70,12 +70,12 @@ function seedPerUserModel() {
   }
 }
 
-test("a per-user model runs only for people with their own credential, on that credential", async ({
+test("a per-user model runs on each person's own key and endpoint, else the model's", async ({
   browser,
   page,
 }, testInfo) => {
   calls.length = 0;
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Credential Admin");
   await page.locator("#email").fill("credential-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -97,18 +97,18 @@ test("a per-user model runs only for people with their own credential, on that c
   try {
     const member = await memberContext.newPage();
     await member.goto("/login");
-    await member.getByLabel("Email").fill("credential-member@overtchat-test.local");
+    await member.locator("#email").fill("credential-member@overtchat-test.local");
     await member.locator("#password").fill("test-password-123");
-    await member.getByRole("button", { name: "Sign in" }).click();
+    await member.getByRole("button", { name: "Sign in", exact: true }).click();
     await member.waitForURL("**/");
 
     const visibleTo = async (p: typeof page) =>
       ((await (await p.request.get("/api/model-configs")).json()) as {
         modelConfigs: { id: string }[];
       }).modelConfigs.map((m) => m.id);
-    // Nobody has a credential yet: hidden from everyone, the administrator included.
-    expect(await visibleTo(member)).toEqual([]);
-    expect(await visibleTo(page)).toEqual([]);
+    // Nobody has anything of their own yet: everyone still sees the model and chats on its key.
+    expect(await visibleTo(member)).toEqual(["personal-model"]);
+    expect(await visibleTo(page)).toEqual(["personal-model"]);
 
     await page.goto("/settings/models/personal-model");
     await expect(page.getByRole("combobox", { name: "Credentials" })).toContainText(
@@ -117,12 +117,24 @@ test("a per-user model runs only for people with their own credential, on that c
     const people = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "People", exact: true }) });
+    await expect(people).toContainText("Leave a field empty to use the model's own.");
+    await expect(people).toContainText(
+      "credential-member@overtchat-test.local · Uses the model's key and endpoint",
+    );
     await people.getByRole("button", { name: "Set up credential for Credential Member" }).click();
+    await expect(people.getByLabel("API key for Credential Member")).toHaveAttribute(
+      "placeholder",
+      "Leave empty to use the model's key",
+    );
+    await expect(people.getByLabel("Endpoint for Credential Member")).toHaveAttribute(
+      "placeholder",
+      `Leave empty to use ${modelOrigin}/shared/v1`,
+    );
     await people.getByLabel("API key for Credential Member").fill("member-key");
     await people.getByLabel("Endpoint for Credential Member").fill(`${modelOrigin}/member/v1`);
     // Enter saves this person's credential (its own form), not the surrounding model.
     await people.getByLabel("Endpoint for Credential Member").press("Enter");
-    await expect(people).toContainText(`Key set · own endpoint ${modelOrigin}/member/v1`);
+    await expect(people).toContainText(`own key ····-key · own endpoint ${modelOrigin}/member/v1`);
     await expect(page).toHaveURL(/\/settings\/models\/personal-model$/);
     // Changing the key keeps the saved endpoint, even when the saved credentials load after the
     // people list (the rows first render without them).
@@ -136,22 +148,33 @@ test("a per-user model runs only for people with their own credential, on that c
       people.getByRole("button", { name: /credential for Credential Member/ }),
     ).toHaveCount(0);
     await expect(people).toContainText("Credential Member");
-    await expect(people).toContainText(`Key set · own endpoint ${modelOrigin}/member/v1`);
+    await expect(people).toContainText(`own key ····-key · own endpoint ${modelOrigin}/member/v1`);
     await page.unroute("**/api/model-configs/personal-model/credentials");
     await people.getByRole("button", { name: "Change credential for Credential Member" }).click();
     await expect(people.getByLabel("Endpoint for Credential Member")).toHaveValue(`${modelOrigin}/member/v1`);
-    await people.getByLabel("API key for Credential Member").fill("member-key");
+    // The administrator can see the saved key, as with the model's own key field.
+    const memberKey = people.getByLabel("API key for Credential Member");
+    await expect(memberKey).toHaveValue("member-key");
+    await expect(memberKey).toHaveAttribute("type", "password");
+    await people.getByRole("button", { name: "Show password" }).click();
+    await expect(memberKey).toHaveAttribute("type", "text");
+    await memberKey.fill("member-key-2");
     await people.getByRole("button", { name: "Save credential for Credential Member" }).click();
-    await expect(people).toContainText(`Key set · own endpoint ${modelOrigin}/member/v1`);
-    // The key itself is never sent back to the browser.
-    const listed = await page.request.get("/api/model-configs/personal-model/credentials");
-    expect(await listed.text()).not.toContain("member-key");
+    await expect(people).toContainText(`own key ····ey-2 · own endpoint ${modelOrigin}/member/v1`);
+    const listed = (await (
+      await page.request.get("/api/model-configs/personal-model/credentials")
+    ).json()) as { credentials: { userId: string; apiKey: string | null; baseUrl: string | null }[] };
+    expect(listed.credentials).toHaveLength(1);
+    expect(listed.credentials[0]).toMatchObject({
+      apiKey: "member-key-2",
+      baseUrl: `${modelOrigin}/member/v1`,
+    });
 
     // A per-user model needs no key of its own, even for a provider that requires one: the
     // editor saves it (no browser "required" block).
     const db = openE2eDatabase();
     try {
-      db.prepare("UPDATE model_configs SET provider_id = 'openai', api_format = 'auto' WHERE id = 'personal-model'").run();
+      db.prepare("UPDATE model_configs SET provider_id = 'openai', api_format = 'auto', api_key = NULL WHERE id = 'personal-model'").run();
     } finally {
       db.close();
     }
@@ -161,23 +184,35 @@ test("a per-user model runs only for people with their own credential, on that c
     {
       const db2 = openE2eDatabase();
       try {
-        db2.prepare("UPDATE model_configs SET provider_id = 'custom', api_format = 'openai-chat' WHERE id = 'personal-model'").run();
+        db2.prepare("UPDATE model_configs SET provider_id = 'custom', api_format = 'openai-chat', api_key = 'shared-key' WHERE id = 'personal-model'").run();
       } finally {
         db2.close();
       }
     }
 
-    expect(await visibleTo(member)).toEqual(["personal-model"]);
-    expect(await visibleTo(page)).toEqual([]);
-
+    // The member chats on their own key and endpoint.
     await member.reload();
     await member.getByPlaceholder("Message…").fill("Hello on my own account");
     await member.getByLabel("Send message").click();
     await expect(member.getByText("Answered on your own account")).toBeVisible();
+    // The title falls back to the same connection; wait for it so no member call lands below.
+    await expect(member.getByRole("heading", { name: "Personal chat" })).toBeVisible();
 
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) {
-      expect(call).toEqual({ path: "/member/v1/chat/completions", authorization: "Bearer member-key" });
+      expect(call).toEqual({ path: "/member/v1/chat/completions", authorization: "Bearer member-key-2" });
+    }
+
+    // The administrator, with nothing of their own, chats on the model's key and endpoint.
+    calls.length = 0;
+    await page.goto("/");
+    await page.getByPlaceholder("Message…").fill("Hello on the shared account");
+    await page.getByLabel("Send message").click();
+    await expect(page.getByText("Answered on your own account")).toBeVisible();
+
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call).toEqual({ path: "/shared/v1/chat/completions", authorization: "Bearer shared-key" });
     }
   } finally {
     await memberContext.close();

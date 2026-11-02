@@ -387,7 +387,7 @@ export function ConnectionFields({
         title="API key"
         description={
           apiKeyOptional
-            ? "Optional: only used to find models and test the connection. Each person's chats use their own key."
+            ? "Used by everyone without their own key under People. Leave empty if each person must bring one."
             : requiresKey
               ? `Required for ${providerName}.`
               : provider

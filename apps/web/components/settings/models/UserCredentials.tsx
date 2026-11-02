@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
+import type { AdminModelUserCredential } from "@/lib/model-config/schema";
 import {
   useModelUserCredentials,
   useSetModelUserCredential,
@@ -12,7 +14,7 @@ import {
 import { useUsers, type UserRow } from "@/lib/queries/users";
 import { SettingsNotice, SettingsRow, SettingsSection } from "../SettingsRows";
 
-/** Each person's own credential for a model whose credentials are per user. */
+/** Each person's own key and endpoint for a model whose credentials are per user. */
 export function UserCredentials({
   modelId,
   defaultBaseUrl,
@@ -29,13 +31,13 @@ export function UserCredentials({
   const byUser = new Map(credentials.map((c) => [c.userId, c]));
   const error = usersError ?? credentialsError;
   // Rows only once BOTH have loaded: a row shown before its saved credential arrives would look
-  // "not set up", and editing it would overwrite the saved endpoint.
+  // like it uses the defaults, and editing it would overwrite the saved key and endpoint.
   const ready = usersLoaded && credentialsLoaded;
 
   return (
     <SettingsSection
       title="People"
-      description="Each person chats with their own key. People without one don't see this model."
+      description="Each person can chat with their own key and endpoint. Leave a field empty to use the model's own."
     >
       {error && (
         <SettingsNotice tone="error">
@@ -65,7 +67,7 @@ function UserCredentialRow({
   modelId: string;
   user: UserRow;
   defaultBaseUrl: string;
-  credential?: { hasApiKey: boolean; baseUrl: string | null };
+  credential?: Pick<AdminModelUserCredential, "apiKey" | "baseUrl">;
 }) {
   const [editing, setEditing] = useState(false);
   const [apiKey, setApiKey] = useState("");
@@ -73,32 +75,31 @@ function UserCredentialRow({
   const setMut = useSetModelUserCredential(modelId);
   const inputId = `cred-${user.id}`;
   const who = user.name || user.email;
+  const hasOwn = !!(credential?.apiKey || credential?.baseUrl);
 
   function startEditing() {
-    // From the credential as it is NOW (it may have loaded after this row first rendered), so saving
-    // a new key never silently drops an endpoint override.
-    setApiKey("");
+    // From the credential as it is NOW (it may have loaded after this row first rendered), so
+    // saving one field never silently drops the other.
+    setApiKey(credential?.apiKey ?? "");
     setBaseUrl(credential?.baseUrl ?? "");
     setEditing(true);
   }
 
   async function save(remove: boolean) {
+    const key = apiKey.trim() || null;
+    const url = baseUrl.trim() || null;
+    // Both fields empty means the model's own key and endpoint: the same as no credential.
+    const removing = remove || (!key && !url);
     try {
       await setMut.mutateAsync({
         userId: user.id,
-        input: remove
-          ? null
-          : {
-              // An empty key field keeps the stored key.
-              ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
-              baseUrl: baseUrl.trim() || null,
-            },
+        input: removing ? null : { apiKey: key, baseUrl: url },
       });
       setEditing(false);
       setApiKey("");
       toast.success({
-        title: remove ? "Credential removed" : "Credential saved",
-        description: user.name || user.email,
+        title: removing ? "Using the model's own credentials" : "Credential saved",
+        description: who,
       });
     } catch (err) {
       toast.error({
@@ -108,14 +109,14 @@ function UserCredentialRow({
     }
   }
 
-  const status = credential
+  const status = hasOwn
     ? [
-        credential.hasApiKey ? "Key set" : "No key",
-        credential.baseUrl ? `own endpoint ${credential.baseUrl}` : null,
+        credential?.apiKey ? `own key ${maskKey(credential.apiKey)}` : null,
+        credential?.baseUrl ? `own endpoint ${credential.baseUrl}` : null,
       ]
         .filter(Boolean)
         .join(" · ")
-    : "Not set up";
+    : "Uses the model's key and endpoint";
 
   return (
     <SettingsRow
@@ -132,18 +133,17 @@ function UserCredentialRow({
             void save(false);
           }}
         >
-          <Input
+          <PasswordInput
             id={inputId}
             aria-label={`API key for ${who}`}
-            type="password"
-            autoComplete="off"
-            placeholder={credential?.hasApiKey ? "New API key (empty keeps the current one)" : "API key"}
+            autoComplete="new-password"
+            placeholder="Leave empty to use the model's key"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
           <Input
             aria-label={`Endpoint for ${who}`}
-            placeholder={`Endpoint (default ${defaultBaseUrl})`}
+            placeholder={`Leave empty to use ${defaultBaseUrl}`}
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
           />
@@ -163,7 +163,7 @@ function UserCredentialRow({
         </form>
       ) : (
         <div className="flex justify-end gap-2">
-          {credential && (
+          {hasOwn && (
             <Button
               type="button"
               variant="outline"
@@ -179,13 +179,18 @@ function UserCredentialRow({
             type="button"
             variant="outline"
             size="sm"
-            aria-label={`${credential ? "Change" : "Set up"} credential for ${who}`}
+            aria-label={`${hasOwn ? "Change" : "Set up"} credential for ${who}`}
             onClick={startEditing}
           >
-            {credential ? "Change" : "Set up"}
+            {hasOwn ? "Change" : "Set up"}
           </Button>
         </div>
       )}
     </SettingsRow>
   );
+}
+
+/** The last characters of a key, the way the model's own previously used keys are shown. */
+function maskKey(apiKey: string): string {
+  return `····${apiKey.length > 4 ? apiKey.slice(-4) : ""}`;
 }

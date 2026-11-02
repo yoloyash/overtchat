@@ -55,7 +55,7 @@ describe("per-user credential writes", () => {
     mocks.getModelUserCredential.mockReturnValue(null);
     mocks.setModelUserCredential.mockImplementation((_id, userId, input) => ({
       userId,
-      hasApiKey: !!input.apiKey,
+      apiKey: input.apiKey ?? null,
       baseUrl: input.baseUrl,
       updatedAt: 1,
     }));
@@ -69,7 +69,7 @@ describe("per-user credential writes", () => {
     expect(mocks.deleteModelUserCredential).not.toHaveBeenCalled();
   });
 
-  it("stores the key without ever returning it", async () => {
+  it("stores the trimmed key and shows it back to the administrator", async () => {
     const response = await PUT(put({ apiKey: " alice-key ", baseUrl: "https://alice.test/v1/" }), params);
 
     expect(response.status).toBe(200);
@@ -77,9 +77,9 @@ describe("per-user credential writes", () => {
       apiKey: "alice-key",
       baseUrl: "https://alice.test/v1",
     });
-    const text = await response.text();
-    expect(text).not.toContain("alice-key");
-    expect(JSON.parse(text)).toMatchObject({ credential: { hasApiKey: true } });
+    await expect(response.json()).resolves.toMatchObject({
+      credential: { apiKey: "alice-key", baseUrl: "https://alice.test/v1" },
+    });
   });
 
   it("validates the effective connection, keeping the stored key when the key is omitted", async () => {
@@ -90,6 +90,15 @@ describe("per-user credential writes", () => {
       expect.objectContaining({ apiKey: "stored-key", baseUrl: perUserModel.baseUrl }),
     );
     expect(mocks.setModelUserCredential).toHaveBeenCalledWith("model-1", "alice", { baseUrl: null });
+  });
+
+  it("validates an endpoint of their own with the model's key when they have none", async () => {
+    mocks.getModelConfig.mockResolvedValue({ ...perUserModel, apiKey: "model-key" });
+
+    expect((await PUT(put({ baseUrl: "https://alice.test/v1" }), params)).status).toBe(200);
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "model-key", baseUrl: "https://alice.test/v1" }),
+    );
   });
 
   it("rejects a credential the provider would refuse", async () => {

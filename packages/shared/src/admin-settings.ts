@@ -27,8 +27,8 @@ export interface CatalogModelPricing extends ModelPricing {
 
 /**
  * Who a model's connection belongs to. `shared`: one base URL and key for
- * everyone. `user`: each user has their own key (and optionally base URL),
- * set by an administrator; the model is hidden from users without one.
+ * everyone. `user`: each person may have their own key and base URL, set by
+ * an administrator; whatever they have not set falls back to the model's own.
  */
 export const MODEL_CREDENTIAL_SCOPES = ["shared", "user"] as const;
 export type ModelCredentialScope = (typeof MODEL_CREDENTIAL_SCOPES)[number];

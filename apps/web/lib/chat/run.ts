@@ -212,7 +212,7 @@ export async function runChat(
   }
 
   const storedModelConfig = await getModelConfig(modelConfigId);
-  // A per-user model runs on this user's own credential; without one it is unavailable.
+  // A per-user model runs on this user's own key and endpoint where set.
   const modelConfig =
     storedModelConfig && modelConfigForUser(storedModelConfig, userId);
   if (!modelConfig || modelConfig.modelType === "image" || !modelConfig.enabled) {

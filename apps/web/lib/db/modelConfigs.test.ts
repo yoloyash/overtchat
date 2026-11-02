@@ -264,16 +264,20 @@ describe("per-user credentials", () => {
     `);
   });
 
-  it("runs a per-user model only on that user's own credential", async () => {
+  it("runs a per-user model on the person's own key and endpoint, else the model's", async () => {
     const row = (await modelConfigDb.getModelConfig("chat-model"))!;
-    expect(modelConfigDb.modelConfigForUser(row, "alice")).toBeNull();
+    // Nothing of their own yet: the model's own connection.
+    expect(modelConfigDb.modelConfigForUser(row, "alice")).toMatchObject({
+      apiKey: "model-own-key",
+      baseUrl: "https://example.test/v1",
+    });
 
     modelConfigDb.setModelUserCredential("chat-model", "alice", {
       apiKey: "alice-key",
       baseUrl: null,
     });
     modelConfigDb.setModelUserCredential("chat-model", "bob", {
-      apiKey: "bob-key",
+      apiKey: null,
       baseUrl: "https://bob.test/v1",
     });
 
@@ -281,16 +285,11 @@ describe("per-user credentials", () => {
       apiKey: "alice-key",
       baseUrl: "https://example.test/v1",
     });
+    // Only an endpoint of their own: the model's key goes to it.
     expect(modelConfigDb.modelConfigForUser(row, "bob")).toMatchObject({
-      apiKey: "bob-key",
+      apiKey: "model-own-key",
       baseUrl: "https://bob.test/v1",
     });
-    // A credential with no key never falls back to the model's own key.
-    modelConfigDb.setModelUserCredential("chat-model", "alice", {
-      apiKey: null,
-      baseUrl: null,
-    });
-    expect(modelConfigDb.modelConfigForUser(row, "alice")?.apiKey).toBeNull();
   });
 
   it("leaves shared models unchanged for everyone", async () => {
@@ -312,16 +311,14 @@ describe("per-user credentials", () => {
       apiKey: "alice-key",
       baseUrl: "https://alice.test/v1",
     });
+    // Administrators see the key, as they do the model's own.
     expect(modelConfigDb.listModelUserCredentials("chat-model")).toEqual([
       expect.objectContaining({
         userId: "alice",
-        hasApiKey: true,
+        apiKey: "alice-key",
         baseUrl: "https://alice.test/v1",
       }),
     ]);
-    expect(
-      JSON.stringify(modelConfigDb.listModelUserCredentials("chat-model")),
-    ).not.toContain("alice-key");
     modelConfigDb.setModelUserCredential("chat-model", "alice", {
       apiKey: null,
       baseUrl: null,
@@ -332,10 +329,12 @@ describe("per-user credentials", () => {
   it("lists, deletes, and cascades credentials with their user and model", () => {
     modelConfigDb.setModelUserCredential("chat-model", "alice", { apiKey: "a", baseUrl: null });
     modelConfigDb.setModelUserCredential("chat-model", "bob", { apiKey: "b", baseUrl: null });
-    expect([...modelConfigDb.listCredentialedModelIds("alice")]).toEqual(["chat-model"]);
+    const people = () =>
+      modelConfigDb.listModelUserCredentials("chat-model").map((c) => c.userId);
+    expect(people()).toEqual(["alice", "bob"]);
     expect(modelConfigDb.deleteModelUserCredential("chat-model", "alice")).toBe(true);
     expect(modelConfigDb.deleteModelUserCredential("chat-model", "alice")).toBe(false);
-    expect(modelConfigDb.listCredentialedModelIds("alice").size).toBe(0);
+    expect(people()).toEqual(["bob"]);
 
     raw.pragma("foreign_keys = ON");
     raw.exec("DELETE FROM user WHERE id = 'bob'");

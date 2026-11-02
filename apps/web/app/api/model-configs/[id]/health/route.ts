@@ -15,18 +15,8 @@ export async function POST(
   const { id } = await params;
   const stored = await getModelConfig(id);
   if (!stored) return new Response("Not found", { status: 404 });
-  // A per-user model is tested with the administrator's own credential.
+  // A per-user model is tested as the administrator would chat with it.
   const row = modelConfigForUser(stored, session.user.id);
-  if (!row) {
-    return Response.json(
-      {
-        ok: false,
-        error: "Add your own credential for this model to test its connection.",
-        elapsedMs: 0,
-      },
-      { status: 200 },
-    );
-  }
 
   if (row.modelType === "image") return Response.json({ error: "Image models do not use chat connection tests." }, { status: 400 });
 

@@ -1,8 +1,6 @@
 import { auth } from "@/lib/auth/server";
 import {
   createModelConfig,
-  isModelAvailableToUser,
-  listCredentialedModelIds,
   listModelConfigs,
   toAdminModelConfig,
   type ModelConfigRow,
@@ -67,16 +65,8 @@ export async function GET(req: Request) {
       ),
     });
   }
-  const credentialed = listCredentialedModelIds(session.user.id);
   return Response.json({
-    modelConfigs: rows
-      .filter(
-        (r) =>
-          r.enabled &&
-          r.modelType !== "image" &&
-          isModelAvailableToUser(r, credentialed),
-      )
-      .map(toPublic),
+    modelConfigs: rows.filter((r) => r.enabled && r.modelType !== "image").map(toPublic),
   });
 }
 

@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   createModelConfig: vi.fn(),
   listModelConfigs: vi.fn(),
   toAdminModelConfig: vi.fn((row) => row),
-  listCredentialedModelIds: vi.fn(() => new Set<string>()),
   resolveModelContextWindow: vi.fn(),
   resolveModelCapabilities: vi.fn(),
 }));
@@ -18,11 +17,6 @@ vi.mock("@/lib/db/modelConfigs", () => ({
   createModelConfig: mocks.createModelConfig,
   listModelConfigs: mocks.listModelConfigs,
   toAdminModelConfig: mocks.toAdminModelConfig,
-  listCredentialedModelIds: mocks.listCredentialedModelIds,
-  isModelAvailableToUser: (
-    row: { id: string; credentialScope?: string },
-    credentialed: Set<string>,
-  ) => row.credentialScope !== "user" || credentialed.has(row.id),
 }));
 vi.mock("@/lib/providers/server/model-catalog", () => ({
   resolveModelContextWindow: mocks.resolveModelContextWindow,
@@ -136,7 +130,7 @@ describe("per-user models", () => {
     );
   });
 
-  it("lists a per-user model only to users with their own credential", async () => {
+  it("lists per-user models to everyone, like shared ones", async () => {
     mocks.getSession.mockResolvedValue({ user: { id: "alice", role: "user" } });
     const row = (id: string, credentialScope: string) => ({
       id,
@@ -154,16 +148,15 @@ describe("per-user models", () => {
     });
     mocks.listModelConfigs.mockResolvedValue([
       row("shared", "shared"),
-      row("mine", "user"),
-      row("someone-elses", "user"),
+      row("personal", "user"),
+      { ...row("hidden", "user"), enabled: false },
     ]);
-    mocks.listCredentialedModelIds.mockReturnValue(new Set(["mine"]));
 
     const response = await GET(new Request("http://server.test/api/model-configs"));
     const json = (await response.json()) as { modelConfigs: { id: string }[] };
 
-    expect(mocks.listCredentialedModelIds).toHaveBeenCalledWith("alice");
-    expect(json.modelConfigs.map((m) => m.id)).toEqual(["shared", "mine"]);
+    // Anyone without their own key chats on the model's, so nothing is hidden.
+    expect(json.modelConfigs.map((m) => m.id)).toEqual(["shared", "personal"]);
   });
 });
 
