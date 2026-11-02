@@ -107,14 +107,47 @@ export async function fetchReadable(
   url: string,
   options: { startIndex?: number; signal?: AbortSignal } = {},
 ): Promise<FetchedWebResource> {
-  const result = await fetchUrl({
-    url,
-    startIndex: options.startIndex,
-    maxLength: MAX_CONTENT_CHARS,
-    signal: options.signal,
-  });
+  let result;
+  try {
+    result = await fetchUrl({
+      url,
+      startIndex: options.startIndex,
+      maxLength: MAX_CONTENT_CHARS,
+      signal: options.signal,
+    });
+  } catch (error) {
+    throw fetchFailure(url, error);
+  }
 
   return result.kind === "image" ? result : fetchedPage(result);
+}
+
+const REDDIT_HOST = /(^|\.)(reddit\.com|redd\.it)$/u;
+
+/**
+ * Reddit serves anonymous post feeds about once per minute per IP and Web
+ * Basics reports the throttle as an HTTP 429 whose message ends with the
+ * seconds to wait. Users and models both read tool errors verbatim, so the
+ * server-side wording is replaced with a short instruction to wait.
+ */
+export function fetchFailure(url: string, error: unknown): unknown {
+  if (!isRedditThrottle(url, error)) return error;
+  const seconds = /retry after (\d+)s/u.exec(error.message)?.[1];
+  const wait =
+    seconds === undefined
+      ? "Try again in about a minute."
+      : `Try again in ${seconds} seconds.`;
+  return new Error(`Reddit rate limited this server. ${wait}`);
+}
+
+function isRedditThrottle(url: string, error: unknown): error is Error {
+  if (!(error instanceof Error)) return false;
+  if ((error as { status?: unknown }).status !== 429) return false;
+  try {
+    return REDDIT_HOST.test(new URL(url).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
 }
 
 function fetchedPage(result: FetchTextResult): FetchedWebPage {
