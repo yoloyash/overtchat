@@ -47,7 +47,7 @@
       "output_modalities": [
         "text"
       ],
-      "attachment": true,
+      "attachment": false,
       "tool_call": true,
       "reasoning": false,
       "structured_output": false,
@@ -431,34 +431,6 @@
         ]
       }
     },
-    "gpt-5.2-chat-latest": {
-      "context": 128000,
-      "output": 16384,
-      "cost": {
-        "cache_read": 0.175,
-        "input": 1.75,
-        "output": 14
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": false,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "medium",
-        "efforts": [
-          "medium"
-        ]
-      }
-    },
     "gpt-5.2-pro": {
       "context": 400000,
       "input": 272000,
@@ -488,27 +460,6 @@
           "xhigh"
         ]
       }
-    },
-    "gpt-5.3-chat-latest": {
-      "context": 128000,
-      "output": 16384,
-      "cost": {
-        "cache_read": 0.175,
-        "input": 1.75,
-        "output": 14
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": false,
-      "structured_output": true,
-      "temperature": true
     },
     "gpt-5.3-codex": {
       "context": 400000,
@@ -1251,6 +1202,59 @@
         ]
       }
     },
+    "gpt-6.1-terra": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.05,
+        "cache_write": 1.25,
+        "context_over_200k": {
+          "cache_read": 0.1,
+          "cache_write": 2.5,
+          "input": 2,
+          "output": 7.5
+        },
+        "input": 1,
+        "output": 5,
+        "tiers": [
+          {
+            "cache_read": 0.1,
+            "cache_write": 2.5,
+            "input": 2,
+            "output": 7.5,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    },
     "gpt-daybreak-blue-latest": {
       "context": 1050000,
       "input": 922000,
@@ -1337,19 +1341,6 @@
           "max"
         ]
       }
-    },
-    "gpt-image-1": {
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "image"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": false,
-      "temperature": false
     },
     "gpt-image-1-mini": {
       "input_modalities": [
@@ -2329,7 +2320,7 @@
       ],
       "attachment": true,
       "tool_call": false,
-      "reasoning": true,
+      "reasoning": false,
       "temperature": true
     },
     "gemini-2.5-flash-lite": {
@@ -2496,26 +2487,6 @@
         ]
       }
     },
-    "gemini-3-pro-image-preview": {
-      "context": 131072,
-      "output": 32768,
-      "cost": {
-        "input": 2,
-        "output": 120
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text",
-        "image"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": true,
-      "temperature": true
-    },
     "gemini-3.1-flash-image": {
       "context": 131072,
       "output": 32768,
@@ -2527,35 +2498,6 @@
         "text",
         "image",
         "video",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text",
-        "image"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": true,
-      "temperature": true,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "high",
-        "efforts": [
-          "minimal",
-          "high"
-        ]
-      }
-    },
-    "gemini-3.1-flash-image-preview": {
-      "context": 65536,
-      "output": 65536,
-      "cost": {
-        "input": 0.5,
-        "output": 60
-      },
-      "input_modalities": [
-        "text",
-        "image",
         "pdf"
       ],
       "output_modalities": [
@@ -2910,7 +2852,7 @@
         "audio",
         "text"
       ],
-      "attachment": false,
+      "attachment": true,
       "tool_call": false,
       "reasoning": false,
       "temperature": true
@@ -2992,6 +2934,40 @@
         "input": 0.75,
         "input_audio": 0.75,
         "output": 3.75
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    },
+    "gemini-4-argon": {
+      "context": 1048576,
+      "output": 32768,
+      "cost": {
+        "cache_read": 0.1,
+        "input": 2,
+        "input_audio": 2,
+        "output": 10
       },
       "input_modalities": [
         "text",
@@ -3147,6 +3123,55 @@
       "reasoning": true,
       "temperature": true
     },
+    "gemini-pro-latest": {
+      "context": 1048576,
+      "output": 65536,
+      "cost": {
+        "cache_read": 0.2,
+        "context_over_200k": {
+          "cache_read": 0.4,
+          "input": 4,
+          "output": 18
+        },
+        "input": 2,
+        "output": 12,
+        "tiers": [
+          {
+            "cache_read": 0.4,
+            "input": 4,
+            "output": 18,
+            "tier": {
+              "size": 200000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    },
     "gemma-4-26b-a4b-it": {
       "context": 262144,
       "output": 32768,
@@ -3220,57 +3245,11 @@
       "reasoning": false,
       "structured_output": false,
       "temperature": true
-    },
-    "veo-3.1-fast-generate-preview": {
-      "context": 480,
-      "output": 8192,
-      "input_modalities": [
-        "text",
-        "image",
-        "video"
-      ],
-      "output_modalities": [
-        "video"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": false,
-      "temperature": false
-    },
-    "veo-3.1-generate-preview": {
-      "context": 480,
-      "output": 8192,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "video"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": false,
-      "temperature": false
-    },
-    "veo-3.1-lite-generate-preview": {
-      "context": 480,
-      "output": 8192,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "video"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": false,
-      "temperature": false
     }
   },
   "deepseek": {
     "deepseek-flash": {
-      "context": 1000000,
+      "context": 1048576,
       "output": 393216,
       "cost": {
         "cache_read": 0.003,
@@ -3301,7 +3280,7 @@
       }
     },
     "deepseek-v4-flash": {
-      "context": 1000000,
+      "context": 1048576,
       "output": 393216,
       "cost": {
         "cache_read": 0.003,
@@ -3332,7 +3311,7 @@
       }
     },
     "deepseek-v4-flash-vision-exp": {
-      "context": 1000000,
+      "context": 1048576,
       "output": 393216,
       "cost": {
         "cache_read": 0.003,
@@ -3363,7 +3342,7 @@
       }
     },
     "deepseek-v4-pro": {
-      "context": 1000000,
+      "context": 1048576,
       "output": 393216,
       "cost": {
         "cache_read": 0.022,
@@ -3415,6 +3394,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "amazon.nova-lite-v1:0": {
@@ -3503,6 +3483,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-fable-5-1": {
@@ -3525,6 +3506,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -3582,7 +3564,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-4-1-20250805-v1:0": {
@@ -3673,6 +3655,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-4-8": {
@@ -3695,6 +3678,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-5": {
@@ -3717,6 +3701,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-5-5": {
@@ -3739,6 +3724,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -3807,7 +3793,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-sonnet-5-5": {
@@ -3830,7 +3816,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "apac.amazon.nova-lite-v1:0": {
@@ -3854,6 +3840,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "apac.amazon.nova-micro-v1:0": {
@@ -3874,6 +3861,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "apac.amazon.nova-pro-v1:0": {
@@ -3897,6 +3885,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "apac.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -3976,7 +3965,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-4-6-v1": {
@@ -4022,6 +4011,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-4-8": {
@@ -4044,6 +4034,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-5": {
@@ -4066,6 +4057,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-5-5": {
@@ -4088,6 +4080,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -4156,7 +4149,30 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
+      "temperature": false
+    },
+    "au.anthropic.claude-sonnet-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.11,
+        "cache_write": 2.75,
+        "input": 2.2,
+        "output": 11
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "ca.amazon.nova-lite-v1:0": {
@@ -4180,6 +4196,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "deepseek.r1-v1:0": {
@@ -4259,6 +4276,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "eu.amazon.nova-lite-v1:0": {
@@ -4282,6 +4300,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "eu.amazon.nova-micro-v1:0": {
@@ -4302,6 +4321,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "eu.amazon.nova-pro-v1:0": {
@@ -4325,6 +4345,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "eu.anthropic.claude-fable-5": {
@@ -4347,6 +4368,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -4404,7 +4426,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-4-5-20251101-v1:0": {
@@ -4473,6 +4495,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-4-8": {
@@ -4495,6 +4518,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-5": {
@@ -4517,6 +4541,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-5-5": {
@@ -4539,6 +4564,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -4629,7 +4655,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-sonnet-5-5": {
@@ -4652,7 +4678,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "eu.mistral.pixtral-large-2502-v1:0": {
@@ -4672,6 +4698,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "global.amazon.nova-2-lite-v1:0": {
@@ -4695,6 +4722,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "global.anthropic.claude-fable-5": {
@@ -4717,6 +4745,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-fable-5-1": {
@@ -4739,6 +4768,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -4796,7 +4826,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-4-5-20251101-v1:0": {
@@ -4865,6 +4895,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-4-8": {
@@ -4887,6 +4918,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-5": {
@@ -4909,6 +4941,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-5-5": {
@@ -4931,6 +4964,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -5021,7 +5055,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-sonnet-5-5": {
@@ -5044,7 +5078,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.moonshotai.kimi-k3": {
@@ -5148,7 +5182,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.openai.gpt-5.6-terra": {
@@ -5189,7 +5223,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.openai.gpt-6-astra": {
@@ -5356,6 +5390,47 @@
       "structured_output": true,
       "temperature": false
     },
+    "global.openai.gpt-6.1-terra": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.05,
+        "cache_write": 1.25,
+        "context_over_200k": {
+          "cache_read": 0.1,
+          "cache_write": 2.5,
+          "input": 2,
+          "output": 7.5
+        },
+        "input": 1,
+        "output": 5,
+        "tiers": [
+          {
+            "cache_read": 0.1,
+            "cache_write": 2.5,
+            "input": 2,
+            "output": 7.5,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
     "global.xai.grok-4.6": {
       "context": 500000,
       "output": 500000,
@@ -5477,6 +5552,7 @@
       "attachment": true,
       "tool_call": false,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "google.gemma-4-26b-a4b": {
@@ -5586,6 +5662,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": false
     },
     "in.anthropic.claude-sonnet-5": {
@@ -5692,7 +5769,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "jp.amazon.nova-2-lite-v1:0": {
@@ -5716,6 +5793,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "jp.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -5773,7 +5851,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-4-7": {
@@ -5796,6 +5874,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-4-8": {
@@ -5818,6 +5897,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-5": {
@@ -5840,6 +5920,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-5-5": {
@@ -5862,6 +5943,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -5930,7 +6012,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "meta.llama3-1-70b-instruct-v1:0": {
@@ -5949,6 +6031,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "meta.llama3-1-8b-instruct-v1:0": {
@@ -5967,6 +6050,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "meta.llama3-3-70b-instruct-v1:0": {
@@ -5985,6 +6069,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "meta.llama4-maverick-17b-instruct-v1:0": {
@@ -6004,6 +6089,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "meta.llama4-scout-17b-instruct-v1:0": {
@@ -6023,6 +6109,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "minimax.minimax-m2": {
@@ -6218,6 +6305,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "mistral.voxtral-mini-3b-2507": {
@@ -6714,6 +6802,48 @@
       "structured_output": true,
       "temperature": false
     },
+    "openai.gpt-6.1-terra": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.055,
+        "cache_write": 1.375,
+        "context_over_200k": {
+          "cache_read": 0.11,
+          "cache_write": 2.75,
+          "input": 2.2,
+          "output": 8.25
+        },
+        "input": 1.1,
+        "output": 5.5,
+        "tiers": [
+          {
+            "cache_read": 0.11,
+            "cache_write": 2.75,
+            "input": 2.2,
+            "output": 8.25,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
     "openai.gpt-oss-120b": {
       "context": 131072,
       "output": 131072,
@@ -7021,6 +7151,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "us.amazon.nova-lite-v1:0": {
@@ -7044,6 +7175,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.amazon.nova-micro-v1:0": {
@@ -7064,6 +7196,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.amazon.nova-premier-v1:0": {
@@ -7111,6 +7244,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.anthropic.claude-fable-5": {
@@ -7133,6 +7267,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-fable-5-1": {
@@ -7155,6 +7290,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -7212,7 +7348,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-4-1-20250805-v1:0": {
@@ -7303,6 +7439,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-4-8": {
@@ -7325,6 +7462,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-5": {
@@ -7347,6 +7485,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-5-5": {
@@ -7369,6 +7508,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -7459,7 +7599,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-sonnet-5-5": {
@@ -7482,7 +7622,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.deepseek.r1-v1:0": {
@@ -7501,6 +7641,7 @@
       "attachment": false,
       "tool_call": false,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "us.meta.llama3-1-70b-instruct-v1:0": {
@@ -7519,6 +7660,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.meta.llama3-1-8b-instruct-v1:0": {
@@ -7537,6 +7679,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.meta.llama3-3-70b-instruct-v1:0": {
@@ -7555,6 +7698,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.meta.llama4-maverick-17b-instruct-v1:0": {
@@ -7574,6 +7718,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.meta.llama4-scout-17b-instruct-v1:0": {
@@ -7593,6 +7738,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.mistral.pixtral-large-2502-v1:0": {
@@ -7612,6 +7758,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": false,
+      "structured_output": false,
       "temperature": true
     },
     "us.moonshotai.kimi-k3": {
@@ -7715,7 +7862,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.openai.gpt-5.6-terra": {
@@ -7756,7 +7903,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.openai.gpt-6-astra": {
@@ -7923,6 +8070,47 @@
       "structured_output": true,
       "temperature": false
     },
+    "us.openai.gpt-6.1-terra": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.055,
+        "cache_write": 1.375,
+        "context_over_200k": {
+          "cache_read": 0.11,
+          "cache_write": 2.75,
+          "input": 2.2,
+          "output": 8.25
+        },
+        "input": 1.1,
+        "output": 5.5,
+        "tiers": [
+          {
+            "cache_read": 0.11,
+            "cache_write": 2.75,
+            "input": 2.2,
+            "output": 8.25,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
     "us.writer.palmyra-x4-v1:0": {
       "context": 122880,
       "output": 8192,
@@ -7939,6 +8127,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "us.writer.palmyra-x5-v1:0": {
@@ -7958,6 +8147,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "us.xai.grok-4.6": {
@@ -8040,6 +8230,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "writer.palmyra-x5-v1:0": {
@@ -8059,6 +8250,7 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": true
     },
     "xai.grok-4.3": {

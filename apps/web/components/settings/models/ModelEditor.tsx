@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/toast";
 import { DEFAULT_MODEL_SYSTEM_PROMPT } from "@/lib/model-config/defaults";
 import {
   ModelConfigSchema,
+  supportsLocalReasoningConfig,
   type AdminModelConfig,
   type CatalogModelPricing,
   type ModelConfigInput,
@@ -29,9 +30,15 @@ import {
   useCreateModelConfig,
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
-import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
-import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
+import { findProvider, isProviderId, PROVIDERS } from "@/lib/providers/catalog";
+import { ThinkingFields } from "./ThinkingFields";
+import {
+  AdvancedFields,
+  PricingRow,
+  type ModelPricingDraft,
+} from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
+import { CustomImageFields } from "./CustomImageFields";
 import { ConnectionTester } from "./ConnectionTester";
 import { UserCredentials } from "./UserCredentials";
 import {
@@ -74,6 +81,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         contextWindow: existing.contextWindow,
         discoveredContextWindow: existing.discoveredContextWindow,
         discoveredCapabilities: existing.discoveredCapabilities,
+        reasoningOverride: existing.reasoningOverride ?? null,
         systemPrompt: existing.systemPrompt ?? "",
         providerOptions: existing.providerOptions,
         toolCallingEnabled: existing.toolCallingEnabled !== false,
@@ -93,6 +101,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       contextWindow: null,
       discoveredContextWindow: null,
       discoveredCapabilities: null,
+      reasoningOverride: null,
       systemPrompt: DEFAULT_MODEL_SYSTEM_PROMPT,
       providerOptions: null,
       toolCallingEnabled: true,
@@ -123,6 +132,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const [providerOptionsError, setProviderOptionsError] = useState<
     string | null
   >(null);
+  const [imageOptionsError, setImageOptionsError] = useState(false);
+  const [thinkingInvalid, setThinkingInvalid] = useState(false);
   const [saveError, setSaveError] = useState("");
   // undefined means discovery was not touched in this editor session; null
   // means the current connection did not report a limit.
@@ -148,7 +159,10 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const isImage = draft.modelType === "image";
   const perUser = !isImage && draft.credentialScope === "user";
-  const requiresKey = getProvider(draft.providerId).requiresApiKey;
+  const isCustomImage = isImage && draft.providerId === "custom";
+  const isOpenRouterImage = isImage && draft.providerId === "openrouter";
+  // The server validates providers that the desktop app's catalog predates.
+  const requiresKey = findProvider(draft.providerId)?.requiresApiKey ?? false;
   const parsedPricing =
     draft.pricing === null ? null : parsePricingDraft(draft.pricing);
   const pricingIsValid = draft.pricing === null || parsedPricing !== null;
@@ -167,9 +181,11 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const canSave =
     !saving &&
+    !(thinkingInvalid && draft.reasoningOverride !== null) &&
+    !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
     !!draft.model &&
-    (isImage || pricingIsValid) &&
+    pricingIsValid &&
     (isImage || !providerOptionsError) &&
     !(requiresKey && !draft.apiKey && !perUser);
   const stillEditingOriginalConnection =
@@ -233,7 +249,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     e.preventDefault();
     setSaveError("");
 
-    let providerOptions: unknown = null;
+    let providerOptions: unknown = isCustomImage ? draft.providerOptions : null;
     if (!isImage && providerOptionsText.trim()) {
       try {
         providerOptions = JSON.parse(providerOptionsText);
@@ -249,9 +265,20 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     }
 
     const pricing =
-      isImage || draft.pricing === null ? null : parsePricingDraft(draft.pricing);
-    if (!isImage && draft.pricing !== null && pricing === null) {
-      setSaveError("Enter all four pricing rates as nonnegative numbers.");
+      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+    if (draft.pricing !== null && pricing === null) {
+      setSaveError(
+        isImage
+          ? "Enter input and output rates as nonnegative numbers."
+          : "Enter all four pricing rates as nonnegative numbers.",
+      );
+      return;
+    }
+
+    if (!isProviderId(draft.providerId)) {
+      setSaveError(
+        `Update the app to edit models that use ${existing?.displayProvider ?? draft.providerId}.`,
+      );
       return;
     }
 
@@ -269,7 +296,13 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           : detectedCapabilities,
       providerOptions,
       credentialScope: isImage ? "shared" : draft.credentialScope,
-      ...(isImage ? { contextWindow: null, discoveredContextWindow: null, discoveredCapabilities: null } : {}),
+      ...(isImage
+        ? {
+            contextWindow: null,
+            discoveredContextWindow: null,
+            discoveredCapabilities: null,
+          }
+        : {}),
     });
     if (!parsed.success) {
       setSaveError(parsed.error.issues[0]?.message ?? "Invalid input");
@@ -325,12 +358,26 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               value={draft.modelType}
               onValueChange={(value) => {
                 if (value !== "chat" && value !== "image") return;
+                setImageOptionsError(false);
+                setProviderOptionsText("");
+                setProviderOptionsError(null);
                 setDraft((current) => ({
                   ...current,
                   modelType: value,
+                  reasoningOverride: null,
+                  providerOptions: null,
+                  pricing: null,
+                  ...(current.providerId === "custom"
+                    ? {
+                        apiFormat:
+                          value === "image" ? "openai-images" : "openai-chat",
+                      }
+                    : {}),
                   ...(value === "image" &&
                   current.providerId !== "openai" &&
-                  current.providerId !== "google"
+                  current.providerId !== "google" &&
+                  current.providerId !== "openrouter" &&
+                  current.providerId !== "custom"
                     ? {
                         providerId: "openai",
                         apiFormat: "auto",
@@ -360,6 +407,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             key={draft.modelType}
             imageModel={isImage}
             apiKeyOptional={perUser}
+            providerLabel={existing?.displayProvider}
             previouslyUsedApiKeys={previouslyUsedApiKeys}
             draft={{
               providerId: draft.providerId,
@@ -368,7 +416,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               apiKey: draft.apiKey ?? "",
               model: draft.model,
             }}
-            onChange={(next) =>
+            onChange={(next) => {
+              if (next.providerId) setImageOptionsError(false);
               setDraft((current) => {
                 const connectionIdentityChanged =
                   (next.providerId !== undefined &&
@@ -381,17 +430,21 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 return {
                   ...current,
                   ...next,
+                  ...(next.providerId && next.providerId !== current.providerId
+                    ? { providerOptions: null }
+                    : {}),
                   ...(connectionIdentityChanged
                     ? {
                         contextWindow: null,
                         discoveredContextWindow: null,
                         discoveredCapabilities: null,
+                        reasoningOverride: null,
                         pricing: null,
                       }
                     : {}),
                 };
-              })
-            }
+              });
+            }}
             onDiscoveredContextWindow={(next) =>
               setDetectedContextWindow(next ?? null)
             }
@@ -452,6 +505,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             </>
           )}
         </SettingsSection>
+
+        {isCustomImage && (
+          <CustomImageFields
+            value={draft.providerOptions}
+            onChange={(providerOptions) =>
+              setDraft((current) => ({ ...current, providerOptions }))
+            }
+            onError={setImageOptionsError}
+          />
+        )}
 
         <SettingsSection
           title={isImage ? "Image availability" : "Chat availability"}
@@ -538,35 +601,97 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           </SettingsRow>
         </SettingsSection>
 
+        {isImage && (
+          <SettingsSection
+            title="Usage cost"
+            description={
+              isOpenRouterImage
+                ? "Chat usage records each image at the charge OpenRouter reports with it."
+                : isCustomImage
+                  ? "Estimates image cost from the token usage the backend reports with each image. Images stay unpriced when it reports none."
+                  : "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
+            }
+          >
+            {isOpenRouterImage ? (
+              <SettingsNotice>
+                No rates are needed for OpenRouter image models.
+              </SettingsNotice>
+            ) : (
+              <PricingRow
+                pricing={draft.pricing}
+                catalogPricing={catalogPricingHint}
+                onPricingChange={(next) =>
+                  setDraft((d) => ({ ...d, pricing: next }))
+                }
+                cacheRates={false}
+              />
+            )}
+          </SettingsSection>
+        )}
+
         {!isImage && (
-          <AdvancedFields
-            contextWindow={draft.contextWindow}
-            onContextWindowChange={(next) =>
-              setDraft((d) => ({ ...d, contextWindow: next }))
-            }
-            contextWindowPlaceholder={contextWindowPlaceholder}
-            resolvedContextWindow={
-              stillEditingOriginalConnection &&
-              detectedContextWindow === undefined
-                ? existing.resolvedContextWindow
-                : undefined
-            }
-            pricing={draft.pricing}
-            catalogPricing={catalogPricingHint}
-            onPricingChange={(next) =>
-              setDraft((d) => ({ ...d, pricing: next }))
-            }
-            systemPrompt={draft.systemPrompt ?? ""}
-            onSystemPromptChange={(next) =>
-              setDraft((d) => ({ ...d, systemPrompt: next }))
-            }
-            providerOptionsText={providerOptionsText}
-            onProviderOptionsTextChange={(next, err) => {
-              setProviderOptionsText(next);
-              setProviderOptionsError(err);
-            }}
-            defaultOpen={advancedDefaultOpen}
-          />
+          <>
+            {supportsLocalReasoningConfig(
+              draft.providerId,
+              draft.apiFormat,
+            ) && (
+              <ThinkingFields
+                automatic={
+                  (detectedCapabilities === undefined
+                    ? draft.discoveredCapabilities?.reasoningControls
+                    : detectedCapabilities?.reasoningControls) ??
+                  catalogCapabilities?.reasoningControls
+                }
+                value={draft.reasoningOverride}
+                onChange={(reasoningOverride) =>
+                  setDraft((current) => ({ ...current, reasoningOverride }))
+                }
+                onInvalidChange={setThinkingInvalid}
+                checkTarget={
+                  (draft.providerId === "vllm" ||
+                    draft.providerId === "llamacpp") &&
+                  draft.baseUrl &&
+                  draft.model
+                    ? {
+                        providerId: draft.providerId,
+                        apiFormat: draft.apiFormat,
+                        baseUrl: draft.baseUrl,
+                        apiKey: draft.apiKey,
+                        model: draft.model,
+                      }
+                    : undefined
+                }
+              />
+            )}
+            <AdvancedFields
+              contextWindow={draft.contextWindow}
+              onContextWindowChange={(next) =>
+                setDraft((d) => ({ ...d, contextWindow: next }))
+              }
+              contextWindowPlaceholder={contextWindowPlaceholder}
+              resolvedContextWindow={
+                stillEditingOriginalConnection &&
+                detectedContextWindow === undefined
+                  ? existing.resolvedContextWindow
+                  : undefined
+              }
+              pricing={draft.pricing}
+              catalogPricing={catalogPricingHint}
+              onPricingChange={(next) =>
+                setDraft((d) => ({ ...d, pricing: next }))
+              }
+              systemPrompt={draft.systemPrompt ?? ""}
+              onSystemPromptChange={(next) =>
+                setDraft((d) => ({ ...d, systemPrompt: next }))
+              }
+              providerOptionsText={providerOptionsText}
+              onProviderOptionsTextChange={(next, err) => {
+                setProviderOptionsText(next);
+                setProviderOptionsError(err);
+              }}
+              defaultOpen={advancedDefaultOpen}
+            />
+          </>
         )}
 
         {saveError && <SettingsNotice tone="error">{saveError}</SettingsNotice>}

@@ -9,10 +9,15 @@ import {
 } from "@overtchat/shared";
 import { useState } from "react";
 import { useModelPreferences } from "@/lib/queries/modelPreferences";
+import { useOptionalProject } from "@/lib/queries/projects";
 import type {
   CatalogModelPricing,
   ModelDiscoveryInput,
 } from "@/lib/model-config/schema";
+import type {
+  ReasoningOverride,
+  ThinkingCheckResult,
+} from "@/lib/model-config/reasoning-override";
 import { apiUrl } from "@/lib/api-url";
 
 export interface AvailableModel {
@@ -32,20 +37,25 @@ export interface AvailableModel {
 export function useSelectedModel(
   models: readonly { id: string }[] | null,
   initialModelId?: string | null,
+  projectId?: string | null,
 ): [string, (id: string) => void] {
   const preferences = useModelPreferences();
+  const project = useOptionalProject(projectId);
   const [selection, setSelection] = useState<string | null>(
     initialModelId ?? null,
   );
   // Wait for this mount's default refresh before initializing a new chat.
   const waiting =
     !models?.some((model) => model.id === selection) &&
-    (preferences.isPending || preferences.isFetching);
+    (preferences.isPending ||
+      preferences.isFetching ||
+      (Boolean(projectId) && project.isPending));
   const selectedId = waiting
     ? ""
     : resolveChatModelId(
         models ?? [],
         selection,
+        project.data?.defaultModelId,
         preferences.data?.defaultModelId,
       );
   if (selectedId && selectedId !== selection) setSelection(selectedId);
@@ -189,4 +199,20 @@ function readReasoningLevel(value: unknown): ModelReasoningLevel | undefined {
   return REASONING_EFFORTS.includes(value as ReasoningEffort)
     ? (value as ReasoningEffort)
     : undefined;
+}
+
+export async function checkThinkingLevels(
+  input: ModelDiscoveryInput & {
+    model: string;
+    reasoningOverride: ReasoningOverride;
+  },
+): Promise<ThinkingCheckResult> {
+  const res = await fetch(apiUrl("/api/models/thinking-check"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = (await res.json()) as ThinkingCheckResult & { error?: string };
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json;
 }

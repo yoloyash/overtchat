@@ -2,6 +2,7 @@ import path from "node:path";
 import type { AgentSlashCommand } from "@overtchat/agent-bridge";
 import {
   executeOnHost,
+  inspectHostEnvironment,
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
 import {
@@ -25,9 +26,7 @@ export type CodexPromptCommand = AgentSlashCommand & {
   template: string;
 };
 
-export type CodexDiscoveredCommand =
-  | CodexSkillCommand
-  | CodexPromptCommand;
+export type CodexDiscoveredCommand = CodexSkillCommand | CodexPromptCommand;
 
 export type CodexSlashInvocation = {
   name: string;
@@ -51,9 +50,7 @@ const CUSTOM_PROMPT_SCRIPT = [
 export function parseCodexSlashInvocation(
   value: string,
 ): CodexSlashInvocation | null {
-  const match = /^\/([a-z0-9:_-]+)(?:[^\S\n]+([^\n]*))?$/iu.exec(
-    value.trim(),
-  );
+  const match = /^\/([a-z0-9:_-]+)(?:[^\S\n]+([^\n]*))?$/iu.exec(value.trim());
   return match
     ? {
         name: match[1],
@@ -97,21 +94,38 @@ export function parseCodexSkills(value: unknown): CodexSkillCommand[] {
 export async function listCodexCustomPrompts(
   target: HostTarget,
 ): Promise<CodexPromptCommand[]> {
+  const windows = (await inspectHostEnvironment(target)).platform === "win32";
   const result = await executeOnHost(
     target,
-    {
-      command: "sh",
-    },
+    windows
+      ? {
+          command: "node",
+          args: [
+            "-e",
+            `
+const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+const directory = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'prompts');
+if (fs.existsSync(directory)) for (const name of fs.readdirSync(directory).filter(name => name.endsWith('.md')).slice(0, 100)) {
+  const file = path.join(directory, name);
+  const stat = fs.statSync(file);
+  if (!stat.isFile() || stat.size > 65536) continue;
+  process.stdout.write('${PROMPT_PATH_MARKER}\\n' + Buffer.from(file).toString('hex') + '\\n${PROMPT_BODY_MARKER}\\n' + fs.readFileSync(file).toString('hex') + '\\n${PROMPT_END_MARKER}\\n');
+}`,
+          ],
+        }
+      : {
+          command: "sh",
+        },
     {
       timeoutMs: 15_000,
-      stdin: CUSTOM_PROMPT_SCRIPT,
+      ...(windows ? {} : { stdin: CUSTOM_PROMPT_SCRIPT }),
     },
   );
   const records = parseCustomPromptOutput(result.stdout);
   const prompts: CodexPromptCommand[] = [];
   for (const { filePath, markdown } of records) {
     if (prompts.length >= MAX_CUSTOM_PROMPTS) break;
-    const basename = path.posix.basename(filePath);
+    const basename = (windows ? path.win32 : path.posix).basename(filePath);
     if (!basename.endsWith(".md")) continue;
     const name = basename.slice(0, -3);
     if (!name) continue;
@@ -144,19 +158,13 @@ function parseCustomPromptOutput(
     const pathHex: string[] = [];
     const bodyHex: string[] = [];
     index += 1;
-    while (
-      index < lines.length &&
-      lines[index].trim() !== PROMPT_BODY_MARKER
-    ) {
+    while (index < lines.length && lines[index].trim() !== PROMPT_BODY_MARKER) {
       pathHex.push(lines[index]);
       index += 1;
     }
     if (index >= lines.length) break;
     index += 1;
-    while (
-      index < lines.length &&
-      lines[index].trim() !== PROMPT_END_MARKER
-    ) {
+    while (index < lines.length && lines[index].trim() !== PROMPT_END_MARKER) {
       bodyHex.push(lines[index]);
       index += 1;
     }

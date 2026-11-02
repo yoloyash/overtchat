@@ -274,12 +274,14 @@ export function AgentInteractionDialog({
 
 export function AgentUsageDialog({
   open,
+  providerLabel,
   usage,
   pending,
   error,
   onOpenChange,
 }: {
   open: boolean;
+  providerLabel: string;
   usage: AgentUsageSnapshot | null;
   pending: boolean;
   error?: string;
@@ -299,7 +301,7 @@ export function AgentUsageDialog({
         <Dialog.Backdrop className={dialogBackdrop} />
         <Dialog.Popup className={dialogPopup}>
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Codex usage
+            {providerLabel} usage
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {usage?.planType
@@ -380,7 +382,8 @@ export function AgentUsageDialog({
                 activityRows.length === 0 &&
                 !usage.unavailableReason && (
                   <p className="text-sm text-muted-foreground">
-                    Codex did not return usage details for this account.
+                    {providerLabel} did not return usage details for this
+                    account.
                   </p>
                 )}
               {usage.unavailableReason && (

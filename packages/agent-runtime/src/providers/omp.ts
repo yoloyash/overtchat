@@ -60,19 +60,37 @@ class OmpEventClassifier implements AgentRuntimeEventClassifier {
     ) {
       this.sawAssistant = true;
     }
+    // A run that yielded to background work hands control back, as OMP's own
+    // TUI shows; the job's result starts a new turn.
     const terminal =
+      event.type === "session_settled" ||
       (event.type === "agent_end" &&
-        event.isTerminal !== false &&
+        (event.isTerminal !== false || event.awaitingAsyncWork === true) &&
         (this.sawAssistant ||
           (Array.isArray(event.messages) &&
             event.messages.some((message) => messageRole(message) === "assistant")))) ||
-      (event.type === "prompt_result" && event.agentInvoked === false);
+      (event.type === "prompt_result" &&
+        (event.agentInvoked === false || event.sessionSettled === true));
     if (terminal) this.reset();
+    // Compaction is a turn of its own: the session is busy from start to end,
+    // so prompts queue behind it and the end settles the session like any run.
     return {
-      started: event.type === "agent_start" || event.type === "turn_start",
-      terminal,
+      started:
+        event.type === "agent_start" ||
+        event.type === "turn_start" ||
+        event.type === "compaction_start",
+      terminal: terminal || event.type === "compaction_end",
     };
   }
+}
+
+function hasVisibleQueuedInput(state: Record<string, unknown>): boolean {
+  const queued = state.queuedMessages;
+  if (!queued || typeof queued !== "object") return false;
+  return ["steering", "followUp"].some((key) => {
+    const messages = Reflect.get(queued, key);
+    return Array.isArray(messages) && messages.length > 0;
+  });
 }
 
 function sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity {
@@ -161,6 +179,13 @@ async function fetchCatalog(
 export const ompProviderAdapter: AgentProviderAdapter = {
   provider: "omp",
   pollUsage: true,
+  busyFromState(state) {
+    // `isSettled` also counts hidden next-turn context that only the next
+    // explicit prompt delivers, so an idle session can report false forever
+    // (can1357/oh-my-pi#14948). Queued steering and follow-ups still resume.
+    return state.isStreaming === true || state.isCompacting === true ||
+      hasVisibleQueuedInput(state);
+  },
   startSession(target, launch) {
     return startOmp(target, {
       executable: launch.executable,

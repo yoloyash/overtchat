@@ -14,6 +14,7 @@ COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/agent-bridge/package.json ./packages/agent-bridge/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/voice-client/package.json ./packages/voice-client/package.json
 RUN npm ci --include=dev
 
 FROM deps AS builder

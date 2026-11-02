@@ -2,6 +2,7 @@ import type {
   ExistingInstallation,
   Gpu,
   InstallationConfig,
+  SandboxTier,
 } from "./types.js";
 import { APP_IMAGE } from "./constants.js";
 import { commandExists, requireSuccessful, runCommand } from "./process.js";
@@ -48,8 +49,16 @@ export async function detectDockerCommand(readOnly = false): Promise<DockerComma
   const direct = readOnly
     ? await runCommand("docker", ["info"], { timeoutMs: 10_000 })
     : await runCommand("docker", ["info"]);
-  if (direct.exitCode === 0) return { command: "docker", prefix: [] };
-  if (process.platform === "darwin") {
+  if (direct.exitCode === 0) {
+    if (process.platform === "win32") {
+      const engine = await runCommand("docker", ["info", "--format", "{{.OSType}}"], { timeoutMs: 10_000 });
+      if (engine.exitCode !== 0 || engine.stdout.trim() !== "linux") {
+        throw new Error("OvertChat requires Linux containers. Switch Docker Desktop to Linux containers and enable its WSL 2 engine, then retry.");
+      }
+    }
+    return { command: "docker", prefix: [] };
+  }
+  if (process.platform === "darwin" || process.platform === "win32") {
     throw new Error("Docker is installed but not ready. Start Docker Desktop, wait for its engine, then retry. Check docker context show if you use another Docker runtime.");
   }
   if (await commandExists("sudo")) {
@@ -66,6 +75,9 @@ export async function detectDockerCommand(readOnly = false): Promise<DockerComma
 }
 
 export async function installDockerEngine(): Promise<void> {
+  if (process.platform === "win32") {
+    throw new Error("Install Docker Desktop for Windows (https://docs.docker.com/desktop/setup/install/windows-install/), enable its WSL 2 engine and Linux containers, and start Docker Desktop. Then run overtchat setup again.");
+  }
   if (process.platform !== "linux") {
     throw new Error("Install and start Docker Desktop for Mac (https://docs.docker.com/desktop/setup/install/mac-install/), then run overtchat setup again.");
   }
@@ -146,6 +158,9 @@ function linuxDistribution(contents: string): "apt" | "dnf" | null {
 }
 
 export async function installNvidiaContainerToolkit(): Promise<void> {
+  if (process.platform === "win32") {
+    throw new Error("Docker Desktop manages GPU support. Update the Windows NVIDIA driver and WSL (wsl --update), enable Docker Desktop's WSL 2 engine, and restart Docker Desktop. Do not install the Linux NVIDIA Container Toolkit on Windows.");
+  }
   if (await commandExists("nvidia-ctk")) {
     await runElevated("nvidia-ctk", ["runtime", "configure", "--runtime=docker"], {
       inherit: true,
@@ -306,6 +321,7 @@ export async function reconcileManagedSidecars(
   docker: DockerCommand,
   config: InstallationConfig,
 ): Promise<SidecarReconciliation> {
+  const cloudSelected = config.access?.mode === "cloud" && config.access.cloud !== undefined;
   const sidecars: ManagedSidecar[] = [
     {
       containerName: "overtchat-searxng",
@@ -356,6 +372,31 @@ export async function reconcileManagedSidecars(
         (config.stt.accelerator === "auto" ||
           config.stt.accelerator === "gpu"),
       service: "stt-gpu",
+    },
+    {
+      containerName: "overtchat-sandbox",
+      label: "Code sandbox",
+      selected: config.sandbox.installed && config.sandbox.tier === "slim",
+      service: "sandbox",
+    },
+    {
+      containerName: "overtchat-sandbox-full",
+      label: "Code sandbox (full)",
+      selected: config.sandbox.installed && config.sandbox.tier === "full",
+      service: "sandbox-full",
+    },
+    // Removing the tunnel is what takes the cloud address offline.
+    {
+      containerName: "overtchat-cloud-tunnel",
+      label: "OvertChat Cloud tunnel",
+      selected: cloudSelected,
+      service: "cloud-tunnel",
+    },
+    {
+      containerName: "overtchat-cloud-proxy",
+      label: "OvertChat Cloud proxy",
+      selected: cloudSelected,
+      service: "cloud-proxy",
     },
   ];
   const result: SidecarReconciliation = { removed: [], warnings: [] };
@@ -480,6 +521,7 @@ async function stoppedComposeInstallation(
   const sttCpu = sttGpu
     ? null
     : await inspectContainer(docker, "overtchat-stt-cpu");
+  const sandboxTier = await installedSandboxTier(docker);
   const labels = redis?.Config?.Labels ?? searxng?.Config?.Labels ?? {};
   return {
     containerName: "overtchat-app",
@@ -505,7 +547,16 @@ async function stoppedComposeInstallation(
     ttsGpuVariant: kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    sandboxTier,
   };
+}
+
+async function installedSandboxTier(
+  docker: DockerCommand,
+): Promise<SandboxTier | undefined> {
+  if (await inspectContainer(docker, "overtchat-sandbox-full")) return "full";
+  if (await inspectContainer(docker, "overtchat-sandbox")) return "slim";
+  return undefined;
 }
 
 export async function detectExistingInstallation(
@@ -548,6 +599,7 @@ export async function detectExistingInstallation(
   const sttCpu = sttGpu
     ? null
     : await inspectContainer(docker, "overtchat-stt-cpu");
+  const sandboxTier = await installedSandboxTier(docker);
 
   return {
     containerName: (app.Name ?? "/overtchat-app").replace(/^\//u, ""),
@@ -577,11 +629,12 @@ export async function detectExistingInstallation(
         : kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    sandboxTier,
   };
 }
 
 export async function detectNvidiaGpus(): Promise<Gpu[]> {
-  if (process.platform !== "linux") return [];
+  if (process.platform !== "linux" && process.platform !== "win32") return [];
   if (!(await commandExists("nvidia-smi"))) return [];
   let result = await runCommand("nvidia-smi", [
     "--query-gpu=index,uuid,name,memory.total,compute_cap",
@@ -630,7 +683,19 @@ export function parseNvidiaSmi(output: string): Gpu[] {
 
 export async function nvidiaContainerRuntimeAvailable(
   docker: DockerCommand,
+  probeImage?: string,
 ): Promise<boolean> {
+  if (process.platform === "win32") {
+    if (!probeImage) return false;
+    // Docker Desktop's GPU-PV integration is not reliably described by the
+    // Linux runtime names. Prove device access inside our actual app image.
+    const probe = await runDocker(docker, [
+      "run", "--rm", "--pull=missing", "--gpus", "all",
+      "--entrypoint", "nvidia-smi", probeImage,
+      "--query-gpu=name", "--format=csv,noheader",
+    ], { timeoutMs: 180_000 });
+    return probe.exitCode === 0 && probe.stdout.trim().length > 0;
+  }
   const result = await runDocker(docker, [
     "info",
     "--format",

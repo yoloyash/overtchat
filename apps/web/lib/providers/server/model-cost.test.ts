@@ -9,6 +9,7 @@ vi.mock("@/lib/providers/server/model-catalog.json", () =>
 
 import {
   estimateGenerationCost,
+  estimateImageGenerationCost,
   sumEstimatedGenerationCosts,
 } from "./model-cost";
 
@@ -368,6 +369,72 @@ describe("model cost estimation", () => {
       sumEstimatedGenerationCosts(
         [catalogCost, configuredCost].filter((cost) => cost !== null),
       ),
+    ).toBeNull();
+  });
+});
+
+describe("image cost estimation", () => {
+  const imageUsage = { inputTokens: 10, outputTokens: 1_290, totalTokens: 1_300 };
+
+  it("prices reported image tokens at catalog rates", () => {
+    expect(
+      estimateImageGenerationCost({
+        providerId: "google",
+        model: "gemini-3.1-flash-image",
+        usage: imageUsage,
+      }),
+    ).toEqual({
+      costSource: "models.dev",
+      inputCostNanoUsd: 5_000,
+      outputCostNanoUsd: 77_400_000,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 77_405_000,
+    });
+  });
+
+  it("prefers configured rates, including for models outside the catalog", () => {
+    expect(
+      estimateImageGenerationCost({
+        providerId: "google",
+        model: "google/gemini-nano-banana-2.1",
+        usage: imageUsage,
+        pricing: { input: 1.5, output: 30, cacheRead: 0, cacheWrite: 0 },
+      }),
+    ).toEqual({
+      costSource: "model_config",
+      inputCostNanoUsd: 15_000,
+      outputCostNanoUsd: 38_700_000,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 38_715_000,
+    });
+  });
+
+  it("leaves images unpriced without reported tokens or rates", () => {
+    const pricing = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+    expect(
+      estimateImageGenerationCost({
+        providerId: "openai",
+        model: "dall-e-3",
+        usage: undefined,
+        pricing,
+      }),
+    ).toBeNull();
+    expect(
+      estimateImageGenerationCost({
+        providerId: "openai",
+        model: "gpt-image-1",
+        usage: { inputTokens: 10, outputTokens: undefined, totalTokens: 10 },
+        pricing,
+      }),
+    ).toBeNull();
+    expect(
+      estimateImageGenerationCost({
+        providerId: "google",
+        model: "uncatalogued-image",
+        usage: imageUsage,
+      }),
     ).toBeNull();
   });
 });

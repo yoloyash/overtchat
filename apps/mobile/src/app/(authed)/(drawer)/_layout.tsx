@@ -3,6 +3,8 @@ import { getFocusedRouteNameFromRoute } from "expo-router/react-navigation";
 import { AppDrawer } from "@/components/drawer/AppDrawer";
 import { useTheme } from "@/lib/theme";
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 export default function DrawerLayout() {
   const { colors } = useTheme();
   return (

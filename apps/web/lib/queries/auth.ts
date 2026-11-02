@@ -1,4 +1,4 @@
-import { getChatQueueStore } from "@overtchat/shared";
+import { getChatQueueStore, type TwoFactorStatus } from "@overtchat/shared";
 import { useCallback } from "react";
 import { queryOptions, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
@@ -18,7 +18,35 @@ export const sessionQuery = queryOptions({
   },
 });
 
-/** Whether the server has no users yet, so the first signup creates the admin. */
+/** The signed-in user's two-factor state, and whether the server requires it. */
+export const twoFactorQuery = queryOptions({
+  queryKey: authKeys.twoFactor(),
+  queryFn: async (): Promise<TwoFactorStatus> => {
+    const response = await fetch(apiUrl("/api/two-factor"), {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json()) as TwoFactorStatus;
+  },
+});
+
+/**
+ * Refreshes the session and two-factor state after enabling or disabling
+ * two-factor; Better Auth replaces the session when either happens.
+ */
+export function useRefreshTwoFactor() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: authKeys.session() }),
+        queryClient.invalidateQueries({ queryKey: authKeys.twoFactor() }),
+      ]),
+    [queryClient],
+  );
+}
+
+/** Whether initial administrator setup is still available. */
 export async function fetchSetupRequired(): Promise<boolean> {
   const response = await fetch(apiUrl("/api/setup"), { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);

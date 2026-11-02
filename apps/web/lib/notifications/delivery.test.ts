@@ -27,6 +27,7 @@ let repository: typeof import("@/lib/db/pushNotifications");
 let sender: typeof import("./sender");
 let chat: typeof import("./chat");
 let route: typeof import("@/app/api/push-devices/route");
+let presence: typeof import("./presence");
 const id = "00000000-0000-4000-8000-000000000001";
 const input = {
   id,
@@ -50,6 +51,24 @@ function send() {
     { type: "text", text: "The answer" },
   ]);
 }
+const finished = {
+  sessionId: "agent",
+  reason: "completed" as const,
+  eventId: "agent:2",
+  turn: { outcome: "completed" as const, startedAt: 1, endedAt: 2, preview: "Done." },
+};
+const asked = {
+  sessionId: "agent",
+  reason: "approval" as const,
+  eventId: "request",
+  attention: {
+    kind: "approval" as const,
+    id: "request",
+    requestedAt: 1,
+    title: "Allow Bash",
+    detail: "npm ci",
+  },
+};
 
 beforeAll(async () => {
   ({ db } = await import("@/lib/db/client"));
@@ -59,6 +78,7 @@ beforeAll(async () => {
   sender = await import("./sender");
   chat = await import("./chat");
   route = await import("@/app/api/push-devices/route");
+  presence = await import("./presence");
 });
 beforeEach(() => {
   vi.useFakeTimers();
@@ -250,9 +270,18 @@ describe("push registration and delivery through the production migration", () =
       previews: false,
     });
     await send();
-    await sender.notifyAgentIdle("agent");
-    expect(fetchMock.mock.calls.map((call) => JSON.parse(call[1].body)[0].body))
-      .toEqual(["Tap to view your response.", "Tap to view the session."]);
+    await sender.notifyAgentAttention(finished);
+    await sender.notifyAgentAttention(asked);
+    expect(
+      fetchMock.mock.calls.map((call) => {
+        const { title, body } = JSON.parse(call[1].body)[0];
+        return `${title} / ${body}`;
+      }),
+    ).toEqual([
+      "Your response is ready / Tap to view your response.",
+      "An agent finished / Tap to view the session.",
+      "An agent needs approval / Tap to review the request.",
+    ]);
   });
   it.each(["logout", "expired", "disabled", "deleted", "banned"])(
     "does not submit after %s",
@@ -375,14 +404,58 @@ describe("push registration and delivery through the production migration", () =
       warning.mockRestore();
     }
   });
-  it("sends an agent idle alert with its session name", async () => {
+  it("names the session and what it needs", async () => {
     register();
-    await sender.notifyAgentIdle("agent");
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)[0]).toMatchObject({
-      title: "Agent is idle",
-      body: "Fix tests · Tap to view the session.",
-      data: { kind: "agent", targetId: "agent" },
+    await sender.notifyAgentAttention(asked);
+    await sender.notifyAgentAttention(finished);
+    await sender.notifyAgentAttention({
+      sessionId: "agent",
+      reason: "failed",
+      eventId: "agent:3",
+      turn: { outcome: "failed", startedAt: 2, endedAt: 3 },
     });
+    const sent = fetchMock.mock.calls.map((call) => JSON.parse(call[1].body)[0]);
+    expect(sent[0]).toMatchObject({
+      title: "Needs approval: Fix tests",
+      body: "Allow Bash · npm ci",
+      channelId: "agent-idle",
+      data: { kind: "agent", targetId: "agent", reason: "approval" },
+    });
+    expect(sent[1]).toMatchObject({
+      title: "Finished: Fix tests",
+      body: "Done.",
+      channelId: "agent-idle",
+      data: { reason: "completed" },
+    });
+    // Without an error to show, the body says where the session runs.
+    expect(sent[2]).toMatchObject({ title: "Failed: Fix tests", body: "Project · Host" });
+  });
+  it("tells a present client instead of the phone, and nobody who is looking", async () => {
+    register();
+    const sink = vi.fn();
+    const registry = presence.agentClientRegistry;
+    registry.record("alice", { clientId: "tab-00000001", visible: true, viewing: null, notify: true });
+    const detach = registry.subscribe("alice", "tab-00000001", sink);
+    await sender.notifyAgentAttention(finished);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sink).toHaveBeenCalledExactlyOnceWith({
+      sessionId: "agent",
+      reason: "completed",
+      eventId: "agent:2",
+      title: "Finished: Fix tests",
+      body: "Done.",
+      provider: "codex",
+    });
+    registry.record("alice", { clientId: "tab-00000001", visible: true, viewing: "agent", notify: true });
+    await sender.notifyAgentAttention(asked);
+    expect(sink).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // A client that does not want alerts leaves them to the phone.
+    registry.record("alice", { clientId: "tab-00000001", visible: true, viewing: null, notify: false });
+    await sender.notifyAgentAttention(asked);
+    expect(sink).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    detach();
   });
   it("does not submit agent notifications after admin access is revoked", async () => {
     register();
@@ -390,7 +463,7 @@ describe("push registration and delivery through the production migration", () =
       .set({ role: "user" })
       .where(eq(schema.user.id, "alice"))
       .run();
-    await sender.notifyAgentIdle("agent");
+    await sender.notifyAgentAttention(finished);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

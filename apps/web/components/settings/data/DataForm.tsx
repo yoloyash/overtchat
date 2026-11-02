@@ -20,6 +20,7 @@ import {
   SettingsSection,
 } from "../SettingsRows";
 import { apiUrl } from "@/lib/api-url";
+import { SharedChats } from "./SharedChats";
 
 type ImportResult = {
   format: string;
@@ -87,6 +88,7 @@ export function DataForm() {
         title="Data"
         description="Import chats from other platforms, or export your own."
       />
+      <SharedChats />
 
       <input
         ref={fileRef}

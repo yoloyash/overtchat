@@ -8,6 +8,8 @@ const voiceOrigin = (process.env.VOICE_URL ?? "http://voice:8765").replace(
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["ws"],
+  env: { OVERTCHAT_TERMINAL_RELAY_PORT: process.env.OVERTCHAT_TERMINAL_RELAY_PORT ?? "14717" },
   outputFileTracingRoot: path.join(__dirname, "../../"),
   outputFileTracingIncludes: {
     "/*": [
@@ -19,7 +21,7 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     "/*": ["./data/**/*"],
   },
-  transpilePackages: ["@overtchat/agent-bridge", "@overtchat/shared"],
+  transpilePackages: ["@overtchat/agent-bridge", "@overtchat/shared", "@overtchat/voice-client"],
   // Hosts allowed to load `next dev` assets cross-origin. Only used in dev
   // (Next.js ignores this at build time). Phone-on-LAN testing needs the
   // host's LAN IP listed here.
@@ -27,6 +29,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        {
+          source: "/api/agent-terminals/socket",
+          destination: `http://127.0.0.1:${process.env.OVERTCHAT_TERMINAL_RELAY_PORT ?? "14717"}/api/agent-terminals/socket`,
+        },
         {
           source: "/api/voice/realtime",
           destination: `${voiceOrigin}/v1/realtime`,

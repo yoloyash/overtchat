@@ -38,7 +38,10 @@ import { useDesktopUpdate } from "@/lib/useDesktopUpdate";
 import { useSidebar } from "@/components/sidebar-context";
 import { clearComposerDraftsForUser } from "@/lib/chat/composer-drafts";
 
-const UPDATE_COMMAND = "overtchat update";
+const UPDATE_COMMANDS = {
+  overtchat: "overtchat update",
+  compose: "docker compose pull && docker compose up -d",
+} as const;
 
 export function AccountMenu() {
   const navigate = useNavigate();
@@ -255,6 +258,7 @@ export function AccountMenu() {
         <AppUpdateDialog
           open={updateDialogOpen}
           version={availableVersion}
+          method={update?.updateMethod ?? "overtchat"}
           onOpenChange={setUpdateDialogOpen}
         />
       )}
@@ -265,13 +269,16 @@ export function AccountMenu() {
 function AppUpdateDialog({
   open,
   version,
+  method,
   onOpenChange,
 }: {
   open: boolean;
   version: string;
+  method: keyof typeof UPDATE_COMMANDS;
   onOpenChange: (open: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const command = UPDATE_COMMANDS[method];
 
   function handleOpenChange(next: boolean) {
     if (!next) setCopied(false);
@@ -280,7 +287,7 @@ function AppUpdateDialog({
 
   async function copyUpdateCommand() {
     try {
-      await navigator.clipboard.writeText(UPDATE_COMMAND);
+      await navigator.clipboard.writeText(command);
       setCopied(true);
     } catch (error) {
       toast.error({
@@ -306,7 +313,15 @@ function AppUpdateDialog({
             Server update available
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Server v{version} is available. Run this on the OvertChat host.
+            {method === "compose" ? (
+              <>
+                Server v{version} is available. If your Compose file pins the
+                app image, change its tag to {version}. Then run this in the
+                Compose directory, using podman compose with Podman.
+              </>
+            ) : (
+              <>Server v{version} is available. Run this on the OvertChat host.</>
+            )}
           </Dialog.Description>
 
           <div className="mt-4 flex items-center gap-2">
@@ -314,7 +329,7 @@ function AppUpdateDialog({
               aria-label="OvertChat update command"
               className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted px-3 py-2 text-sm"
             >
-              {UPDATE_COMMAND}
+              {command}
             </code>
             <Button
               variant="outline"

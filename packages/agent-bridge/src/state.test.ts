@@ -47,6 +47,14 @@ function event(
 }
 
 describe("agent runtime event reducer", () => {
+  it("treats a retired waiting status from an older connector as a running turn", () => {
+    const running = applyAgentRuntimeEnvelope(snapshot(), event({ type: "agent_start", overtchatRecordedAt: 123 }))!;
+    const legacy = applyAgentRuntimeEnvelope(running, event({ type: "overtchat_status", status: "running", phase: "waiting" }))!;
+    expect(legacy).toMatchObject({ status: "running", activeTurn: { startedAt: 123 }, state: { isStreaming: true } });
+    const idle = applyAgentRuntimeEnvelope(legacy, event({ type: "overtchat_status", status: "idle" }))!;
+    expect(idle).toMatchObject({ status: "idle", activeTurn: null });
+  });
+
   it("uses a connector-recorded timestamp for replay-derived state", () => {
     const started = applyAgentRuntimeEnvelope(
       snapshot(),
@@ -538,6 +546,54 @@ describe("agent runtime event reducer", () => {
       content: [{ type: "text", text: "complete" }],
       isError: false,
     });
+  });
+
+  it("keeps tool results that complete in the same millisecond", () => {
+    // Oh My Pi finishes a batch of tool calls together, so their results share
+    // a timestamp. Each result must replace only its own call's row.
+    const write = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "message_end",
+        message: {
+          role: "toolResult",
+          toolCallId: "call-write",
+          toolName: "write",
+          content: [{ type: "text", text: "wrote d.txt" }],
+          timestamp: 500,
+        },
+      }),
+    )!;
+    const todoFromEnd = applyAgentRuntimeEnvelope(
+      write,
+      event({
+        type: "message_end",
+        message: {
+          role: "toolResult",
+          toolCallId: "call-todo",
+          toolName: "todo",
+          content: [{ type: "text", text: "4/4 done" }],
+          timestamp: 500,
+        },
+      }),
+    )!;
+    const todoFromExecution = applyAgentRuntimeEnvelope(
+      todoFromEnd,
+      event({
+        type: "message_end",
+        message: {
+          role: "toolResult",
+          toolCallId: "call-todo",
+          toolName: "todo",
+          content: [{ type: "text", text: "4/4 done" }],
+        },
+      }),
+    )!;
+
+    expect(todoFromExecution.messages.slice(1)).toEqual([
+      expect.objectContaining({ toolCallId: "call-write", timestamp: 500 }),
+      expect.objectContaining({ toolCallId: "call-todo" }),
+    ]);
   });
 
   it("renders OMP command output and waits for runtime-settled status", () => {

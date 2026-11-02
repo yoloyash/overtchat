@@ -12,6 +12,8 @@ const releaseImages = {
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 function config(
@@ -25,6 +27,7 @@ function config(
     voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.1.0",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
+    sandboxVersion: "0.1.0",
     ...releaseImages,
     appPort: 4718,
     bindAddress: "0.0.0.0",
@@ -38,6 +41,7 @@ function config(
     tts: { provider: "bundled", bundledInstalled: true },
     stt: { provider: "disabled", bundledInstalled: false },
     voice: { installed: false },
+    sandbox: { installed: false, tier: "slim" },
     agents: { installed: false },
     ...overrides,
   };
@@ -53,6 +57,7 @@ describe("release manifest", () => {
         voiceVersion: "0.1.0",
         connectorVersion: "7.8.9",
         sttVersion: "0.1.0",
+        sandboxVersion: "0.1.0",
         ...releaseImages,
       }),
     ).toEqual({
@@ -62,6 +67,7 @@ describe("release manifest", () => {
       voiceVersion: "0.1.0",
       connectorVersion: "7.8.9",
       sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     });
   });
@@ -75,9 +81,41 @@ describe("release manifest", () => {
         voiceVersion: "0.1.0",
         connectorVersion: "7.8.9",
         sttVersion: "0.1.0",
+        sandboxVersion: "0.1.0",
         ...releaseImages,
       }),
     ).toThrow("invalid CLI version");
+  });
+
+  it("requires a pinned code sandbox version", () => {
+    const base = {
+      format: 1,
+      cliVersion: "1.2.3",
+      appVersion: "4.5.6",
+      voiceVersion: "0.1.0",
+      connectorVersion: "7.8.9",
+      sttVersion: "0.1.0",
+      ...releaseImages,
+    };
+    expect(() => parseReleaseManifest(base)).toThrow("invalid code sandbox version");
+    expect(() => parseReleaseManifest({ ...base, sandboxVersion: "latest" })).toThrow(
+      "invalid code sandbox version",
+    );
+  });
+
+  it("moves the code sandbox forward only", () => {
+    const manifest = {
+      format: 1 as const,
+      cliVersion: "1.0.0",
+      appVersion: "1.0.0",
+      voiceVersion: "0.1.0",
+      connectorVersion: "2.0.0",
+      sttVersion: "3.0.0",
+      sandboxVersion: "0.2.0",
+      ...releaseImages,
+    };
+    expect(applyReleaseManifest(config({ sandboxVersion: "0.0.0" }), manifest).sandboxVersion).toBe("0.2.0");
+    expect(applyReleaseManifest(config({ sandboxVersion: "0.3.0" }), manifest).sandboxVersion).toBe("0.3.0");
   });
 
   it("orders stable component versions without downgrading", () => {
@@ -95,6 +133,7 @@ describe("release manifest", () => {
         voiceVersion: "0.2.0",
         connectorVersion: "1.9.0",
         sttVersion: "3.1.0",
+        sandboxVersion: "0.1.0",
         ...releaseImages,
       }),
     ).toMatchObject({
@@ -104,6 +143,7 @@ describe("release manifest", () => {
       voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.2.0",
       connectorVersion: "2.0.0",
       sttVersion: "3.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     });
   });
@@ -117,6 +157,7 @@ describe("release manifest", () => {
         voiceVersion: "0.1.0",
         connectorVersion: "2.0.0",
         sttVersion: "3.0.0",
+        sandboxVersion: "0.1.0",
         ...releaseImages,
       }),
     ).toMatchObject({
@@ -134,6 +175,7 @@ describe("release manifest", () => {
         voiceVersion: "0.1.0",
         connectorVersion: "2.0.0",
         sttVersion: "3.0.0",
+        sandboxVersion: "0.1.0",
         ...releaseImages,
       }).appImage,
     ).toBe("overtchat-app:setup-dev");
@@ -148,10 +190,30 @@ describe("release manifest", () => {
         voiceVersion: "0.1.0",
         connectorVersion: "7.8.9",
         sttVersion: "0.1.0",
+        sandboxVersion: "0.1.0",
         ...releaseImages,
         searxngImage: "docker.io/searxng/searxng:latest",
       }),
     ).toThrow("invalid SearXNG image");
+  });
+
+  it("requires pinned OvertChat Cloud images from their upstream repositories", () => {
+    const base = {
+      format: 1,
+      cliVersion: "1.2.3",
+      appVersion: "4.5.6",
+      voiceVersion: "0.1.0",
+      connectorVersion: "7.8.9",
+      sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
+      ...releaseImages,
+    };
+    expect(() => parseReleaseManifest({ ...base, cloudTunnelImage: "ghcr.io/fatedier/frpc:v0.71.1" })).toThrow(
+      "invalid OvertChat Cloud tunnel image",
+    );
+    expect(() =>
+      parseReleaseManifest({ ...base, cloudProxyImage: `ghcr.io/example/caddy@sha256:${"a".repeat(64)}` }),
+    ).toThrow("invalid OvertChat Cloud proxy image");
   });
 
   it("requires both CUDA variants to use pinned Kokoro GPU images", () => {
@@ -163,6 +225,7 @@ describe("release manifest", () => {
         voiceVersion: "0.1.0",
         connectorVersion: "7.8.9",
         sttVersion: "0.1.0",
+        sandboxVersion: "0.1.0",
         ...releaseImages,
         kokoroGpuBlackwellImage:
           "ghcr.io/remsky/kokoro-fastapi-cpu@sha256:" + "e".repeat(64),

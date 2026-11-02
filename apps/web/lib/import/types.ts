@@ -4,6 +4,7 @@ import type { ChatKind } from "@overtchat/shared";
 export type ImportedPart = UIMessagePart<UIDataTypes, UITools>;
 
 export type ImportedMessage = {
+  sourceId?: string;
   role: "user" | "assistant" | "system";
   parts: ImportedPart[];
   metadata?: Record<string, unknown>;

@@ -30,6 +30,7 @@ raw.exec(`
   CREATE TABLE user (
     id TEXT PRIMARY KEY NOT NULL
   );
+  CREATE TABLE voice_sessions (chat_id TEXT PRIMARY KEY, id TEXT NOT NULL, user_id TEXT NOT NULL, auth_session_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
   CREATE TABLE chats (
     model_config_id TEXT,
     id TEXT PRIMARY KEY NOT NULL,
@@ -115,6 +116,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   raw.exec(`
+    DELETE FROM voice_sessions;
     DELETE FROM generation_usage;
     DELETE FROM chat_generations;
     DELETE FROM messages;
@@ -169,6 +171,25 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("fences old voice sessions and competing text writes inside the transaction", () => {
+    seedChat();
+    raw.prepare("INSERT INTO voice_sessions VALUES ('chat', 'voice-session', 'user', 'login', ?)").run(Date.now() + 60000);
+    const input = { chatId: "chat", userId: "user", projectId: null, streamId: "stream",
+      clientRequestId: "request", requestFingerprint: "fingerprint", staleStreamId: null,
+      userMessage: { id: "spoken", parts: [{ type: "text" as const, text: "Hello" }], metadata: { responseStyle: "voice-v1" } },
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("stream-active");
+    expect(chatTurns.commitChatTurn({ ...input, voiceSessionId: "old-session" })).toBe("stream-active");
+    expect(messageIds()).not.toContain("spoken");
+    expect(chatTurns.commitChatTurn({ ...input, voiceSessionId: "voice-session" })).toBe("committed");
+    expect(JSON.parse((raw.prepare("SELECT metadata FROM messages WHERE id='spoken'").get() as { metadata: string }).metadata)).toEqual({ responseStyle: "voice-v1" });
+    chatTurns.completeChatStream({ chatId: "chat", streamId: "stream", status: "aborted" });
+    raw.prepare("DELETE FROM voice_sessions").run();
+    const next = { ...input, clientRequestId: "next", streamId: "next", userMessage: { id: "typed", parts: [{ type: "text" as const, text: "Again" }] } };
+    expect(chatTurns.commitChatTurn({ ...next, voiceSessionId: "voice-session" })).toBe("stream-active");
+    expect(chatTurns.commitChatTurn(next)).toBe("committed");
+  });
+
   it("claims continuation without deleting output and updates its row, search index, and usage", async () => {
     seedChat();
     const original = (await chatDb.getMessages("chat")).at(-1)!;
@@ -600,6 +621,86 @@ describe("transactional chat turns", () => {
       totalCostNanoUsd: 5_913_600,
       finishReason: "stop",
     });
+  });
+
+  it("records image charges against the image model when the chat model fails", () => {
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "image-stream",
+        clientRequestId: "request-image-stream",
+        requestFingerprint: "fingerprint-image-stream",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Draw two kites" }],
+        },
+      }),
+    ).toBe("committed");
+    const image = {
+      occurredAt: new Date("2026-10-27T12:00:00.000Z"),
+      providerId: "google" as const,
+      model: "gemini-3.1-flash-image",
+    };
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "image-stream",
+        status: "error",
+        error: "Provider stream failed.",
+        assistantMessage: {
+          id: "assistant-message",
+          parts: [{ type: "text", text: "Kites" }],
+        },
+        imageUsage: [
+          {
+            ...image,
+            toolCallId: "first",
+            inputTokens: 10,
+            outputTokens: 1_290,
+            totalTokens: 1_300,
+            costSource: "models.dev",
+            inputCostNanoUsd: 5_000,
+            outputCostNanoUsd: 77_400_000,
+            cacheReadCostNanoUsd: 0,
+            cacheWriteCostNanoUsd: 0,
+            totalCostNanoUsd: 77_405_000,
+          },
+          { ...image, toolCallId: "second" },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      raw
+        .prepare(
+          `SELECT id, context, message_id AS messageId, provider_id AS providerId,
+                  model, output_tokens AS outputTokens,
+                  total_cost_nano_usd AS totalCostNanoUsd
+           FROM generation_usage ORDER BY id`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: "image-stream:first",
+        context: "image",
+        messageId: "assistant-message",
+        providerId: "google",
+        model: "gemini-3.1-flash-image",
+        outputTokens: 1_290,
+        totalCostNanoUsd: 77_405_000,
+      },
+      {
+        id: "image-stream:second",
+        context: "image",
+        messageId: "assistant-message",
+        providerId: "google",
+        model: "gemini-3.1-flash-image",
+        outputTokens: null,
+        totalCostNanoUsd: null,
+      },
+    ]);
   });
 
   it("keeps assistant persistence when usage insertion fails", () => {

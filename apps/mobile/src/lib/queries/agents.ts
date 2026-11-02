@@ -16,6 +16,7 @@ import type {
   AgentConnectionListItem,
   AgentProviderCatalog,
   AgentProviderId,
+  AgentRuntimeStatus,
   AgentSessionReplica,
   AgentWorkspaceGitStatus,
 } from "@overtchat/agent-bridge";
@@ -39,6 +40,27 @@ export function useAgentForeground() {
     return () => listener.remove();
   }, []);
   return focused && active;
+}
+
+/**
+ * Tells the server the owner has seen the session: when it opens in the
+ * foreground, and whenever a turn ends while it is open.
+ */
+export function useMarkAgentSessionSeen(
+  id: string,
+  status: AgentRuntimeStatus | undefined,
+) {
+  const active = useAgentForeground();
+  useEffect(() => {
+    if (!active || status === undefined || status === "running") return;
+    void agentFetch(`/api/agent-sessions/${encodeURIComponent(id)}/read`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ read: true }),
+    }).catch(() => {
+      // Servers that predate read state answer 404; nothing to show.
+    });
+  }, [id, active, status]);
 }
 
 export function useAgentConnections({

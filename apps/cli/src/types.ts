@@ -51,8 +51,27 @@ export type VoiceConfig = {
   installed: boolean;
 };
 
-export type AccessMode = "local" | "lan" | "tailscale" | "advanced";
+// The full tier adds pandoc, LibreOffice, OCR and ffmpeg to the slim one.
+export type SandboxTier = "slim" | "full";
+
+export type SandboxConfig = {
+  installed: boolean;
+  tier: SandboxTier;
+};
+
+export type AccessMode = "local" | "lan" | "tailscale" | "advanced" | "cloud";
 export type TailscaleRoute = { hostname: string; port: number; target: string };
+// The relay connection returned when this server was linked to OvertChat Cloud.
+// The credential itself lives only in the secrets file; `credential` carries a
+// freshly issued one from the prompt to setup and is never persisted.
+export type CloudAccess = {
+  hostname: string;
+  relayHost: string;
+  relayPort: number;
+  relayServerName: string;
+  relayCaPem: string;
+  credential?: string;
+};
 export type AccessConfig = {
   mode: AccessMode;
   proxy?: "cloudflare" | "other";
@@ -60,6 +79,7 @@ export type AccessConfig = {
   lanAddress?: string;
   connectionStatus?: "pending" | "verified";
   tailscaleRoute?: TailscaleRoute;
+  cloud?: CloudAccess;
 };
 
 export type InstallationConfig = {
@@ -71,11 +91,14 @@ export type InstallationConfig = {
   voiceImage: string;
   connectorVersion: string;
   sttVersion: string;
+  sandboxVersion: string;
   redisImage: string;
   searxngImage: string;
   kokoroImage: string;
   kokoroGpuImage: string;
   kokoroGpuBlackwellImage: string;
+  cloudTunnelImage: string;
+  cloudProxyImage: string;
   appleSpeechPort?: number;
   appPort: number;
   bindAddress: string;
@@ -94,6 +117,7 @@ export type InstallationConfig = {
   tts: TtsConfig;
   stt: SttConfig;
   voice: VoiceConfig;
+  sandbox: SandboxConfig;
   agents: AgentConfig;
   adoptedFrom?: string;
 };
@@ -122,6 +146,7 @@ export type ExistingInstallation = {
   ttsGpuVariant?: KokoroGpuVariant;
   sttAccelerator?: "cpu" | "gpu";
   sttGpuUuid?: string;
+  sandboxTier?: SandboxTier;
 };
 
 export type RuntimePaths = {
@@ -132,4 +157,5 @@ export type RuntimePaths = {
   composeFile: string;
   searxngDirectory: string;
   searxngSettingsFile: string;
+  cloudDirectory: string;
 };

@@ -35,9 +35,10 @@ import {
 } from "@expo-google-fonts/roboto";
 import { getChatQueueStore } from "@overtchat/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { isRunningInExpoGo } from "expo";
 import { setAudioModeAsync } from "expo-audio";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useNavigationContainerRef } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
@@ -50,16 +51,26 @@ import { getAuthClient } from "@/lib/auth/client";
 import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 SplashScreen.preventAutoHideAsync();
 
 // Must be stored in EAS with plain-text visibility: releases build with
 // `eas build --local`, which never receives secret-visibility variables.
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+// Records the current route on every event, sampled or not, so crashes and
+// ANRs say which screen they happened on.
+const navigationIntegration = Sentry.reactNavigationIntegration({
+  enableTimeToInitialDisplay: !isRunningInExpoGo(),
+});
 if (SENTRY_DSN) {
   Sentry.init({
     dsn: SENTRY_DSN,
     debug: __DEV__,
     sendDefaultPii: false,
+    integrations: [navigationIntegration],
+    tracesSampleRate: __DEV__ ? 1 : 0.1,
+    enableNativeFramesTracking: !isRunningInExpoGo(),
     environment:
       process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
       (__DEV__ ? "development" : "production"),
@@ -72,6 +83,12 @@ if (SENTRY_DSN) {
 
 function RootLayout() {
   const { colors, scheme } = useTheme();
+  const navigationRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    if (navigationRef)
+      navigationIntegration.registerNavigationContainer(navigationRef);
+  }, [navigationRef]);
 
   const [loaded, error] = useFonts({
     PlusJakartaSans_400Regular,
@@ -144,7 +161,9 @@ function SessionRoutes({ backgroundColor }: { backgroundColor: string }) {
   return (
     <QueryClientScope key={userId}>
       <RootStack
-        authReady={!session.isPending}
+        // A signed-out refetch also reports pending; keep the screens mounted
+        // so the login form keeps its two-factor step.
+        authReady={!session.isPending || session.isRefetching}
         hasServer
         hasSession={Boolean(session.data?.user)}
         backgroundColor={backgroundColor}

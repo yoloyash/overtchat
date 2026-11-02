@@ -37,7 +37,7 @@ const token = randomBytes(32).toString("hex");
 let signIns = 0;
 const api = createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "overtchat://app");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-OvertChat-Two-Factor");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Content-Type", "application/json");

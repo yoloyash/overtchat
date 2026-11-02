@@ -1,10 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 import { accentBackgrounds } from "@overtchat/shared/theme-backgrounds";
+import {
+  expectRandomUuidFallback,
+  removeRandomUuid,
+} from "./helpers/insecure-origin";
+import { promptedOrigins } from "./helpers/storage";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.getByLabel("Name", { exact: true }).fill("Settings Tester");
   await page.getByLabel("Email").fill("settings@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -143,6 +148,23 @@ test("all settings pages fit narrow screens and MCP transport preserves draft fi
   await expect(page).toHaveURL(/\/settings\/tools$/);
 });
 
+test("the MCP server form opens on plain-HTTP LAN origins", async ({ page }) => {
+  await removeRandomUuid(page);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/settings/tools");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Add MCP server" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Add argument", exact: true }).click();
+  await expect(
+    page.getByLabel("Arguments value 2", { exact: true }),
+  ).toBeVisible();
+  await expectRandomUuidFallback(page);
+  expect(errors).toEqual([]);
+});
+
 test("accent palettes update live, persist, and stay local to a browser", async ({ page, context, browser }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/settings/general");
@@ -193,7 +215,7 @@ test("accent palettes update live, persist, and stay local to a browser", async 
   // Its system appearance is light; the accent preference still syncs.
   await expect(secondTab.locator('meta[name="theme-color"]')).toHaveAttribute("content", accentBackgrounds.blue.light);
 
-  const freshContext = await browser.newContext({ storageState: { cookies: await context.cookies(), origins: [] } });
+  const freshContext = await browser.newContext({ storageState: { cookies: await context.cookies(), origins: promptedOrigins() } });
   const freshPage = await freshContext.newPage();
   await freshPage.goto(new URL("/settings/general", page.url()).href);
   await expect(freshPage.getByRole("radio", { name: "Olive", exact: true })).toBeChecked();

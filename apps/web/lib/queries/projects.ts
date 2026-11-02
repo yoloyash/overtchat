@@ -14,6 +14,8 @@ export type ProjectListItem = {
   id: string;
   name: string;
   instructions: string | null;
+  /** New chats in the project start with this model when it is available. */
+  defaultModelId: string | null;
   updatedAt: number;
 };
 
@@ -57,6 +59,11 @@ export function useProject(id: string) {
   return useQuery(projectQuery(id));
 }
 
+/** Idle without a project, such as for a chat outside any project. */
+export function useOptionalProject(id: string | null | undefined) {
+  return useQuery({ ...projectQuery(id ?? ""), enabled: Boolean(id) });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
@@ -86,17 +93,23 @@ export function useUpdateProject(id: string) {
     mutationFn: async (patch: {
       name?: string;
       instructions?: string | null;
-    }) => {
+      defaultModelId?: string | null;
+    }): Promise<ProjectListItem> => {
       const r = await fetch(apiUrl(`/api/projects/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+      const json = (await r.json()) as { project: ProjectListItem };
+      return json.project;
     },
-    onSuccess: () => {
+    onSuccess: (project) => {
+      qc.setQueryData(projectKeys.detail(id), project);
       qc.invalidateQueries({ queryKey: projectKeys.list() });
-      qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
     },
   });
 }

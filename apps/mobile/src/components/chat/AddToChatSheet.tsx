@@ -29,6 +29,10 @@ export const AddToChatSheet = forwardRef<
     searchUnavailableReason: string;
     searchRequested: boolean;
     onToggleSearchRequested: (next: boolean) => void;
+    openuiAvailable?: boolean;
+    openuiUnavailableReason?: string;
+    openuiRequested?: boolean;
+    onToggleOpenUIRequested?: (next: boolean) => void;
     onPickTool?: (tool: ToolKey) => void;
   }
 >(function AddToChatSheet(
@@ -38,6 +42,10 @@ export const AddToChatSheet = forwardRef<
     searchUnavailableReason,
     searchRequested,
     onToggleSearchRequested,
+    openuiAvailable = false,
+    openuiUnavailableReason = "",
+    openuiRequested = false,
+    onToggleOpenUIRequested,
     onPickTool,
   },
   ref,
@@ -161,6 +169,59 @@ export const AddToChatSheet = forwardRef<
               searchAvailable
                 ? "Search the web for this message"
                 : searchUnavailableReason
+            }
+            trackColor={{ true: colors.primary, false: colors.border }}
+            thumbColor={colors.background}
+          />
+        </View>
+        <View
+          style={[
+            styles.toggleRow,
+            {
+              backgroundColor: colors.muted,
+              borderRadius: radii.lg,
+            },
+          ]}
+        >
+          <Ionicons
+            name="grid-outline"
+            size={18}
+            color={colors.popoverForeground}
+          />
+          <View style={styles.toggleCopy}>
+            <Text
+              style={[
+                styles.toggleLabel,
+                {
+                  color: colors.popoverForeground,
+                  fontFamily: fonts.sansMedium,
+                },
+              ]}
+            >
+              Interactive UI
+            </Text>
+            {!openuiAvailable && openuiUnavailableReason ? (
+              <Text
+                style={[
+                  styles.unavailableLabel,
+                  {
+                    color: colors.mutedForeground,
+                    fontFamily: fonts.sansRegular,
+                  },
+                ]}
+              >
+                {openuiUnavailableReason}
+              </Text>
+            ) : null}
+          </View>
+          <Switch
+            value={openuiRequested}
+            onValueChange={onToggleOpenUIRequested}
+            disabled={!openuiAvailable}
+            accessibilityLabel={
+              openuiAvailable
+                ? "Render interactive UI for this message"
+                : openuiUnavailableReason
             }
             trackColor={{ true: colors.primary, false: colors.border }}
             thumbColor={colors.background}

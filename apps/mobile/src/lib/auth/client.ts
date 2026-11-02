@@ -1,5 +1,7 @@
 import { createAuthClient } from "better-auth/react";
+import { adminClient } from "better-auth/client/plugins";
 import { expoClient } from "@better-auth/expo/client";
+import { twoFactorClient } from "better-auth/client/plugins";
 import * as SecureStore from "expo-secure-store";
 import { getServerUrl } from "@/lib/server-url";
 
@@ -9,11 +11,14 @@ function createClient() {
   return createAuthClient({
     baseURL,
     plugins: [
+      adminClient(),
       expoClient({
         scheme: "overtchat",
         storagePrefix: "overtchat",
         storage: SecureStore,
       }),
+      // The pending sign-in cookie is stored with the session cookie.
+      twoFactorClient(),
     ],
   });
 }

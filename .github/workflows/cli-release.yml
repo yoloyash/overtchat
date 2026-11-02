@@ -11,6 +11,10 @@ on:
       - "speech/apple/**"
       - "scripts/bundle-apple-speech.mjs"
       - "apps/site/public/install"
+      - "apps/site/public/install.ps1"
+      - ".github/scripts/smoke-cli-installer-windows.ps1"
+      - ".github/scripts/smoke-cli-logs-windows.ps1"
+      - ".github/scripts/smoke-connector-rollback-windows.mjs"
       - "apps/site/public/install-manifest.json"
       - "package.json"
       - "package-lock.json"
@@ -58,6 +62,7 @@ jobs:
           version=$(node -p "require('./apps/cli/package.json').version")
           grep -F "export const CLI_VERSION = \"$version\"" apps/cli/src/constants.ts
           grep -F "cli_version=\"$version\"" apps/site/public/install
+          grep -F "\$cliVersion = '$version'" apps/site/public/install.ps1
           test "$(node -p "require('./apps/site/public/install-manifest.json').cliVersion")" = "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -65,7 +70,7 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - name: Build Linux and macOS binaries
+      - name: Build Linux, macOS, and Windows binaries
         run: |
           mkdir -p dist/cli-release
           bun build apps/cli/src/cli.ts \
@@ -82,11 +87,24 @@ jobs:
           bun build apps/cli/src/cli.ts \
             --compile --target=bun-darwin-arm64 \
             --outfile dist/cli-release/overtchat-darwin-arm64
+          bun build apps/cli/src/cli.ts \
+            --compile --target=bun-windows-x64-baseline \
+            --outfile dist/cli-release/overtchat-windows-amd64.exe
           (
             cd dist/cli-release
-            sha256sum overtchat-darwin-amd64 overtchat-darwin-arm64 overtchat-linux-amd64 overtchat-linux-arm64 \
+            sha256sum overtchat-darwin-amd64 overtchat-darwin-arm64 overtchat-linux-amd64 overtchat-linux-arm64 overtchat-windows-amd64.exe \
               > overtchat-checksums.txt
           )
+
+      - name: Build native updater fixtures
+        run: |
+          mkdir -p dist/windows-update
+          bun build apps/cli/src/test-support/windows-update-smoke.ts --compile --target=bun-windows-x64-baseline --outfile dist/windows-update/overtchat.exe
+          bun build apps/cli/src/test-support/windows-update-candidate.ts --compile --target=bun-windows-x64-baseline --outfile dist/windows-update/candidate.exe
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-update-fixtures
+          path: dist/windows-update/*
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -141,9 +159,57 @@ jobs:
           "release/overtchat-$PLATFORM"
           "$PLATFORM"
 
+  smoke-windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm run typecheck -w apps/cli
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: overtchat-cli-release
+          path: release
+      - name: Verify native Windows executable
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $actual = & ./release/overtchat-windows-amd64.exe version
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:VERSION) { throw 'Windows executable version check failed' }
+      - run: npm run test -w apps/cli -- src/platform.test.ts src/windows-platform.test.ts src/docker.test.ts src/self-update.test.ts src/binary-update.test.ts src/connector-package.test.ts
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: windows-update-fixtures
+          path: windows-update
+      - name: Replace a running Windows CLI
+        shell: pwsh
+        run: |
+          & ./windows-update/overtchat.exe "$PWD/windows-update/candidate.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Native updater smoke failed" }
+
+      - name: Exercise the Windows installer with verified fixture bytes
+        shell: powershell
+        run: .github/scripts/smoke-cli-installer-windows.ps1 -Binary release/overtchat-windows-amd64.exe -Installer apps/site/public/install.ps1
+
+      - name: Follow both native connector log streams
+        shell: powershell
+        run: .github/scripts/smoke-cli-logs-windows.ps1 -Binary release/overtchat-windows-amd64.exe
+
   publish:
     if: github.event_name != 'pull_request'
-    needs: [build, smoke]
+    needs: [build, smoke, smoke-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -200,7 +266,8 @@ jobs:
             overtchat-darwin-amd64 \
             overtchat-darwin-arm64 \
             overtchat-linux-amd64 \
-            overtchat-linux-arm64)
+            overtchat-linux-arm64 \
+            overtchat-windows-amd64.exe)
           actual_assets=$(gh release view "$TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort)
           test "$actual_assets" = "$expected_assets"
 
@@ -211,8 +278,9 @@ jobs:
             --pattern overtchat-darwin-amd64 \
             --pattern overtchat-darwin-arm64 \
             --pattern overtchat-linux-amd64 \
-            --pattern overtchat-linux-arm64
-          for asset in overtchat-checksums.txt overtchat-darwin-amd64 overtchat-darwin-arm64 overtchat-linux-amd64 overtchat-linux-arm64; do
+            --pattern overtchat-linux-arm64 \
+            --pattern overtchat-windows-amd64.exe
+          for asset in overtchat-checksums.txt overtchat-darwin-amd64 overtchat-darwin-arm64 overtchat-linux-amd64 overtchat-linux-arm64 overtchat-windows-amd64.exe; do
             cmp "release/$asset" "$verification_directory/$asset"
           done
           (cd "$verification_directory" && sha256sum --check overtchat-checksums.txt)

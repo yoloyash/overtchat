@@ -18,6 +18,11 @@ import type {
   ProcessSpawner,
 } from "@overtchat/agent-runtime";
 import { buildSshRemoteCommand, shellQuote, sshCommandArgs } from "./ssh.js";
+import {
+  windowsProcessTable,
+  stopWindowsProcesses,
+  type WindowsProcessBackend,
+} from "./windows-processes.js";
 
 const execFileAsync = promisify(execFile);
 const GRACE_MS = 1_000;
@@ -38,7 +43,11 @@ type Record = {
   descendants: Identity[];
 };
 
-async function control(target: HostTarget, script: string, signal?: AbortSignal): Promise<string> {
+async function control(
+  target: HostTarget,
+  script: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const launch = {
     command: "/bin/sh",
     args: ["-c", script],
@@ -83,7 +92,10 @@ export function parseProcessTable(output: string): ProcessRow[] {
   });
 }
 
-async function processTable(target: HostTarget, signal?: AbortSignal): Promise<ProcessRow[]> {
+async function processTable(
+  target: HostTarget,
+  signal?: AbortSignal,
+): Promise<ProcessRow[]> {
   return parseProcessTable(
     await control(
       target,
@@ -169,13 +181,46 @@ export class ManagedProcesses {
   private recovery: Promise<void> | undefined;
   private readonly recoveryAbort = new AbortController();
 
-  constructor(private readonly directory?: string) {}
+  constructor(
+    private readonly directory?: string,
+    private readonly windows?: WindowsProcessBackend,
+  ) {}
+
+  private async table(
+    target: HostTarget,
+    signal?: AbortSignal,
+  ): Promise<ProcessRow[]> {
+    return (await this.windows?.isWindows(target, signal))
+      ? windowsProcessTable(target, signal)
+      : processTable(target, signal);
+  }
+
+  private async signalRows(
+    target: HostTarget,
+    rows: ProcessRow[],
+    force: boolean,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (await this.windows?.isWindows(target, signal))
+      return stopWindowsProcesses(target, rows, signal);
+    await control(
+      target,
+      `kill -${force ? "KILL" : "TERM"} ${rows.map((row) => row.pid).join(" ")} 2>/dev/null || true`,
+      signal,
+    );
+  }
 
   startRecovery(): void {
     if (this.recovery || this.recoveryAbort.signal.aborted) return;
-    this.recovery = this.reap(undefined, this.recoveryAbort.signal).catch((error) => {
-      if (!this.recoveryAbort.signal.aborted) console.warn("Unable to recover managed processes; records retained", error);
-    });
+    this.recovery = this.reap(undefined, this.recoveryAbort.signal).catch(
+      (error) => {
+        if (!this.recoveryAbort.signal.aborted)
+          console.warn(
+            "Unable to recover managed processes; records retained",
+            error,
+          );
+      },
+    );
   }
 
   private async save(record: Record): Promise<void> {
@@ -243,11 +288,14 @@ export class ManagedProcesses {
     // Do not let the helper start until its PID and start time are on disk.
     // EOF before the acknowledgement exits the gate without launching it.
     const gate = `printf '${marker}%s\\n' "$$" >&2; IFS= read -r ticket || exit 1; [ "$ticket" = '${id}' ] || exit 1; ${buildSshRemoteCommand(launch, identity)}`;
-    const child = spawn(target, {
-      command: "/bin/sh",
-      args: ["-c", gate, identity],
-      shellMode: "login",
-    });
+    const windows = await this.windows?.isWindows(target);
+    const child = windows
+      ? await this.windows!.spawnGate(target, launch, id)
+      : spawn(target, {
+          command: "/bin/sh",
+          args: ["-c", gate, identity],
+          shellMode: "login",
+        });
     // A failed SSH session can close stdin between inspection and the gate
     // acknowledgement. The write callback below reports that startup failure.
     child.stdin.on("error", () => {});
@@ -283,7 +331,9 @@ export class ManagedProcesses {
       const pid = await Promise.race([
         pidPromise,
         child.exit.then(() => {
-          throw new Error("Managed process exited before announcing its PID");
+          throw new Error(
+            buffer.trim() || "Managed process exited before announcing its PID",
+          );
         }),
         new Promise<never>((_, reject) => {
           timer = setTimeout(
@@ -292,7 +342,7 @@ export class ManagedProcesses {
           );
         }),
       ]);
-      const root = (await processTable(target)).find((row) => row.pid === pid);
+      const root = (await this.table(target)).find((row) => row.pid === pid);
       if (!root) throw new Error("Managed process exited before registration");
       record = {
         id,
@@ -311,6 +361,15 @@ export class ManagedProcesses {
         );
       });
       const registered = record;
+      if (windows)
+        void child.exit
+          .then(() => this.terminate(registered))
+          .catch((error) => {
+            console.warn(
+              "Unable to clean up Windows process; retaining recovery record",
+              error,
+            );
+          });
       return { ...child, stderr, terminate: () => this.terminate(registered) };
     } catch (error) {
       child.stdin.end();
@@ -335,9 +394,12 @@ export class ManagedProcesses {
     return stopping;
   }
 
-  private async stopRecord(record: Record, signal?: AbortSignal): Promise<void> {
+  private async stopRecord(
+    record: Record,
+    signal?: AbortSignal,
+  ): Promise<void> {
     signal?.throwIfAborted();
-    let table = await processTable(record.target, signal);
+    let table = await this.table(record.target, signal);
     let rows = ownedTree(record, table);
     const ownershipDeadline = Date.now() + OWNERSHIP_RETRY_MS;
     // exec can temporarily hide argv even though PID/start time still match.
@@ -352,7 +414,7 @@ export class ManagedProcesses {
           `Managed process ${record.root.pid} is still running but ownership could not be confirmed; retaining recovery record`,
         );
       await new Promise((resolve) => setTimeout(resolve, 50));
-      table = await processTable(record.target, signal);
+      table = await this.table(record.target, signal);
       rows = ownedTree(record, table);
     }
     if (rows.length) {
@@ -360,26 +422,18 @@ export class ManagedProcesses {
       // subsequent connector restart must still find them after reparenting.
       record.descendants = rows.map(({ pid, started }) => ({ pid, started }));
       await this.save(record);
-      await control(
-        record.target,
-        `kill -TERM ${rows.map((row) => row.pid).join(" ")} 2>/dev/null || true`,
-        signal,
-      );
+      await this.signalRows(record.target, rows, false, signal);
       const deadline = Date.now() + GRACE_MS;
       do {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        rows = ownedTree(record, await processTable(record.target, signal));
+        rows = ownedTree(record, await this.table(record.target, signal));
       } while (rows.length && Date.now() < deadline);
       if (rows.length) {
-        await control(
-          record.target,
-          `kill -KILL ${rows.map((row) => row.pid).join(" ")} 2>/dev/null || true`,
-          signal,
-        );
+        await this.signalRows(record.target, rows, true, signal);
         const forceDeadline = Date.now() + GRACE_MS;
         do {
           await new Promise((resolve) => setTimeout(resolve, 50));
-          rows = ownedTree(record, await processTable(record.target, signal));
+          rows = ownedTree(record, await this.table(record.target, signal));
         } while (rows.length && Date.now() < forceDeadline);
         if (rows.length)
           throw new Error("Managed process tree did not exit after SIGKILL");

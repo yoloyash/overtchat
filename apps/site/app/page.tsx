@@ -106,7 +106,7 @@ const features: Array<{
 
 const principles = [
   "One portable SQLite file",
-  "No hosted control plane",
+  "No OvertChat account required",
   "No usage analytics",
   "Optional local speech and search",
   "Standard MCP support",
@@ -160,7 +160,7 @@ export default function HomePage() {
             </a>
           </div>
           <div className="hero-facts" aria-label="Project highlights">
-            <span><ShieldCheck aria-hidden="true" /> No OvertChat cloud</span>
+            <span><Globe2 aria-hidden="true" /> Use it from anywhere</span>
             <span><Users aria-hidden="true" /> Multi-user</span>
             <span><AudioLines aria-hidden="true" /> Realtime local voice</span>
           </div>
@@ -341,8 +341,9 @@ export default function HomePage() {
             <p className="section-lede">
               Accounts, conversations, files, memories, and settings stay in
               one portable SQLite database on your server. Model requests go
-              directly to the endpoints you configure. OvertChat operates no
-              account system, API relay, or hosted control plane.
+              directly to the endpoints you configure. To reach your server from
+              anywhere, the optional OvertChat Cloud gives it an address that
+              forwards encrypted traffic without being able to read it.
             </p>
             <a
               className="text-link"

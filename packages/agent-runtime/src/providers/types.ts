@@ -130,6 +130,9 @@ export interface AgentProviderAdapter {
   readonly steering?: "restart";
   /** Providers without usage notifications need stats polling while active. */
   readonly pollUsage?: boolean;
+  /** Whether provider state shows the turn still running. Background work
+   * alone does not: it keeps running between turns and a wake starts a new one. */
+  busyFromState?(state: Record<string, unknown>): boolean;
   startSession(
     target: HostTarget,
     launch: AgentSessionLaunch,

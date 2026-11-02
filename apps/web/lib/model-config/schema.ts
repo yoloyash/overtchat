@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { REASONING_EFFORTS, type ModelCapabilities } from "@overtchat/shared";
+import { CustomImageOptionsSchema, customImageOptions } from "./image-options";
+import { REASONING_EFFORTS } from "@overtchat/shared";
+import { ReasoningOverrideSchema } from "./reasoning-override";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -10,58 +12,14 @@ import {
 
 export type { PublicModelConfig } from "@overtchat/shared";
 
-/**
- * Who a model's connection belongs to. `shared`: one base URL and key for
- * everyone. `user`: each user has their own key (and optionally base URL),
- * set by an administrator; the model is hidden from users without one.
- */
-export const MODEL_CREDENTIAL_SCOPES = ["shared", "user"] as const;
-export type ModelCredentialScope = (typeof MODEL_CREDENTIAL_SCOPES)[number];
-
-export interface ModelPricing {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
-
-export interface CatalogModelPricing extends ModelPricing {
-  tiered: boolean;
-}
-
-/** Admin-facing model config DTO. Includes secrets and provider options for editing. */
-export interface AdminModelConfig {
-  modelType: "chat" | "image";
-  id: string;
-  label: string;
-  providerId: ProviderId;
-  apiFormat: ApiFormat;
-  baseUrl: string;
-  apiKey: string | null;
-  /** Last model configuration update, in milliseconds since epoch. */
-  updatedAt: number;
-  model: string;
-  pricing: ModelPricing | null;
-  /** Exact models.dev base rates for admin UI guidance. */
-  catalogPricing: CatalogModelPricing | null;
-  /** Explicit administrator override. */
-  contextWindow: number | null;
-  /** Last limit reported by model discovery. */
-  discoveredContextWindow: number | null;
-  /** Last capabilities explicitly reported by model discovery. */
-  discoveredCapabilities: ModelCapabilities | null;
-  /** Effective override, discovered, or catalog value for admin UI guidance. */
-  resolvedContextWindow?: number;
-  /** Runtime fields with exact-catalog fallback for admin UI guidance. */
-  resolvedCapabilities?: ModelCapabilities;
-  systemPrompt: string | null;
-  providerOptions: Record<string, unknown> | null;
-  toolCallingEnabled: boolean;
-  enabled: boolean;
-  taskModel: boolean;
-  credentialScope: ModelCredentialScope;
-  sortOrder: number;
-}
+import { MODEL_CREDENTIAL_SCOPES } from "@overtchat/shared/admin-settings";
+export type {
+  AdminModelConfig,
+  ModelPricing,
+  CatalogModelPricing,
+  ModelCredentialScope,
+} from "@overtchat/shared/admin-settings";
+export { MODEL_CREDENTIAL_SCOPES };
 
 /** Admin-facing view of one user's credential. The key itself is write-only. */
 export interface AdminModelUserCredential {
@@ -96,6 +54,11 @@ export const ProviderConnectionSchema = ProviderConnectionObject.superRefine(
   validateProviderConnection,
 );
 
+/** Discovery input; image models can live behind a separate listing. */
+export const ModelDiscoverySchema = ProviderConnectionObject.extend({
+  modelType: z.enum(["chat", "image"]).optional(),
+}).superRefine(validateProviderConnection);
+
 const RuntimeModelFields = {
   model: z.string().trim().min(1, "Model is required"),
   providerOptions: z
@@ -107,6 +70,16 @@ const RuntimeModelFields = {
     .nullish()
     .transform((value) => value ?? true),
 };
+
+export function supportsLocalReasoningConfig(
+  providerId: string,
+  apiFormat: string,
+): boolean {
+  return (
+    ["vllm", "llamacpp", "sglang", "openrouter"].includes(providerId) ||
+    (providerId === "custom" && apiFormat === "openai-chat")
+  );
+}
 
 const ModelCapabilitiesSchema = z
   .object({
@@ -160,6 +133,9 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
   discoveredCapabilities: ModelCapabilitiesSchema.nullish().transform(
     (value) => value ?? null,
   ),
+  reasoningOverride: ReasoningOverrideSchema.nullish().transform(
+    (value) => value ?? null,
+  ),
   systemPrompt: z
     .string()
     .nullish()
@@ -187,13 +163,46 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
         message: "Image models use a shared connection.",
       });
     }
+    const override = value.reasoningOverride;
+    if (
+      override &&
+      !supportsLocalReasoningConfig(value.providerId, value.apiFormat)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["reasoningOverride"],
+        message:
+          "Custom thinking levels require a local or Chat Completions provider.",
+      });
+    }
     if (value.modelType === "image") {
-      if (value.providerId !== "openai" && value.providerId !== "google") {
+      if (
+        !["openai", "google", "openrouter", "custom"].includes(value.providerId)
+      ) {
         context.addIssue({
           code: "custom",
           path: ["providerId"],
-          message: "Image models support OpenAI and Google Gemini.",
+          message:
+            "Image models support OpenAI, Google Gemini, OpenRouter, and custom OpenAI-compatible providers.",
         });
+      }
+      if (value.providerId === "custom") {
+        if (value.apiFormat !== "openai-images")
+          context.addIssue({
+            code: "custom",
+            path: ["apiFormat"],
+            message:
+              "Custom image models require the OpenAI Images API format.",
+          });
+        const options = CustomImageOptionsSchema.safeParse(
+          value.providerOptions ?? {},
+        );
+        if (!options.success)
+          for (const issue of options.error.issues)
+            context.addIssue({
+              ...issue,
+              path: ["providerOptions", ...issue.path],
+            });
       }
       if (!isHttpEndpoint(value.baseUrl)) return;
       const endpoint = new URL(value.baseUrl);
@@ -210,6 +219,12 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
             "Use an endpoint without credentials, query parameters, or fragments.",
         });
       }
+    } else if (value.apiFormat === "openai-images") {
+      context.addIssue({
+        code: "custom",
+        path: ["apiFormat"],
+        message: "The Images API cannot be used for chat.",
+      });
     }
   })
   .transform((value) =>
@@ -218,11 +233,21 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
           ...value,
           toolCallingEnabled: false,
           systemPrompt: null,
-          providerOptions: null,
+          providerOptions:
+            value.providerId === "custom"
+              ? customImageOptions(value.providerOptions)
+              : null,
           contextWindow: null,
           discoveredContextWindow: null,
           discoveredCapabilities: null,
-          pricing: null,
+          reasoningOverride: null,
+          // Image usage carries no cache tokens, so only input and output
+          // rates apply. OpenRouter reports each image's charge, so it takes
+          // no rates; custom backends are priced from the usage they report.
+          pricing:
+            value.pricing && value.providerId !== "openrouter"
+              ? { ...value.pricing, cacheRead: 0, cacheWrite: 0 }
+              : null,
         }
       : value,
   );
@@ -262,6 +287,7 @@ export interface ModelDiscoveryInput {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey?: string | null;
+  modelType?: "chat" | "image";
 }
 
 function validateProviderConnection(

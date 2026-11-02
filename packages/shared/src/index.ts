@@ -5,6 +5,7 @@ export * from "./model-preferences";
 export * from "./chat";
 export * from "./context-status";
 export * from "./tools";
+export * from "./chat-files";
 export * from "./tool-preferences";
 export * from "./citations";
 export * from "./search";
@@ -15,7 +16,19 @@ export * from "./memory-tools";
 export * from "./message-parts";
 export * from "./theme/tokens";
 export * from "./images";
+export * from "./documents";
+export * from "./html-preview";
+export * from "./code-execution";
+export * from "./conversation-files";
+export * from "./openui";
 export * from "./errors";
+export * from "./two-factor";
 export * from "./chat-continuation";
 export * from "./chat-queue";
 export * from "./chat-generation";
+export type {
+  ChatShare,
+  SharedConversation,
+  SharedConversationPage,
+} from "./chat-sharing";
+export * from "./relative-time";

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@overtchat/agent-runtime/runtime/process", () => ({
   executeOnHost: mocks.executeOnHost,
+  inspectHostEnvironment: async () => ({ platform: "posix" }),
 }));
 
 import {

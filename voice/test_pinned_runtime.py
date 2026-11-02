@@ -11,6 +11,8 @@ if ENGINE_AVAILABLE:
     from speech_to_speech.LLM.base_openai_compatible_language_model import BaseOpenAICompatibleHandler
     from speech_to_speech.api.openai_realtime.service import RealtimeService
     from openai.types.realtime import SessionUpdateEvent
+    from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
+    from speech_to_speech.pipeline.messages import EndOfResponse
 
 
 @unittest.skipUnless(ENGINE_AVAILABLE, "run in the voice image for the pinned engine")
@@ -36,16 +38,31 @@ class PinnedRuntimeTests(unittest.IsolatedAsyncioTestCase):
         return connection, service, conn_id, config
 
     def test_reused_handler_never_inherits_another_connections_ticket(self):
-        handler = SimpleNamespace(model_name="overtchat")
+        handler = SimpleNamespace(model_name="overtchat", speculative_turns=None, _extra_body=None, cancel_scope=None)
         _, _, _, first = self.connection("first-ticket")
         _, _, _, second = self.connection("second-ticket")
         first.session.model = "browser-controlled"
         second.session.model = None
-        self.assertEqual(list(self.process(handler, SimpleNamespace(runtime_config=first))), ["first-ticket"])
-        self.assertEqual(list(self.process(handler, SimpleNamespace(runtime_config=second))), ["second-ticket"])
+        self.assertEqual(list(self.process(handler, SimpleNamespace(runtime_config=first, response_key="first-response"))), ["first-ticket"])
+        self.assertEqual(list(self.process(handler, SimpleNamespace(runtime_config=second, response_key="second-response"))), ["second-ticket"])
         self.assertEqual(handler.model_name, "overtchat")
         with self.assertRaisesRegex(RuntimeError, "authenticated connection"):
             list(self.process(handler, SimpleNamespace(runtime_config=SimpleNamespace())))
+
+    def test_stale_speculation_cannot_start_a_provider_call(self):
+        tracker = SpeculativeTurnTracker()
+        tracker.observe("turn", 2)
+        handler = SimpleNamespace(model_name="overtchat", speculative_turns=tracker,
+                                  _extra_body=None, cancel_scope=None)
+        _, _, _, config = self.connection("ticket")
+        request = SimpleNamespace(runtime_config=config, response_key="response",
+                                  turn_id="turn", turn_revision=1)
+        output = list(self.process(handler, request))
+        self.assertEqual(len(output), 1)
+        self.assertIsInstance(output[0], EndOfResponse)
+        request.turn_revision = 2
+        self.assertEqual(list(self.process(handler, request)), ["ticket"])
+        self.assertIsNone(handler._extra_body)
 
     def test_session_model_cannot_change_authorization(self):
         _, service, conn_id, config = self.connection("first-ticket")

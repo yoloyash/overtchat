@@ -26,6 +26,9 @@ export const IMAGE_SIZE_LABELS: Record<ImageSize, string> = {
 
 export interface ImageCapability {
   supportsQuality?: boolean;
+  /** Custom providers use the administrator-selected size, including auto. */
+  configuredSize?: string;
+  supportsEditing?: boolean;
   available: boolean;
   model: string | null;
 }
@@ -39,6 +42,8 @@ export interface GeneratedImage {
 
 export interface ImageGenerationOutput extends ImageGenerationOptions {
   images: GeneratedImage[];
+  /** Actual custom backend size; auto means the backend default. */
+  providerSize?: string;
   prompt: string;
   model: string;
   referenceImageIds: string[];

@@ -13,6 +13,7 @@ import {
   createAgentWorkspace,
   getOwnedAgentConnection,
   syncAgentWorkspaceSessions,
+  toSessionListItem,
 } from "@/lib/db/agentConnections";
 
 export const maxDuration = 60;
@@ -87,16 +88,7 @@ export async function POST(
           id: row.id,
           path: row.path,
           name: row.name,
-          sessions: sessions.map((agentSession) => ({
-            id: agentSession.id,
-            providerSessionId: agentSession.providerSessionId,
-            name: agentSession.name,
-            firstMessage: agentSession.firstMessage,
-            messageCount: agentSession.messageCount,
-            createdAt: agentSession.providerCreatedAt?.getTime() ?? null,
-            modifiedAt: agentSession.providerModifiedAt?.getTime() ?? null,
-            runtimeStatus: "idle",
-          })),
+          sessions: sessions.map(toSessionListItem),
         },
       },
       { status: 201 },

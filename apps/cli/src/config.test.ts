@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,7 @@ import {
   defaultInstallationConfig,
   initialSecrets,
   readInstallationConfig,
+  readInstallationSecrets,
   writeInstallationConfig,
 } from "./config.js";
 import type { ReleaseManifest } from "./release.js";
@@ -22,11 +23,14 @@ const manifest: ReleaseManifest = {
   voiceVersion: "5.0.0",
   connectorVersion: "3.0.0",
   sttVersion: "4.0.0",
+  sandboxVersion: "0.1.0",
   redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
   searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 afterEach(() => {
@@ -65,6 +69,7 @@ function pathsFor(directory: string): RuntimePaths {
     stackDirectory: path.join(directory, "stack"),
     composeFile: path.join(directory, "stack", "compose.yml"),
     searxngDirectory: path.join(directory, "stack", "searxng"),
+    cloudDirectory: path.join(directory, "stack", "cloud"),
     searxngSettingsFile: path.join(
       directory,
       "stack",
@@ -83,11 +88,14 @@ describe("existing installation adoption", () => {
       voiceImage: "ghcr.io/yoloyash/overtchat-voice:5.0.0",
       connectorVersion: "3.0.0",
       sttVersion: "4.0.0",
+      sandboxVersion: "0.1.0",
       redisImage: manifest.redisImage,
       searxngImage: manifest.searxngImage,
       kokoroImage: manifest.kokoroImage,
       kokoroGpuImage: manifest.kokoroGpuImage,
       kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+      cloudTunnelImage: manifest.cloudTunnelImage,
+      cloudProxyImage: manifest.cloudProxyImage,
     });
   });
 
@@ -117,6 +125,14 @@ describe("existing installation adoption", () => {
     expect(initialSecrets(detected).betterAuthSecret).toBe(
       "existing-auth-secret",
     );
+  });
+
+  it("keeps a code sandbox that the adopted installation already runs", () => {
+    expect(defaultInstallationConfig(null, manifest).sandbox).toEqual({ installed: false, tier: "slim" });
+    expect(defaultInstallationConfig(existing({ sandboxTier: "full" }), manifest).sandbox).toEqual({
+      installed: true,
+      tier: "full",
+    });
   });
 
   it("never downgrades an already newer official app image", () => {
@@ -161,6 +177,50 @@ describe("managed installation state", () => {
         voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.0.0",
         voice: { installed: false },
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("gives state from before code execution an upgradeable sandbox", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-legacy-sandbox-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const legacy: Partial<InstallationConfig> = defaultInstallationConfig(null, manifest);
+      delete legacy.sandboxVersion;
+      delete legacy.sandbox;
+      await writeFile(paths.stateFile, JSON.stringify(legacy));
+
+      await expect(readInstallationConfig(paths)).resolves.toMatchObject({
+        sandboxVersion: "0.0.0",
+        sandbox: { installed: false, tier: "slim" },
+      });
+
+      // An unknown tier is read as the standard one.
+      await writeFile(
+        paths.stateFile,
+        JSON.stringify({ ...legacy, sandboxVersion: "0.1.0", sandbox: { installed: true, tier: "huge" } }),
+      );
+      await expect(readInstallationConfig(paths)).resolves.toMatchObject({
+        sandbox: { installed: true, tier: "slim" },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the sandbox token and issues one when it is missing", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-sandbox-token-"));
+    const paths = pathsFor(directory);
+    try {
+      await mkdir(path.dirname(paths.secretsFile), { recursive: true });
+      await writeFile(paths.secretsFile, 'SANDBOX_TOKEN="stored-token"\n');
+      const stored = await readInstallationSecrets(paths);
+      expect(stored.sandboxToken).toBe("stored-token");
+      expect(initialSecrets(null, stored).sandboxToken).toBe("stored-token");
+      expect(initialSecrets(null, {}).sandboxToken).toMatch(/^[a-f0-9]{64}$/u);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -277,6 +337,47 @@ describe("managed installation state", () => {
       expect(loaded?.tts.apiKey).toBeUndefined();
       expect(loaded?.stt.apiKey).toBeUndefined();
       expect(loaded?.disableUpdateCheck).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("never persists a newly issued OvertChat Cloud credential", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-installation-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const config = defaultInstallationConfig(null, manifest);
+      config.access = {
+        mode: "cloud",
+        cloud: {
+          hostname: "smiths.overtchat.app",
+          relayHost: "relay.overtchat.app",
+          relayPort: 443,
+          relayServerName: "relay.overtchat.app",
+          relayCaPem: "ca",
+          credential: "oc_issued-credential",
+        },
+      };
+      await writeInstallationConfig(paths, config);
+      const contents = await readFile(paths.stateFile, "utf8");
+      expect(contents).not.toContain("oc_issued-credential");
+      expect(config.access.cloud?.credential).toBe("oc_issued-credential");
+      const loaded = await readInstallationConfig(paths);
+      expect(loaded?.access?.cloud).toEqual({
+        hostname: "smiths.overtchat.app",
+        relayHost: "relay.overtchat.app",
+        relayPort: 443,
+        relayServerName: "relay.overtchat.app",
+        relayCaPem: "ca",
+      });
+
+      await mkdir(path.dirname(paths.secretsFile), { recursive: true });
+      await writeFile(paths.secretsFile, 'OVERTCHAT_CLOUD_CREDENTIAL="oc_stored"\n');
+      expect((await readInstallationSecrets(paths)).cloudCredential).toBe("oc_stored");
+      expect(initialSecrets(null, { cloudCredential: "oc_stored" }).cloudCredential).toBe("oc_stored");
+      expect(initialSecrets(null, {}).cloudCredential).toBe("");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

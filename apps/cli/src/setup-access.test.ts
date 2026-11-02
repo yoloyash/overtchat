@@ -2,9 +2,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { confirm } from "@clack/prompts";
+import { confirm, note } from "@clack/prompts";
 import { checkManagedConnectorPrerequisites, installManagedConnector } from "./connector.js";
 import { setup } from "./setup.js";
+import { initialSetupLink } from "./initial-setup.js";
 import {
   defaultInstallationConfig,
   readInstallationConfig,
@@ -39,6 +40,7 @@ vi.mock("./tailscale.js", async (importOriginal) => ({
   checkServeRoute: vi.fn(),
   removeServe: vi.fn(),
 }));
+vi.mock("./initial-setup.js", () => ({ initialSetupLink: vi.fn() }));
 vi.mock("./connection-check.js", () => ({ finishAccess: vi.fn() }));
 vi.mock("./docker.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./docker.js")>()),
@@ -83,6 +85,7 @@ function local(initial: InstallationConfig): InstallationConfig {
 }
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.mocked(initialSetupLink).mockReset().mockResolvedValue(null);
   vi.mocked(checkManagedConnectorPrerequisites).mockReset();
   vi.mocked(installManagedConnector).mockReset();
   vi.mocked(confirm).mockReset();
@@ -186,6 +189,7 @@ describe("access provisioning lifecycle", () => {
       [],
       undefined,
       null,
+      { dryRun: false },
     );
     expect(await readInstallationConfig(runtimePaths())).toMatchObject({
       access: { mode: "local" },
@@ -197,6 +201,7 @@ describe("access provisioning lifecycle", () => {
       [],
       undefined,
       null,
+      { dryRun: false },
     );
     const environment = await readFile(runtimePaths().secretsFile, "utf8");
     expect(environment).toContain('APP_BIND_ADDRESS="127.0.0.1"');
@@ -356,4 +361,36 @@ it("retries connector installation without restarting the app and clears pending
   expect(installManagedConnector).toHaveBeenCalledTimes(2);
   expect(vi.mocked(requireDocker).mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(1);
   expect((await readInstallationConfig(runtimePaths()))?.agents).toEqual({ installed: true });
+});
+
+it("prints the private setup link on first install and reconfiguration while setup is pending", async () => {
+  const link = "http://localhost:4718/signup#setup=ABCD-EFGH-JKMN";
+  vi.mocked(initialSetupLink).mockResolvedValue(link);
+  await setup(options, manifest);
+  expect(note).toHaveBeenCalledWith(expect.stringContaining(link), "Next steps");
+  expect(initialSetupLink).toHaveBeenCalledWith(
+    expect.objectContaining({ publicUrl: "http://localhost:4718" }), expect.any(String),
+  );
+  vi.mocked(note).mockClear();
+  await setup(options, manifest);
+  expect(note).toHaveBeenCalledWith(expect.stringContaining(link), "Next steps");
+});
+
+it("keeps a ready installation usable when setup-link retrieval fails", async () => {
+  vi.mocked(initialSetupLink).mockRejectedValue(new Error("unavailable"));
+  await setup(options, manifest);
+  expect(note).toHaveBeenCalledWith(expect.stringContaining("Run overtchat status"), "Account setup");
+  expect(await readInstallationConfig(runtimePaths())).not.toBeNull();
+});
+
+it("returns an error after persisting pending agents when setup has no terminal", async () => {
+  // Defaults are supported without a TTY. A selected connector failure must
+  // remain discoverable in state while the command reports failure to scripts.
+  const saved = { ...local(defaultInstallationConfig(null, manifest)), agents: { installed: true } };
+  await writeInstallationConfig(runtimePaths(), saved);
+  for (const stream of [process.stdin, process.stdout])
+    Object.defineProperty(stream, "isTTY", { configurable: true, value: false });
+  vi.mocked(installManagedConnector).mockRejectedValue(new Error("connector startup failed"));
+  await expect(setup({ ...options, defaults: true }, manifest)).rejects.toThrow("Agent Connections failed");
+  expect(await readInstallationConfig(runtimePaths())).toMatchObject({ agents: { installed: true, pending: true } });
 });

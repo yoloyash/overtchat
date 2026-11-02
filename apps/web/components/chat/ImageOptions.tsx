@@ -11,12 +11,14 @@ export function ImageOptions({
   value,
   model,
   supportsQuality = true,
+  configuredSize,
   onChange,
   onClose,
 }: {
   value: ImageGenerationOptions;
   model?: string | null;
   supportsQuality?: boolean;
+  configuredSize?: string;
   onChange: (value: ImageGenerationOptions) => void;
   onClose: () => void;
 }) {
@@ -25,26 +27,32 @@ export function ImageOptions({
       <span className="font-medium">
         Create image{model ? ` · ${model}` : ""}
       </span>
-      <label className="flex items-center gap-1">
-        Size
-        <select
-          aria-label="Image size"
-          className="rounded border bg-background p-1"
-          value={value.size}
-          onChange={(event) =>
-            onChange({
-              ...value,
-              size: event.target.value as ImageGenerationOptions["size"],
-            })
-          }
-        >
-          {IMAGE_SIZES.map((size) => (
-            <option key={size} value={size}>
-              {IMAGE_SIZE_LABELS[size]}
-            </option>
-          ))}
-        </select>
-      </label>
+      {configuredSize ? (
+        <span>
+          Size: {configuredSize === "auto" ? "Backend default" : configuredSize}
+        </span>
+      ) : (
+        <label className="flex items-center gap-1">
+          Size
+          <select
+            aria-label="Image size"
+            className="rounded border bg-background p-1"
+            value={value.size}
+            onChange={(event) =>
+              onChange({
+                ...value,
+                size: event.target.value as ImageGenerationOptions["size"],
+              })
+            }
+          >
+            {IMAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {IMAGE_SIZE_LABELS[size]}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {supportsQuality && (
         <label className="flex items-center gap-1">
           Quality

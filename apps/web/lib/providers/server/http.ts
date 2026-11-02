@@ -16,6 +16,7 @@ interface OpenAIModelList {
     owned_by?: unknown;
     max_model_len?: unknown;
     max_context_length?: unknown;
+    context_length?: unknown;
     max_output_tokens?: unknown;
     max_tokens?: unknown;
     input_modalities?: unknown;
@@ -23,6 +24,16 @@ interface OpenAIModelList {
     modalities?: unknown;
     architecture?: unknown;
     capabilities?: unknown;
+    top_provider?: unknown;
+    supported_parameters?: unknown;
+    reasoning?: unknown;
+  }>;
+}
+
+interface OpenRouterImageModelList {
+  data?: Array<{
+    id?: unknown;
+    architecture?: unknown;
   }>;
 }
 
@@ -58,12 +69,6 @@ interface LlamaCppProps {
   modalities?: unknown;
 }
 
-interface RenderProbeResult {
-  key: string;
-  text?: string;
-  tokenIds?: number[];
-}
-
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
@@ -79,37 +84,38 @@ export async function listOpenAIModels(
   return listOpenAIModelsWithOptions(baseUrl, apiKey, false);
 }
 
+/** OpenRouter's image listing; every entry generates images. */
+export async function listOpenRouterImageModels(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+): Promise<DiscoveredModel[]> {
+  const json = await fetchJson<OpenRouterImageModelList>(
+    appendPath(baseUrl, "images/models"),
+    { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} },
+  );
+  return normalizeDiscoveredModels(
+    json.data?.map((model) => {
+      const architecture = isRecord(model.architecture)
+        ? model.architecture
+        : undefined;
+      return {
+        id: model.id,
+        capabilities: compactCapabilities({
+          inputModalities: readStringArray(architecture?.input_modalities),
+          outputModalities: readStringArray(
+            architecture?.output_modalities,
+          ) ?? ["image"],
+        }),
+      };
+    }),
+  );
+}
+
 export async function listLlamaCppModels(
   baseUrl: string,
   apiKey: string | null | undefined,
 ): Promise<DiscoveredModel[]> {
   return listOpenAIModelsWithOptions(baseUrl, apiKey, true);
-}
-
-export async function listVllmModels(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-): Promise<DiscoveredModel[]> {
-  const models = await listOpenAIModelsWithOptions(baseUrl, apiKey, false);
-  return Promise.all(
-    models.map(async (model) => {
-      const reasoningControls = await discoverReasoningControls(
-        (level) => renderVllmChatTemplate(baseUrl, apiKey, model.id, level),
-        true,
-        (prompt) =>
-          detokenizeVllmPrompt(baseUrl, apiKey, model.id, prompt.tokenIds),
-      );
-      return reasoningControls
-        ? {
-            ...model,
-            capabilities: mergeCapabilities(model.capabilities, {
-              reasoning: true,
-              reasoningControls,
-            }),
-          }
-        : model;
-    }),
-  );
 }
 
 async function listOpenAIModelsWithOptions(
@@ -125,7 +131,8 @@ async function listOpenAIModelsWithOptions(
       id: model.id,
       contextWindow:
         readPositiveInteger(model.max_model_len) ??
-        readPositiveInteger(model.max_context_length),
+        readPositiveInteger(model.max_context_length) ??
+        readPositiveInteger(model.context_length),
       capabilities: openAIModelCapabilities(model),
     })),
   );
@@ -152,14 +159,6 @@ async function listOpenAIModelsWithOptions(
       if (!llamaModelIds.has(model.id)) return model;
       const props = await readLlamaCppProps(baseUrl, apiKey, model.id);
       if (!props) return model;
-      const reasoningControls = probeAllLlamaCppProps
-        ? await discoverLlamaCppReasoningControls(
-            baseUrl,
-            apiKey,
-            model.id,
-            props,
-          )
-        : undefined;
       return {
         ...model,
         contextWindow:
@@ -167,7 +166,7 @@ async function listOpenAIModelsWithOptions(
           model.contextWindow,
         capabilities: mergeCapabilities(
           model.capabilities,
-          llamaCppCapabilities(props, reasoningControls),
+          llamaCppCapabilities(props),
         ),
       };
     }),
@@ -324,10 +323,18 @@ function openAIModelCapabilities(
   const capabilities = isRecord(model.capabilities)
     ? model.capabilities
     : undefined;
+  const topProvider = isRecord(model.top_provider)
+    ? model.top_provider
+    : undefined;
+  // Gateways list the request parameters each model accepts.
+  const parameters = readStringArray(model.supported_parameters);
+  const supports = (parameter: string) =>
+    parameters ? parameters.includes(parameter) : undefined;
   return compactCapabilities({
     maxOutputTokens:
       readPositiveInteger(model.max_output_tokens) ??
-      readPositiveInteger(model.max_tokens),
+      readPositiveInteger(model.max_tokens) ??
+      readPositiveInteger(topProvider?.max_completion_tokens),
     inputModalities:
       readStringArray(model.input_modalities) ??
       readStringArray(modalities?.input_modalities) ??
@@ -340,13 +347,43 @@ function openAIModelCapabilities(
     toolCalling:
       readSupportedBoolean(capabilities?.tool_call) ??
       readSupportedBoolean(capabilities?.tool_calling) ??
-      readSupportedBoolean(capabilities?.tools),
-    reasoning: readSupportedBoolean(capabilities?.reasoning),
+      readSupportedBoolean(capabilities?.tools) ??
+      supports("tools"),
+    reasoning:
+      readSupportedBoolean(capabilities?.reasoning) ?? supports("reasoning"),
+    reasoningControls: gatewayReasoningControls(model.reasoning),
     structuredOutput:
       readSupportedBoolean(capabilities?.structured_output) ??
-      readSupportedBoolean(capabilities?.structured_outputs),
+      readSupportedBoolean(capabilities?.structured_outputs) ??
+      supports("structured_outputs"),
     temperature: readSupportedBoolean(capabilities?.temperature),
   });
+}
+
+/**
+ * Per-model reasoning metadata from gateways such as OpenRouter: the efforts a
+ * model accepts, the one applied when reasoning is on, and whether it can be
+ * turned off. Effort names already match the product's levels. Models that
+ * only report a toggle, or whose default is unknown, keep no selector.
+ */
+export function gatewayReasoningControls(
+  value: unknown,
+): ModelReasoningControls | undefined {
+  if (!isRecord(value)) return undefined;
+  const supported = readStringArray(value.supported_efforts);
+  if (!supported) return undefined;
+  const efforts = REASONING_EFFORTS.filter((effort) =>
+    supported.includes(effort),
+  );
+  if (efforts.length === 0) return undefined;
+  const toggle = supported.includes("none") && value.mandatory !== true;
+  const defaultEffort = efforts.find(
+    (effort) => effort === value.default_effort,
+  ) as ReasoningEffort | undefined;
+  const defaultLevel =
+    value.default_enabled === false && toggle ? "off" : defaultEffort;
+  if (!defaultLevel) return undefined;
+  return { toggle, defaultLevel, efforts };
 }
 
 function anthropicModelCapabilities(
@@ -424,7 +461,6 @@ function openAIServiceRoot(baseUrl: string): string {
 
 function llamaCppCapabilities(
   props: LlamaCppProps,
-  reasoningControls?: ModelReasoningControls,
 ): ModelCapabilities | undefined {
   const template = isRecord(props.chat_template_caps)
     ? props.chat_template_caps
@@ -440,234 +476,86 @@ function llamaCppCapabilities(
     outputModalities: vision === undefined ? undefined : ["text"],
     attachment: vision,
     toolCalling: readSupportedBoolean(template?.supports_tools),
-    reasoning:
-      reasoningControls !== undefined
-        ? true
-        : readSupportedBoolean(template?.supports_preserve_reasoning),
-    reasoningControls,
+    reasoning: readSupportedBoolean(template?.supports_preserve_reasoning),
     temperature: true,
   });
 }
 
-async function discoverLlamaCppReasoningControls(
+export type TemplateRenderer = (
+  fields: Record<string, unknown>,
+) => Promise<string | undefined>;
+
+/**
+ * Renders one chat-template prompt per call without generating. vLLM's render
+ * endpoint is preferred; `/tokenize` is the fallback for servers without it.
+ * Returns undefined when the server exposes neither endpoint.
+ */
+export function createTemplateRenderer(
+  providerId: "vllm" | "llamacpp",
   baseUrl: string,
   apiKey: string | null | undefined,
   model: string,
-  props: LlamaCppProps,
-): Promise<ModelReasoningControls | undefined> {
-  const templateCaps = isRecord(props.chat_template_caps)
-    ? props.chat_template_caps
-    : undefined;
-  const supportsEffort =
-    readSupportedBoolean(templateCaps?.supports_reasoning_effort) === true;
-  return discoverReasoningControls(
-    (level) =>
-      renderLlamaCppChatTemplate(baseUrl, apiKey, model, level),
-    supportsEffort,
-  );
-}
-
-type ProbeLevel = "default" | "off" | "on" | ReasoningEffort | "invalid";
-
-async function discoverReasoningControls(
-  render: (level: ProbeLevel) => Promise<RenderProbeResult | undefined>,
-  probeEfforts = true,
-  resolvePromptText?: (
-    prompt: RenderProbeResult,
-  ) => Promise<string | undefined>,
-): Promise<ModelReasoningControls | undefined> {
-  const [defaultPrompt, offPrompt, onPrompt] = await Promise.all([
-    render("default"),
-    render("off"),
-    render("on"),
-  ]);
-  if (!defaultPrompt) return undefined;
-
-  const toggle = Boolean(
-    offPrompt && onPrompt && onPrompt.key !== offPrompt.key,
-  );
-  const defaultToggleLevel = !toggle
-    ? undefined
-    : defaultPrompt.key === offPrompt?.key
-      ? "off"
-      : defaultPrompt.key === onPrompt?.key
-        ? "on"
-        : undefined;
-
-  if (!probeEfforts) {
-    return defaultToggleLevel
-      ? { toggle: true, defaultLevel: defaultToggleLevel }
-      : undefined;
-  }
-
-  const [invalidPrompt, ...effortPrompts] = await Promise.all([
-    render("invalid"),
-    ...REASONING_EFFORTS.map((effort) => render(effort)),
-  ]);
-  const groups = new Map<
-    string,
-    { aliases: ReasoningEffort[]; prompt: RenderProbeResult }
-  >();
-  for (let index = 0; index < REASONING_EFFORTS.length; index += 1) {
-    const prompt = effortPrompts[index];
-    if (!prompt) continue;
-    const effort = REASONING_EFFORTS[index];
-    const group = groups.get(prompt.key) ?? { aliases: [], prompt };
-    group.aliases.push(effort);
-    groups.set(prompt.key, group);
-  }
-
-  const projectedGroups = await Promise.all(
-    [...groups].map(async ([key, group]) => {
-      const matchesInvalid = key === invalidPrompt?.key;
-      if (group.aliases.length === 1 && !matchesInvalid) {
-        return [key, group.aliases[0]] as const;
+): TemplateRenderer {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+  };
+  const endpoints =
+    providerId === "llamacpp"
+      ? [{ url: appendPath(openAIServiceRoot(baseUrl), "apply-template") }]
+      : [
+          {
+            url: appendPath(baseUrl, "chat/completions/render"),
+            extra: { return_prompt_text: true, max_tokens: 1 },
+          },
+          { url: appendPath(openAIServiceRoot(baseUrl), "tokenize") },
+        ];
+  let endpointIndex = 0;
+  let settled = false;
+  return async (fields) => {
+    for (;;) {
+      const endpoint = endpoints[endpointIndex];
+      const json = await tryFetchJson<Record<string, unknown>>(endpoint.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          ...fields,
+          model,
+          messages: [{ role: "user", content: "hi" }],
+          add_generation_prompt: true,
+          ...endpoint.extra,
+        }),
+      });
+      const key = renderedPromptKey(json);
+      if (key) {
+        settled = true;
+        return key;
       }
-      const promptText =
-        group.prompt.text ?? (await resolvePromptText?.(group.prompt));
-      const projected = projectedEffortAlias(group.aliases, promptText);
-      return projected ? ([key, projected] as const) : undefined;
-    }),
-  );
-  const selectedByPrompt = new Map(
-    projectedGroups.filter(
-      (group): group is readonly [string, ReasoningEffort] => group !== undefined,
-    ),
-  );
-  const defaultLevel =
-    selectedByPrompt.get(defaultPrompt.key) ?? defaultToggleLevel;
-  if (!defaultLevel) return undefined;
-  const selected = new Set(selectedByPrompt.values());
-  const efforts = REASONING_EFFORTS.filter((effort) => selected.has(effort));
-  if (efforts.length > 0) return { toggle, defaultLevel, efforts };
-  return defaultToggleLevel
-    ? { toggle: true, defaultLevel: defaultToggleLevel }
-    : undefined;
-}
-
-function projectedEffortAlias(
-  aliases: ReasoningEffort[],
-  prompt: string | undefined,
-): ReasoningEffort | undefined {
-  if (!prompt) return undefined;
-  const matches = aliases.filter((alias) =>
-    new RegExp(`(^|[^a-z0-9_])${alias}([^a-z0-9_]|$)`, "iu").test(prompt),
-  );
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
-async function renderLlamaCppChatTemplate(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-  model: string,
-  level: ProbeLevel,
-): Promise<RenderProbeResult | undefined> {
-  const body = reasoningProbeBody(model, level);
-  const json = await tryFetchJson<Record<string, unknown>>(
-    appendPath(openAIServiceRoot(baseUrl), "apply-template"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify(body),
-    },
-  );
-  return renderedPromptKey(json);
-}
-
-async function renderVllmChatTemplate(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-  model: string,
-  level: ProbeLevel,
-): Promise<RenderProbeResult | undefined> {
-  const json = await tryFetchJson<Record<string, unknown>>(
-    appendPath(baseUrl, "chat/completions/render"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        ...reasoningProbeBody(model, level),
-        return_prompt_text: true,
-        max_tokens: 1,
-      }),
-    },
-  );
-  return renderedPromptKey(json);
-}
-
-async function detokenizeVllmPrompt(
-  baseUrl: string,
-  apiKey: string | null | undefined,
-  model: string,
-  tokenIds: number[] | undefined,
-): Promise<string | undefined> {
-  if (!tokenIds) return undefined;
-  const json = await tryFetchJson<Record<string, unknown>>(
-    appendPath(openAIServiceRoot(baseUrl), "detokenize"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({ model, tokens: tokenIds }),
-    },
-  );
-  return typeof json?.prompt === "string" ? json.prompt : undefined;
-}
-
-function reasoningProbeBody(model: string, level: ProbeLevel) {
-  return {
-    model,
-    messages: [{ role: "user", content: "hi" }],
-    ...(level === "default"
-      ? {}
-      : level === "on"
-        ? { chat_template_kwargs: { enable_thinking: true } }
-        : {
-            reasoning_effort:
-              level === "off"
-                ? "none"
-                : level === "invalid"
-                  ? "overtchat-invalid-effort"
-                  : level,
-            chat_template_kwargs: {
-              enable_thinking: level !== "off",
-            },
-          }),
+      // Once an endpoint has rendered, a failure belongs to the submitted
+      // fields rather than to endpoint support.
+      if (settled || endpointIndex === endpoints.length - 1) return undefined;
+      endpointIndex += 1;
+    }
   };
 }
 
 function renderedPromptKey(
   json: Record<string, unknown> | undefined,
-): RenderProbeResult | undefined {
+): string | undefined {
   if (!json) return undefined;
-  if (typeof json.prompt === "string") {
-    return { key: `text:${json.prompt}`, text: json.prompt };
-  }
-  if (typeof json.prompt_text === "string") {
-    return { key: `text:${json.prompt_text}`, text: json.prompt_text };
-  }
-  const tokenIds = Array.isArray(json.token_ids)
-    ? json.token_ids
-    : Array.isArray(json.prompt_token_ids)
-      ? json.prompt_token_ids
-      : undefined;
-  if (
-    tokenIds &&
-    tokenIds.every(
-      (token) => typeof token === "number" && Number.isInteger(token),
-    )
-  ) {
-    return { key: `tokens:${JSON.stringify(tokenIds)}`, tokenIds };
-  }
-  return undefined;
+  const text = [json.prompt, json.prompt_text].find(
+    (value): value is string => typeof value === "string",
+  );
+  if (text !== undefined) return `text:${text}`;
+  // /tokenize returns `tokens`; render endpoints return token ID arrays.
+  const tokenIds = [json.token_ids, json.prompt_token_ids, json.tokens].find(
+    Array.isArray,
+  );
+  return tokenIds?.every(
+    (token) => typeof token === "number" && Number.isInteger(token),
+  )
+    ? `tokens:${JSON.stringify(tokenIds)}`
+    : undefined;
 }
 
 async function tryFetchJson<T>(
@@ -678,7 +566,6 @@ async function tryFetchJson<T>(
     return await fetchJson<T>(url, init);
   } catch {
     // Render endpoints are runtime extensions and older servers may omit them.
-    // Discovery fails closed so an unverified control is never shown.
     return undefined;
   }
 }

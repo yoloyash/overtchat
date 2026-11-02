@@ -9,20 +9,23 @@ import {
 import { Download, ImageIcon, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { serverUrl } from "@/lib/api-url";
+import { isSharedGeneratedImage } from "@/lib/sharing";
 
 export function GeneratedImageCard({
   part,
   streaming,
   onReference,
+  readOnly = false,
 }: {
   part: ImageToolPart;
   streaming: boolean;
   onReference?: (file: FileUIPart) => void;
+  readOnly?: boolean;
 }) {
   const pending =
     part.state === "input-streaming" || part.state === "input-available";
   const images = Array.isArray(part.output?.images)
-    ? part.output.images.filter(isGeneratedImage)
+    ? part.output.images.filter((image) => isGeneratedImage(image) || (readOnly && isSharedGeneratedImage(image)))
     : [];
   return (
     <div className="my-3 w-full max-w-lg space-y-3" data-image-generation="">
@@ -103,8 +106,15 @@ export function GeneratedImageCard({
           </summary>
           <p className="mt-2 whitespace-pre-wrap">{part.output.prompt}</p>
           <p className="mt-1">
-            Requested format: {IMAGE_SIZE_LABELS[part.output.size] ?? "Auto"} ·
-            Quality: {part.output.quality}
+            Requested format:{" "}
+            {part.output.providerSize === "auto"
+              ? "Backend default"
+              : (part.output.providerSize ??
+                IMAGE_SIZE_LABELS[part.output.size] ??
+                "Auto")}
+            {part.output.providerSize === undefined && (
+              <> · Quality: {part.output.quality}</>
+            )}
           </p>
         </details>
       )}

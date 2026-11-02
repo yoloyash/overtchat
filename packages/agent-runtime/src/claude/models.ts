@@ -9,9 +9,6 @@ import {
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
 
-const DEFAULT_CONTEXT_WINDOW = 200_000;
-const EXTENDED_CONTEXT_WINDOW = 1_000_000;
-
 export type ClaudeSettingsModel = {
   id: string;
   description: string;
@@ -112,9 +109,7 @@ function configuredModel(model: ClaudeSettingsModel): AgentModel {
     baseUrl: "",
     reasoning: false,
     input: ["text", "image"],
-    contextWindow: model.id.toLowerCase().includes("[1m]")
-      ? EXTENDED_CONTEXT_WINDOW
-      : DEFAULT_CONTEXT_WINDOW,
+    contextWindow: null,
     maxTokens: null,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   };
@@ -141,9 +136,9 @@ export function parseClaudeModels(
       reasoning: options.length > 1,
       input: ["text", "image"],
       metadata: { provider: "anthropic", modelId: resolvedModel },
-      contextWindow: `${model.value} ${resolvedModel}`.toLowerCase().includes("[1m]")
-        ? EXTENDED_CONTEXT_WINDOW
-        : DEFAULT_CONTEXT_WINDOW,
+      // Capacity is session-specific (including gateway/environment overrides).
+      // Read it from getContextUsage/modelUsage, not the model name.
+      contextWindow: null,
       maxTokens: null,
       thinkingOptions: options,
       defaultThinkingOptionId: options.some((option) => option.id === "high")

@@ -64,6 +64,38 @@ describe("model discovery route", () => {
     );
   });
 
+  it("forwards the model type to discovery without storing it on the connection", async () => {
+    const discover = (body: Record<string, unknown>) =>
+      POST(
+        new Request("http://server.test/api/models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    const connection = {
+      providerId: "openrouter",
+      apiFormat: "auto",
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "router-key",
+    };
+    expect((await discover({ ...connection, modelType: "image" })).status).toBe(
+      200,
+    );
+    expect(mocks.listProviderModels).toHaveBeenLastCalledWith(
+      { ...connection, apiKey: "router-key" },
+      { modelType: "image" },
+    );
+    expect((await discover(connection)).status).toBe(200);
+    expect(mocks.listProviderModels).toHaveBeenLastCalledWith(
+      { ...connection, apiKey: "router-key" },
+      { modelType: undefined },
+    );
+    expect((await discover({ ...connection, modelType: "video" })).status).toBe(
+      400,
+    );
+  });
+
   it("returns runtime limits separately from exact catalog fallbacks", async () => {
     const response = await POST(
       new Request("http://server.test/api/models", {

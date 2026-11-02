@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
 async function createAccountAndFixtures(page: Page) {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Draft Test Admin");
   await page.locator("#email").fill("draft-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -134,4 +134,29 @@ test("moves the composer to the saved-chat scope after the first send", async ({
   );
   await page.goto("/");
   await expect(composer(page)).toHaveValue("");
+});
+
+test("keeps a just-sent new chat open when its route loads again", async ({
+  page,
+}) => {
+  await createAccountAndFixtures(page);
+  // The chat is never saved, so fetching its history would redirect home.
+  await page.route("**/api/chat", (route) => route.abort());
+
+  await page.goto("/");
+  await composer(page).fill("Keep this chat open");
+  await page.getByLabel("Send message").click();
+  await expect(page).toHaveURL(/\/chat\/[^/]+$/);
+  const chatUrl = page.url();
+
+  // Next.js 16.4 writes the URL back after each client navigation, which
+  // makes the router load the current route again.
+  for (let i = 0; i < 2; i++) {
+    await page.evaluate(() =>
+      history.replaceState(history.state, "", location.href),
+    );
+  }
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(chatUrl);
+  await expect(page.getByText("Keep this chat open")).toBeVisible();
 });

@@ -49,8 +49,14 @@ class PiEventClassifier implements AgentRuntimeEventClassifier {
     const promptHandledWithoutRun =
       event.type === "prompt_result" && event.agentInvoked === false;
     return {
-      started: event.type === "agent_start" || event.type === "turn_start",
-      terminal: event.type === "agent_settled" || promptHandledWithoutRun,
+      started:
+        event.type === "agent_start" ||
+        event.type === "turn_start" ||
+        event.type === "compaction_start",
+      terminal:
+        event.type === "agent_settled" ||
+        event.type === "compaction_end" ||
+        promptHandledWithoutRun,
     };
   }
 }

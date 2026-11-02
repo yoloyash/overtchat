@@ -13,6 +13,18 @@ export function newChatComposerDraftScope(projectId?: string | null): string {
   return projectId ? `new:project:${projectId}` : "new:root";
 }
 
+export function agentComposerDraftScope(sessionId: string): string {
+  return `agent:${sessionId}`;
+}
+
+/**
+ * One draft for the new-session page, so it survives switching the machine,
+ * folder or agent. A fork keeps its own: its history lives only in its tab.
+ */
+export function newAgentComposerDraftScope(fork: string | null = null): string {
+  return fork ? `new:agent:fork:${fork}` : "new:agent";
+}
+
 export function readComposerDraft(
   userId: string,
   scope: string,

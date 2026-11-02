@@ -4,7 +4,7 @@ import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import type { ChatGenerationStatus } from "@overtchat/shared";
 import { db } from "@/lib/db/client";
 import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
-import { chatGenerations, chats, messages } from "@/lib/db/schema";
+import { chatGenerations, chats, messages, voiceSessions } from "@/lib/db/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import type { EstimatedGenerationCost } from "@/lib/providers/server/model-cost";
 import { extractSearchText } from "@/lib/search/extract";
@@ -23,6 +23,11 @@ export type CompletedGenerationUsage = {
   totalTokens?: number;
   finishReason?: string;
 } & Partial<EstimatedGenerationCost>;
+
+/** One image tool operation, billed to the image model rather than the chat model. */
+export type CompletedImageUsage = CompletedGenerationUsage & {
+  toolCallId: string;
+};
 
 export type CommitChatTurnResult =
   | "committed"
@@ -118,6 +123,7 @@ export function commitChatTurn({
   clientRequestId,
   requestFingerprint,
   staleStreamId,
+  voiceSessionId,
   truncateFromMessageId,
   continueMessage,
   userMessage,
@@ -130,9 +136,10 @@ export function commitChatTurn({
   clientRequestId: string;
   requestFingerprint: string;
   staleStreamId: string | null;
+  voiceSessionId?: string;
   truncateFromMessageId?: string;
   continueMessage?: UIMessage;
-  userMessage?: { id: string; parts: AnyPart[] };
+  userMessage?: { id: string; parts: AnyPart[]; metadata?: Record<string, unknown> };
 }): CommitChatTurnResult {
   return db.transaction((tx) => {
     const duplicate = tx
@@ -164,6 +171,12 @@ export function commitChatTurn({
       .get();
 
     if (existing && existing.userId !== userId) return "not-found";
+    const lease = tx.select().from(voiceSessions).where(eq(voiceSessions.chatId, chatId)).get();
+    const liveLease = lease && lease.expiresAt.getTime() > Date.now() ? lease : null;
+    if (voiceSessionId ? liveLease?.id !== voiceSessionId || liveLease.userId !== userId : Boolean(liveLease)) {
+      return "stream-active";
+    }
+
     if (existing?.activeStreamId && existing.activeStreamId !== staleStreamId) {
       return "stream-active";
     }
@@ -249,6 +262,7 @@ export function commitChatTurn({
           chatId,
           role: "user",
           parts: userMessage.parts,
+          metadata: userMessage.metadata,
         })
         .run();
       const content = extractSearchText(userMessage.parts);
@@ -273,6 +287,7 @@ export function completeChatStream({
   streamId,
   assistantMessage,
   usage,
+  imageUsage = [],
   status = assistantMessage ? "complete" : "error",
   error,
 }: {
@@ -284,6 +299,8 @@ export function completeChatStream({
     metadata?: Record<string, unknown>;
   };
   usage?: CompletedGenerationUsage;
+  /** Completed images are kept with the reply even when the chat model fails. */
+  imageUsage?: CompletedImageUsage[];
   status?: Exclude<ChatGenerationStatus, "running">;
   error?: string;
 }): boolean {
@@ -374,6 +391,19 @@ export function completeChatStream({
       context: "chat",
       ...usage,
     });
+  }
+
+  if (assistantMessage) {
+    for (const { toolCallId, ...image } of imageUsage) {
+      tryRecordGenerationUsage({
+        id: `${streamId}:${toolCallId}`,
+        userId: completed.userId,
+        chatId,
+        messageId: assistantMessage.id,
+        context: "image",
+        ...image,
+      });
+    }
   }
 
   return true;

@@ -315,6 +315,23 @@ describe("image model configuration", () => {
       ModelConfigSchema.parse({ ...image, modelType: undefined }).modelType,
     ).toBe("chat");
   });
+  it("needs no rates for OpenRouter, which reports each image's charge", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...image,
+        providerId: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "qwen/qwen-image-2.1-turbo",
+        pricing: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+      }),
+    ).toMatchObject({
+      modelType: "image",
+      providerId: "openrouter",
+      apiFormat: "auto",
+      pricing: null,
+      providerOptions: null,
+    });
+  });
   it.each([
     { providerId: "anthropic" },
     { model: "" },
@@ -327,6 +344,18 @@ describe("image model configuration", () => {
     );
   });
   it.each(["openai", "google"])(
+    "keeps %s image token rates without cache rates",
+    (providerId) => {
+      expect(
+        ModelConfigSchema.parse({
+          ...image,
+          providerId,
+          pricing: { input: 1.5, output: 30, cacheRead: 0.15, cacheWrite: 2 },
+        }).pricing,
+      ).toEqual({ input: 1.5, output: 30, cacheRead: 0, cacheWrite: 0 });
+    },
+  );
+  it.each(["openai", "google"])(
     "lets the admin assign any model ID to %s image generation",
     (providerId) => {
       for (const model of ["studio-art", "gemini-2.5-flash", "gpt-4o"]) {
@@ -336,4 +365,80 @@ describe("image model configuration", () => {
       }
     },
   );
+});
+
+describe("custom image configuration", () => {
+  const custom = {
+    modelType: "image",
+    label: "Local images",
+    providerId: "custom",
+    apiFormat: "openai-images",
+    baseUrl: "http://192.168.0.30:8731/v1/",
+    model: "flux2-klein-4b",
+  };
+  it("accepts keyless endpoints and normalizes generation-only defaults", () => {
+    expect(ModelConfigSchema.parse(custom)).toMatchObject({
+      apiKey: null,
+      baseUrl: "http://192.168.0.30:8731/v1",
+      providerOptions: {
+        size: "auto",
+        responseFormat: "b64_json",
+        supportsEditing: false,
+        extraBody: {},
+      },
+    });
+  });
+  it("keeps token rates without cache rates for backends that report usage", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...custom,
+        pricing: { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 3 },
+      }).pricing,
+    ).toEqual({ input: 1, output: 2, cacheRead: 0, cacheWrite: 0 });
+    expect(ModelConfigSchema.parse(custom).pricing).toBeNull();
+  });
+  it("preserves backend settings through save and re-save", () => {
+    const parsed = ModelConfigSchema.parse({
+      ...custom,
+      providerOptions: {
+        size: "512x512",
+        editSize: "256x256",
+        responseFormat: "url",
+        supportsEditing: true,
+        extraBody: { seed: 7, quality: "standard", nested: { scales: [1, 2] } },
+      },
+    });
+    expect(ModelConfigSchema.parse(parsed)).toEqual(parsed);
+    expect(parsed.providerOptions).toMatchObject({
+      size: "512x512",
+      editSize: "256x256",
+      extraBody: { seed: 7 },
+    });
+  });
+  it.each([
+    { apiFormat: "openai-chat" },
+    { apiFormat: "anthropic-messages" },
+    { modelType: "chat" },
+    { providerOptions: { responseFormat: "base64" } },
+    { providerOptions: { editSize: "" } },
+    { providerOptions: { editSize: "   " } },
+    { providerOptions: { editSize: "x".repeat(65) } },
+    { providerOptions: { editSize: 512 } },
+    { providerOptions: { extraBody: [] } },
+    { providerOptions: { extraBody: { seed: "x".repeat(17000) } } },
+    ...[
+      "model",
+      "prompt",
+      "n",
+      "size",
+      "response_format",
+      "image",
+      "mask",
+      "stream",
+    ].map((key) => ({ providerOptions: { extraBody: { [key]: "override" } } })),
+  ])("rejects ambiguous or conflicting configuration %j", (patch) => {
+    expect(ModelConfigSchema.safeParse({ ...custom, ...patch }).success).toBe(
+      false,
+    );
+  });
 });

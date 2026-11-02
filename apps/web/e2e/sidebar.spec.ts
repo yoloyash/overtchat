@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const SIDEBAR_STORAGE_KEY = "overtchat_sidebar_collapsed";
 
@@ -25,17 +25,20 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.route("**/api/app-update", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        currentVersion: "0.16.0",
-        latestVersion: "99.0.0",
-        updateAvailable: true,
-      }),
+  const mockAppUpdate = (updateMethod?: "compose") =>
+    page.route("**/api/app-update", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          currentVersion: "0.16.0",
+          latestVersion: "99.0.0",
+          updateAvailable: true,
+          ...(updateMethod ? { updateMethod } : {}),
+        }),
+      });
     });
-  });
-  await page.goto("/signup");
+  await mockAppUpdate();
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Sidebar Admin");
   await page.locator("#email").fill("sidebar-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -75,6 +78,21 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
     updateDialog.getByRole("link", { name: "View release notes" }),
   ).toHaveAttribute("href", "https://overtchat.com/releases/");
   await updateDialog.getByRole("button", { name: "Close" }).click();
+
+  await page.unroute("**/api/app-update");
+  await mockAppUpdate("compose");
+  await page.reload();
+  await page.getByRole("button", { name: "Server update available", exact: true }).click();
+  await expect(updateDialog).toContainText(
+    "If your Compose file pins the app image, change its tag to 99.0.0.",
+  );
+  await expect(
+    updateDialog.getByLabel("OvertChat update command"),
+  ).toHaveText("docker compose pull && docker compose up -d");
+  await updateDialog.getByRole("button", { name: "Close" }).click();
+  await page.unroute("**/api/app-update");
+  await mockAppUpdate();
+  await page.reload();
 
   await accountButton.click();
   await expect(page.getByRole("menuitem", { name: "Privacy" })).toHaveAttribute(

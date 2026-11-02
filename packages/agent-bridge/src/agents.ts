@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isAbsoluteAgentPath } from "./paths";
 
 export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
 export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
@@ -13,6 +14,33 @@ export const AGENT_PROVIDER_IDS = [
 ] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
+
+/** Longest status text a connector sends; clients truncate further for display. */
+export const AGENT_STATUS_TEXT_LIMIT = 280;
+const agentStatusTextSchema = z.string().max(AGENT_STATUS_TEXT_LIMIT);
+
+/** The request an agent is blocked on, summarized for lists and notifications. */
+export const agentSessionAttentionSchema = z.object({
+  kind: z.enum(["approval", "question"]),
+  /** Interaction id; a new id is a new request. */
+  id: z.string().min(1),
+  requestedAt: z.number().finite(),
+  /** One line, such as the question or the tool action. */
+  title: agentStatusTextSchema,
+  /** A command, path or other short detail. */
+  detail: agentStatusTextSchema.optional(),
+});
+export type AgentSessionAttention = z.infer<typeof agentSessionAttentionSchema>;
+
+export const agentTurnSummarySchema = z.object({
+  outcome: z.enum(["completed", "failed", "stopped"]),
+  startedAt: z.number().finite().nullable(),
+  endedAt: z.number().finite(),
+  /** Plain-text start of the final assistant reply. */
+  preview: agentStatusTextSchema.optional(),
+  error: agentStatusTextSchema.optional(),
+});
+export type AgentTurnSummary = z.infer<typeof agentTurnSummarySchema>;
 
 export const AGENT_THINKING_LEVELS = [
   "off",
@@ -84,7 +112,7 @@ export const addAgentWorkspaceSchema = z.object({
     .trim()
     .min(1)
     .max(4_096)
-    .refine((value) => value.startsWith("/"), {
+    .refine(isAbsoluteAgentPath, {
       message: "Enter an absolute directory path.",
     }),
   name: z.string().trim().min(1).max(120).optional(),
@@ -144,6 +172,12 @@ export type AgentSessionListItem = {
   createdAt: number | null;
   modifiedAt: number | null;
   runtimeStatus: AgentRuntimeStatus;
+  /** The fields below are absent from servers that predate attention state. */
+  turnStartedAt?: number | null;
+  attention?: AgentSessionAttention | null;
+  lastTurn?: AgentTurnSummary | null;
+  /** End of the latest turn the owner has seen, on the connector's clock. */
+  readTurnEndedAt?: number | null;
 };
 
 export type AgentProviderSessionMetadata = {
@@ -161,6 +195,11 @@ export type AgentWorkspaceListItem = {
   id: string;
   path: string;
   name: string;
+  /**
+   * Set when OvertChat created this workspace as a Git worktree: the path of
+   * the workspace it was created from, on the same machine.
+   */
+  worktreeParentPath?: string | null;
   sessions: AgentSessionListItem[];
 };
 
@@ -186,6 +225,74 @@ export type AgentWorkspaceGitFile = {
   indexStatus: string | null;
   worktreeStatus: string | null;
 };
+
+export type AgentWorkspaceGitBranch = {
+  /** Local branch name, or the branch name within `remote`. */
+  name: string;
+  /** Remote name for a remote-tracking branch without a local counterpart. */
+  remote: string | null;
+  current: boolean;
+  /** Another worktree has this local branch checked out, so it cannot be switched to here. */
+  worktreePath: string | null;
+  /** Last commit time in Unix milliseconds. */
+  committedAt: number | null;
+};
+
+export type AgentWorkspaceGitBranches = {
+  isGit: boolean;
+  /** Checked-out branch; null when detached or not a repository. */
+  current: string | null;
+  /** Local branches first, each group most recently committed first. */
+  branches: AgentWorkspaceGitBranch[];
+  truncated: boolean;
+};
+
+export type AgentWorkspaceGitSwitchTarget =
+  | { kind: "local"; name: string }
+  /** Creates (or reuses) the local branch that tracks `remote/name`. */
+  | { kind: "remote"; remote: string; name: string }
+  /** Creates a branch at the current commit, keeping uncommitted changes. */
+  | { kind: "new"; name: string };
+
+/** A branch a new worktree starts from. */
+export type AgentWorkspaceGitBaseRef =
+  | { kind: "local"; name: string }
+  | { kind: "remote"; remote: string; name: string };
+
+export type AgentWorkspaceGitWorktree = {
+  /** Workspace directory inside the worktree, matching the source workspace's place in its repository. */
+  path: string;
+  /** Root of the new worktree. */
+  worktreePath: string;
+  /** Directory name of the worktree, used as the workspace name. */
+  name: string;
+  branch: string;
+};
+
+export type AgentWorkspaceGitWorktreeInspection = {
+  /** False when the worktree directory is already gone. */
+  exists: boolean;
+  worktreePath: string | null;
+  branch: string | null;
+  /** Uncommitted changes, which removing the worktree discards. Its commits stay on the branch. */
+  changedFiles: number;
+};
+
+export type AgentWorkspaceGitSwitchResult =
+  | {
+      status: "switched";
+      branch: string;
+      /** Uncommitted changes were stashed before switching. */
+      stashed: boolean;
+      /** Changes stashed by an earlier switch away from `branch` were restored. */
+      restored: boolean;
+      /** A stash from an earlier switch was kept because `branch` has moved since. */
+      keptStash: string | null;
+    }
+  /** Nothing changed; the repository has uncommitted changes and `stash` was false. */
+  | { status: "changes_present"; changedFiles: number }
+  /** Nothing changed; an agent turn is running in this repository's working tree. */
+  | { status: "agent_running" };
 
 export type AgentWorkspaceDirectoryEntry = {
   name: string;
@@ -213,6 +320,41 @@ export type AgentWorkspaceTextFilePreview = {
 
 /** Extensible read-only preview payload; future content kinds add union members. */
 export type AgentWorkspaceFilePreview = AgentWorkspaceTextFilePreview;
+
+export const AGENT_TERMINAL_MIN_COLUMNS = 2;
+export const AGENT_TERMINAL_MAX_COLUMNS = 1_000;
+export const AGENT_TERMINAL_MIN_ROWS = 1;
+export const AGENT_TERMINAL_MAX_ROWS = 1_000;
+export const AGENT_TERMINAL_MAX_INPUT_CHARS = 64 * 1_024;
+export const AGENT_TERMINAL_MAX_OUTPUT_CHARS = 256 * 1_024;
+export const AGENT_TERMINAL_MAX_SNAPSHOT_CHARS = 4 * 1_024 * 1_024;
+
+export type AgentTerminalSize = {
+  cols: number;
+  rows: number;
+};
+
+export type AgentTerminalSnapshot = AgentTerminalSize & {
+  workspaceId: string;
+  revision: number;
+  data: string;
+  exited: boolean;
+  exitCode: number | null;
+  signal: number | null;
+};
+
+export type AgentTerminalEvent =
+  | {
+      type: "output";
+      revision: number;
+      data: string;
+    }
+  | {
+      type: "exit";
+      revision: number;
+      exitCode: number | null;
+      signal: number | null;
+    };
 
 export type AgentConnectionListItem = {
   id: string;
@@ -694,9 +836,7 @@ export type AgentRuntimeSnapshot = {
   provider: AgentProviderId;
   capabilities: AgentRuntimeCapabilities;
   status: AgentRuntimeStatus;
-  activeTurn: {
-    startedAt: number;
-  } | null;
+  activeTurn: { startedAt: number } | null;
   state: Record<string, unknown>;
   messages: unknown[];
   models: AgentModel[];

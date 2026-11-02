@@ -17,11 +17,10 @@ const require = createRequire(new URL("../../apps/web/package.json", import.meta
 const { chromium, _electron: electron } = require("@playwright/test");
 const [executable, mode] = process.argv.slice(2);
 const source = mode === "--source";
-const isMac = process.platform === "darwin";
 assert(executable && (!mode || source), "Usage: node smoke-desktop-local-discovery.mjs packaged-linux-executable|desktop-directory [--source]");
-assert(["linux", "darwin"].includes(process.platform));
-assert(!isMac || source, "macOS smoke uses --source to isolate the application profile");
-if (!isMac) assert.notEqual(process.getuid(), 0, "Test the desktop as a regular user");
+assert(["linux", "darwin", "win32"].includes(process.platform));
+assert(process.platform === "linux" || source, "macOS/Windows smoke uses --source to isolate the application profile");
+if (process.platform === "linux") assert.notEqual(process.getuid(), 0, "Test the desktop as a regular user");
 const directory = await mkdtemp(path.join(tmpdir(), "overtchat-local-discovery-smoke-"));
 const config = path.join(directory, "config");
 const manager = path.join(directory, "manager");
@@ -30,17 +29,19 @@ await mkdir(manager);
 const profile = path.join(config, source ? "overtchat-dev" : "overtchat");
 const wrapper = path.join(directory, "main.mjs");
 if (source) {
-  // Set appData before main derives userData. This also isolates macOS without
+  // Set appData before main derives userData. This isolates macOS/Windows without
   // moving the operator's profile or interrupting an installed desktop app.
   const main = pathToFileURL(path.resolve(executable, "out/main/index.js")).href;
   await writeFile(wrapper, `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(config)});\nawait import(${JSON.stringify(main)});\n`);
 }
 let apiLevel = CLIENT_API_LEVEL;
 let available = true;
+let failingRoute = null;
 let pingPending = false;
 let releasePing;
 const firstPing = new Promise(resolve => { releasePing = resolve; });
 const api = createServer(async (request, response) => {
+  if (request.url === failingRoute) return response.destroy();
   response.setHeader("Access-Control-Allow-Origin", "overtchat://app");
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Content-Type", "application/json");
@@ -150,6 +151,28 @@ try {
   assert.equal((await page.evaluate(() => window.overtchatDesktop.boot())).server.origin, origin);
   assert.deepEqual(await page.evaluate(() => window.overtchatDesktop.discoverLocalServers()), []);
   log("PASS saved server restored on relaunch; discovery leaves active server alone");
+
+  // Ping remains healthy: failure happens only after the bundled router starts.
+  failingRoute = "/api/auth/get-session";
+  await page.reload();
+  await page.getByRole("heading", { name: "Couldn't load OvertChat" }).waitFor();
+  await page.getByText(`Server: ${origin}`, { exact: true }).waitFor();
+  await stop();
+  await launch();
+  await page.getByRole("heading", { name: "Couldn't load OvertChat" }).waitFor();
+  failingRoute = null;
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  failingRoute = "/api/setup";
+  await page.reload();
+  await page.getByRole("heading", { name: "Couldn't load OvertChat" }).waitFor();
+  await page.getByRole("button", { name: "Change server", exact: true }).click();
+  await page.getByRole("heading", { name: "Connect to your server" }).waitFor();
+  assert.equal((await page.evaluate(() => window.overtchatDesktop.boot())).server, null);
+  failingRoute = null;
+  await localCard().getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  log("PASS session/setup failures after ping, relaunch, Retry, and Change server through real IPC");
   await page.evaluate(() => window.overtchatDesktop.changeServer());
   await page.getByRole("heading", { name: "Connect to your server" }).waitFor();
   await localCard().getByRole("button", { name: "Connect", exact: true }).waitFor();
@@ -206,6 +229,34 @@ try {
       assert(await page.getByLabel("Server address").isEnabled());
     }
     log("PASS rejected connection IPC shows an error and permits retry");
+
+    await sourceApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler("desktop:boot");
+      ipcMain.handle("desktop:boot", () => { throw new Error("Smoke boot failure"); });
+    });
+    await page.reload();
+    await page.getByRole("heading", { name: "Couldn't load OvertChat" }).waitFor();
+    await sourceApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler("desktop:boot");
+      ipcMain.handle("desktop:boot", () => ({ server: null, lastAddress: "" }));
+    });
+    await page.getByRole("button", { name: "Change server", exact: true }).click();
+    await page.getByRole("heading", { name: "Connect to your server" }).waitFor();
+    await sourceApp.evaluate(({ ipcMain }) => {
+      let first = true;
+      ipcMain.removeHandler("desktop:boot");
+      ipcMain.handle("desktop:boot", () => {
+        if (!first) throw new Error("Smoke retry failure");
+        first = false;
+        return { server: { origin: "http://localhost:4718", problem: { kind: "unreachable", message: "Offline" } }, lastAddress: "" };
+      });
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Try again", exact: true }).click();
+    await page.getByText("Couldn't check the server. Try again or change the address.", { exact: true }).waitFor();
+    assert(await page.getByRole("button", { name: "Try again", exact: true }).isEnabled());
+    assert(await page.getByRole("button", { name: "Change server", exact: true }).isEnabled());
+    log("PASS rejected startup/retry IPC keeps recovery actions available");
   }
 } catch (error) {
   log(output);

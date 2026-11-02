@@ -14,22 +14,40 @@ describe("release platform selection", () => {
     ["linux", "arm64", "linux-arm64"],
     ["darwin", "x64", "darwin-amd64"],
     ["darwin", "arm64", "darwin-arm64"],
+    ["win32", "x64", "windows-amd64.exe"],
   ] as const)("selects %s/%s artifacts", (platform, arch, suffix) => {
     expect(releaseAsset("overtchat", platform, arch)).toBe(
       `overtchat-${suffix}`,
     );
     expect(releaseAsset("overtchat-connector", platform, arch)).toBe(
-      `overtchat-connector-${suffix}`,
+      `overtchat-connector-${suffix.replace(/\.exe$/u, "")}`,
     );
   });
   it("rejects unsupported operating systems and CPUs", () => {
-    expect(() => releaseAsset("overtchat", "win32", "x64")).toThrow(
-      "Linux and macOS",
+    expect(() => releaseAsset("overtchat", "freebsd", "x64")).toThrow(
+      "Linux, macOS, and Windows",
     );
+    expect(() => releaseAsset("overtchat", "win32", "arm64")).toThrow("requires x64");
     expect(() => releaseAsset("overtchat", "darwin", "arm")).toThrow(
       "does not support arm",
     );
   });
+});
+
+it("finds Docker Desktop and Tailscale on Windows without conflicting PATH keys", () => {
+  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  const environment = commandEnvironment({
+    Path: "C:\\custom bin",
+    LOCALAPPDATA: "C:\\Users\\Some User\\AppData\\Local",
+    ProgramFiles: "C:\\Program Files",
+    DOCKER_CONTEXT: "desktop-linux",
+  });
+  expect(environment.Path).toBeUndefined();
+  expect(environment.PATH).toContain("C:\\custom bin;");
+  expect(environment.PATH).toContain("Programs\\DockerDesktop\\resources\\bin");
+  expect(environment.PATH).toContain("C:\\Program Files\\Docker\\Docker\\resources\\bin");
+  expect(environment.PATH).toContain("C:\\Program Files\\Tailscale");
+  expect(environment.DOCKER_CONTEXT).toBe("desktop-linux");
 });
 
 it("finds Docker Desktop and Homebrew from a minimal Mac SSH environment", () => {

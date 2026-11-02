@@ -1,12 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
+import {
+  expectRandomUuidFallback,
+  removeRandomUuid,
+} from "./helpers/insecure-origin";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
   await page.emulateMedia({ colorScheme: "light" });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Diagram Tester");
   await page.locator("#email").fill("diagrams@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -36,20 +40,12 @@ function seedMessage(text: string) {
 test("renders diagrams without randomUUID and updates their theme without reloading", async ({
   page,
 }) => {
-  // Plain HTTP on a LAN host does not expose secure-context-only randomUUID.
-  await page.addInitScript(() => {
-    Object.defineProperty(window.crypto, "randomUUID", {
-      configurable: true,
-      value: undefined,
-    });
-  });
+  await removeRandomUuid(page);
   seedMessage(
     '```mermaid\ngraph TD\n  A["Start<br/>Browser"] --> B["Finish<br/>Server"]\n```',
   );
   await page.goto("/chat/mermaid-chat");
-  expect(await page.evaluate(() => typeof window.crypto.randomUUID)).toBe(
-    "undefined",
-  );
+  await expectRandomUuidFallback(page);
 
   const diagram = page.getByRole("img", { name: "Mermaid chart" });
   await expect(diagram).toBeVisible();

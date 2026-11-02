@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ executeOnHost: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  executeOnHost: vi.fn(),
+  inspectHostEnvironment: vi.fn().mockResolvedValue({ platform: "posix" }),
+}));
 
 vi.mock("@overtchat/agent-runtime/runtime/process", () => ({
   executeOnHost: mocks.executeOnHost,
+  inspectHostEnvironment: mocks.inspectHostEnvironment,
 }));
 
 import {
@@ -12,7 +16,30 @@ import {
 } from "./discovery";
 
 describe("agent installation discovery", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.inspectHostEnvironment.mockResolvedValue({ platform: "posix" });
+  });
+
+  it("discovers Windows executables without POSIX shell retries", async () => {
+    mocks.inspectHostEnvironment.mockResolvedValue({ platform: "win32" });
+    mocks.executeOnHost.mockResolvedValue({
+      stdout: "omp\0C:\\Users\\user\\bin\\omp.exe\0omp 1.2.3\0",
+      stderr: "",
+    });
+    expect(
+      await discoverAgentInstallations({ transport: "ssh", alias: "windows" }),
+    ).toEqual([
+      {
+        provider: "omp",
+        executable: "C:\\Users\\user\\bin\\omp.exe",
+        version: "1.2.3",
+        shellMode: "login",
+      },
+    ]);
+    expect(mocks.executeOnHost).toHaveBeenCalledOnce();
+    expect(mocks.executeOnHost.mock.calls[0][1].command).toBe("node");
+  });
 
   it("discovers and versions all providers in one host execution", async () => {
     mocks.executeOnHost.mockResolvedValue({

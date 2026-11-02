@@ -14,7 +14,7 @@ export const dynamic = "force-static";
 export const metadata: Metadata = createPageMetadata({
   title: "Downloads",
   description:
-    "Download OvertChat for macOS, Linux, Android, and iPhone or iPad. Connect to your own OvertChat server and pick up your conversations.",
+    "Find available OvertChat downloads for macOS, Windows, Linux, Android, and iPhone or iPad. Connect to your own OvertChat server and pick up your conversations.",
   path: "/downloads/",
 });
 
@@ -72,6 +72,36 @@ export default async function DownloadsPage() {
             </a>
           </details>
         </article>
+
+        {downloads.windows && (
+          <article className="download-card" id="windows">
+            <Monitor className="download-icon" aria-hidden="true" />
+            <div>
+              <h2>Windows</h2>
+              <p>Version {downloads.version} · Windows 11 · x64</p>
+            </div>
+            <div className="download-actions">
+              <a className="button button-primary" href={downloads.windows.downloadUrl}>
+                <ArrowDownToLine aria-hidden="true" /> Download installer
+              </a>
+            </div>
+            <p className="download-note">
+              Install for your Windows account, then open OvertChat from the Start menu.
+              This installer is unsigned; Windows may warn or block installation.
+            </p>
+            <details className="installation-help">
+              <summary>How to install on Windows</summary>
+              <ol>
+                <li>Download and open the EXE installer.</li>
+                <li>Open OvertChat from the Start menu, enter your server address, and sign in.</li>
+              </ol>
+              <p>If SmartScreen warns, verify that you downloaded the installer from this site or our GitHub releases before choosing More info and Run anyway, if available. Organization policies or Smart App Control may prevent installation.</p>
+              <a className="text-link" href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#windows-desktop">
+                More help on GitHub <ArrowRight aria-hidden="true" />
+              </a>
+            </details>
+          </article>
+        )}
 
         <article className="download-card" id="linux">
           <Monitor className="download-icon" aria-hidden="true" />
@@ -165,7 +195,8 @@ export default async function DownloadsPage() {
         <div>
           <h2>Looking for another download?</h2>
           <p>Find ZIP and tar archives, checksums, and previous versions in the release log.
-            Windows and Linux ARM64 apps are not available yet.</p>
+            {!downloads.windows && " Windows downloads are not available in the current release."}
+            {" "}Windows ARM64 and Linux ARM64 apps are not available yet.</p>
           <Link className="text-link" href="/releases/">
             All downloads & release notes <ArrowRight aria-hidden="true" />
           </Link>

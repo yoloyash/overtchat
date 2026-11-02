@@ -2223,6 +2223,8 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (method === "error") {
+      // A retried request fails the turn only through `turn/completed`.
+      if (data?.willRetry === true) return;
       const error = recordOf(data?.error);
       this.emit({
         type: "rpc_error",

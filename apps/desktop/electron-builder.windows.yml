@@ -1,0 +1,17 @@
+extends: ./electron-builder.yml
+# Initial Windows releases are unsigned. Keep signing optional independently
+# of the Developer ID requirement in the macOS release configuration.
+forceCodeSigning: false
+electronFuses:
+  enableNodeCliInspectArguments: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: overtchat-${version}-windows-${arch}.${ext}
+  icon: build/icon.png
+nsis:
+  oneClick: true
+  perMachine: false
+  runAfterFinish: false
+  deleteAppDataOnUninstall: false

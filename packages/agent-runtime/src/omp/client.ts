@@ -14,6 +14,10 @@ import {
 import { type AgentProcess, type HostTarget, spawnOnHost } from "@overtchat/agent-runtime/runtime/process";
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 import { PiAssistantMessages } from "@overtchat/agent-runtime/pi/assistant-messages";
+import { PiCompaction } from "@overtchat/agent-runtime/pi/compaction";
+import { randomUUID } from "node:crypto";
+import { normalizeTodoEvent, normalizeTodoMessage, recordOf } from "../pi/todo-messages";
+import { OmpTurnTasks, parseOmpTodoPhases, parseOmpTodos, taskListOf } from "./todos";
 
 const READY_TIMEOUT_MS = 30_000;
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
@@ -43,6 +47,7 @@ export class OmpClient {
   private readonly subscribers = new Set<(event: OmpEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
   private readonly assistantMessages = new PiAssistantMessages();
+  private readonly compaction = new PiCompaction((event) => this.emit(event));
   private readonly ready: Promise<void>;
   private resolveReady: () => void = () => {};
   private rejectReady: (error: Error) => void = () => {};
@@ -50,6 +55,9 @@ export class OmpClient {
   private readyTimer: NodeJS.Timeout | undefined;
   private protocolVersion = 1;
   private historyGeneration = 0;
+  private todoRevision = 0;
+  private todoItems: string | undefined;
+  private turnTasks = new OmpTurnTasks();
   private chunk: { id: string; count: number; byteLength: number; parts: Buffer[] } | undefined;
 
   constructor(process: AgentProcess, private readonly modeId: string) {
@@ -77,7 +85,21 @@ export class OmpClient {
   }
 
   async getState(timeoutMs?: number): Promise<Record<string, unknown>> {
+    const generation = this.historyGeneration;
+    const revision = ++this.todoRevision;
     const state = await this.request<Record<string, unknown>>({ type: "get_state" }, timeoutMs);
+    // Reuse the runtime's state refresh (including turn settlement) for task
+    // reconciliation. The first read seeds comparison state without replaying
+    // a durable transcript; subsequent changes also capture code-mode clears.
+    if (generation === this.historyGeneration && revision === this.todoRevision) {
+      const tasks = parseOmpTodoPhases(state.todoPhases, `omp:tasks:${randomUUID()}`);
+      if (tasks) {
+        const items = JSON.stringify(tasks.items);
+        const changed = this.todoItems !== undefined && items !== this.todoItems;
+        this.todoItems = items;
+        if (changed) this.emit({ type: "message_end", message: this.turnTasks.refresh(tasks) });
+      }
+    }
     const model = state.model;
     const nativeProvider = model && typeof model === "object" ? Reflect.get(model, "provider") : undefined;
     const nativeModelId = model && typeof model === "object" ? Reflect.get(model, "id") : undefined;
@@ -127,13 +149,50 @@ export class OmpClient {
           if (cursor) seen.add(cursor);
         } while (cursor);
         if (messages.length !== total) throw new Error("Oh My Pi returned an incomplete message history.");
-        return this.identifyMessages(messages);
+        return this.importMessages(messages);
       } catch (error) {
         if (!(error instanceof JsonlRpcCommandError) || !["session_busy", "stale_cursor"].includes(error.code ?? "")) throw error;
       }
     }
     const history = await this.request<{ messages: unknown[] }>({ type: "get_messages" });
-    return this.identifyMessages(history.messages);
+    return this.importMessages(history.messages);
+  }
+
+  private async importMessages(messages: unknown[]): Promise<{ messages: unknown[] }> {
+    const history = await this.identifyMessages(messages.map((message) => normalizeTodoMessage(message, parseOmpTodos)));
+    const state = await this.request<Record<string, unknown>>({ type: "get_state" });
+    // Native current state also survives compaction and code-mode todo calls
+    // whose enclosing tool result is not named "todo".
+    const tasks = parseOmpTodoPhases(recordOf(state)?.todoPhases, "omp:tasks:state");
+    // Replay live presentation: one task card per turn, at its newest snapshot.
+    const turnTasks = new OmpTurnTasks();
+    const imported: unknown[] = [];
+    let carrier = -1;
+    let previous: string | undefined;
+    for (const native of history.messages) {
+      if (recordOf(native)?.role === "user") {
+        turnTasks.startTurn();
+        carrier = -1;
+      }
+      const { superseded, message } = turnTasks.add(native);
+      if (superseded) imported[carrier] = superseded;
+      imported.push(message);
+      const part = taskListOf(message);
+      if (part) {
+        carrier = imported.length - 1;
+        previous = JSON.stringify(part.items);
+      }
+    }
+    if (tasks) {
+      this.todoItems = JSON.stringify(tasks.items);
+      if (this.todoItems !== previous && (previous !== undefined || tasks.items.length)) {
+        const message = turnTasks.refresh(tasks);
+        if (carrier >= 0) imported[carrier] = message;
+        else imported.push(message);
+      }
+    }
+    this.turnTasks = turnTasks;
+    return { messages: imported };
   }
 
   private async identifyMessages(
@@ -191,6 +250,8 @@ export class OmpClient {
     if (result.cancelled) throw new Error("Oh My Pi rewind was cancelled.");
     this.submissionEchoes.clear();
     this.assistantMessages.clear();
+    this.todoItems = undefined;
+    this.turnTasks.startTurn();
   }
 
   prompt(
@@ -202,6 +263,9 @@ export class OmpClient {
     return this.request({
       type: "prompt",
       message,
+      // A background job can wake the agent as a prompt is sent; steer into
+      // that turn instead of failing.
+      streamingBehavior: "steer",
       ...(images.length
         ? {
             images: images.map((image) => ({
@@ -242,7 +306,7 @@ export class OmpClient {
   }
 
   abort(): Promise<unknown> {
-    return this.request({ type: "abort" }).then((result) => {
+    return this.compaction.abort(() => this.request({ type: "abort" })).then((result) => {
       this.submissionEchoes.clear();
       this.assistantMessages.clear();
       return result;
@@ -263,7 +327,7 @@ export class OmpClient {
   }
 
   compact(customInstructions?: string): Promise<unknown> {
-    return this.request({ type: "compact", ...(customInstructions ? { customInstructions } : {}) }, 0x7fffffff);
+    return this.compaction.manual(() => this.request({ type: "compact", ...(customInstructions ? { customInstructions } : {}) }, 0x7fffffff));
   }
 
   setAutoCompaction(enabled: boolean): Promise<unknown> { return this.request({ type: "set_auto_compaction", enabled }); }
@@ -293,12 +357,38 @@ export class OmpClient {
       return;
     }
     if (typeof record.type !== "string") { this.transport.fail("Oh My Pi RPC event is missing a type."); return; }
-    const event = mapOmpUiRequest(
+    if (this.compaction.handle(record as OmpEvent)) return;
+    let event = normalizeTodoEvent(mapOmpUiRequest(
       this.assistantMessages.annotate(
         this.submissionEchoes.annotate(record) as OmpEvent,
       ),
-    ) as OmpEvent;
+    ) as OmpEvent, parseOmpTodos) as OmpEvent;
+    if (
+      event.type === "agent_start" ||
+      (["message_start", "message_end"].includes(event.type) && recordOf(event.message)?.role === "user")
+    ) {
+      this.turnTasks.startTurn();
+    }
+    if (event.type === "message_end") {
+      const tasks = taskListOf(event.message);
+      if (tasks) {
+        this.todoRevision += 1;
+        this.todoItems = JSON.stringify(tasks.items);
+        const { superseded, message } = this.turnTasks.add(event.message);
+        if (superseded) this.emit({ type: "message_end", message: superseded });
+        event = { ...event, message };
+      }
+    }
     this.emit(event);
+    // Reminders may contain only unfinished work. Fetch authoritative state
+    // instead of replacing the full checklist with that subset.
+    if (event.type === "todo_reminder") {
+      const generation = this.historyGeneration;
+      void this.getState().catch((error) => {
+        if (generation !== this.historyGeneration) return;
+        console.warn("Oh My Pi task progress refresh failed.", error);
+      });
+    }
     const message = event.message;
     if (
       event.type === "message_end" &&

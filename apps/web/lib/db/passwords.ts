@@ -21,11 +21,52 @@ export function findUserByEmail(email: string) {
     .get();
 }
 
-type ResetAuthorization = {
+export type ResetAuthorization = {
   userId: string;
   sessionId: string;
   passwordHash: string;
 };
+
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Rechecks an administrator's reset authorization inside the transaction, after
+ * asynchronous password verification and hashing.
+ */
+export function resetActorAuthorized(
+  tx: Transaction,
+  actor: ResetAuthorization,
+): boolean {
+  const actingUser = tx
+    .select()
+    .from(user)
+    .where(eq(user.id, actor.userId))
+    .get();
+  const actingSession = tx
+    .select()
+    .from(session)
+    .where(
+      and(eq(session.id, actor.sessionId), eq(session.userId, actor.userId)),
+    )
+    .get();
+  const credential = tx
+    .select()
+    .from(account)
+    .where(
+      and(
+        eq(account.userId, actor.userId),
+        eq(account.providerId, "credential"),
+      ),
+    )
+    .get();
+  return (
+    actingUser?.role === "admin" &&
+    !actingUser.banned &&
+    !!actingSession &&
+    actingSession.expiresAt > new Date() &&
+    credential?.password === actor.passwordHash
+  );
+}
 
 /** Commit the replacement credential and revoke every login together. */
 export function resetUserPassword(
@@ -34,42 +75,7 @@ export function resetUserPassword(
   actor?: ResetAuthorization,
 ): "updated" | "not_found" | "no_password" | "unauthorized" {
   return db.transaction((tx) => {
-    // Recheck authorization after asynchronous password verification/hashing.
-    if (actor) {
-      const actingUser = tx
-        .select()
-        .from(user)
-        .where(eq(user.id, actor.userId))
-        .get();
-      const actingSession = tx
-        .select()
-        .from(session)
-        .where(
-          and(
-            eq(session.id, actor.sessionId),
-            eq(session.userId, actor.userId),
-          ),
-        )
-        .get();
-      const credential = tx
-        .select()
-        .from(account)
-        .where(
-          and(
-            eq(account.userId, actor.userId),
-            eq(account.providerId, "credential"),
-          ),
-        )
-        .get();
-      if (
-        actingUser?.role !== "admin" ||
-        actingUser.banned ||
-        !actingSession ||
-        actingSession.expiresAt <= new Date() ||
-        credential?.password !== actor.passwordHash
-      )
-        return "unauthorized";
-    }
+    if (actor && !resetActorAuthorized(tx, actor)) return "unauthorized";
     if (
       !tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).get()
     ) {

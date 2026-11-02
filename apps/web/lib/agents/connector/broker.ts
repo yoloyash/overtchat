@@ -1,16 +1,20 @@
-import { AgentIdleNotifications } from "@/lib/notifications/agentIdle";
-import { notifyAgentIdle } from "@/lib/notifications/sender";
+import { AgentAttentionNotifications } from "@/lib/notifications/agentAttention";
+import { notifyAgentAttention } from "@/lib/notifications/sender";
 import "server-only";
 import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isAgentSessionSync,
+  isAgentWorkspaceGitStatus,
   isConnectorSshHost,
+  sameAgentSessionDirectoryEntry,
   type AgentDaemonRequest,
   type AgentDaemonSessionDescriptor,
+  type AgentDaemonTarget,
   type AgentRuntimeEnvelope,
   type AgentSessionDirectoryEntry,
   type AgentSessionSync,
+  type AgentWorkspaceGitStatus,
   type ConnectorSshHost,
   type HostConnectorCommand,
   type HostConnectorCapability,
@@ -18,10 +22,15 @@ import {
   type HostConnectorEventAck,
   type HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
-import { updateAgentSessionMetadata } from "@/lib/db/agentConnections";
+import {
+  recordAgentSessionLastTurn,
+  updateAgentSessionMetadata,
+} from "@/lib/db/agentConnections";
 
 const REQUEST_TIMEOUT_MS = 180_000;
 const CONNECTOR_DISCONNECT_GRACE_MS = 5_000;
+/** Absorbs navigation and stream reconnects without restarting host watchers. */
+const GIT_WATCH_RELEASE_MS = 15_000;
 
 type Channel = {
   send: (command: HostConnectorCommand) => void;
@@ -80,6 +89,29 @@ type SessionDirectorySubscription = {
   subscriber: (event: AgentSessionDirectoryEvent) => void;
 };
 
+/** `live` tells clients whether pushed statuses replace their polling. */
+export type AgentWorkspaceGitEvent =
+  | { type: "live"; live: boolean }
+  | { type: "status"; status: AgentWorkspaceGitStatus };
+
+export type AgentWorkspaceGitWatchTarget = {
+  connectorId: string;
+  workspaceId: string;
+  target: AgentDaemonTarget;
+  path: string;
+};
+
+type WorkspaceGitWatch = AgentWorkspaceGitWatchTarget & {
+  key: string;
+  watchId: string;
+  listeners: Set<(event: AgentWorkspaceGitEvent) => void>;
+  status: AgentWorkspaceGitStatus | null;
+  revision: number;
+  live: boolean;
+  generation: number;
+  releaseTimer?: NodeJS.Timeout;
+};
+
 export class HostConnectorBroker {
   private readonly channels = new Map<string, Channel>();
   private readonly pending = new Map<string, PendingRequest>();
@@ -88,11 +120,13 @@ export class HostConnectorBroker {
     string,
     Map<string, number>
   >();
-  private readonly idleNotifications = new AgentIdleNotifications((id) => {
-    void notifyAgentIdle(id).catch(() =>
-      console.error("[push] Could not send agent notification."),
-    );
-  });
+  private readonly attentionNotifications = new AgentAttentionNotifications(
+    (event) => {
+      void notifyAgentAttention(event).catch(() =>
+        console.error("[push] Could not send agent notification."),
+      );
+    },
+  );
   private readonly sessionDirectory = new Map<
     string,
     { connectorId: string; session: AgentSessionDirectoryEntry }
@@ -100,9 +134,12 @@ export class HostConnectorBroker {
   private readonly directorySubscriptions =
     new Set<SessionDirectorySubscription>();
   private readonly disconnectTimers = new Map<string, NodeJS.Timeout>();
+  private readonly gitWatches = new Map<string, WorkspaceGitWatch>();
+  private readonly gitWatchIds = new Map<string, WorkspaceGitWatch>();
 
   constructor(
     private readonly disconnectGraceMs = CONNECTOR_DISCONNECT_GRACE_MS,
+    private readonly gitWatchReleaseMs = GIT_WATCH_RELEASE_MS,
   ) {}
 
   isOnline(connectorId: string): boolean {
@@ -118,8 +155,15 @@ export class HostConnectorBroker {
   runtimeStatusForSession(
     sessionId: string,
   ): AgentSessionDirectoryEntry["runtimeStatus"] {
+    return this.sessionDirectoryEntry(sessionId).runtimeStatus;
+  }
+
+  sessionDirectoryEntry(sessionId: string): AgentSessionDirectoryEntry {
     return (
-      this.sessionDirectory.get(sessionId)?.session.runtimeStatus ?? "idle"
+      this.sessionDirectory.get(sessionId)?.session ?? {
+        sessionId,
+        runtimeStatus: "idle",
+      }
     );
   }
 
@@ -134,14 +178,134 @@ export class HostConnectorBroker {
     this.directorySubscriptions.add(subscription);
     subscriber({
       type: "snapshot",
-      sessions: [...subscription.sessionIds].map((sessionId) => ({
-        sessionId,
-        runtimeStatus: this.runtimeStatusForSession(sessionId),
-      })),
+      sessions: [...subscription.sessionIds].map((sessionId) =>
+        this.sessionDirectoryEntry(sessionId),
+      ),
     });
     return () => {
       this.directorySubscriptions.delete(subscription);
     };
+  }
+
+  /**
+   * Shares one connector watch per workspace between every listener. Each
+   * listener first receives the current live flag and status, then changes.
+   */
+  watchWorkspaceGit(
+    target: AgentWorkspaceGitWatchTarget,
+    listener: (event: AgentWorkspaceGitEvent) => void,
+  ): () => void {
+    const key = `${target.connectorId}\0${target.workspaceId}`;
+    let watch = this.gitWatches.get(key);
+    if (!watch) {
+      watch = {
+        ...target,
+        key,
+        watchId: crypto.randomUUID(),
+        listeners: new Set(),
+        status: null,
+        revision: -1,
+        live: false,
+        generation: 0,
+      };
+      this.gitWatches.set(key, watch);
+      this.gitWatchIds.set(watch.watchId, watch);
+      this.startGitWatch(watch);
+    }
+    const current = watch;
+    if (current.releaseTimer) clearTimeout(current.releaseTimer);
+    current.releaseTimer = undefined;
+    current.listeners.add(listener);
+    listener({ type: "live", live: current.live });
+    if (current.live && current.status) {
+      listener({ type: "status", status: current.status });
+    }
+    return () => {
+      if (!current.listeners.delete(listener) || current.listeners.size > 0) {
+        return;
+      }
+      current.releaseTimer = setTimeout(
+        () => this.releaseGitWatch(current),
+        this.gitWatchReleaseMs,
+      );
+      current.releaseTimer.unref();
+    };
+  }
+
+  /** The pushed status, when a live watch already knows it. */
+  workspaceGitStatus(
+    connectorId: string,
+    workspaceId: string,
+  ): AgentWorkspaceGitStatus | null {
+    const watch = this.gitWatches.get(`${connectorId}\0${workspaceId}`);
+    return watch?.live ? watch.status : null;
+  }
+
+  private startGitWatch(watch: WorkspaceGitWatch): void {
+    if (!this.supports(watch.connectorId, "workspace-git-watch-v1")) return;
+    const generation = ++watch.generation;
+    const current = () =>
+      this.gitWatches.get(watch.key) === watch &&
+      watch.generation === generation;
+    this.request<{ status?: unknown; revision?: unknown }>(watch.connectorId, {
+      type: "watch_git_status",
+      watchId: watch.watchId,
+      target: watch.target,
+      path: watch.path,
+    }).then(
+      (result) => {
+        if (!current()) return;
+        const revision = Number(result?.revision);
+        if (
+          isAgentWorkspaceGitStatus(result?.status) &&
+          Number.isSafeInteger(revision) &&
+          revision >= watch.revision
+        ) {
+          watch.status = result.status;
+          watch.revision = revision;
+        }
+        this.setGitWatchLive(watch, true);
+        if (watch.status) {
+          this.notifyGitWatch(watch, { type: "status", status: watch.status });
+        }
+      },
+      () => {
+        // Listeners keep polling; the next connector registration retries.
+        if (current()) this.setGitWatchLive(watch, false);
+      },
+    );
+  }
+
+  private releaseGitWatch(watch: WorkspaceGitWatch): void {
+    watch.releaseTimer = undefined;
+    if (watch.listeners.size > 0 || this.gitWatches.get(watch.key) !== watch) {
+      return;
+    }
+    this.gitWatches.delete(watch.key);
+    this.gitWatchIds.delete(watch.watchId);
+    watch.generation += 1;
+    if (!this.supports(watch.connectorId, "workspace-git-watch-v1")) return;
+    void this.request(watch.connectorId, {
+      type: "unwatch_git_status",
+      watchId: watch.watchId,
+    }).catch(() => {});
+  }
+
+  private setGitWatchLive(watch: WorkspaceGitWatch, live: boolean): void {
+    if (watch.live === live) return;
+    watch.live = live;
+    if (!live) {
+      watch.status = null;
+      watch.revision = -1;
+    }
+    this.notifyGitWatch(watch, { type: "live", live });
+  }
+
+  private notifyGitWatch(
+    watch: WorkspaceGitWatch,
+    event: AgentWorkspaceGitEvent,
+  ): void {
+    for (const listener of [...watch.listeners]) listener(event);
   }
 
   replaceSessionProviderSession(
@@ -178,7 +342,7 @@ export class HostConnectorBroker {
       connectorCapabilities.filter((capability) => supported.has(capability)),
     );
     const sessionIds = new Set(activeSessionIds);
-    for (const id of sessionIds) this.idleNotifications.reset(id);
+    for (const id of sessionIds) this.attentionNotifications.reset(id);
     const channel = { send, capabilities, sessionIds };
     this.channels.set(connectorId, channel);
     for (const sessionId of sessionIds) {
@@ -201,10 +365,22 @@ export class HostConnectorBroker {
     });
     this.reconcilePendingRequests(connectorId, channel);
     void this.resubscribe(connectorId, channel);
+    // Each registration starts a new connection epoch, which drops the
+    // connector's previous watches; re-establish the ones still listened to.
+    for (const watch of this.gitWatches.values()) {
+      if (watch.connectorId !== connectorId) continue;
+      this.setGitWatchLive(watch, false);
+      this.startGitWatch(watch);
+    }
     return () => {
       if (this.channels.get(connectorId) !== channel) return;
       this.channels.delete(connectorId);
-      for (const id of channel.sessionIds) this.idleNotifications.reset(id);
+      for (const id of channel.sessionIds) this.attentionNotifications.reset(id);
+      for (const watch of this.gitWatches.values()) {
+        if (watch.connectorId !== connectorId) continue;
+        watch.generation += 1;
+        this.setGitWatchLive(watch, false);
+      }
       this.scheduleDisconnect(connectorId);
     };
   }
@@ -222,19 +398,19 @@ export class HostConnectorBroker {
     const requestId = crypto.randomUUID();
     const sessionId = sessionIdForRequest(request);
     if (sessionId) channel.sessionIds.add(sessionId);
-    if (
-      request.type === "session_command" &&
-      request.command.type === "abort"
-    ) {
-      this.idleNotifications.suppress(request.session.sessionId);
-    }
-    if (request.type === "stop_session")
-      this.idleNotifications.suppress(request.sessionId);
+    // The owner's own Stop makes the turn's end no news, unless it is refused.
+    const stopping =
+      request.type === "session_command" && request.command.type === "abort"
+        ? request.session.sessionId
+        : request.type === "stop_session"
+          ? request.sessionId
+          : null;
+    if (stopping) this.attentionNotifications.suppress(stopping);
 
     const replaySafe =
       isLedgerProtectedCommand(request) &&
       channel.capabilities.has("command-wal-v1");
-    return new Promise<T>((resolve, reject) => {
+    const result = new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId);
         reject(
@@ -262,6 +438,10 @@ export class HostConnectorBroker {
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
+    if (stopping) {
+      result.catch(() => this.attentionNotifications.resume(stopping));
+    }
+    return result;
   }
 
   private reconcilePendingRequests(
@@ -452,12 +632,29 @@ export class HostConnectorBroker {
         freshNotification &&
         channel?.sessionIds.has(event.session.sessionId)
       ) {
-        this.idleNotifications.update(
+        this.attentionNotifications.update(
           event.session.sessionId,
-          event.session.runtimeStatus,
+          event.session,
         );
       }
       this.acceptSessionDirectory(connectorId, [event.session], false);
+      return;
+    }
+    if (event.type === "workspace_git_status") {
+      const watch = this.gitWatchIds.get(event.watchId);
+      if (
+        !watch ||
+        watch.connectorId !== connectorId ||
+        event.revision <= watch.revision
+      ) {
+        return;
+      }
+      // A push may overtake the watch response; it is kept and wins if newer.
+      watch.status = event.status;
+      watch.revision = event.revision;
+      if (watch.live) {
+        this.notifyGitWatch(watch, { type: "status", status: event.status });
+      }
       return;
     }
     if (event.type === "session_metadata") {
@@ -597,7 +794,14 @@ export class HostConnectorBroker {
     for (const session of sessions) {
       if (!channel.sessionIds.has(session.sessionId)) continue;
       if (baseline)
-        this.idleNotifications.reset(session.sessionId, session.runtimeStatus);
+        this.attentionNotifications.reset(session.sessionId, session);
+      if (session.lastTurn) {
+        try {
+          recordAgentSessionLastTurn(session.sessionId, session.lastTurn);
+        } catch {
+          console.error("[agents] Could not record the latest turn.");
+        }
+      }
       this.upsertSessionDirectory(connectorId, session);
     }
   }
@@ -609,7 +813,7 @@ export class HostConnectorBroker {
     const current = this.sessionDirectory.get(session.sessionId);
     if (
       current?.connectorId === connectorId &&
-      current.session.runtimeStatus === session.runtimeStatus
+      sameAgentSessionDirectoryEntry(current.session, session)
     ) {
       return;
     }
@@ -714,6 +918,8 @@ export class HostConnectorBroker {
         this.upsertSessionDirectory(connectorId, {
           ...entry.session,
           runtimeStatus: "exited",
+          turnStartedAt: null,
+          attention: null,
         });
       }
     }, this.disconnectGraceMs);

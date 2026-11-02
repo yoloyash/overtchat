@@ -25,14 +25,13 @@ export async function GET(
   if (!owned) return new Response("Not found", { status: 404 });
 
   try {
-    const status = await hostConnectorBroker.request(
-      owned.host.connectorId,
-      {
+    const status =
+      hostConnectorBroker.workspaceGitStatus(owned.host.connectorId, id) ??
+      (await hostConnectorBroker.request(owned.host.connectorId, {
         type: "git_status",
         target: daemonTarget(owned.host, owned.connection.shellMode),
         path: owned.workspace.path,
-      },
-    );
+      }));
     return Response.json(
       { status },
       { headers: { "Cache-Control": "no-store" } },

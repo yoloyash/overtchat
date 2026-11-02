@@ -119,6 +119,7 @@ export async function listUserModelUsage(
 export async function getChatUsageTotals(
   chatId: string,
   userId: string,
+  context: "chat" | "image" = "chat",
 ): Promise<UsageTotals> {
   const [totals] = await db
     .select(aggregateUsage())
@@ -127,7 +128,7 @@ export async function getChatUsageTotals(
       and(
         eq(generationUsage.chatId, chatId),
         eq(generationUsage.userId, userId),
-        eq(generationUsage.context, "chat"),
+        eq(generationUsage.context, context),
       ),
     );
   return totals;

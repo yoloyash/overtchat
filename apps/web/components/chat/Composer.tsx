@@ -26,6 +26,7 @@ import {
   Ghost,
   ImageIcon,
   Globe,
+  LayoutDashboard,
   Loader2,
   Library,
   Mic,
@@ -103,9 +104,13 @@ interface ComposerProps {
   searchAvailable: boolean;
   searchUnavailableReason: string;
   searchRequested: boolean;
+  openuiAvailable: boolean;
+  openuiUnavailableReason: string;
+  openuiRequested: boolean;
   imageAvailable?: boolean;
   imageModel?: string | null;
   imageSupportsQuality?: boolean;
+  imageConfiguredSize?: string;
   imageOptions?: ImageGenerationOptions;
   onImageOptions?: (options: ImageGenerationOptions | undefined) => void;
   dropActive: boolean;
@@ -123,7 +128,9 @@ interface ComposerProps {
   commandActions: ComposerCommandActions;
   onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
   onToggleSearch: () => void;
-  onSubmit: (input: string, attachments: FileUIPart[]) => void;
+  onToggleOpenUI: () => void;
+  /** Return false when the submission was not accepted; retain the draft. */
+  onSubmit: (input: string, attachments: FileUIPart[]) => void | boolean;
   onStop: () => void;
   onStartVoice: () => void;
   onEndVoice: () => void;
@@ -142,7 +149,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   searchAvailable,
   searchUnavailableReason,
   searchRequested,
-  imageAvailable, imageModel, imageSupportsQuality, imageOptions, onImageOptions,
+  openuiAvailable,
+  openuiUnavailableReason,
+  openuiRequested,
+  imageAvailable, imageModel, imageSupportsQuality, imageConfiguredSize, imageOptions, onImageOptions,
   dropActive,
   models,
   selectedModelId,
@@ -158,6 +168,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   commandActions,
   onSelectReasoningLevel,
   onToggleSearch,
+  onToggleOpenUI,
   onSubmit,
   onStop,
   onStartVoice,
@@ -263,6 +274,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         run: onToggleSearch,
       },
       {
+        name: "openui",
+        title: "Interactive UI",
+        description: "Render an interactive OpenUI interface for this message",
+        group: "actions",
+        icon: LayoutDashboard,
+        keywords: ["ui", "chart", "dashboard", "form", "table", "interactive"],
+        toggle: {
+          active: openuiRequested,
+          unavailableReason: openuiAvailable
+            ? undefined
+            : openuiUnavailableReason,
+        },
+        run: onToggleOpenUI,
+      },
+      {
         name: "attach",
         title: "Add photos & files",
         description: "Upload from your device",
@@ -355,6 +381,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     searchRequested,
     searchUnavailableReason,
     onToggleSearch,
+    openuiAvailable,
+    openuiRequested,
+    openuiUnavailableReason,
+    onToggleOpenUI,
   ]);
 
   const query = parseSlashCommandQuery(input);
@@ -483,7 +513,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (streaming && text.toLowerCase() === "/compact" && !readyParts.length) return;
     if (!text && readyParts.length === 0) return;
     if (!configured) return;
-    onSubmit(text, readyParts);
+    if (onSubmit(text, readyParts) === false) return;
     clearDraft();
     setDismissedQuery(null);
     setActiveIndex(0);
@@ -545,7 +575,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
           )}
         >
-          {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
+          {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} configuredSize={imageConfiguredSize} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-1 pt-1">
               {attachments.map((att) => (
@@ -609,7 +639,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       size="icon-sm"
                       className="rounded-full"
                       aria-label="Add to message"
-                      disabled={!attachmentsEnabled && !searchAvailable}
+                      disabled={!attachmentsEnabled && !searchAvailable && !openuiAvailable}
                     />
                   }
                 >
@@ -677,6 +707,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           {searchRequested ? <Check className="size-3.5" /> : null}
                         </span>
                       </Menu.CheckboxItem>
+                      <Menu.CheckboxItem
+                        checked={openuiRequested}
+                        onCheckedChange={onToggleOpenUI}
+                        closeOnClick
+                        disabled={!openuiAvailable}
+                        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <LayoutDashboard className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">Interactive UI</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {openuiAvailable
+                              ? "Render interactive OpenUI components"
+                              : openuiUnavailableReason}
+                          </span>
+                        </span>
+                        <span className="flex size-4 shrink-0 items-center justify-center">
+                          {openuiRequested ? <Check className="size-3.5" /> : null}
+                        </span>
+                      </Menu.CheckboxItem>
                     </Menu.Popup>
                   </Menu.Positioner>
                 </Menu.Portal>
@@ -690,6 +740,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 >
                   <Globe className="size-3.5" />
                   <span className="max-md:hidden">Web search</span>
+                  <X className="size-3 max-md:hidden" />
+                </button>
+              )}
+              {openuiRequested && (
+                <button
+                  type="button"
+                  onClick={onToggleOpenUI}
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
+                  aria-label="Remove Interactive UI from this message"
+                >
+                  <LayoutDashboard className="size-3.5" />
+                  <span className="max-md:hidden">Interactive UI</span>
                   <X className="size-3 max-md:hidden" />
                 </button>
               )}
@@ -719,18 +781,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   <Square className="size-3 fill-current" />
                 </Button>
               )}
-              {voiceActive && !input.trim() && readyParts.length === 0 ? (
+              {voiceActive && (
                 <Button
                   type="button"
                   variant="secondary"
                   size="icon-sm"
                   className="shrink-0 rounded-full"
                   onClick={onEndVoice}
+                  disabled={textInputDisabled}
                   aria-label="End voice session"
                 >
                   <X />
                 </Button>
-              ) : !streaming && voiceInstalled &&
+              )}
+              {!voiceActive && !streaming && voiceInstalled &&
                 voiceEligible &&
                 !input.trim() &&
                 readyParts.length === 0 ? (
@@ -753,7 +817,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   size="icon-sm"
                   className="shrink-0 rounded-full"
                   disabled={
-                    uploading ||
+                    textInputDisabled || uploading ||
                     (!input.trim() &&
                       readyParts.length === 0)
                   }

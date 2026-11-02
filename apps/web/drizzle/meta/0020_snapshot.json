@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "99b3a450-0841-49b1-ae53-c78b3d409672",
+  "id": "3495d084-1e8e-4740-a446-6f5333fe414b",
   "prevId": "c47f2d39-4599-45d0-9763-b82e7d4c12a5",
   "tables": {
     "account": {
@@ -1455,103 +1455,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "model_config_user_credentials": {
-      "name": "model_config_user_credentials",
-      "columns": {
-        "model_config_id": {
-          "name": "model_config_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "api_key": {
-          "name": "api_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "base_url": {
-          "name": "base_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
-        }
-      },
-      "indexes": {
-        "model_config_user_credentials_userId_idx": {
-          "name": "model_config_user_credentials_userId_idx",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "model_config_user_credentials_model_config_id_model_configs_id_fk": {
-          "name": "model_config_user_credentials_model_config_id_model_configs_id_fk",
-          "tableFrom": "model_config_user_credentials",
-          "tableTo": "model_configs",
-          "columnsFrom": [
-            "model_config_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "model_config_user_credentials_user_id_user_id_fk": {
-          "name": "model_config_user_credentials_user_id_user_id_fk",
-          "tableFrom": "model_config_user_credentials",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "model_config_user_credentials_model_config_id_user_id_pk": {
-          "columns": [
-            "model_config_id",
-            "user_id"
-          ],
-          "name": "model_config_user_credentials_model_config_id_user_id_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "model_configs": {
       "name": "model_configs",
       "columns": {
@@ -1679,14 +1582,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
-        },
-        "credential_scope": {
-          "name": "credential_scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'shared'"
         },
         "sort_order": {
           "name": "sort_order",
@@ -2575,6 +2470,86 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "voice_sessions": {
+      "name": "voice_sessions",
+      "columns": {
+        "chat_id": {
+          "name": "chat_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "auth_session_id": {
+          "name": "auth_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "voice_sessions_id_unique": {
+          "name": "voice_sessions_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "voice_sessions_user_id_user_id_fk": {
+          "name": "voice_sessions_user_id_user_id_fk",
+          "tableFrom": "voice_sessions",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "voice_sessions_auth_session_id_session_id_fk": {
+          "name": "voice_sessions_auth_session_id_session_id_fk",
+          "tableFrom": "voice_sessions",
+          "tableTo": "session",
+          "columnsFrom": [
+            "auth_session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

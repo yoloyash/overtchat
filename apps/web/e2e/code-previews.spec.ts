@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const svg =
   '<svg viewBox="0 0 240 120"><rect width="240" height="120" fill="teal"/><text x="20" y="65" fill="white">Hello SVG</text></svg>';
@@ -12,7 +12,7 @@ const fence = (language: string, source: string) =>
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Preview Tester");
   await page.locator("#email").fill("previews@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

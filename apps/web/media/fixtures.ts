@@ -114,3 +114,14 @@ export const agentSnapshot: AgentRuntimeSnapshot = {
     { id: "agent-answer", role: "assistant", timestamp: NOW + 2, content: [{ type: "text", text: "The reading list is ready.\n\n- Save a book from its detail page.\n- Find saved titles in **Your reading list**.\n- Mark a book as finished, or move it back to your list.\n\nThe list stays with your account when you switch devices.\n\n### What changed\n\n`src/components/ReadingList.tsx` — the list and its empty state.\n\n`src/lib/books.ts` — save, finish, and restore actions.\n\nThe save → finish → restore flow passes." }] },
   ],
 };
+
+/** The isolated media server uses the normal operator setup flow. */
+export async function demoSetupCode(baseURL: string): Promise<string> {
+  const response = await fetch(`${baseURL}/api/internal/management/setup`, {
+    headers: { Authorization: "Bearer readme-demo-management-secret-0000000000" },
+  });
+  if (!response.ok) throw new Error(`Demo setup code unavailable: ${response.status}`);
+  const { code } = await response.json() as { code: string | null };
+  if (!code) throw new Error("Demo database is already initialized.");
+  return code;
+}

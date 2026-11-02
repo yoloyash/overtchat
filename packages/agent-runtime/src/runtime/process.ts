@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder";
 import { Writable, type Readable } from "node:stream";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 
@@ -38,6 +39,25 @@ export type ProcessSpawner = (
   target: HostTarget,
   launch: AgentProcessHostLaunch,
 ) => AgentProcess;
+
+export type HostEnvironment = { platform: "posix" | "win32" };
+type HostEnvironmentResolver = (target: HostTarget) => Promise<HostEnvironment>;
+let configuredEnvironmentResolver: HostEnvironmentResolver | undefined;
+
+export function configureHostEnvironmentResolver(
+  resolver: HostEnvironmentResolver,
+): void {
+  configuredEnvironmentResolver = resolver;
+}
+
+export function inspectHostEnvironment(
+  target: HostTarget,
+): Promise<HostEnvironment> {
+  return (
+    configuredEnvironmentResolver?.(target) ??
+    Promise.resolve({ platform: "posix" })
+  );
+}
 
 let configuredSpawner: ProcessSpawner | undefined;
 
@@ -101,6 +121,7 @@ let configuredTcpTunnelOpener: TcpTunnelOpener | undefined;
 export function configureProcessSpawner(spawner: ProcessSpawner): void {
   configuredSpawner = spawner;
   configuredManagedSpawner = undefined;
+  configuredEnvironmentResolver = undefined;
 }
 
 export function configureTcpTunnelOpener(opener: TcpTunnelOpener): void {
@@ -147,29 +168,33 @@ const MAX_CAPTURE_BYTES = 2 * 1024 * 1024;
 export async function executeOnHost(
   target: HostTarget,
   launch: AgentProcessLaunch,
-  options: { timeoutMs?: number; stdin?: string } = {},
+  options: { timeoutMs?: number; stdin?: string; maxCaptureBytes?: number } = {},
 ): Promise<CommandResult> {
   const processHandle = spawnOnHost(target, launch);
   let stdout = "";
   let stderr = "";
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
   let capturedBytes = 0;
   let captureError: Error | null = null;
-  const append = (current: string, chunk: Buffer | string): string => {
-    const text = chunk.toString();
-    capturedBytes += Buffer.byteLength(text);
-    if (capturedBytes > MAX_CAPTURE_BYTES) {
+  const append = (current: string, chunk: Buffer | string, decoder: StringDecoder): string => {
+    const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    capturedBytes += bytes.length;
+    if (capturedBytes > (options.maxCaptureBytes ?? MAX_CAPTURE_BYTES)) {
       captureError = new Error("Agent command produced too much output.");
       processHandle.kill("SIGKILL");
       return current;
     }
-    return current + text;
+    return current + decoder.write(bytes);
   };
   processHandle.stdout.on("data", (chunk) => {
-    stdout = append(stdout, chunk);
+    stdout = append(stdout, chunk, stdoutDecoder);
   });
   processHandle.stderr.on("data", (chunk) => {
-    stderr = append(stderr, chunk);
+    stderr = append(stderr, chunk, stderrDecoder);
   });
+  let inputError: Error | undefined;
+  processHandle.stdin.on("error", (error: Error) => { inputError = error; });
   if (options.stdin !== undefined) processHandle.stdin.end(options.stdin);
   else processHandle.stdin.end();
 
@@ -192,6 +217,8 @@ export async function executeOnHost(
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+  stdout += stdoutDecoder.end();
+  stderr += stderrDecoder.end();
   if (captureError) throw captureError;
   if (exit.error)
     throw new Error(`Unable to start agent command: ${exit.error.message}`);
@@ -201,5 +228,6 @@ export async function executeOnHost(
         `Agent command exited with code ${exit.code ?? "unknown"}.`,
     );
   }
+  if (inputError) throw new Error(`Unable to write agent command input: ${inputError.message}`);
   return { stdout, stderr };
 }

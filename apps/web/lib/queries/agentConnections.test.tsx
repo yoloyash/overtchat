@@ -8,6 +8,8 @@ import {
   useAgentConnectionSessionDirectory,
   useAgentConnections,
 } from "./agentConnections";
+import { isAgentWorkspaceGitLive } from "./agentWorkspaceGitWatch";
+import { useAgentWorkspaceGitStatus } from "./agentWorkspaces";
 import { agentConnectionKeys } from "./keys";
 
 const connections: AgentConnectionListItem[] = [
@@ -81,6 +83,28 @@ function Probe() {
   return <div>{query.data?.[0]?.workspaces[0]?.sessions[0]?.runtimeStatus}</div>;
 }
 
+function GitProbe({ visible }: { visible: boolean }) {
+  const query = useAgentConnections();
+  useAgentConnectionSessionDirectory(query.data ?? []);
+  const git = useAgentWorkspaceGitStatus("workspace", { active: visible });
+  return <div>{git.data?.branch ?? "none"}</div>;
+}
+
+const pushedStatus = {
+  isGit: true,
+  repositoryRoot: "/workspace",
+  branch: "pushed",
+  upstream: null,
+  ahead: null,
+  behind: null,
+  dirty: false,
+  changedFiles: 0,
+  additions: 0,
+  deletions: 0,
+  lineStatsComplete: true,
+  files: [],
+};
+
 describe("agent connection session directory", () => {
   let container: HTMLElement;
   let root: Root;
@@ -153,8 +177,9 @@ describe("agent connection session directory", () => {
 
     expect(container.textContent).toBe("idle");
     expect(FakeEventSource.instances).toHaveLength(1);
-    expect(FakeEventSource.instances[0]!.url).toBe(
-      "/api/agent-connections/events",
+    // The page's client id lets the server send it alerts.
+    expect(FakeEventSource.instances[0]!.url).toMatch(
+      /^\/api\/agent-connections\/events\?client=[0-9a-f-]{36}$/,
     );
 
     await act(async () => {
@@ -188,5 +213,49 @@ describe("agent connection session directory", () => {
       )?.[0]?.workspaces[0]?.sessions[0]?.runtimeStatus,
     ).toBe("running");
 
+  });
+
+  it("subscribes visible workspaces and applies pushed Git statuses", async () => {
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <GitProbe visible />
+        </QueryClientProvider>,
+      );
+    });
+
+    const source = FakeEventSource.instances.at(-1)!;
+    expect(source.url).toMatch(
+      /^\/api\/agent-connections\/events\?client=[0-9a-f-]{36}&git=workspace$/,
+    );
+
+    await act(async () => {
+      source.emit("git", JSON.stringify({ workspaceId: "workspace", live: true }));
+      source.emit(
+        "git",
+        JSON.stringify({ workspaceId: "workspace", status: pushedStatus }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).toBe("pushed");
+    expect(isAgentWorkspaceGitLive("workspace")).toBe(true);
+
+    await act(async () => {
+      source.emit("error", "");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(isAgentWorkspaceGitLive("workspace")).toBe(false);
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <GitProbe visible={false} />
+        </QueryClientProvider>,
+      );
+    });
+    expect(source.close).toHaveBeenCalled();
+    expect(FakeEventSource.instances.at(-1)!.url).toMatch(
+      /^\/api\/agent-connections\/events\?client=[0-9a-f-]{36}$/,
+    );
   });
 });

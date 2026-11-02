@@ -2,6 +2,10 @@ import "server-only";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
 import {
   webSearchResults,
+  isDocumentOutput,
+  isDocumentToolPart,
+  isOpenUIToolPart,
+  openUIFallbackText,
   joinContinuationTextParts,
   type PersistedWebSearchOutput,
 } from "@overtchat/shared";
@@ -14,6 +18,10 @@ export function extractSearchText(parts: AnyPart[]): string {
   for (const p of joinContinuationTextParts(parts)) {
     if (p.type === "text" && typeof p.text === "string") {
       out.push(stripCitationMarkers(p.text));
+    } else if (isOpenUIToolPart(p)) {
+      out.push(openUIFallbackText(p));
+    } else if (isDocumentToolPart(p) && isDocumentOutput(p.output)) {
+      out.push(p.output.title, p.output.content);
     } else if (p.type === "reasoning" && typeof p.text === "string") {
       out.push(p.text);
     } else if (p.type === "tool-web_search") {

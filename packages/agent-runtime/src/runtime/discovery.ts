@@ -1,5 +1,6 @@
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
-import { AGENT_PROVIDERS } from "@overtchat/agent-bridge";
+import { AGENT_PROVIDERS, isAbsoluteAgentPath } from "@overtchat/agent-bridge";
+import { WINDOWS_COMMAND_SCRIPT } from "./windows-command";
 import type {
   AgentConnectionDraft,
   AgentDiscoveryTarget,
@@ -8,6 +9,7 @@ import type {
 } from "@overtchat/agent-bridge";
 import {
   executeOnHost,
+  inspectHostEnvironment,
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
 
@@ -15,6 +17,27 @@ const AGENT_SHELL_MODES = [
   "interactive",
   "login",
 ] as const satisfies readonly ConnectorShellMode[];
+
+const WINDOWS_DISCOVERY_SCRIPT = `${WINDOWS_COMMAND_SCRIPT}
+Promise.all(process.argv.slice(1).map(candidate => new Promise(resolve => {
+  let launch;
+  try { launch = commandLaunch(candidate, ['--version']); } catch { resolve(); return; }
+  const child = cp.spawn(launch.command, launch.args, { windowsHide: true, windowsVerbatimArguments: launch.windowsVerbatimArguments });
+  let output = ''; let overflow = false;
+  const append = chunk => { if (output.length < 65536) output += chunk.toString(); else overflow = true; };
+  child.stdout.on('data', append); child.stderr.on('data', append); child.stdin.end();
+  const timer = setTimeout(() => {
+    if (child.pid) cp.spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 2000 });
+    resolve();
+  }, 8000);
+  child.on('error', () => { clearTimeout(timer); resolve(); });
+  child.on('close', code => {
+    clearTimeout(timer);
+    if (code === 0 && !overflow) process.stdout.write(candidate + '\\0' + resolveCommand(candidate) + '\\0' + output + '\\0');
+    resolve();
+  });
+}))).catch(error => { console.error(error.message); process.exitCode = 1; });
+`;
 
 export const AGENT_INSTALLATION_DISCOVERY_SCRIPT = String.raw`
 set -u
@@ -78,9 +101,7 @@ export function parseAgentVersion(output: string): string | null {
   return output.match(/\d+\.\d+\.\d+(?:[-+][^\s]+)?/u)?.[0] ?? null;
 }
 
-export function shellModesForTarget(
-  target: HostTarget,
-): ConnectorShellMode[] {
+export function shellModesForTarget(target: HostTarget): ConnectorShellMode[] {
   if (!target.shellMode) return [...AGENT_SHELL_MODES];
   return [
     target.shellMode,
@@ -116,18 +137,31 @@ export function targetForDiscovery(target: AgentDiscoveryTarget): HostTarget {
 async function discoverAgentInstallationsInMode(
   target: HostTarget,
   shellMode: ConnectorShellMode,
+  windows = false,
 ): Promise<DetectedAgentInstallation[]> {
   const resolvedTarget = targetWithShellMode(target, shellMode);
   const providers = Object.values(AGENT_PROVIDERS);
-  const result = await executeOnHost(resolvedTarget, {
-    command: "/bin/sh",
-    args: [
-      "-c",
-      AGENT_INSTALLATION_DISCOVERY_SCRIPT,
-      "overtchat-agent-discovery",
-      ...providers.map(({ executable }) => executable),
-    ],
-  });
+  const result = await executeOnHost(
+    resolvedTarget,
+    windows
+      ? {
+          command: "node",
+          args: [
+            "-e",
+            WINDOWS_DISCOVERY_SCRIPT,
+            ...providers.map(({ executable }) => executable),
+          ],
+        }
+      : {
+          command: "/bin/sh",
+          args: [
+            "-c",
+            AGENT_INSTALLATION_DISCOVERY_SCRIPT,
+            "overtchat-agent-discovery",
+            ...providers.map(({ executable }) => executable),
+          ],
+        },
+  );
   const fields = result.stdout.split("\0");
   if (fields.at(-1) === "") fields.pop();
   const installations = new Map<AgentProviderId, DetectedAgentInstallation>();
@@ -141,7 +175,8 @@ async function discoverAgentInstallationsInMode(
     const version = parseAgentVersion(versionOutput ?? "");
     if (
       provider &&
-      executable?.startsWith("/") &&
+      executable &&
+      isAbsoluteAgentPath(executable) &&
       executable.length <= 500 &&
       version
     ) {
@@ -162,6 +197,9 @@ async function discoverAgentInstallationsInMode(
 export async function discoverAgentInstallations(
   target: HostTarget,
 ): Promise<DetectedAgentInstallation[]> {
+  if ((await inspectHostEnvironment(target)).platform === "win32") {
+    return discoverAgentInstallationsInMode(target, "login", true);
+  }
   const providers = Object.values(AGENT_PROVIDERS);
   const found = new Map<AgentProviderId, DetectedAgentInstallation>();
   let successfulMode = false;

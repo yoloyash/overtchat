@@ -10,6 +10,7 @@ import {
   agentWorkspaceHasRunningSession,
   visibleAgentSessions,
   withAgentSessionDirectory,
+  withAgentSessionReadState,
 } from "./sidebar";
 
 function sessions(count: number): AgentSessionListItem[] {
@@ -69,6 +70,27 @@ describe("agent sessions in the sidebar", () => {
       ...all.slice(0, AGENT_SESSION_PREVIEW_COUNT).map((session) => session.id),
       "session-14",
       "session-15",
+    ]);
+  });
+
+  it("keeps sessions waiting on the owner visible outside the recent preview", () => {
+    const all = sessions(20);
+    all[12]!.attention = {
+      kind: "question",
+      id: "request",
+      requestedAt: 1,
+      title: "Route",
+    };
+    all[16]!.lastTurn = { outcome: "completed", startedAt: 1, endedAt: 2 };
+    all[18]!.lastTurn = { outcome: "completed", startedAt: 1, endedAt: 2 };
+    all[18]!.readTurnEndedAt = 2;
+
+    expect(
+      visibleAgentSessions(all, false, null).map((session) => session.id),
+    ).toEqual([
+      ...all.slice(0, AGENT_SESSION_PREVIEW_COUNT).map((session) => session.id),
+      "session-12",
+      "session-16",
     ]);
   });
 
@@ -153,5 +175,104 @@ describe("agent sessions in the sidebar", () => {
         (session) => session.runtimeStatus,
       ),
     ).toEqual(["exited", "idle"]);
+  });
+
+  it("merges attention and turn results without regressing stored turns", () => {
+    const stored = { outcome: "completed", startedAt: 1, endedAt: 2 } as const;
+    const all = sessions(1).map((session) => ({ ...session, lastTurn: stored }));
+    const connections = [
+      {
+        id: "connection",
+        provider: "pi",
+        executable: "pi",
+        detectedVersion: null,
+        lastValidatedAt: null,
+        host: {
+          id: "host",
+          connectorId: "connector",
+          name: "This machine",
+          transport: "local",
+          sshAlias: null,
+        },
+        workspaces: [{ id: "workspace", path: "/w", name: "w", sessions: all }],
+      },
+    ] satisfies AgentConnectionListItem[];
+    const attention = {
+      kind: "approval",
+      id: "request",
+      requestedAt: 5,
+      title: "Allow Bash",
+    } as const;
+    const waiting = withAgentSessionDirectory(connections, [
+      {
+        sessionId: "session-0",
+        runtimeStatus: "running",
+        turnStartedAt: 3,
+        attention,
+        lastTurn: null,
+      },
+    ]);
+    expect(waiting[0]!.workspaces[0]!.sessions[0]).toMatchObject({
+      runtimeStatus: "running",
+      turnStartedAt: 3,
+      attention,
+      lastTurn: stored,
+    });
+    // An identical entry leaves the cached list untouched.
+    expect(
+      withAgentSessionDirectory(waiting, [
+        {
+          sessionId: "session-0",
+          runtimeStatus: "running",
+          turnStartedAt: 3,
+          attention: { ...attention },
+        },
+      ]),
+    ).toBe(waiting);
+
+    const finished = { outcome: "completed", startedAt: 3, endedAt: 9, preview: "Done." } as const;
+    const done = withAgentSessionDirectory(waiting, [
+      { sessionId: "session-0", runtimeStatus: "idle", lastTurn: finished },
+    ]);
+    expect(done[0]!.workspaces[0]!.sessions[0]).toMatchObject({
+      runtimeStatus: "idle",
+      turnStartedAt: null,
+      attention: null,
+      lastTurn: finished,
+    });
+  });
+
+  it("moves a session's read watermark without touching other sessions", () => {
+    const all = sessions(2);
+    all[0]!.lastTurn = { outcome: "completed", startedAt: 1, endedAt: 50 };
+    all[0]!.readTurnEndedAt = 10;
+    const connections = [
+      {
+        id: "connection",
+        provider: "pi",
+        executable: "pi",
+        detectedVersion: null,
+        lastValidatedAt: null,
+        host: {
+          id: "host",
+          connectorId: "connector",
+          name: "This machine",
+          transport: "local",
+          sshAlias: null,
+        },
+        workspaces: [{ id: "workspace", path: "/w", name: "w", sessions: all }],
+      },
+    ] satisfies AgentConnectionListItem[];
+    const read = withAgentSessionReadState(connections, "session-0", true);
+    expect(read[0]!.workspaces[0]!.sessions[0]!.readTurnEndedAt).toBe(50);
+    expect(read[0]!.workspaces[0]!.sessions[1]).toBe(all[1]);
+    expect(withAgentSessionReadState(read, "session-0", true)).toBe(read);
+
+    const unread = withAgentSessionReadState(read, "session-0", false);
+    expect(unread[0]!.workspaces[0]!.sessions[0]!.readTurnEndedAt).toBe(49);
+    // A session without a finished turn has nothing to mark.
+    expect(withAgentSessionReadState(connections, "session-1", true)).toBe(
+      connections,
+    );
   });
 });

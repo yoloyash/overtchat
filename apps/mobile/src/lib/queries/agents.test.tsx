@@ -7,7 +7,11 @@ import type { AgentSessionStream } from "@/lib/agents/stream";
 import type { NetworkState } from "expo-network";
 import { snapshot } from "@/lib/agents/test-fixtures";
 import { queryKeys } from "./keys";
-import { useAgentSession, useAgentConnections } from "./agents";
+import {
+  useAgentSession,
+  useAgentConnections,
+  useMarkAgentSessionSeen,
+} from "./agents";
 
 type StreamOptions = ConstructorParameters<typeof AgentSessionStream>[0];
 const mocks = vi.hoisted(() => ({
@@ -255,4 +259,34 @@ it("fetches drawer recents on opening and keeps the cache when closed", async ()
   expect(connections.data).toEqual([]);
   await renderDrawer(true);
   expect(mocks.fetch.mock.calls.length).toBeGreaterThan(requests);
+});
+
+it("marks the open session seen when it is idle in the foreground, not while it runs", async () => {
+  mocks.fetch.mockResolvedValue(new Response(null, { status: 204 }));
+  function Seen({ status }: { status: "idle" | "running" | undefined }) {
+    useMarkAgentSessionSeen("session", status);
+    return null;
+  }
+  const render = (status: "idle" | "running" | undefined) =>
+    act(async () =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <Seen status={status} />
+        </QueryClientProvider>,
+      ),
+    );
+  await render(undefined);
+  await render("running");
+  expect(mocks.fetch).not.toHaveBeenCalled();
+  await render("idle");
+  expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(
+    "/api/agent-sessions/session/read",
+    expect.objectContaining({ method: "PUT", body: JSON.stringify({ read: true }) }),
+  );
+  // A session opened in the background waits for the foreground.
+  await act(async () => root.unmount());
+  mocks.foreground = false;
+  root = createRoot(container);
+  await render("idle");
+  expect(mocks.fetch).toHaveBeenCalledTimes(1);
 });

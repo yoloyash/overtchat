@@ -20,7 +20,8 @@ concurrency:
 jobs:
   build-android:
     if: github.event_name == 'push' || (inputs.platform != 'ios' && inputs.platform != 'ios-release')
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     permissions:
       contents: read
     outputs:
@@ -39,6 +40,11 @@ jobs:
           node-version: 22.x
           cache: npm
           cache-dependency-path: package-lock.json
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Install dependencies
         run: npm ci
@@ -66,16 +72,22 @@ jobs:
 
       # The gate below evaluates the Expo config, so gitignored mobile secret
       # material must be installed before any config evaluation.
-      - name: Install local Android credentials
+      - name: Install Android release credentials
+        working-directory: apps/mobile
+        env:
+          ANDROID_CREDENTIALS_JSON: ${{ secrets.ANDROID_CREDENTIALS_JSON }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
         run: |
-          CREDENTIALS_DIR="${OVERTCHAT_MOBILE_CREDENTIALS_DIR:-$HOME/.overtchat/mobile-credentials}"
-          if [[ ! -f apps/mobile/credentials.json ]]; then
-            cp "$CREDENTIALS_DIR/credentials.json" apps/mobile/credentials.json
-            cp -R "$CREDENTIALS_DIR/credentials" apps/mobile/credentials
+          if [[ -z "$ANDROID_CREDENTIALS_JSON" || -z "$ANDROID_KEYSTORE_BASE64" || -z "$ANDROID_GOOGLE_SERVICES_JSON" ]]; then
+            echo "::error::Configure ANDROID_CREDENTIALS_JSON, ANDROID_KEYSTORE_BASE64, and ANDROID_GOOGLE_SERVICES_JSON in GitHub Actions secrets."
+            exit 1
           fi
-          if [[ ! -f apps/mobile/google-services.json ]]; then
-            cp "$CREDENTIALS_DIR/google-services.json" apps/mobile/google-services.json
-          fi
+          umask 077
+          mkdir -p credentials/android
+          printf '%s' "$ANDROID_CREDENTIALS_JSON" > credentials.json
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > credentials/android/keystore.jks
+          printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON" > google-services.json
 
       # A secret-visibility DSN is unreadable here and ships crash reporting
       # silently disabled, which is how 1.2.3 went out.
@@ -112,15 +124,38 @@ jobs:
             --platform android --profile production \
             --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab"
 
-      - name: Build APK locally
-        working-directory: apps/mobile
+      # The sideload APK comes from the store bundle, so both hold the same build
+      # and a second native compile cannot add time or fail on its own.
+      - name: Install bundletool
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUNDLETOOL_VERSION: 1.18.3
+          BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
         run: |
-          mkdir -p ../../dist/mobile
-          npx eas-cli@20 build --local --non-interactive \
-            --platform android --profile production-apk \
-            --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$RUNNER_TEMP/bundletool.jar" \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          echo "$BUNDLETOOL_SHA256  $RUNNER_TEMP/bundletool.jar" | sha256sum --check --strict
+
+      - name: Build APK from the AAB
+        working-directory: apps/mobile
+        run: |
+          umask 077
+          node -e '
+            const { keystorePassword, keyPassword } = require("./credentials.json").android.keystore;
+            const fs = require("node:fs");
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/ks-pass", keystorePassword);
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/key-pass", keyPassword);
+          '
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+            --mode=universal \
+            --bundle="../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab" \
+            --output="$RUNNER_TEMP/universal.apks" \
+            --ks=credentials/android/keystore.jks \
+            --ks-pass="file:$RUNNER_TEMP/ks-pass" \
+            --ks-key-alias="$(node -p 'require("./credentials.json").android.keystore.keyAlias')" \
+            --key-pass="file:$RUNNER_TEMP/key-pass"
+          rm -f "$RUNNER_TEMP/ks-pass" "$RUNNER_TEMP/key-pass"
+          unzip -p "$RUNNER_TEMP/universal.apks" universal.apk \
+            > "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
 
       - name: Verify Firebase configuration in the production APK
         run: node .github/scripts/check-mobile-push.mjs --apk "dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
@@ -190,7 +225,7 @@ jobs:
   publish-android:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')
     needs: [build-android, smoke-android]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     defaults:

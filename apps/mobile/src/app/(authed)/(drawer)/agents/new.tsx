@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Keyboard, View } from "react-native";
+import { ActivityIndicator, Keyboard, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,13 +19,19 @@ import { resolveAgentSessionDraftSelection } from "@overtchat/shared/agent-creat
 import { AgentSessionHeaderTitle } from "@/components/agents/AgentSessionHeader";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { AgentComposer } from "@/components/agents/AgentComposer";
-import { AgentControls } from "@/components/agents/AgentControls";
+import {
+  AgentControls,
+  type AgentSettingsPanel,
+} from "@/components/agents/AgentControls";
 import {
   AgentButton,
-  AgentSheet,
   AgentFeedback,
+  AgentNotice,
+  AgentSheet,
   AgentText,
 } from "@/components/agents/AgentPrimitives";
+import { ErrorNotice } from "@/components/ErrorNotice";
+import { thinkingLabel } from "@/lib/agents/model";
 import { toastError } from "@/lib/toast";
 import { useTheme } from "@/lib/theme";
 import { useAgentConnections, useAgentCatalog } from "@/lib/queries/agents";
@@ -96,7 +102,7 @@ function NewAgent({
   const [config, setConfig] = useState<AgentSessionLaunchConfig>(
     draft.forkContext?.launchConfig ?? {},
   );
-  const [settings, setSettings] = useState(false);
+  const [settings, setSettings] = useState<AgentSettingsPanel | null>(null);
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
   const mounted = useRef(true);
@@ -260,58 +266,59 @@ function NewAgent({
         </AgentText>
         <AgentText muted>{name}</AgentText>
       </View>
-      {(catalog.isPending ||
-        catalog.error ||
-        error ||
-        storageError ||
-        (catalog.data && !model)) && (
-        <AgentFeedback
-          loading={catalog.isPending}
-          error={
-            error ??
-            storageError ??
-            catalog.error?.message ??
-            (catalog.data && !model
-              ? "No models are available for this agent."
-              : undefined)
-          }
-          retry={catalog.error ? () => void catalog.refetch() : undefined}
-        />
-      )}
-      <View style={{ paddingBottom: keyboard ? 0 : insets.bottom }}>
+      <View
+        style={{
+          paddingHorizontal: 12,
+          paddingTop: 8,
+          paddingBottom: keyboard ? 8 : 12 + insets.bottom,
+          gap: 8,
+        }}
+      >
+        {catalog.isPending && (
+          <ActivityIndicator
+            accessibilityLabel="Loading models"
+            color={colors.mutedForeground}
+          />
+        )}
+        {!!(
+          error ||
+          storageError ||
+          catalog.error ||
+          (catalog.data && !model)
+        ) && (
+          <ErrorNotice
+            message={
+              error ??
+              storageError ??
+              catalog.error?.message ??
+              "No models are available for this agent."
+            }
+            action={
+              catalog.error
+                ? { label: "Retry", onPress: () => void catalog.refetch() }
+                : undefined
+            }
+          />
+        )}
         {draft.forkContext && (
-          <View style={{ padding: 12 }}>
-            <AgentButton
-              label={`Workspace: ${workspaceOptions.find((option) => option.id === targetWorkspace)?.label ?? name}`}
-              onPress={() => setWorkspacePicker(true)}
-            />
-            <AgentSheet
-              visible={workspacePicker}
-              title="Fork workspace"
-              onClose={() => setWorkspacePicker(false)}
-            >
-              {workspaceOptions.map((option) => (
-                <AgentButton
-                  key={option.id}
-                  label={option.label}
-                  onPress={() => {
-                    setTargetWorkspace(option.id);
-                    setWorkspacePicker(false);
-                  }}
-                />
-              ))}
-            </AgentSheet>
-            <AgentText>Chat history attached</AgentText>
-            <AgentButton
-              label="Remove history"
-              onPress={() =>
-                setDraft(
-                  ({ forkContext: _context, ...current }) => current,
-                  true,
-                )
-              }
-            />
-          </View>
+          <AgentNotice
+            icon="git-branch-outline"
+            message={`Chat history attached · ${workspaceOptions.find((option) => option.id === targetWorkspace)?.label ?? name}`}
+            actions={[
+              {
+                label: "Change workspace",
+                onPress: () => setWorkspacePicker(true),
+              },
+              {
+                label: "Remove history",
+                onPress: () =>
+                  setDraft(
+                    ({ forkContext: _context, ...current }) => current,
+                    true,
+                  ),
+              },
+            ]}
+          />
         )}
         <AgentComposer
           draft={draft}
@@ -324,23 +331,47 @@ function NewAgent({
           running={false}
           isAdmin={isAdmin}
           modelLabel={model?.label ?? "Loading model…"}
-          thinkingLabel={selection.thinkingOptionId || undefined}
-          modeLabel={
-            selection.modes.find((mode) => mode.id === selection.modeId)
-              ?.label ?? ""
-          }
+          thinkingLabel={thinkingLabel(model ?? undefined, selection.thinkingOptionId)}
+          permission={(() => {
+            const mode = selection.modes.find((item) => item.id === selection.modeId);
+            return mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined;
+          })()}
           onSettings={() => {
             Keyboard.dismiss();
-            setSettings(true);
+            setSettings("settings");
+          }}
+          onPermissions={() => {
+            Keyboard.dismiss();
+            setSettings("permissions");
           }}
           onSend={() => void send()}
           onStop={() => {}}
         />
       </View>
+      {draft.forkContext && (
+        <AgentSheet
+          visible={workspacePicker}
+          title="Fork workspace"
+          onClose={() => setWorkspacePicker(false)}
+        >
+          {workspaceOptions.map((option) => (
+            <AgentButton
+              key={option.id}
+              label={option.label}
+              selected={option.id === targetWorkspace}
+              onPress={() => {
+                setTargetWorkspace(option.id);
+                setWorkspacePicker(false);
+              }}
+            />
+          ))}
+        </AgentSheet>
+      )}
       <AgentControls
-        visible={settings}
+        visible={settings !== null}
+        initialPanel={settings ?? "settings"}
         provider={provider}
-        onClose={() => setSettings(false)}
+        onClose={() => setSettings(null)}
         models={catalog.data?.models ?? []}
         modelId={model?.id ?? ""}
         modes={selection.modes}

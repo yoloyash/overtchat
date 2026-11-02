@@ -1,5 +1,14 @@
 import "server-only";
-import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentConnections,
@@ -16,6 +25,7 @@ import type {
   AgentSessionLaunchConfig,
   AgentSessionListItem,
   AgentTransportId,
+  AgentTurnSummary,
 } from "@overtchat/agent-bridge";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 import { resolveInitialAgentSessionTitle } from "@/lib/agents/sessionTitle";
@@ -58,6 +68,8 @@ export type AgentWorkspaceInstallation = NewAgentConnection & {
   workspace: {
     path: string;
     name: string;
+    /** Defaults to that of the folder's workspaces for other agents on the host. */
+    worktreeParentPath?: string | null;
   };
   sessions: ProviderSessionMetadata[];
   ids?: {
@@ -70,7 +82,8 @@ export type AgentWorkspaceInstallation = NewAgentConnection & {
 
 export type ProviderSessionMetadata = AgentProviderSessionMetadata;
 
-function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
+/** Stored session fields; callers overlay live connector state. */
+export function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
   return {
     id: row.id,
     providerSessionId: row.providerSessionId,
@@ -80,6 +93,10 @@ function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
     createdAt: row.providerCreatedAt?.getTime() ?? null,
     modifiedAt: row.providerModifiedAt?.getTime() ?? null,
     runtimeStatus: "idle",
+    turnStartedAt: null,
+    attention: null,
+    lastTurn: row.lastTurn ?? null,
+    readTurnEndedAt: row.readTurnEndedAt,
   };
 }
 
@@ -128,6 +145,7 @@ export async function listAgentConnections(
       id: row.id,
       path: row.path,
       name: row.name,
+      worktreeParentPath: row.worktreeParentPath,
       sessions: sessionsByWorkspace.get(row.id) ?? [],
     });
     workspacesByConnection.set(row.connectionId, workspaces);
@@ -242,6 +260,36 @@ export async function findOwnedAgentWorkspaceForTargetProvider(input: {
     )
     .limit(1);
   return row ?? null;
+}
+
+/** Every agent's workspace for the same folder on the same host as `workspace`. */
+export async function listOwnedAgentWorkspaceFolderRows(
+  owned: OwnedAgentWorkspace,
+  userId: string,
+): Promise<OwnedAgentWorkspace[]> {
+  return db
+    .select({
+      host: agentHosts,
+      connection: agentConnections,
+      workspace: agentWorkspaces,
+    })
+    .from(agentWorkspaces)
+    .innerJoin(
+      agentConnections,
+      eq(agentWorkspaces.connectionId, agentConnections.id),
+    )
+    .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+    .where(
+      and(
+        eq(agentHosts.userId, userId),
+        eq(agentHosts.connectorId, owned.host.connectorId),
+        eq(agentHosts.transport, owned.host.transport),
+        owned.host.sshAlias === null
+          ? isNull(agentHosts.sshAlias)
+          : eq(agentHosts.sshAlias, owned.host.sshAlias),
+        eq(agentWorkspaces.path, owned.workspace.path),
+      ),
+    );
 }
 
 export async function findOwnedAgentConnectionForTargetProvider(input: {
@@ -495,6 +543,28 @@ export function saveAgentWorkspaceInstallation(
             connectionId: owned.connection.id,
             path: input.workspace.path,
             name: input.workspace.name,
+            // A folder is one workspace across agents, so an agent added
+            // later inherits the folder's worktree origin.
+            worktreeParentPath:
+              input.workspace.worktreeParentPath ??
+              tx
+                .select({ parent: agentWorkspaces.worktreeParentPath })
+                .from(agentWorkspaces)
+                .innerJoin(
+                  agentConnections,
+                  eq(agentWorkspaces.connectionId, agentConnections.id),
+                )
+                .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+                .where(
+                  and(
+                    agentHostTargetCondition(input),
+                    eq(agentWorkspaces.path, input.workspace.path),
+                    isNotNull(agentWorkspaces.worktreeParentPath),
+                  ),
+                )
+                .limit(1)
+                .get()?.parent ??
+              null,
           })
           .returning()
           .get();
@@ -762,6 +832,48 @@ export async function updateAgentSessionMetadata(
       lastSyncedAt: new Date(),
     })
     .where(eq(agentSessions.id, id));
+}
+
+/** Stores a turn result unless a later one is already stored. */
+export function recordAgentSessionLastTurn(
+  id: string,
+  lastTurn: AgentTurnSummary,
+): void {
+  db.update(agentSessions)
+    .set({ lastTurn })
+    .where(
+      and(
+        eq(agentSessions.id, id),
+        sql`coalesce(json_extract(${agentSessions.lastTurn}, '$.endedAt'), -1) < ${lastTurn.endedAt}`,
+      ),
+    )
+    .run();
+}
+
+/** Marks the stored latest turn as seen; the watermark never moves back. */
+export function markAgentSessionRead(id: string): void {
+  db.update(agentSessions)
+    .set({
+      readTurnEndedAt: sql`max(coalesce(${agentSessions.readTurnEndedAt}, -1), json_extract(${agentSessions.lastTurn}, '$.endedAt'))`,
+    })
+    .where(
+      and(eq(agentSessions.id, id), isNotNull(agentSessions.lastTurn)),
+    )
+    .run();
+}
+
+/** Rewinds the watermark so the latest finished turn reads as unread. */
+export function markAgentSessionUnread(id: string): boolean {
+  const result = db
+    .update(agentSessions)
+    .set({
+      readTurnEndedAt: sql`json_extract(${agentSessions.lastTurn}, '$.endedAt') - 1`,
+    })
+    .where(
+      and(eq(agentSessions.id, id), isNotNull(agentSessions.lastTurn)),
+    )
+    .run();
+  return result.changes > 0;
 }
 
 export async function renameAgentSession(

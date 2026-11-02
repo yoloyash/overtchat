@@ -83,6 +83,9 @@ export function connectionInstructions(config: InstallationConfig): string {
   if (access?.mode === "tailscale") {
     return "Connect your phone or computer to Tailscale, then open the address below and sign in to OvertChat.";
   }
+  if (access?.mode === "cloud") {
+    return "Open the address below on any device and sign in. To share OvertChat, add people under Settings → Users and send them the address.";
+  }
   if (access?.mode !== "advanced") return "";
   const location = access.proxyLocation ?? "host";
   const target =

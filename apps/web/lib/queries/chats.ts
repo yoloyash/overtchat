@@ -11,7 +11,7 @@ import type { UIMessage } from "ai";
 import { getChatQueueStore, type ChatKind } from "@overtchat/shared";
 import { CHAT_MESSAGE_PAGE_SIZE } from "@/lib/chat/history";
 import { chatKeys, libraryKeys } from "@/lib/queries/keys";
-import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
+import type { ChatUsageResponse } from "@/lib/usage/types";
 import { apiUrl } from "@/lib/api-url";
 
 export type ChatListItem = {
@@ -91,13 +91,12 @@ export function setActiveChatInCache(
 export function useChatUsage(id: string, enabled = true) {
   return useQuery({
     queryKey: chatKeys.usage(id),
-    queryFn: async (): Promise<UsageTotals> => {
+    queryFn: async (): Promise<ChatUsageResponse> => {
       const response = await fetch(
         apiUrl(`/api/chat/${encodeURIComponent(id)}/usage`),
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const body = (await response.json()) as ChatUsageResponse;
-      return body.usage;
+      return (await response.json()) as ChatUsageResponse;
     },
     enabled,
   });
@@ -115,10 +114,12 @@ export type ChatMessagesPage = {
 export async function fetchChatMessagesPage(
   id: string,
   cursor?: string,
+  limit = CHAT_MESSAGE_PAGE_SIZE,
 ): Promise<ChatMessagesPage | null> {
   const params = new URLSearchParams({
+    openui: "1",
     ...(cursor ? { cursor } : {}),
-    limit: String(CHAT_MESSAGE_PAGE_SIZE),
+    limit: String(limit),
   });
   const response = await fetch(
     apiUrl(`/api/chat/${encodeURIComponent(id)}/messages?${params}`),
@@ -130,8 +131,8 @@ export async function fetchChatMessagesPage(
 
 export function useLoadOlderChatMessages(id: string) {
   return useMutation({
-    mutationFn: async (cursor: string) => {
-      const page = await fetchChatMessagesPage(id, cursor);
+    mutationFn: async ({ cursor, limit }: { cursor: string; limit?: number }) => {
+      const page = await fetchChatMessagesPage(id, cursor, limit);
       if (!page) throw new Error("HTTP 404");
       return page;
     },

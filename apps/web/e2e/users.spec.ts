@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -7,7 +7,7 @@ test("recover a forgotten password from Users and explain recovery on login", as
   browser,
   page,
 }, testInfo) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.getByLabel("Name").fill("Recovery Admin");
   await page.getByLabel("Email").fill("recovery-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -105,7 +105,7 @@ test("change user roles and keep Agent Connections administrator-only", async ({
   browser,
   page,
 }, testInfo) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.getByLabel("Name").fill("Role Admin");
   await page.getByLabel("Email").fill("role-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

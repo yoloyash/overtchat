@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.getByLabel("Name", { exact: true }).fill("Mobile Tester");
   await page.getByLabel("Email").fill("mobile@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -78,6 +78,12 @@ for (const mobile of [false, true]) {
       });
       await route.fulfill({ response });
     });
+    // The one-time two-factor prompt is already marked as shown on localhost only.
+    await page
+      .context()
+      .addInitScript(() =>
+        localStorage.setItem("overtchat_two_factor_prompted", "e2e"),
+      );
     await page.goto(networkOrigin);
     if (mobile)
       await page.getByRole("button", { name: "Open sidebar" }).click();

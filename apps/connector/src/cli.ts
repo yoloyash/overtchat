@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import os from "node:os";
 import {
+  HOST_CONNECTOR_INSECURE_HTTP_FLAG,
+  isInsecureHostConnectorServerUrl,
+} from "@overtchat/agent-bridge";
+import {
   normalizeServerUrl,
   connectorLockPath,
   connectorStatePath,
@@ -13,9 +17,11 @@ import {
   installUserService,
 } from "./service.js";
 import { CONNECTOR_VERSION } from "./version.js";
+import { runConnectorTerminalSmoke } from "./terminal.js";
 import { configureServiceLogging } from "./service-logging.js";
 import { ConnectorInstanceLock } from "./lock.js";
 import { backupConnectorJournal } from "./journal-backup.js";
+import { stopWindowsService, uninstallWindowsService, watchWindowsServiceStop } from "./windows-service.js";
 
 type ParsedArgs = {
   command: string;
@@ -87,6 +93,10 @@ function parseArgs(argv: string[]): ParsedArgs {
   for (let index = 0; index < rest.length; index++) {
     const key = rest[index];
     if (!key?.startsWith("--")) throw new Error(`Unexpected argument: ${key}`);
+    if (key === HOST_CONNECTOR_INSECURE_HTTP_FLAG) {
+      values.set(key.slice(2), "true");
+      continue;
+    }
     const value = rest[++index];
     if (!value || value.startsWith("--")) {
       throw new Error(`Missing value for ${key}.`);
@@ -96,12 +106,19 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { command, values };
 }
 
+function insecureHttpWarning(serverUrl: string): string {
+  return `${serverUrl} is reached over cleartext HTTP (${HOST_CONNECTOR_INSECURE_HTTP_FLAG}). Anyone on that network path can read the connector token and run processes on this computer.`;
+}
+
 async function pair(values: Map<string, string>): Promise<void> {
   const pairCode = values.get("pair-code");
   if (!pairCode) throw new Error("--pair-code is required.");
   const server = values.get("server");
   if (!server) throw new Error("--server is required.");
-  const serverUrl = normalizeServerUrl(server);
+  const allowInsecureHttp = values.has(HOST_CONNECTOR_INSECURE_HTTP_FLAG.slice(2));
+  const serverUrl = normalizeServerUrl(server, { allowInsecureHttp });
+  const insecure = isInsecureHostConnectorServerUrl(serverUrl);
+  if (insecure) console.warn(insecureHttpWarning(serverUrl));
   const response = await fetch(`${serverUrl}/api/host-connectors/pair`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -122,13 +139,15 @@ async function pair(values: Map<string, string>): Promise<void> {
     serverUrl,
     connectorId: data.connectorId,
     token: data.token,
+    ...(insecure ? { allowInsecureHttp: true as const } : {}),
   });
   console.log(`Paired with ${serverUrl}`);
 }
 
-async function run(): Promise<void> {
+async function run(service = false): Promise<void> {
   const config = await readConnectorConfig();
   const client = await ConnectorClient.create(config);
+  let cleanupService: (() => Promise<void>) | undefined;
   const stop = () => {
     void client.stop().catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));
@@ -138,10 +157,13 @@ async function run(): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   console.log(`Connecting to ${config.serverUrl}`);
+  if (config.allowInsecureHttp) console.warn(insecureHttpWarning(config.serverUrl));
   try {
+    cleanupService = service ? await watchWindowsServiceStop(() => client.stop()) : undefined;
     await client.run();
   } finally {
     await client.stop();
+    await cleanupService?.();
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
   }
@@ -155,8 +177,14 @@ async function preflight(): Promise<void> {
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
-  if (parsed.command === "run") configureServiceLogging();
+  if (parsed.command === "run" || parsed.command === "service-run") configureServiceLogging(parsed.command === "service-run");
   switch (parsed.command) {
+    case "service-stop":
+    case "service-uninstall":
+      if (process.platform !== "win32" || parsed.values.size > 0) throw new Error(`${parsed.command} is a Windows service command and takes no arguments.`);
+      if (parsed.command === "service-stop") await stopWindowsService();
+      else await uninstallWindowsService();
+      return;
     case "service-install":
       if (parsed.values.size > 0) throw new Error("service-install takes no arguments.");
       console.log(`Service installed at ${await installUserService()}`);
@@ -177,13 +205,15 @@ async function main(): Promise<void> {
       }
       await installManaged();
       return;
+    case "service-run":
     case "run":
       if (parsed.values.size > 0) {
         throw new Error(
           "The run command does not accept options; it uses the provisioned connector configuration.",
         );
       }
-      await run();
+      if (parsed.command === "service-run" && process.platform !== "win32") throw new Error("service-run is only used by the Windows scheduled task.");
+      await run(parsed.command === "service-run");
       return;
     case "preflight":
       if (parsed.values.size > 0) {
@@ -206,9 +236,16 @@ async function main(): Promise<void> {
       }
       console.log(CONNECTOR_VERSION);
       return;
+    case "terminal-smoke":
+      if ([...parsed.values.keys()].some((key) => key !== "output-bytes")) {
+        throw new Error("The terminal-smoke command only accepts --output-bytes.");
+      }
+      await runConnectorTerminalSmoke(Number(parsed.values.get("output-bytes") ?? 0));
+      console.log("Terminal PTY smoke test passed.");
+      return;
     default:
       throw new Error(
-        "Usage: overtchat-connector <install|install-managed|pair|preflight|journal-backup|run|version>",
+        "Usage: overtchat-connector <install|install-managed|pair|preflight|journal-backup|run|terminal-smoke|version>",
       );
   }
 }

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -37,6 +38,7 @@ function createUpgradeFixture(
     signalAfterStop?: boolean;
     stopFails?: boolean;
     stateExists?: boolean;
+    packaged?: boolean;
   } = {},
 ) {
   const fixtureDirectory = mkdtempSync(
@@ -44,7 +46,7 @@ function createUpgradeFixture(
   );
   temporaryDirectories.push(fixtureDirectory);
 
-  const homeDirectory = path.join(fixtureDirectory, "home");
+  const homeDirectory = path.join(fixtureDirectory, options.packaged ? "home with ' quote" : "home");
   const mockBinDirectory = path.join(fixtureDirectory, "bin");
   const systemctlCalls = path.join(fixtureDirectory, "systemctl-calls");
   const systemctlStarts = path.join(fixtureDirectory, "systemctl-starts");
@@ -93,7 +95,10 @@ function createUpgradeFixture(
     });
   }
 
+  const connectorVersion = JSON.parse(readFileSync(path.resolve(process.cwd(), "../connector/package.json"), "utf8")).version;
   const newConnector = `#!/bin/sh
+if [ "\${1:-}" = "version" ]; then echo '${connectorVersion}'; exit 0; fi
+if [ "\${1:-}" = "launcher-path" ]; then printf '%s\\n' "$OVERTCHAT_CONNECTOR_LAUNCHER"; exit 0; fi
 if [ "\${1:-}" = "journal-backup" ]; then
   cp -p "$MOCK_CONNECTOR_STATE" "$3" || exit 1
   chmod 600 "$3"
@@ -106,7 +111,15 @@ if [ "\${1:-}" = "preflight" ]; then
 fi
 exit 0
 `;
-  const checksum = createHash("sha256").update(newConnector).digest("hex");
+  const packageArchive = path.join(fixtureDirectory, "package.tar.gz");
+  if (options.packaged) {
+    const packageRoot = path.join(fixtureDirectory, "overtchat-connector");
+    mkdirSync(path.join(packageRoot, "bin"), { recursive: true });
+    writeExecutable(path.join(packageRoot, "overtchat-connector"), newConnector);
+    writeExecutable(path.join(packageRoot, "bin", "node"), "#!/bin/sh\nexit 0\n");
+    execFileSync("tar", ["-czf", packageArchive, "-C", fixtureDirectory, "overtchat-connector"]);
+  }
+  const checksum = createHash("sha256").update(options.packaged ? readFileSync(packageArchive) : newConnector).digest("hex");
 
   writeExecutable(
     path.join(mockBinDirectory, "uname"),
@@ -138,7 +151,10 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */connector-checksums.txt)
-    printf '%s  overtchat-connector-${options.platform === "Darwin" ? "darwin" : "linux"}-amd64\\n' "$MOCK_ASSET_SHA256" > "$output"
+    printf '%s  overtchat-connector-${options.platform === "Darwin" ? "darwin" : "linux"}-amd64${options.packaged ? ".tar.gz" : ""}\\n' "$MOCK_ASSET_SHA256" > "$output"
+    ;;
+  *.tar.gz)
+    cp "$MOCK_PACKAGE_ARCHIVE" "$output"
     ;;
   *)
     cat > "$output" <<'MOCK_CONNECTOR'
@@ -251,6 +267,7 @@ esac
     ...process.env,
     HOME: homeDirectory,
     MOCK_ASSET_SHA256: checksum,
+    MOCK_PACKAGE_ARCHIVE: packageArchive,
     MOCK_CONNECTOR_STATE: statePath,
     MOCK_EFFECTIVE_EXEC_START: options.effectiveExecStart ?? "managed",
     MOCK_NEW_SERVICE_BEHAVIOR: newServiceBehavior,
@@ -289,10 +306,30 @@ esac
     statePath,
     systemctlCalls,
     systemctlServiceState,
+    homeDirectory,
   };
 }
 
 describe("Host Connector installer redirect", () => {
+  it.each(["Linux", "Darwin"] as const)("upgrades a legacy %s executable to a packaged runtime through a stable launcher", (platform) => {
+    const fixture = createUpgradeFixture("stable", { packaged: true, platform });
+    expect(fixture.result.status, fixture.result.stderr).toBe(0);
+    expect(readFileSync(fixture.installPath, "utf8")).toContain("OVERTCHAT_CONNECTOR_LAUNCHER");
+    expect(execFileSync(fixture.installPath, ["launcher-path"], { encoding: "utf8" }).trim()).toBe(fixture.installPath);
+    expect(readFileSync(fixture.configPath, "utf8")).toBe(fixture.configContents);
+    expect(existsSync(`${fixture.installPath}.previous`)).toBe(false);
+    expect(readdirSync(path.join(fixture.homeDirectory, ".local/lib/overtchat/connector"))).toHaveLength(1);
+  });
+
+  it.each(["Linux", "Darwin"] as const)("restores the legacy %s executable and journal when a packaged runtime fails startup", (platform) => {
+    const fixture = createUpgradeFixture("inactive", { packaged: true, platform });
+    expect(fixture.result.status, fixture.result.stderr).toBe(1);
+    expect(fixture.result.stderr).toContain("state were restored and restarted");
+    expect(readFileSync(fixture.installPath, "utf8")).toBe("old connector\n");
+    expect(readFileSync(fixture.statePath, "utf8")).toBe(fixture.legacyState);
+    expect(readdirSync(path.join(fixture.homeDirectory, ".local/lib/overtchat/connector"))).toHaveLength(0);
+  });
+
   it("keeps generated commands pinned to an immutable connector release", () => {
     const redirects = readFileSync(
       path.join(process.cwd(), "public/_redirects"),

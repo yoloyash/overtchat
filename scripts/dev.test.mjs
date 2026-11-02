@@ -76,6 +76,25 @@ test("development dependencies use the production image pins", async () => {
   }
 });
 
+test("minimal Compose uses the production image pins", async () => {
+  const [production, minimal] = await Promise.all([
+    readFile("compose.yml", "utf8"),
+    readFile("compose.minimal.yml", "utf8"),
+  ]);
+  const productionImages = new Set(
+    [...production.matchAll(/^\s+image:\s+(.+)$/gmu)].map((match) => match[1]),
+  );
+  const minimalImages = [...minimal.matchAll(/^\s+image:\s+(.+)$/gmu)].map(
+    (match) => match[1],
+  );
+
+  assert.equal(minimalImages.length, 2);
+  for (const image of minimalImages) {
+    assert.equal(productionImages.has(image), true, `${image} drifted`);
+  }
+  assert.doesNotMatch(minimal, /docker\.sock|podman\.sock|\.ssh/u);
+});
+
 test("workspace-only web development explicitly disables Redis", async () => {
   const developmentEnvironment = await readFile(
     "apps/web/.env.development",

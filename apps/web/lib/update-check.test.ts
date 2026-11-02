@@ -104,4 +104,21 @@ describe("app update check", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("reports how the installation is updated", async () => {
+    vi.stubEnv("DISABLE_UPDATE_CHECK", "true");
+    const { getAppUpdateStatus } = await import("./update-check");
+
+    await expect(getAppUpdateStatus()).resolves.toMatchObject({
+      updateMethod: "overtchat",
+    });
+    vi.stubEnv("OVERTCHAT_UPDATE_METHOD", "compose");
+    await expect(getAppUpdateStatus()).resolves.toMatchObject({
+      updateMethod: "compose",
+    });
+    vi.stubEnv("OVERTCHAT_UPDATE_METHOD", "unknown");
+    await expect(getAppUpdateStatus()).resolves.toMatchObject({
+      updateMethod: "overtchat",
+    });
+  });
 });

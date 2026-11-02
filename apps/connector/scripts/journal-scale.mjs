@@ -123,10 +123,8 @@ try {
   assert.equal(restored.commandEntry("command-0").status, "pending");
   await restored.close();
   assert(!(await readdir(directory)).some((name) => name.includes("sqlite-migration") || name.endsWith(".tmp")));
-  // Node normalizes ru_maxrss to KiB. Pinned Bun returns Darwin's native bytes;
-  // on Linux both return KiB. Keep cross-platform qualification units honest.
-  const rssUnit = process.versions.bun && process.platform === "darwin" ? 1024 * 1024 : 1024;
-  const peakRssMiB = Math.round(process.resourceUsage().maxRSS / rssUnit);
+  // Node reports maxRSS in KiB on both supported operating systems.
+  const peakRssMiB = Math.round(process.resourceUsage().maxRSS / 1024);
   assert(peakRssMiB >= Math.floor(process.memoryUsage().rss / (1024 * 1024)) - 16, "Peak RSS units disagree with current RSS");
   assert(peakRssMiB < 1024, `Incident-scale peak RSS exceeded 1 GiB: ${peakRssMiB} MiB`);
   console.log(JSON.stringify({ inputBytes, events: eventCount, commands: 6338, sessions: 412, injectedHttpFailures: errors,

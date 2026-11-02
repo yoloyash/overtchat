@@ -37,6 +37,7 @@ const env = Object.fromEntries(["PATH", "HOME", "TMPDIR", "SYSTEMROOT", "CI"]
 Object.assign(env, {
   NODE_ENV: "production", TZ: "UTC", NEXT_TELEMETRY_DISABLED: "1", DISABLE_UPDATE_CHECK: "true",
   BETTER_AUTH_SECRET: "readme-demo-only-not-a-production-secret-0000", REDIS_URL: "",
+  OVERTCHAT_MANAGEMENT_SECRET: "readme-demo-management-secret-0000000000",
 });
 
 function start(command, args, cwd, extra = {}, stdio = "inherit") {

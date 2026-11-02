@@ -1,7 +1,7 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test, type Page } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 let server: Server;
 let endpoint: string;
@@ -14,7 +14,7 @@ async function setup(page: Page, url = endpoint, model = "queue-fixture") {
   requests = [];
   pending = [];
   fail = false;
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Queue Tester");
   await page.locator("#email").fill("queue@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

@@ -46,4 +46,26 @@ describe("applyLocalReasoningLevel", () => {
       chat_template_kwargs: { custom: true, enable_thinking: true },
     });
   });
+
+  it("merges configured request fields instead of the built-in convention", () => {
+    expect(
+      applyLocalReasoningLevel(
+        {
+          reasoning_effort: "high",
+          chat_template_kwargs: { enable_thinking: true, custom: 1 },
+        },
+        "off",
+        { reasoning_effort: null, chat_template_kwargs: { thinking: false } },
+      ),
+    ).toEqual({
+      chat_template_kwargs: { enable_thinking: true, custom: 1, thinking: false },
+    });
+  });
+
+  it("leaves the default selection untouched even with configured fields", () => {
+    const body = { chat_template_kwargs: { thinking: true } };
+    expect(
+      applyLocalReasoningLevel(body, "default", { reasoning_effort: "low" }),
+    ).toBe(body);
+  });
 });

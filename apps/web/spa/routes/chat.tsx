@@ -1,4 +1,4 @@
-import { type ComponentProps, useCallback, useState } from "react";
+import { type ComponentProps, useCallback, useEffect, useState } from "react";
 import {
   createRoute,
   redirect,
@@ -6,17 +6,21 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { ChatArea } from "@/components/chat/ChatArea";
+import { ProjectHome } from "@/components/projects/ProjectHome";
 import { fetchChatMessagesPage } from "@/lib/queries/chats";
+import { fetchProject, projectQuery } from "@/lib/queries/projects";
 import { randomUuid } from "@/lib/uuid";
-import { AppPending, ChatPending } from "@/spa/pending";
+import { AppPending, ChatPending, ProjectPending } from "@/spa/pending";
 import { appRoute } from "@/spa/routes/root";
 import { optionalString } from "@/spa/search";
 
 /**
- * Drafts that were just saved and moved from `/` to `/chat/$id`. Their chat
- * is already on screen, so the chat route skips fetching its history once.
+ * The chat the mounted chat surface is showing. Its history is already on
+ * screen, including a just-saved draft that moved from `/` to `/chat/$id`, so
+ * the chat route does not fetch it. The router can rerun a loader for the
+ * same location, so this stays set while the chat is shown.
  */
-const persistedDrafts = new Set<string>();
+let shownChatId: string | null = null;
 
 // Both chat routes render the same component under this remount key, so
 // moving a new chat from `/` to its own URL keeps the live ChatArea.
@@ -41,11 +45,27 @@ export const homeRoute = createRoute({
   component: ChatSurface,
 });
 
+// A project's page is where its new chats start, so it shares the chat surface.
+export const projectRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/projects/$id",
+  loader: async ({ context, params }) => {
+    const project = await fetchProject(params.id);
+    if (!project) throw redirect({ to: "/" });
+    context.queryClient.setQueryData(projectQuery(params.id).queryKey, project);
+    return { chatId: randomUuid() };
+  },
+  gcTime: 0,
+  remountDeps: chatSurfaceRemountDeps,
+  pendingComponent: ProjectPending,
+  component: ChatSurface,
+});
+
 export const chatRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/chat/$id",
   loader: async ({ params }) => {
-    if (persistedDrafts.delete(params.id)) return { page: null };
+    if (params.id === shownChatId) return { page: null };
     const page = await fetchChatMessagesPage(params.id);
     if (!page) throw redirect({ to: "/" });
     return { page };
@@ -62,6 +82,7 @@ type ChatAreaProps = ComponentProps<typeof ChatArea>;
 function ChatSurface() {
   const navigate = useNavigate();
   const home = useMatch({ from: homeRoute.id, shouldThrow: false });
+  const project = useMatch({ from: projectRoute.id, shouldThrow: false });
   const chat = useMatch({ from: chatRoute.id, shouldThrow: false });
   const routeProps: ChatAreaProps = home
     ? {
@@ -70,15 +91,22 @@ function ChatSurface() {
         initialQuery: home.search.q,
         isNew: true,
       }
-    : chatAreaProps(chat!.params.id, chat!.loaderData!.page);
+    : project
+      ? projectHomeProps(project.loaderData!.chatId, project.params.id)
+      : chatAreaProps(chat!.params.id, chat!.loaderData!.page);
   // ChatArea's props seed its state on mount. Keep the first set for a chat
   // so its saved draft or a background reload does not change them.
   const [props, setProps] = useState(routeProps);
   if (routeProps.chatId !== props.chatId) setProps(routeProps);
 
   const { chatId } = props;
+  useEffect(() => {
+    shownChatId = chatId;
+    return () => {
+      if (shownChatId === chatId) shownChatId = null;
+    };
+  }, [chatId]);
   const onPersisted = useCallback(() => {
-    persistedDrafts.add(chatId);
     void navigate({
       to: "/chat/$id",
       params: { id: chatId },
@@ -90,6 +118,21 @@ function ChatSurface() {
   return <ChatArea key={chatId} {...props} onPersisted={onPersisted} />;
 }
 
+function projectHomeProps(chatId: string, projectId: string): ChatAreaProps {
+  return {
+    chatId,
+    projectId,
+    isNew: true,
+    renderEmptyState: (composer, { selectModel }) => (
+      <ProjectHome
+        projectId={projectId}
+        composer={composer}
+        onDefaultModelChange={selectModel}
+      />
+    ),
+  };
+}
+
 function chatAreaProps(
   chatId: string,
   page: Awaited<ReturnType<typeof fetchChatMessagesPage>>,
@@ -97,7 +140,6 @@ function chatAreaProps(
   if (!page) return { chatId };
   return {
     chatId,
-    chatKind: page.kind,
     projectId: page.projectId,
     initialMessages: page.messages,
     initialModelId: page.modelConfigId,

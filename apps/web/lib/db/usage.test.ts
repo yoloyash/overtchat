@@ -181,6 +181,28 @@ insertUsage.run({
   totalCostNanoUsd: 150_000,
 });
 
+insertUsage.run({
+  id: "alice-image",
+  userId: "alice",
+  chatId: "alice-chat",
+  context: "image",
+  occurredAt: Date.parse("2026-07-30T02:00:00.000Z"),
+  providerId: "google",
+  model: "gemini-3.1-flash-image",
+  inputTokens: 10,
+  uncachedInputTokens: null,
+  outputTokens: 1_290,
+  cacheReadTokens: null,
+  cacheWriteTokens: null,
+  totalTokens: 1_300,
+  costSource: "models.dev",
+  inputCostNanoUsd: 5_000,
+  outputCostNanoUsd: 77_400_000,
+  cacheReadCostNanoUsd: 0,
+  cacheWriteCostNanoUsd: 0,
+  totalCostNanoUsd: 77_405_000,
+});
+
 let usage: typeof import("./usage");
 
 beforeAll(async () => {
@@ -316,6 +338,29 @@ describe("chat usage aggregates", () => {
       cacheWriteCostNanoUsd: 0,
       totalCostNanoUsd: 0,
     });
+  });
+
+  it("totals a chat's image operations separately from its responses", async () => {
+    await expect(
+      usage.getChatUsageTotals("alice-chat", "alice", "image"),
+    ).resolves.toEqual({
+      generations: 1,
+      pricedGenerations: 1,
+      inputTokens: 10,
+      uncachedInputTokens: 0,
+      outputTokens: 1_290,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 1_300,
+      inputCostNanoUsd: 5_000,
+      outputCostNanoUsd: 77_400_000,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 77_405_000,
+    });
+    await expect(
+      usage.getChatUsageTotals("alice-chat", "bob", "image"),
+    ).resolves.toMatchObject({ generations: 0, totalCostNanoUsd: 0 });
   });
 
   it("loads person metadata, all-time totals, and tracking start", async () => {

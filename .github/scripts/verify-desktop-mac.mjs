@@ -5,6 +5,7 @@ import { log } from "node:console";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { execute, retryAppleNetwork } from "./desktop-mac-network-retry.mjs";
 import { listPackage } from "@electron/asar";
 import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { FuseState } from "@electron/fuses/dist/constants.js";
@@ -63,7 +64,8 @@ if (mode !== "adhoc") {
   }
 }
 if (mode === "notarized") {
-  run("xcrun", ["stapler", "validate", app]);
+  const staple = await retryAppleNetwork(() => execute("xcrun", ["stapler", "validate", app]));
+  assert.equal(staple.status, 0, "Notarization ticket validation failed");
   run("spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
 }
 log(`Verified ${mode} macOS ${architecture} bundle: ${info.CFBundleIdentifier} ${version}`);

@@ -8,12 +8,15 @@ import {
   FileDiff,
   Gauge,
   GitBranch,
+  Hash,
   MoreHorizontal,
   PanelRight,
   Pencil,
   Sparkles,
+  SquareTerminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AgentBranchPicker } from "@/components/agents/AgentBranchPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import type {
   AgentProviderId,
@@ -30,6 +33,7 @@ export function AgentSessionHeader({
   provider,
   workspaceId,
   workspacePath,
+  providerSessionId,
   running,
   commandPending,
   readOnly,
@@ -42,10 +46,13 @@ export function AgentSessionHeader({
   onShowWorkspaceChanges,
   filesOpen,
   onToggleFiles,
+  terminalOpen,
+  onToggleTerminal,
 }: {
   provider: AgentProviderId;
   workspaceId: string;
   workspacePath: string;
+  providerSessionId: string | null;
   running: boolean;
   commandPending: boolean;
   readOnly: boolean;
@@ -58,6 +65,8 @@ export function AgentSessionHeader({
   onShowWorkspaceChanges: () => void;
   filesOpen: boolean;
   onToggleFiles: () => void;
+  terminalOpen: boolean;
+  onToggleTerminal: () => void;
 }) {
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
@@ -72,7 +81,9 @@ export function AgentSessionHeader({
       await clipboardWriteText(value);
       toast.success({ title: `${label} copied` });
     } catch {
-      toast.error({ title: `Could not copy ${label.toLowerCase()}` });
+      toast.error({
+        title: `Could not copy ${label[0].toLowerCase()}${label.slice(1)}`,
+      });
     }
   }
 
@@ -114,10 +125,32 @@ export function AgentSessionHeader({
         {workspacePath}
       </span>
       <WorkspaceGitSummary
+        provider={provider}
+        workspaceId={workspaceId}
+        workspacePath={workspacePath}
         status={gitStatus}
+        running={running}
         onShowChanges={onShowWorkspaceChanges}
       />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          title={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          aria-pressed={terminalOpen}
+          onClick={onToggleTerminal}
+        >
+          <SquareTerminal />
+        </Button>
         {accountUsageAvailable && (
           <Button
             variant="ghost"
@@ -175,6 +208,17 @@ export function AgentSessionHeader({
                   Copy branch name
                 </Menu.Item>
                 )}
+                {providerSessionId && (
+                  <Menu.Item
+                    onClick={() =>
+                      void copyWorkspaceValue(providerSessionId, "Session ID")
+                    }
+                    className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
+                  >
+                    <Hash className="size-3.5 text-muted-foreground" />
+                    Copy session ID
+                  </Menu.Item>
+                )}
                 <Menu.Separator className="my-1 h-px bg-border" />
                 <Menu.Item
                   onClick={onShowSessionUsage}
@@ -221,10 +265,18 @@ export function AgentSessionHeader({
 }
 
 function WorkspaceGitSummary({
+  provider,
+  workspaceId,
+  workspacePath,
   status,
+  running,
   onShowChanges,
 }: {
+  provider: AgentProviderId;
+  workspaceId: string;
+  workspacePath: string;
   status: AgentWorkspaceGitStatus | undefined;
+  running: boolean;
   onShowChanges: () => void;
 }) {
   if (!status?.isGit) return null;
@@ -247,10 +299,13 @@ function WorkspaceGitSummary({
       title={title}
       className="hidden min-w-0 items-center gap-2 px-1 text-[11px] text-muted-foreground lg:flex"
     >
-      <span className="flex min-w-0 items-center gap-1">
-        <GitBranch className="size-3.5 shrink-0" />
-        <span className="max-w-28 truncate">{branch}</span>
-      </span>
+      <AgentBranchPicker
+        provider={provider}
+        workspaceId={workspaceId}
+        workspaceName={workspacePath.split(/[\\/]/).filter(Boolean).at(-1) ?? workspacePath}
+        branch={status.branch}
+        running={running}
+      />
       {status.dirty && (
         <button
           type="button"

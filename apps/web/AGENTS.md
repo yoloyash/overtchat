@@ -25,9 +25,10 @@ chat delivery.
   owns cancellation and optional reconnectable-stream integration.
 - `lib/capabilities` validates search and speech configuration;
   `lib/db/serverCapabilities.ts` persists it.
-- `lib/voice` owns realtime-session tickets, browser transport, history
-  conversion, tool definitions, and service availability. Durable voice chats
-  remain ordinary chat records distinguished by their chat kind.
+- `lib/voice` owns realtime-session tickets, browser transport, audio
+  delivery, session leases, and service availability. Voice and text
+  turns share canonical messages and generation in `lib/chat/run.ts`. Chat kind
+  is legacy provenance; it does not restrict input mode.
 - `lib/agents` owns Agent Connections projections and access rules.
   `lib/agents/connector` owns the authorized web-side connector relay.
 - `lib/mcp` owns MCP configuration, connections, tool bindings, and lifecycle.
@@ -57,12 +58,15 @@ chat-bound tickets. Internal voice routes independently authenticate
 `VOICE_SHARED_SECRET` and verify the ticket; the sidecar must not become a
 trusted substitute for user authorization.
 
-The first created user becomes the administrator. Public signup closes after
-that; administrators create subsequent users through Better Auth's admin path.
+Initial administrator creation requires the operator's one-time setup code and
+atomically consumes setup authorization. Public signup cannot bypass this;
+administrators create subsequent users through Better Auth's admin path.
+See [initial setup](../../docs/deploy.md#install).
 
 ## Chat and persistence
 
-`app/api/chat/route.ts` is the streaming orchestration boundary. Validate and
+`lib/chat/run.ts` is the shared streaming orchestration boundary for text and
+voice; API routes authenticate and adapt transport. Validate and
 authorize the complete request, resolve the provider and project, inline
 uploads, and convert messages before mutating persistent state.
 
@@ -92,6 +96,24 @@ validate them through the catalog scripts; commit both artifacts.
 
 Web search and URL retrieval go through `@yoloyash/web-basics`, which owns
 redirect, extraction, size, and SSRF policy.
+
+`inlineUploads()` includes each message's documents up to a budget derived
+only from the model, so saved messages render identically across turns.
+`lib/chat/file-tools.ts` reads the rest. Its results store character ranges into
+immutable uploads, never document text, and are rehydrated during replay. See
+[attachment reading](../../docs/development.md#chat-attachment-reading-validation).
+
+Model-created documents are the saved results of their tool calls in
+`lib/documents/tools.ts`: each result is a complete version. Keep them in
+message parts rather than a separate table so history operations stay
+consistent. See [documents](../../docs/development.md#model-created-documents-validation).
+
+`lib/sandbox` calls the optional code sandbox over HTTP; the app never runs
+model code itself. Files a run returns become the user's uploads, and run
+results keep only their `/api/uploads` references, which replay, sharing, the
+library and the orphan sweep resolve like other uploads. Only owner upload URLs
+reach models; share URLs are for public rendering. See
+[code execution](../../docs/development.md#code-execution-validation).
 
 MCP input is validated in `lib/mcp/schema.ts`. STDIO configuration remains
 structured as command, arguments, environment, passthrough, and working

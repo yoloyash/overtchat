@@ -11,6 +11,7 @@ for (const [platform, arch, extensions, channel] of [
   ["mac", "arm64", ["zip"], "stable-arm64-mac.yml"],
   ["mac", "x64", ["zip"], "stable-x64-mac.yml"],
   ["linux", "x64", ["AppImage", "deb", "rpm"], "stable-linux.yml"],
+  ["windows", "x64", ["exe"], "stable.yml"],
 ]) {
   test(`metadata pins ${platform} ${arch} archives and hashes the final bytes`, async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "desktop-metadata-"));
@@ -21,7 +22,7 @@ for (const [platform, arch, extensions, channel] of [
         files.push({ url, sha512: "outdated hash" });
         await writeFile(path.join(directory, url), `final bytes for ${extension}`);
       }
-      await writeFile(path.join(directory, `latest-${platform}.yml`), stringify({ version: "0.1.1", files, releaseDate: "2026-10-02T00:00:00Z" }));
+      await writeFile(path.join(directory, platform === "windows" ? "latest.yml" : `latest-${platform}.yml`), stringify({ version: "0.1.1", files, releaseDate: "2026-10-02T00:00:00Z" }));
       assert.equal(await writeDesktopUpdateMetadata({ directory, version: "0.1.1", apiLevel: 1, platform, arch }), channel);
       const metadata = parse(await readFile(path.join(directory, channel), "utf8"));
       assert.equal(metadata.clientApiLevel, 1);

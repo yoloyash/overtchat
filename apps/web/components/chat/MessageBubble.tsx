@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
+import {
+  codeExecutionFileIndex,
+  openUIStateKey,
+  type CodeExecutionFile,
+  type OpenUIAction,
+  type OpenUIFormState,
+} from "@overtchat/shared";
 import { Streamdown } from "streamdown";
 import {
   Check,
@@ -27,6 +34,7 @@ import {
 import { speakableText, textOf } from "@/lib/chat/message";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
 import { unicodeCitation } from "@/lib/citations-remark";
+import { CODE_FILE_ALLOWED_TAGS, CODE_FILE_TAG, codeFileLinks } from "@/lib/chat/code-file-links";
 import type { MessageStats } from "@/lib/chat/stats";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -39,8 +47,11 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { CodeFileLink, CodeFilesProvider } from "./CodeExecutionFiles";
+import { DocumentCard } from "./DocumentCard";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
+import { OpenUICard } from "./OpenUICard";
 import { StatsPopover } from "./StatsPopover";
 import {
   MessageActions,
@@ -48,23 +59,40 @@ import {
 } from "./MessageActions";
 import { serverUrl } from "@/lib/api-url";
 
-const CITATION_REMARK_PLUGINS = [
+const REPLY_REMARK_PLUGINS = [
   ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
   unicodeCitation,
+  codeFileLinks,
 ];
-const CITATION_ALLOWED_TAGS = {
+const REPLY_ALLOWED_TAGS = {
   citation: ["turn", "reftype", "index", "citationid"],
   "composite-citation": ["citations", "citationid"],
   "highlighted-text": ["citationid"],
+  ...CODE_FILE_ALLOWED_TAGS,
 };
+
+function CodeFileElement(props: Record<string, unknown>) {
+  return (
+    <CodeFileLink
+      filename={props.filename as string | undefined}
+      embed={props.embed as string | undefined}
+    >
+      {props.children as React.ReactNode}
+    </CodeFileLink>
+  );
+}
 
 export function MessageBubble({
   message,
   streaming,
   canAct,
+  readOnly = false,
   onRegenerate,
   onContinue,
   onImageReference,
+  onOpenUIAction,
+  openuiStates,
+  codeFiles,
   onEdit,
   speech,
   showStats,
@@ -73,11 +101,16 @@ export function MessageBubble({
   message: UIMessage;
   streaming: boolean;
   canAct: boolean;
-  onRegenerate: (id: string) => void;
+  readOnly?: boolean;
+  onRegenerate?: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
-  onEdit: (id: string, text: string, files: FileUIPart[]) => void;
-  speech: ReturnType<typeof useSpeech>;
+  onOpenUIAction?: (action: OpenUIAction) => void;
+  openuiStates?: Map<string, OpenUIFormState>;
+  /** Files the conversation's runs returned, which replies link by name. */
+  codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
+  onEdit?: (id: string, text: string, files: FileUIPart[]) => void;
+  speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
 }) {
@@ -99,7 +132,7 @@ export function MessageBubble({
             const changed =
               next !== text || keptFiles.length !== files.length;
             if (changed && (next.trim() || keptFiles.length > 0)) {
-              onEdit(message.id, next, keptFiles);
+              onEdit?.(message.id, next, keptFiles);
             }
           }}
         />
@@ -115,17 +148,20 @@ export function MessageBubble({
           </div>
         )}
         {text && (
-          <div className="min-w-0 max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
+          <div
+            data-chat-find-text=""
+            className="min-w-0 max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground"
+          >
             {text}
           </div>
         )}
-        <MessageActions show={canAct}>
+        <MessageActions show={canAct || readOnly}>
           <CopyButton text={text} />
-          <ActionButton
+          {!readOnly && <ActionButton
             label="Edit"
             onClick={() => setEditing(true)}
             icon={<Pencil className="size-3.5" />}
-          />
+          />}
         </MessageActions>
       </div>
     );
@@ -135,10 +171,14 @@ export function MessageBubble({
     <AssistantBubble
       message={message}
       streaming={streaming}
-      canAct={canAct}
+      canAct={canAct && !readOnly}
+      readOnly={readOnly}
       onRegenerate={onRegenerate}
       onContinue={onContinue}
       onImageReference={onImageReference}
+      onOpenUIAction={onOpenUIAction}
+      openuiStates={openuiStates}
+      codeFiles={codeFiles}
       speech={speech}
       showStats={showStats}
       stats={stats}
@@ -150,9 +190,13 @@ function AssistantBubble({
   message,
   streaming,
   canAct,
+  readOnly = false,
   onRegenerate,
   onContinue,
   onImageReference,
+  onOpenUIAction,
+  openuiStates,
+  codeFiles,
   speech,
   showStats,
   stats,
@@ -160,15 +204,23 @@ function AssistantBubble({
   message: UIMessage;
   streaming: boolean;
   canAct: boolean;
-  onRegenerate: (id: string) => void;
+  readOnly?: boolean;
+  onRegenerate?: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
-  speech: ReturnType<typeof useSpeech>;
+  onOpenUIAction?: (action: OpenUIAction) => void;
+  openuiStates?: Map<string, OpenUIFormState>;
+  codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
+  speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
 }) {
   const text = textOf(message);
   const lookup = useMemo(() => buildSourceLookup(message), [message]);
+  const ownFiles = useMemo(
+    () => (codeFiles ? undefined : codeExecutionFileIndex([message])),
+    [codeFiles, message],
+  );
   const citationComponents = useMemo(
     () => ({
       citation: (props: Record<string, unknown>) => (
@@ -188,11 +240,13 @@ function AssistantBubble({
       "highlighted-text": (props: Record<string, unknown>) => (
         <HighlightedText>{props.children as React.ReactNode}</HighlightedText>
       ),
+      [CODE_FILE_TAG]: CodeFileElement,
     }),
     [lookup],
   );
 
   return (
+    <CodeFilesProvider value={codeFiles ?? ownFiles!}>
     <div className="group flex flex-col items-start gap-2">
       <div className="w-full max-w-full space-y-3 text-sm leading-relaxed">
         {(() => {
@@ -202,27 +256,50 @@ function AssistantBubble({
             if (seg.kind === "text") {
               const showCaret = streaming && isLast;
               return (
-                <Streamdown
-                  key={seg.index}
-                  className="font-sans space-y-3 text-[15px] leading-relaxed"
-                  plugins={MESSAGE_MARKDOWN_PLUGINS}
-                  remarkPlugins={CITATION_REMARK_PLUGINS}
-                  allowedTags={CITATION_ALLOWED_TAGS}
-                  components={citationComponents}
-                  isAnimating={streaming}
-                  caret={showCaret ? "block" : undefined}
-                >
-                  {(seg.part as { text: string }).text}
-                </Streamdown>
+                <div key={seg.index} data-chat-find-text="">
+                  <Streamdown
+                    className="font-sans space-y-3 text-[15px] leading-relaxed"
+                    plugins={MESSAGE_MARKDOWN_PLUGINS}
+                    remarkPlugins={REPLY_REMARK_PLUGINS}
+                    allowedTags={REPLY_ALLOWED_TAGS}
+                    components={citationComponents}
+                    isAnimating={streaming}
+                    caret={showCaret ? "block" : undefined}
+                  >
+                    {(seg.part as { text: string }).text}
+                  </Streamdown>
+                </div>
               );
             }
             if (seg.kind === "image") {
               return (
                 <GeneratedImageCard
+                  readOnly={readOnly}
                   key={seg.index}
                   part={seg.part}
                   streaming={streaming}
                   onReference={canAct ? onImageReference : undefined}
+                />
+              );
+            }
+            if (seg.kind === "document") {
+              return (
+                <DocumentCard
+                  key={seg.part.toolCallId}
+                  part={seg.part}
+                  streaming={streaming}
+                />
+              );
+            }
+            if (seg.kind === "openui") {
+              return (
+                <OpenUICard
+                  key={seg.part.toolCallId}
+                  messageId={message.id}
+                  part={seg.part}
+                  streaming={streaming}
+                  initialState={openuiStates?.get(openUIStateKey(message.id, seg.part.toolCallId))}
+                  onAction={canAct ? onOpenUIAction : undefined}
                 />
               );
             }
@@ -251,19 +328,19 @@ function AssistantBubble({
         {!streaming && <Sources message={message} />}
       </div>
       {!streaming && (
-        <MessageActions show={canAct}>
+        <MessageActions show={canAct || readOnly}>
           <CopyButton text={stripCitationMarkers(text)} />
-          <SpeakButton
+          {!readOnly && speech && <SpeakButton
             messageId={message.id}
             text={speakableText(message)}
             speech={speech}
-          />
-          <ActionButton
+          />}
+          {!readOnly && onRegenerate && <ActionButton
             label="Regenerate"
             onClick={() => onRegenerate(message.id)}
             icon={<RotateCcw className="size-3.5" />}
-          />
-          {onContinue && (
+          />}
+          {!readOnly && onContinue && (
             <ActionButton
               label="Continue response"
               onClick={() => onContinue(message.id)}
@@ -274,6 +351,7 @@ function AssistantBubble({
         </MessageActions>
       )}
     </div>
+    </CodeFilesProvider>
   );
 }
 
@@ -293,7 +371,7 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
     );
   }
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-muted/40 px-3 py-2.5">
+    <a href={serverUrl(part.url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border bg-muted/40 px-3 py-2.5">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
         <MediaIcon
           mediaType={part.mediaType}
@@ -307,7 +385,7 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
           {humanMediaLabel(part.mediaType)}
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 

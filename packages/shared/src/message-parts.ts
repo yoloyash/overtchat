@@ -2,7 +2,9 @@ import type { UIMessage } from "ai";
 import { isMcpToolName } from "./mcp";
 import { isMemoryToolPart, type MemoryToolPart } from "./memory-tools";
 
+import { isDocumentToolPart, type DocumentToolPart } from "./documents";
 import { isImageToolPart, type ImageToolPart } from "./images";
+import { isOpenUIToolPart, type OpenUIToolPart } from "./openui";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -33,6 +35,9 @@ const ACTIVITY_TYPES = new Set([
   "reasoning",
   "tool-web_search",
   "tool-fetch_url",
+  "tool-read_file",
+  "tool-search_files",
+  "tool-run_python",
 ]);
 
 export function isActivityPart(part: AnyPart): boolean {
@@ -44,6 +49,8 @@ export function isActivityPart(part: AnyPart): boolean {
 
 export type MessageSegment =
   | { kind: "image"; part: ImageToolPart; index: number }
+  | { kind: "document"; part: DocumentToolPart; index: number }
+  | { kind: "openui"; part: OpenUIToolPart; index: number }
   | { kind: "text"; part: AnyPart; index: number }
   | { kind: "activity"; parts: AnyPart[]; startIndex: number }
   | { kind: "memory"; parts: MemoryToolPart[]; startIndex: number };
@@ -102,6 +109,16 @@ export function groupMessageParts(
     if (isImageToolPart(part)) {
       flush();
       segments.push({ kind: "image", part, index });
+      return;
+    }
+    if (isOpenUIToolPart(part)) {
+      flush();
+      segments.push({ kind: "openui", part, index });
+      return;
+    }
+    if (isDocumentToolPart(part)) {
+      flush();
+      segments.push({ kind: "document", part, index });
       return;
     }
     if (isMemoryToolPart(part)) {

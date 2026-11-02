@@ -25,6 +25,15 @@ describe("connector server URLs", () => {
     );
   });
 
+  it("accepts a cleartext LAN server only with the explicit opt-in", () => {
+    expect(
+      normalizeServerUrl("http://192.168.1.10:4718/", { allowInsecureHttp: true }),
+    ).toBe("http://192.168.1.10:4718");
+    expect(() =>
+      normalizeServerUrl("http://192.168.1.10:4718", { allowInsecureHttp: false }),
+    ).toThrow("Non-local OvertChat URLs must use HTTPS.");
+  });
+
   it("rejects unsupported URL protocols", () => {
     expect(() => normalizeServerUrl("file:///tmp/overtchat")).toThrow(
       "OvertChat URL must use HTTP or HTTPS.",

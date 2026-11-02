@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, eq, max } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs, modelConfigUserCredentials } from "@/lib/db/schema";
+import { getProvider } from "@/lib/providers/catalog";
 import {
   catalogPricingFor,
   resolveModelCapabilities,
@@ -13,6 +14,7 @@ import type {
   ModelConfigInput,
   ModelUserCredentialInput,
 } from "@/lib/model-config/schema";
+import { readReasoningOverride } from "@/lib/model-config/reasoning-override";
 
 export type { ModelConfigInput };
 export type ModelConfigRow = typeof modelConfigs.$inferSelect;
@@ -23,6 +25,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     modelType: row.modelType,
     label: row.label,
     providerId: row.providerId,
+    displayProvider: getProvider(row.providerId).label,
     apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
@@ -33,6 +36,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     contextWindow: row.contextWindow,
     discoveredContextWindow: row.discoveredContextWindow,
     discoveredCapabilities: row.discoveredCapabilities,
+    reasoningOverride: readReasoningOverride(row.reasoningOverride),
     resolvedContextWindow: resolveModelContextWindow(
       row.contextWindow,
       row.discoveredContextWindow,
@@ -43,6 +47,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
       row.discoveredCapabilities,
       row.providerId,
       row.model,
+      row.reasoningOverride,
     ),
     systemPrompt: row.systemPrompt,
     providerOptions: row.providerOptions,

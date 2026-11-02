@@ -10,6 +10,8 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentRuntimeStatus,
+  AgentSessionAttention,
+  AgentSessionDirectoryEntry,
   AgentSlashCommand,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
@@ -39,12 +41,14 @@ import type {
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
 import { AgentUsagePoller } from "./usage-poller";
+import { AgentTurnTracker, sessionAttention } from "./attention";
 
 const MAX_REPLAY_EVENTS = 500;
 const MODEL_DISCOVERY_TIMEOUT_MS = 120_000;
 const IDLE_RUNTIME_TTL_MS = 5 * 60_000;
 const PROVIDER_IDLE_POLL_MS = 100;
 const PROVIDER_IDLE_TIMEOUT_MS = 30_000;
+const PROVIDER_BUSY_POLL_MS = 5_000;
 
 type Subscriber = (envelope: AgentRuntimeEnvelope) => void;
 
@@ -277,6 +281,7 @@ export class AgentSessionRuntime {
   private sequence = 0;
   private status: AgentRuntimeSnapshot["status"] = "idle";
   private activeTurnStartedAt: number | null = null;
+  private activityRevision = 0;
   private state: Record<string, unknown>;
   private messages: unknown[];
   private models: AgentModel[];
@@ -296,11 +301,16 @@ export class AgentSessionRuntime {
   private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
+  private readonly compactionStartWaiters = new Set<() => void>();
+  private terminalDuringAbort = false;
   private readonly eventClassifier: AgentRuntimeEventClassifier;
   private pendingInteraction:
     | NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>
     | undefined;
   private pendingInteractionTimer: NodeJS.Timeout | undefined;
+  private pendingInteractionAt = 0;
+  private attention: AgentSessionAttention | undefined;
+  private readonly turns: AgentTurnTracker;
   private error: string | undefined;
   private readonly usagePoller?: AgentUsagePoller;
   private usageRevisions = { tokens: 0, cost: 0, contextUsage: 0 };
@@ -330,11 +340,20 @@ export class AgentSessionRuntime {
   ) {
     this.eventClassifier = adapter.createEventClassifier();
     this.state = initial.state;
-    this.messages = initial.messages;
+    // A newly started provider cannot still be executing a compaction from
+    // the previous process. Retain its position without a permanent spinner.
+    this.messages = initial.messages.map((message) => {
+      if (message && typeof message === "object" &&
+        Reflect.get(message, "role") === "compactionSummary" &&
+        Reflect.get(message, "status") === "running" && initial.state.isCompacting !== true) {
+        return { ...message, status: "interrupted" };
+      }
+      return message;
+    });
     this.models = initial.models;
     this.commands = initial.commands;
     this.stats = initial.stats;
-    this.status = initial.state.isStreaming === true ? "running" : "idle";
+    this.status = this.providerBusy(initial.state) ? "running" : "idle";
     if (adapter.pollUsage) {
       this.usagePoller = new AgentUsagePoller(
         () => client.getSessionStats(),
@@ -349,6 +368,7 @@ export class AgentSessionRuntime {
     this.queuedMessages = restoredQueue.messages;
     this.activeTurnStartedAt =
       this.status === "running" ? Date.now() : null;
+    this.turns = new AgentTurnTracker(this.status, this.activeTurnStartedAt);
     this.scheduleIdleStop();
     if (
       restoredQueue.changed ||
@@ -389,6 +409,10 @@ export class AgentSessionRuntime {
       if (event.type === "usage_update") {
         this.receiveUsage(event);
       }
+      if (event.type === "compaction_start") {
+        for (const waiter of this.compactionStartWaiters) waiter();
+        this.compactionStartWaiters.clear();
+      }
       if (event.type === "compaction_start" && this.usagePoller) {
         this.usagePoller.stop();
         this.publishUsage({
@@ -403,6 +427,12 @@ export class AgentSessionRuntime {
       }
       let settleRejectedPrompt = false;
       const classification = this.eventClassifier.classify(event);
+      if (
+        classification.started || classification.terminal ||
+        event.type === "process_exit" || event.type === "compaction_start" || event.type === "compaction_end"
+      ) {
+        this.activityRevision += 1;
+      }
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
       const userMessages = eventUserMessages(event);
@@ -438,6 +468,10 @@ export class AgentSessionRuntime {
         return;
       }
       if (classification.started) {
+        this.terminalDuringAbort = false;
+        // A wake supersedes any state read settling the previous provider run.
+        this.turnGeneration += 1;
+        this.settlePromise = null;
         this.usagePoller?.start();
         this.promptAwaitingStart = false;
         this.status = "running";
@@ -457,6 +491,7 @@ export class AgentSessionRuntime {
         this.pendingInteraction = event as NonNullable<
           AgentRuntimeSnapshot["pendingInteraction"]
         >;
+        this.pendingInteractionAt = Date.now();
         if (
           typeof event.timeout === "number" &&
           Number.isFinite(event.timeout) &&
@@ -491,6 +526,7 @@ export class AgentSessionRuntime {
             this.pendingSubmissions.delete(submission.id);
           } else {
             this.error = event.error;
+            this.turns.observeError(event.error);
             if (submission?.published) {
               this.rejectSubmission(submission.id);
             }
@@ -502,8 +538,15 @@ export class AgentSessionRuntime {
           this.promptSubmissionId = undefined;
         } else {
           this.error = event.error;
+          // Only the prompt's own failure fails the turn; a refused steer,
+          // compaction or state refresh leaves it to end on its own.
+          if (event.command === "prompt") this.turns.observeError(event.error);
         }
       }
+      if (event.type === "turn_end" && event.status === "failed") {
+        this.turns.markFailed();
+      }
+      if (event.type === "message_end") this.turns.observeReply(event.message);
       this.publish({ type: "runtime_event", data: event });
       if (settleRejectedPrompt) {
         void this.settleAfterProviderTerminal();
@@ -564,6 +607,7 @@ export class AgentSessionRuntime {
         this.publishSnapshot();
       }
       if (classification.terminal) {
+        if (this.abortPromise) this.terminalDuringAbort = true;
         this.promptAwaitingStart = false;
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
@@ -575,6 +619,20 @@ export class AgentSessionRuntime {
 
   get provider(): AgentProviderId {
     return this.adapter.provider;
+  }
+
+  /** Status summary for session lists and notifications. */
+  directoryStatus(): Omit<AgentSessionDirectoryEntry, "sessionId"> {
+    const request = this.pendingInteraction;
+    if (request && this.attention?.id !== request.id) {
+      this.attention = sessionAttention(request, this.pendingInteractionAt);
+    }
+    return {
+      runtimeStatus: this.status,
+      turnStartedAt: this.activeTurnStartedAt,
+      attention: request ? (this.attention ?? null) : null,
+      lastTurn: this.turns.lastTurn ?? null,
+    };
   }
 
   snapshot(): AgentRuntimeSnapshot {
@@ -845,7 +903,7 @@ export class AgentSessionRuntime {
             ),
           );
       case "compact":
-        return this.client.compact(command.customInstructions);
+        return this.startCompaction(command.customInstructions);
       case "set_auto_compaction":
         return this.client
           .setAutoCompaction(command.enabled)
@@ -1050,13 +1108,23 @@ export class AgentSessionRuntime {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       const usageRevisions = { ...this.usageRevisions };
+      const activityRevision = this.activityRevision;
       const [state, stats, commands] =
         await Promise.all([
           this.client.getState(),
           this.client.getSessionStats().catch(() => this.stats),
           this.client.getCommands().catch(() => this.commands),
         ]);
-      this.state = state;
+      const activityIsCurrent = activityRevision === this.activityRevision;
+      // Metadata can refresh while a background result wakes the model. Keep
+      // the newer lifecycle projection when that read began before the event.
+      this.state = activityIsCurrent
+        ? state
+        : {
+            ...state,
+            isStreaming: this.state.isStreaming,
+            isCompacting: this.state.isCompacting,
+          };
       // A state/command fetch can finish after a newer live usage event.
       this.stats = {
         ...stats,
@@ -1069,9 +1137,14 @@ export class AgentSessionRuntime {
             ? stats.contextUsage : this.stats.contextUsage,
       };
       this.commands = runtimeCommands(this.adapter, commands);
-      this.status = state.isStreaming === true ? "running" : "idle";
-      if (this.status === "running") this.usagePoller?.start();
-      else this.usagePoller?.stop();
+      if (activityIsCurrent && !this.stopped) {
+        this.status = this.providerBusy(state) ? "running" : "idle";
+      }
+      if (this.status === "running") {
+        this.usagePoller?.start();
+      } else {
+        this.usagePoller?.stop();
+      }
       this.activeTurnStartedAt =
         this.status === "running"
           ? (this.activeTurnStartedAt ?? Date.now())
@@ -1116,7 +1189,9 @@ export class AgentSessionRuntime {
 
   async stop(): Promise<void> {
     if (this.stopped) return;
+    this.turns.requestStop();
     this.stopped = true;
+    this.activityRevision += 1;
     this.usagePoller?.stop();
     this.turnGeneration += 1;
     this.clearIdleStop();
@@ -1146,6 +1221,13 @@ export class AgentSessionRuntime {
       if (this.subscribers.size > 0 || this.leaseCount > 0) return;
       if (this.status === "running") {
         this.scheduleIdleStop();
+        return;
+      }
+      // Stopping the process would cancel background work still running.
+      if (this.state.hasPendingAsyncWork === true) {
+        void this.refreshState().catch(() => {}).finally(() => {
+          if (!this.stopped) this.scheduleIdleStop();
+        });
         return;
       }
       void this.stop();
@@ -1229,6 +1311,7 @@ export class AgentSessionRuntime {
         ? await this.resolveImages(imageRefs)
         : [];
     this.turnGeneration += 1;
+    this.activityRevision += 1;
     this.eventClassifier.reset();
     this.status = "running";
     this.activeTurnStartedAt = Date.now();
@@ -1402,12 +1485,28 @@ export class AgentSessionRuntime {
     if (this.status !== "running") {
       return Promise.resolve();
     }
-    const operation = this.client.abort().then((result) => {
-      this.completeAcknowledgedAbort();
+    this.turns.requestStop();
+    const operation = this.client.abort().then(async (result) => {
+      // Abort is foreground-only: background work keeps running and a later
+      // wake starts a new turn.
+      let busy = false;
+      if (this.adapter.busyFromState) {
+        const revision = this.activityRevision;
+        const state = await this.client.getState();
+        if (revision === this.activityRevision) {
+          this.state = state;
+          busy = this.providerBusy(state);
+        } else {
+          busy = this.status === "running";
+        }
+      }
+      if (this.stopped || this.status === "exited") return result;
+      this.completeAcknowledgedAbort(busy);
       return result;
     });
     const settled = operation
       .catch((error) => {
+        this.turns.cancelStop();
         this.error = errorMessage(error);
         this.publish({
           type: "runtime_event",
@@ -1422,6 +1521,11 @@ export class AgentSessionRuntime {
       .finally(() => {
         if (this.abortPromise !== settled) return;
         this.abortPromise = null;
+        const terminalDuringAbort = this.terminalDuringAbort;
+        this.terminalDuringAbort = false;
+        if (terminalDuringAbort && this.status === "running") {
+          void this.settleAfterProviderTerminal();
+        }
         if (this.status === "idle") {
           void this.drainQueuedMessage();
         }
@@ -1430,7 +1534,8 @@ export class AgentSessionRuntime {
     return settled;
   }
 
-  private completeAcknowledgedAbort(): void {
+  private completeAcknowledgedAbort(busy = false): void {
+    this.activityRevision += 1;
     this.usagePoller?.stop();
     // An acknowledged abort supersedes settlement work for the canceled turn.
     this.turnGeneration += 1;
@@ -1438,15 +1543,18 @@ export class AgentSessionRuntime {
     this.promptAwaitingStart = false;
     this.promptSubmissionId = undefined;
     this.pendingSubmissions.clear();
-    this.clearPendingInteraction();
-    this.eventClassifier.reset();
-    this.status = "idle";
-    this.activeTurnStartedAt = null;
+    if (!busy) {
+      this.clearPendingInteraction();
+      this.eventClassifier.reset();
+    }
+    this.status = busy ? "running" : "idle";
+    this.activeTurnStartedAt = busy ? (this.activeTurnStartedAt ?? Date.now()) : null;
     this.state = {
       ...this.state,
-      isStreaming: false,
-      isCompacting: false,
+      isStreaming: busy,
+      isCompacting: busy && this.state.isCompacting === true,
     };
+    if (busy) this.usagePoller?.start();
     this.error = undefined;
     this.publishStatus();
   }
@@ -1483,11 +1591,18 @@ export class AgentSessionRuntime {
     timeoutMs: number,
     turnGeneration: number,
   ): Promise<void> {
-    const providerIdle = await this.waitForProviderIdle(
+    const settled = await this.waitForProviderIdle(
       timeoutMs,
       turnGeneration,
     );
-    if (!providerIdle) return;
+    if (!settled) return;
+    if (settled.error) {
+      this.error = errorMessage(settled.error);
+      this.publish({
+        type: "runtime_event",
+        data: { type: "rpc_error", command: "get_state", error: this.error },
+      });
+    }
     this.usagePoller?.stop();
     this.status = "idle";
     this.activeTurnStartedAt = null;
@@ -1513,37 +1628,46 @@ export class AgentSessionRuntime {
     }
   }
 
+  /** Resolves when the provider reports idle, or with an error once its state
+   * is unreadable past the timeout. Reported work keeps the turn open, so the
+   * provider's state rather than elapsed time decides when a turn ends. */
   private async waitForProviderIdle(
     timeoutMs: number,
     turnGeneration: number,
-  ): Promise<boolean> {
+  ): Promise<{ error?: Error } | null> {
     const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
     while (this.isProviderIdleWaitCurrent(turnGeneration)) {
       const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) break;
       try {
-        const state = await this.client.getState(remainingMs);
-        if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-          return false;
-        }
+        const state = await this.client.getState(
+          remainingMs > 0 ? remainingMs : undefined,
+        );
+        if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
         this.state = state;
-        if (state.isStreaming !== true && state.isCompacting !== true) {
-          return true;
+        if (state.isCompacting !== true && !this.providerBusy(state)) return {};
+        if (remainingMs <= 0 && this.status !== "running") {
+          this.status = "running";
+          this.activeTurnStartedAt ??= Date.now();
+          this.state = { ...this.state, isStreaming: true };
+          this.usagePoller?.start();
+          this.publishStatus();
         }
       } catch (error) {
         lastError = error;
+        if (Date.now() >= deadline) break;
       }
-      if (Date.now() >= deadline) break;
-      await wait(PROVIDER_IDLE_POLL_MS);
+      await wait(
+        Date.now() < deadline ? PROVIDER_IDLE_POLL_MS : PROVIDER_BUSY_POLL_MS,
+      );
     }
-    if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-      return false;
-    }
-    const detail = lastError ? ` ${errorMessage(lastError)}` : "";
-    throw new Error(
-      `${agentProviderMetadata(this.provider).label} still reports that it is working after ${Math.round(timeoutMs / 1_000)} seconds.${detail}`,
-    );
+    if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
+    const label = agentProviderMetadata(this.provider).label;
+    return {
+      error: new Error(
+        `${label} stopped reporting its state, so the turn was ended.${lastError ? ` ${errorMessage(lastError)}` : ""}`,
+      ),
+    };
   }
 
   private isProviderIdleWaitCurrent(turnGeneration: number): boolean {
@@ -1563,6 +1687,50 @@ export class AgentSessionRuntime {
         startedAt: this.activeTurnStartedAt,
       },
     });
+  }
+
+  /**
+   * Acknowledge a manual compaction once the provider starts it. Providers
+   * that only answer when compaction ends would otherwise hold the command,
+   * and every later command for the session, for the whole compaction.
+   */
+  private startCompaction(customInstructions?: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      let acknowledged = false;
+      const onStart = () => {
+        acknowledged = true;
+        resolve(undefined);
+      };
+      this.compactionStartWaiters.add(onStart);
+      Promise.resolve()
+        .then(() => this.client.compact(customInstructions))
+        .then(
+        (result) => {
+          this.compactionStartWaiters.delete(onStart);
+          if (!acknowledged) resolve(result);
+        },
+        (error) => {
+          this.compactionStartWaiters.delete(onStart);
+          if (!acknowledged) {
+            reject(error);
+            return;
+          }
+          if (this.stopped || this.status === "exited") return;
+          this.error = errorMessage(error);
+          this.publish({
+            type: "runtime_event",
+            data: { type: "rpc_error", command: "compact", error: this.error },
+          });
+          this.publishStatus();
+        },
+      );
+    });
+  }
+
+  private providerBusy(state: Record<string, unknown>): boolean {
+    return this.adapter.busyFromState
+      ? this.adapter.busyFromState(state)
+      : state.isStreaming === true;
   }
 
   private imageInputError(images: AgentPromptImage[]): Error | null {
@@ -1871,6 +2039,14 @@ export class AgentSessionRuntime {
       envelope.type === "snapshot"
         ? this.envelope("snapshot", envelope.data)
         : this.envelope("runtime_event", envelope.data);
+    this.turns.observe(
+      {
+        status: this.status,
+        startedAt: this.activeTurnStartedAt,
+        error: this.error,
+      },
+      () => this.messages,
+    );
     this.replay.push(sequenced);
     if (this.replay.length > MAX_REPLAY_EVENTS) this.replay.shift();
     for (const subscriber of this.subscribers) subscriber(sequenced);

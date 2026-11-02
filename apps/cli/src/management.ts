@@ -4,7 +4,7 @@ import {
   appleSpeechToken,
 } from "./apple-speech.js";
 import { readInstallationConfig, readInstallationSecrets } from "./config.js";
-import { CLI_VERSION } from "./constants.js";
+import { CLI_VERSION, SANDBOX_IMAGES } from "./constants.js";
 import {
   detectDockerCommand,
   runDocker,
@@ -84,6 +84,14 @@ export function components(config: InstallationConfig): Component[] {
       image: config.voiceImage,
       state: "unknown",
     });
+  if (config.sandbox.installed)
+    result.push({
+      id: "sandbox",
+      service: config.sandbox.tier === "full" ? "sandbox-full" : "sandbox",
+      configured: config.sandboxVersion,
+      image: `${SANDBOX_IMAGES[config.sandbox.tier]}:${config.sandboxVersion}`,
+      state: "unknown",
+    });
   if (config.agents.installed)
     result.push({
       id: "connector",
@@ -92,6 +100,24 @@ export function components(config: InstallationConfig): Component[] {
     });
   if (appleSpeechCapabilities(config).length)
     result.push({ id: "speech", configured: "Apple speech", state: "unknown" });
+  if (config.access?.mode === "cloud" && config.access.cloud) {
+    result.push(
+      {
+        id: "cloud",
+        service: "cloud-tunnel",
+        configured: config.access.cloud.hostname,
+        image: config.cloudTunnelImage,
+        state: "unknown",
+      },
+      {
+        id: "cloud-proxy",
+        service: "cloud-proxy",
+        configured: config.cloudProxyImage,
+        image: config.cloudProxyImage,
+        state: "unknown",
+      },
+    );
+  }
   return result;
 }
 
@@ -104,6 +130,10 @@ export const composeServices = [
   "stt-cpu",
   "stt-gpu",
   "voice",
+  "sandbox",
+  "sandbox-full",
+  "cloud-tunnel",
+  "cloud-proxy",
 ];
 export function composeArgs(paths: RuntimePaths): string[] {
   return ["compose", "--env-file", paths.secretsFile, "-f", paths.composeFile];

@@ -107,4 +107,56 @@ describe("Claude target session storage", () => {
       await listClaudeWorkspaceSessions({ transport: "local" }, workspace),
     ).toContainEqual(expect.objectContaining({ name: "Repair session" }));
   });
+
+  it("replays compactions as dividers without Claude's bookkeeping turns", async () => {
+    configureLocalTestProcessSpawner();
+    const root = await mkdtemp(join(tmpdir(), "overtchat-claude-"));
+    temporaryDirectories.push(root);
+    const sessionPath = join(root, "session.jsonl");
+    const user = (uuid: string, content: string, flags: Record<string, unknown> = {}) =>
+      JSON.stringify({
+        type: "user", uuid, timestamp: "2026-01-01T00:00:00.000Z", ...flags,
+        message: { role: "user", content },
+      });
+    const boundary = (uuid: string, compactMetadata: Record<string, unknown>) =>
+      JSON.stringify({
+        type: "system", subtype: "compact_boundary", uuid,
+        timestamp: "2026-01-01T00:00:01.000Z", content: "Conversation compacted", compactMetadata,
+      });
+    // Entry order and flags as Claude Code 2.1.305-2.1.310 journal them.
+    await writeFile(sessionPath, [
+      user("user-1", "Repair the build"),
+      boundary("boundary-1", { trigger: "manual", preTokens: 210_677, postTokens: 11_152 }),
+      user("summary-1", "This session is being continued from a previous conversation.", {
+        isVisibleInTranscriptOnly: true, isCompactSummary: true,
+      }),
+      user("caveat-1", "<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>", {
+        isMeta: true,
+      }),
+      user("command-1", "<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args></command-args>"),
+      user("stdout-1", "<local-command-stdout>Compacted </local-command-stdout>"),
+      user("user-2", "Keep going"),
+      boundary("boundary-2", { trigger: "auto", preTokens: 967_944 }),
+      user("summary-2", "This session is being continued from a previous conversation.", {
+        isVisibleInTranscriptOnly: true, isCompactSummary: true,
+      }),
+      user("user-3", "<local-command-stdout>printed by a later command</local-command-stdout>"),
+    ].join("\n") + "\n");
+
+    expect(await readClaudeSessionMessages({ transport: "local" }, sessionPath)).toEqual([
+      expect.objectContaining({ role: "user", id: "user-1" }),
+      {
+        id: "compaction:boundary-1", role: "compactionSummary", status: "completed",
+        trigger: "manual", tokensBefore: 210_677,
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+      expect.objectContaining({ role: "user", id: "user-2" }),
+      {
+        id: "compaction:boundary-2", role: "compactionSummary", status: "completed",
+        trigger: "auto", tokensBefore: 967_944,
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+      expect.objectContaining({ role: "user", id: "user-3" }),
+    ]);
+  });
 });

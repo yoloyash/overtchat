@@ -1,10 +1,11 @@
+import { isIP } from "node:net";
 import { CLIENT_API_LEVEL, type PingResponse } from "@overtchat/shared";
 import type { ServerProblem } from "../shared/ipc";
 
 const PING_TIMEOUT_MS = 8_000;
 
 export type PingResult =
-  | { ok: true; version: string | null; apiLevel: number; problem: ServerProblem | null }
+  | { ok: true; origin: string; version: string | null; apiLevel: number; problem: ServerProblem | null }
   | { ok: false; message: string };
 
 export interface PingOptions {
@@ -15,13 +16,14 @@ export interface PingOptions {
 export type ServerProbe = (origin: string, options?: PingOptions) => Promise<PingResult>;
 
 /**
- * Turns a typed address into a server origin. Like the mobile app, an address
- * without a scheme means `http://`.
+ * Public hostnames default to HTTPS. Local names and IP addresses retain HTTP
+ * for self-hosted installations; an explicit scheme always takes precedence.
  */
 export function serverOrigin(address: string): string | null {
   const value = address.trim();
   if (!value || /\s/.test(value)) return null;
-  const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `http://${value}`;
+  const explicitScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(value);
+  const withScheme = explicitScheme ? value : `https://${value}`;
   let url: URL;
   try {
     url = new URL(withScheme);
@@ -30,6 +32,11 @@ export function serverOrigin(address: string): string | null {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   if (url.username || url.password || !url.hostname) return null;
+  const hostname = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (!explicitScheme && (isIP(hostname) || !hostname.includes(".") ||
+    /\.(localhost|local|lan|home\.arpa)$/.test(hostname))) {
+    url = new URL(`http://${value}`);
+  }
   return url.origin;
 }
 
@@ -82,10 +89,23 @@ export async function probeServer(
   if (!response.ok || body?.name !== "overtchat") {
     return { ok: false, message: `${host} responded, but it isn't an OvertChat server.` };
   }
+  const destination = new URL(response.url || `${origin}/api/ping`);
+  const requested = new URL(origin);
+  const sameOrigin = destination.origin === requested.origin;
+  const secureUpgrade = requested.protocol === "http:" && destination.protocol === "https:" &&
+    destination.hostname === requested.hostname;
+  // A successful native ping can follow a redirect that browser API requests
+  // cannot. Retain a same-host HTTPS upgrade, but require explicit selection
+  // for another host, a downgrade, or a server mounted below a path.
+  if ((!sameOrigin && !secureUpgrade) || destination.username || destination.password ||
+    destination.pathname !== "/api/ping" || destination.search || destination.hash) {
+    return { ok: false, message: `${host} redirected to another address. Enter the server's final URL directly.` };
+  }
   const version = typeof body.version === "string" ? body.version : null;
   const apiLevel = Number.isSafeInteger(body.apiLevel) && body.apiLevel! > 0 ? body.apiLevel! : 0;
   return {
     ok: true,
+    origin: destination.origin,
     version,
     apiLevel,
     problem: compatibility(version, apiLevel),

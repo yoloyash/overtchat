@@ -4,6 +4,7 @@ import {
   fstatSync,
   ftruncateSync,
   openSync,
+  mkdirSync,
   readSync,
   renameSync,
   writeFileSync,
@@ -12,6 +13,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
+import { windowsServiceDirectory } from "./windows-service.js";
 
 const MAX_LOG_BYTES = 10 * 1024 * 1024;
 const LOG_BACKUPS = 3;
@@ -49,7 +51,12 @@ export function rotatingLog(
     } finally {
       closeSync(source);
     }
-    ftruncateSync(fd, 0);
+    if (process.platform === "win32") {
+      // Windows append-only handles cannot truncate. Keep the active append
+      // descriptor, but obtain write access on a second handle for rotation.
+      const writable = openSync(file, "r+");
+      try { ftruncateSync(writable, 0); } finally { closeSync(writable); }
+    } else ftruncateSync(fd, 0);
   }
 
   if (fstatSync(fd).size > maxBytes) rotate();
@@ -75,7 +82,17 @@ export function rotatingLog(
   });
 }
 
-export function configureServiceLogging(): void {
+export function configureServiceLogging(windowsService = false): void {
+  if (process.platform === "win32" && windowsService) {
+    const directory = windowsServiceDirectory();
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const log = (name: string) => {
+      const file = path.join(directory, name);
+      return rotatingLog(openSync(file, "a", 0o600), file);
+    };
+    globalThis.console = new Console({ stdout: log("connector.log"), stderr: log("connector.error.log") });
+    return;
+  }
   if (
     process.platform !== "darwin" ||
     process.env.XPC_SERVICE_NAME !== "com.overtchat.connector"

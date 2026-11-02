@@ -12,6 +12,10 @@ describe("notification routing", () => {
     expect(parseNotificationTarget(target, "device")).toEqual(target);
     expect(parseNotificationTarget(target, "other-server-device")).toBeNull();
   });
+  it("carries the reason newer servers add to agent alerts", () => {
+    const alert = { ...target, kind: "agent", reason: "approval" };
+    expect(parseNotificationTarget(alert, "device")).toEqual(alert);
+  });
   it.each([
     null,
     {},

@@ -22,6 +22,9 @@ import {
 } from "@overtchat/agent-runtime/runtime/process";
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 import { PiAssistantMessages } from "./assistant-messages";
+import { PiCompaction } from "./compaction";
+import { normalizeTodoEvent, normalizeTodoMessage } from "./todo-messages";
+import { parsePiTodos } from "./todos";
 
 export type PiLaunch = {
   executable: string;
@@ -59,6 +62,7 @@ export class PiClient {
   private readonly subscribers = new Set<(event: PiRpcEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
   private readonly assistantMessages = new PiAssistantMessages();
+  private readonly compaction = new PiCompaction((event) => this.emit(event));
   private historyGeneration = 0;
 
   constructor(process: AgentProcess) {
@@ -68,9 +72,10 @@ export class PiClient {
         this.transport.fail("Pi RPC event is missing a type.");
         return;
       }
-      const event = this.assistantMessages.annotate(
+      if (this.compaction.handle(record as PiRpcEvent)) return;
+      const event = normalizeTodoEvent(this.assistantMessages.annotate(
         this.submissionEchoes.annotate(record) as PiRpcEvent,
-      );
+      ), parsePiTodos) as PiRpcEvent;
       this.emit(
         event.type === "extension_ui_request"
           ? ({ ...event, type: "interaction_request" } as PiRpcEvent)
@@ -136,7 +141,8 @@ export class PiClient {
     const history = await this.request<{ messages: unknown[] }>({
       type: "get_messages",
     });
-    return this.identifyMessages(history.messages);
+    const { messages } = await this.identifyMessages(history.messages);
+    return { messages: messages.map((message) => normalizeTodoMessage(message, parsePiTodos)) };
   }
 
   // Resolve native user identity from session entries without importing model
@@ -226,7 +232,7 @@ export class PiClient {
   }
 
   abort(): Promise<unknown> {
-    return this.request({ type: "abort" }).then((result) => {
+    return this.compaction.abort(() => this.request({ type: "abort" })).then((result) => {
       this.submissionEchoes.clear();
       this.assistantMessages.clear();
       return result;
@@ -250,13 +256,13 @@ export class PiClient {
   }
 
   compact(customInstructions?: string): Promise<unknown> {
-    return this.request(
+    return this.compaction.manual(() => this.request(
       {
         type: "compact",
         ...(customInstructions ? { customInstructions } : {}),
       },
       0x7fffffff,
-    );
+    ));
   }
 
   setAutoCompaction(enabled: boolean): Promise<unknown> {

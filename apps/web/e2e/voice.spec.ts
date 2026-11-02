@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 function seedVoiceFixtures() {
   const db = openE2eDatabase();
@@ -41,19 +41,11 @@ function seedVoiceFixtures() {
 
 test.beforeEach(resetE2eDatabase);
 
-test("voice is a distinct resumable chat mode in the regular composer", async ({
+test("voice toggles within ordinary and legacy voice chats", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      configurable: true,
-      value: {
-        getUserMedia: async () => {
-          throw new DOMException("Permission denied", "NotAllowedError");
-        },
-      },
-    });
-  });
+  let releaseSession!: () => void;
+  const sessionGate = new Promise<void>(resolve => { releaseSession = resolve; });
   await page.route("**/api/capabilities", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -68,19 +60,28 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
     });
   });
   await page.route("**/api/voice/session", async (route) => {
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    await sessionGate;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         token: "test-ticket",
+        sessionId: "test-session",
         chatId: "new-voice-chat",
         endpoint: "/api/voice/realtime",
         voice: "af_heart",
-        tools: [],
       }),
     });
   });
 
-  await page.goto("/signup");
+  await page.route("**/api/voice/events", route => route.fulfill({
+    status: 503, body: "Unavailable",
+  }));
+
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Voice Admin");
   await page.locator("#email").fill("voice-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -99,45 +100,58 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
   ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   await composer.fill("");
+  await expect(page.getByRole("button", { name: "Enable temporary chat" })).toBeVisible();
   await page.getByRole("button", { name: "Start voice conversation" }).click();
-  await expect(page.getByText(/Microphone access was denied/)).toBeVisible();
+  await expect(page.getByText("Connecting", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enable temporary chat" })).toHaveCount(0);
+  await composer.fill("Keep this draft during startup");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(composer).toHaveValue("Keep this draft during startup");
+  await composer.fill("/temporary");
+  await expect(page.getByRole("option", { name: /temporary/i })).toHaveCount(0);
+  await composer.fill("/search");
+  await expect(page.getByText("End voice to require a web search. Voice can still search automatically.", { exact: true })).toBeVisible();
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("/search");
+  await composer.fill("Keep this draft after startup failure");
+  releaseSession();
+  await expect(page.getByText("Could not connect voice history.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(composer).toHaveValue("Keep this draft after startup failure");
   await expect(composer).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop assistant" })).toHaveCount(0);
   await page.getByRole("button", { name: "End voice session" }).click();
+  await expect(composer).toHaveValue("Keep this draft after startup failure");
+  await expect(page.getByRole("button", { name: "Enable temporary chat" })).toBeVisible();
+  await composer.fill("/search");
+  await expect(page.getByText("End voice to require a web search. Voice can still search automatically.", { exact: true })).toHaveCount(0);
+  await composer.fill("");
 
   const voiceRow = page.getByRole("listitem").filter({ hasText: "Voice Topic" });
-  const voiceIndicator = voiceRow.getByLabel("Voice chat");
-  await expect(voiceIndicator).toBeVisible();
-  const indicatorBounds = await voiceIndicator.boundingBox();
+  await expect(voiceRow.getByLabel("Voice chat")).toHaveCount(0);
   await voiceRow.hover();
-  await expect(voiceIndicator).toBeHidden();
   const chatActions = voiceRow.getByRole("button", { name: "Chat actions" });
   await expect(chatActions).toBeVisible();
-  const actionBounds = await chatActions.boundingBox();
-  expect(indicatorBounds).not.toBeNull();
-  expect(actionBounds).not.toBeNull();
-  expect((actionBounds?.x ?? 0) + (actionBounds?.width ?? 0) / 2).toBeCloseTo(
-    (indicatorBounds?.x ?? 0) + (indicatorBounds?.width ?? 0) / 2,
-    0,
-  );
-  expect((actionBounds?.y ?? 0) + (actionBounds?.height ?? 0) / 2).toBeCloseTo(
-    (indicatorBounds?.y ?? 0) + (indicatorBounds?.height ?? 0) / 2,
-    0,
-  );
 
   await page.goto("/chat/text-chat");
   await expect(
     page.getByRole("button", { name: "Start voice conversation" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 
   await page.goto("/chat/voice-chat");
-  await expect(page.getByPlaceholder("Resume voice to continue")).toBeDisabled();
+  await expect(composer).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Start voice conversation" }),
   ).toBeVisible();
   await expect(page.getByText("Hello by voice")).toBeVisible();
 
+  await page.route("**/api/server-capabilities", async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...await response.json(), voice: {
+      available: false, installed: false, unavailableReason: "not-installed",
+    } } });
+  });
   await page.goto("/settings/services");
   await expect(
     page.getByRole("heading", { name: "Realtime voice" }),

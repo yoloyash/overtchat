@@ -18,8 +18,22 @@ import type {
   DiscoveredModel,
 } from "@/lib/providers/server/types";
 
+import { applyLocalReasoningLevel } from "./local-reasoning";
+
 export const customAdapter: ProviderAdapter = {
   id: "custom",
+  acceptsReasoningLevel: true,
+  validateModelConfig(config) {
+    if (
+      config.reasoningLevel &&
+      config.reasoningLevel !== "default" &&
+      config.apiFormat !== "openai-chat"
+    ) {
+      throw new ProviderConfigurationError(
+        "Custom thinking controls require the Chat Completions API.",
+      );
+    }
+  },
   createLanguageModel: createCustomLanguageModel,
   listModels: listCustomModels,
 };
@@ -36,6 +50,12 @@ function createCustomLanguageModel(
           apiKey: config.apiKey,
           model: config.model,
           supportsImageInput: config.supportsImageInput,
+          transformRequestBody: (body) =>
+            applyLocalReasoningLevel(
+              body,
+              config.reasoningLevel,
+              config.reasoningRequest,
+            ),
         }),
         providerOptionsKey: "custom",
       };
@@ -61,6 +81,10 @@ function createCustomLanguageModel(
         providerOptionsKey: "custom",
         promptCacheKind: "anthropic",
       };
+    case "openai-images":
+      throw new ProviderConfigurationError(
+        "The Images API cannot be used for chat.",
+      );
     case "auto":
       throw new ProviderConfigurationError(
         "Custom providers require an explicit API format.",
@@ -72,6 +96,7 @@ function listCustomModels(
   connection: ProviderConnection,
 ): Promise<DiscoveredModel[]> {
   switch (connection.apiFormat) {
+    case "openai-images":
     case "openai-chat":
     case "openai-responses":
       return listOpenAIModels(connection.baseUrl, connection.apiKey);

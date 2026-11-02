@@ -1,12 +1,9 @@
-import { count } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { user } from "@/lib/db/schema";
+import { getSetupCode } from "@/lib/db/initialSetup";
 
-/** Public: whether the server still needs its first (administrator) account. */
+/** Public: setup state only. The code is restricted to operator management. */
 export async function GET() {
-  const [{ n }] = await db.select({ n: count() }).from(user);
   return Response.json(
-    { required: n === 0 },
+    { required: getSetupCode() !== null },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

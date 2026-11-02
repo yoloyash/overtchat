@@ -1,4 +1,5 @@
 import { isCancel, note, select } from "@clack/prompts";
+import { installationSpinner as spinner } from "./install-progress.js";
 import { startServe } from "./tailscale.js";
 import type { InstallationConfig } from "./types.js";
 
@@ -35,13 +36,40 @@ export async function verifyConnection(
   }
 }
 
+// The first certificate is issued through the relay once the tunnel is up,
+// which can take a minute or two after the containers start.
+async function waitForCloudAddress(
+  config: InstallationConfig,
+  timeoutMs = 180_000,
+  intervalMs = 10_000,
+): Promise<boolean> {
+  const progress = spinner();
+  progress.start(`Waiting for ${config.publicUrl} and its HTTPS certificate`);
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (!(await verifyConnection(config.publicUrl, config.instanceId))) {
+      progress.stop(`${config.publicUrl} is ready`);
+      return true;
+    }
+    if (Date.now() + intervalMs > deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  progress.stop("The address is not reachable yet", 1);
+  return false;
+}
+
 export async function finishAccess(
   config: InstallationConfig,
   interactive: boolean,
 ): Promise<void> {
-  if (!config.access || !["advanced", "tailscale"].includes(config.access.mode))
+  if (!config.access || !["advanced", "tailscale", "cloud"].includes(config.access.mode))
     return;
   config.access.connectionStatus = "pending";
+  if (config.access.mode === "cloud" && (await waitForCloudAddress(config))) {
+    config.access.connectionStatus = "verified";
+    note(`Verified ${config.publicUrl} reaches this OvertChat installation.`, "Connection ready");
+    return;
+  }
   if (config.access.mode === "advanced" && interactive) {
     const choice = await select({
       message: "Check your public address?",
@@ -76,7 +104,9 @@ export async function finishAccess(
     note(
       config.access.mode === "tailscale"
         ? `${problem}\nTailscale may need a minute to issue the first HTTPS certificate. Wait briefly, then retry.`
-        : problem,
+        : config.access.mode === "cloud"
+          ? `${problem}\nCheck that this computer is online, then retry. overtchat logs cloud shows the tunnel; overtchat logs cloud-proxy shows the certificate.`
+          : problem,
       "Connection pending",
     );
     if (!interactive) return;

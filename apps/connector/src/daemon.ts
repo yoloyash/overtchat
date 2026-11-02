@@ -1,3 +1,4 @@
+import { ConnectorTerminalManager } from "./terminal.js";
 import { createHash } from "node:crypto";
 import type {
   AgentDaemonRequest,
@@ -6,13 +7,14 @@ import type {
   AgentDaemonWorkspaceDescriptor,
   AgentPromptImage,
   AgentRuntimeEnvelope,
-  AgentRuntimeStatus,
+  AgentSessionDirectoryEntry,
   HostConnectorCommand,
   HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
 import {
   isAgentProviderNotice,
   parseHostConnectorCapabilities,
+  sameAgentSessionDirectoryEntry,
 } from "@overtchat/agent-bridge";
 import {
   AgentRuntimeRegistry,
@@ -20,11 +22,16 @@ import {
   AgentProviderSnapshotManager,
   agentProviderAdapter,
   configureProcessSpawner,
+  configureHostEnvironmentResolver,
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
-  inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
+  createAgentWorkspaceGitWorktree,
+  inspectAgentWorkspaceGitWorktree,
+  listAgentWorkspaceGitBranches,
+  removeAgentWorkspaceGitWorktree,
   probeAgentWorkspace,
+  switchAgentWorkspaceGitBranch,
   workspaceFilesService,
   type AgentSessionRuntime,
   type HostTarget,
@@ -34,6 +41,10 @@ import { listSshHosts } from "./ssh.js";
 import { ConnectorProcessHost } from "./runtime.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
+import {
+  WorkspaceGitStatusReader,
+  WorkspaceGitWatches,
+} from "./workspace-git.js";
 
 type Emit = (event: HostConnectorEventPayload) => void;
 type ResolveImages = (
@@ -109,6 +120,12 @@ function hostTarget(target: AgentDaemonTarget): HostTarget {
       };
 }
 
+function sameHost(left: AgentDaemonTarget, right: AgentDaemonTarget): boolean {
+  return left.transport === "local"
+    ? right.transport === "local"
+    : right.transport === "ssh" && left.alias === right.alias;
+}
+
 function workspaceDescriptor(
   descriptor: AgentDaemonWorkspaceDescriptor,
 ) {
@@ -126,14 +143,17 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 }
 
 export class ConnectorDaemon {
+  readonly terminals: ConnectorTerminalManager;
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
   private readonly providerCatalogs = new AgentProviderCatalogManager();
+  private readonly workspaceGit = new WorkspaceGitStatusReader();
+  private readonly gitWatches = new WorkspaceGitWatches(this.workspaceGit);
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
   private readonly publishedSessions = new Map<
     string,
-    AgentRuntimeStatus
+    AgentSessionDirectoryEntry
   >();
   private readonly sessionTails = new Map<string, Promise<void>>();
   private readonly activeRequests = new Set<Promise<void>>();
@@ -152,7 +172,9 @@ export class ConnectorDaemon {
     private readonly shutdownGraceMs = SHUTDOWN_GRACE_MS,
     private readonly processHost = new ConnectorProcessHost(),
   ) {
+    this.terminals = new ConnectorTerminalManager(undefined, this.processHost.inspectEnvironment);
     configureProcessSpawner(this.processHost.spawn);
+    configureHostEnvironmentResolver(this.processHost.inspectEnvironment);
     configureManagedProcessSpawner(this.processHost.spawnManaged);
     configureTcpTunnelOpener(this.processHost.openTcpTunnel);
     this.registry = new AgentRuntimeRegistry({
@@ -252,6 +274,8 @@ export class ConnectorDaemon {
     // or timeline operation. The stores are closed by the client immediately
     // after this method returns.
     this.storesClosing = true;
+    this.terminals.stopAll();
+    const gitWatchCleanup = this.gitWatches.stop();
     for (const subscription of this.subscriptions.values()) {
       this.closeSubscription(subscription);
     }
@@ -270,6 +294,7 @@ export class ConnectorDaemon {
       this.settleWithin(captureCleanup, this.shutdownGraceMs),
       this.settleWithin(runtimeCleanup, this.shutdownGraceMs),
     ]);
+    await gitWatchCleanup;
     await this.processHost.stop();
     const failure = [captureOutcome, runtimeOutcome].find(
       (outcome): outcome is PromiseRejectedResult =>
@@ -328,6 +353,8 @@ export class ConnectorDaemon {
     if (this.connectionEpoch !== connectionEpoch) {
       this.connectionEpoch = connectionEpoch;
       this.publishedSessions.clear();
+      // The new server connection re-establishes the watches it still needs.
+      this.gitWatches.unwatchAll();
       for (const subscription of this.subscriptions.values()) {
         this.closeSubscription(subscription);
       }
@@ -354,6 +381,9 @@ export class ConnectorDaemon {
       case "list_ssh_hosts":
         return listSshHosts();
       case "provider_snapshot":
+        if (request.refresh) this.processHost.refreshEnvironment(request.target.transport === "local"
+          ? { transport: "local" }
+          : { transport: "ssh", alias: request.target.sshAlias });
         return this.providerSnapshots.getSnapshot(request.target, {
           refresh: request.refresh,
         });
@@ -377,8 +407,56 @@ export class ConnectorDaemon {
         return listAgentDirectories(hostTarget(request.target), request.path);
       case "probe_workspace":
         return probeAgentWorkspace(hostTarget(request.target), request.path);
-      case "git_status":
-        return inspectAgentWorkspaceGitStatus(
+      case "git_status": {
+        const target = hostTarget(request.target);
+        return (
+          this.gitWatches.current(target, request.path) ??
+          this.workspaceGit.read(target, request.path)
+        );
+      }
+      case "watch_git_status": {
+        const { watchId } = request;
+        return this.gitWatches.watch(
+          watchId,
+          hostTarget(request.target),
+          request.path,
+          (status, revision) => {
+            if (!this.serverCapabilities.has("workspace-git-watch-v1")) return;
+            this.emit({ type: "workspace_git_status", watchId, revision, status });
+          },
+        );
+      }
+      case "unwatch_git_status":
+        this.gitWatches.unwatch(request.watchId);
+        return { watching: false };
+      case "list_git_branches":
+        return listAgentWorkspaceGitBranches(
+          hostTarget(request.target),
+          request.path,
+        );
+      case "switch_git_branch":
+        return switchAgentWorkspaceGitBranch(
+          hostTarget(request.target),
+          request.path,
+          {
+            branch: request.branch,
+            stash: request.stash,
+            busyPaths: this.busySessionPaths(request.target),
+          },
+        );
+      case "create_git_worktree":
+        return createAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
+          { base: request.base, branch: request.branch },
+        );
+      case "inspect_git_worktree":
+        return inspectAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
+        );
+      case "remove_git_worktree":
+        return removeAgentWorkspaceGitWorktree(
           hostTarget(request.target),
           request.path,
         );
@@ -508,6 +586,7 @@ export class ConnectorDaemon {
         await this.journal.deleteSession(request.sessionId);
         return { stopped: true };
       case "stop_workspace": {
+        this.terminals.stopWorkspace(request.workspaceId);
         const removed = this.journal.sessionIdsForWorkspace(request.workspaceId);
         await this.registry.stopWorkspace(request.workspaceId);
         this.assertAccepting();
@@ -519,6 +598,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_connection": {
+        this.terminals.stopConnection(request.connectionId);
         const removed = this.journal.sessionIdsForConnection(request.connectionId);
         await this.registry.stopConnection(request.connectionId);
         this.assertAccepting();
@@ -530,6 +610,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_all": {
+        this.terminals.stopAll();
         const removed = this.journal.sessionIds();
         await this.registry.stopAll();
         this.assertAccepting();
@@ -541,6 +622,28 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
     }
+  }
+
+  /** Working directories on `target` where an agent turn is in progress or about to start. */
+  private busySessionPaths(target: AgentDaemonTarget): string[] {
+    const paths = new Set<string>();
+    for (const sessionId of this.journal.sessionIds()) {
+      const snapshot = this.registry.get(sessionId)?.snapshot();
+      if (
+        !snapshot ||
+        (snapshot.status !== "running" &&
+          snapshot.state.isCompacting !== true &&
+          !snapshot.pendingInteraction &&
+          !snapshot.queuedMessages.length)
+      ) {
+        continue;
+      }
+      const descriptor = this.journal.sessionDescriptor(sessionId);
+      if (descriptor && sameHost(descriptor.target, target)) {
+        paths.add(descriptor.cwd);
+      }
+    }
+    return [...paths];
   }
 
   private async open(
@@ -611,24 +714,20 @@ export class ConnectorDaemon {
               "Finish or stop the current turn and clear queued messages before reloading history.",
             );
           }
-          const capture = this.captures.get(request.session.sessionId)!;
-          const descriptor = {
-            ...request.session,
-            providerSessionId: capture.providerSessionId,
-            providerSessionPath: capture.providerSessionPath,
-          };
           attemptedProviderAction = true;
-          await this.finishCapture(descriptor.sessionId, false);
-          this.assertAccepting();
-          await this.awaitProviderAction(this.registry.stopSession(descriptor.sessionId));
-          this.assertAccepting();
-          runtime = await this.registry.getOrStart(sessionDescriptor(descriptor), {
-            hydrateHistory: true,
-          });
-          await this.assertRuntimeAccepted(descriptor.sessionId);
-          await this.attachTimeline(runtime, descriptor.providerSessionId, descriptor.providerSessionPath, true);
+          runtime = await this.restartRuntime(request.session, true);
         }
         attemptedProviderAction = true;
+        if (normalized.type === "abort") {
+          try {
+            await this.awaitProviderAction(runtime.command(normalized));
+          } catch (error) {
+            // A provider that cannot complete an abort would otherwise leave
+            // the turn running, so restart it on the same native session.
+            if (runtime.snapshot().status !== "running") throw error;
+            runtime = await this.restartRuntime(request.session, false);
+          }
+        }
         const data =
           normalized.type === "rewind" || normalized.type === "edit_message"
             ? {
@@ -637,7 +736,7 @@ export class ConnectorDaemon {
                 ),
               }
             : await this.awaitProviderAction(
-                normalized.type === "reload_history"
+                normalized.type === "reload_history" || normalized.type === "abort"
                   ? Promise.resolve()
                   : runtime.command(normalized, request.clientMessageId),
               ).then((commandResult) => ({
@@ -743,6 +842,34 @@ export class ConnectorDaemon {
     }
   }
 
+  /** Replace a session's provider process, resuming its native session. */
+  private async restartRuntime(
+    session: AgentDaemonSessionDescriptor,
+    reloadHistory: boolean,
+  ): Promise<AgentSessionRuntime> {
+    const capture = this.captures.get(session.sessionId)!;
+    const descriptor = {
+      ...session,
+      providerSessionId: capture.providerSessionId,
+      providerSessionPath: capture.providerSessionPath,
+    };
+    await this.finishCapture(descriptor.sessionId, false);
+    this.assertAccepting();
+    await this.awaitProviderAction(this.registry.stopSession(descriptor.sessionId));
+    this.assertAccepting();
+    const runtime = await this.registry.getOrStart(sessionDescriptor(descriptor), {
+      hydrateHistory: reloadHistory,
+    });
+    await this.assertRuntimeAccepted(descriptor.sessionId);
+    await this.attachTimeline(
+      runtime,
+      descriptor.providerSessionId,
+      descriptor.providerSessionPath,
+      reloadHistory,
+    );
+    return runtime;
+  }
+
   private async assertRuntimeAccepted(sessionId: string): Promise<void> {
     if (this.accepting) return;
     await this.registry.stopSession(sessionId);
@@ -798,7 +925,7 @@ export class ConnectorDaemon {
       await capture.ready;
       this.assertAccepting();
       capture.initialized = true;
-      this.publishSessionStatus(sessionId, runtime.snapshot().status);
+      this.publishSessionStatus(sessionId, runtime);
       for (const envelope of capture.buffered.splice(0)) {
         this.commitCapturedEnvelope(sessionId, capture, envelope);
       }
@@ -836,7 +963,7 @@ export class ConnectorDaemon {
     try {
       operation = this.timelines.commit(sessionId, envelope).then((committed) => {
         if (committed) {
-          this.publishEnvelopeStatus(sessionId, committed);
+          this.publishSessionStatus(sessionId, capture.runtime);
         }
         return committed;
       });
@@ -853,46 +980,34 @@ export class ConnectorDaemon {
       .finally(() => capture.pending.delete(operation));
   }
 
-  private publishEnvelopeStatus(
-    sessionId: string,
-    envelope: AgentRuntimeEnvelope,
-  ): void {
-    if (envelope.type === "snapshot") {
-      this.publishSessionStatus(sessionId, envelope.data.status);
-      return;
-    }
-    if (
-      envelope.data.type === "overtchat_status" &&
-      ["idle", "running", "exited"].includes(String(envelope.data.status))
-    ) {
-      this.publishSessionStatus(
-        sessionId,
-        envelope.data.status as AgentRuntimeStatus,
-      );
-    }
-  }
-
+  /** Publishes list-visible status changes, deduplicated across envelopes. */
   private publishSessionStatus(
     sessionId: string,
-    status: AgentRuntimeStatus,
+    runtime: AgentSessionRuntime,
   ): void {
-    if (this.publishedSessions.get(sessionId) === status) return;
-    this.publishedSessions.set(sessionId, status);
+    const session = { sessionId, ...runtime.directoryStatus() };
+    if (sameAgentSessionDirectoryEntry(this.publishedSessions.get(sessionId), session)) {
+      return;
+    }
+    this.publishedSessions.set(sessionId, session);
     this.emit({
       type: "session_update",
-      session: { sessionId, runtimeStatus: status },
+      session,
     });
   }
 
   private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
-    const sessions = [...sessionIds].map((sessionId) => ({
-      sessionId,
-      runtimeStatus:
-        this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
-    }));
+    const sessions: AgentSessionDirectoryEntry[] = [...sessionIds].map(
+      (sessionId) => {
+        const runtime = this.captures.get(sessionId)?.runtime;
+        return runtime
+          ? { sessionId, ...runtime.directoryStatus() }
+          : { sessionId, runtimeStatus: "idle" };
+      },
+    );
     this.publishedSessions.clear();
     for (const session of sessions) {
-      this.publishedSessions.set(session.sessionId, session.runtimeStatus);
+      this.publishedSessions.set(session.sessionId, session);
     }
     this.emit({ type: "session_directory", sessions });
   }

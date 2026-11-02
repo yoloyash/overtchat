@@ -1,0 +1,1 @@
+ALTER TABLE `model_configs` ADD `reasoning_override` text;

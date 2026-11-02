@@ -85,6 +85,7 @@ const paths: RuntimePaths = {
   searxngDirectory: "/home/test/.local/share/overtchat/searxng",
   searxngSettingsFile:
     "/home/test/.local/share/overtchat/searxng/settings.yml",
+  cloudDirectory: "/home/test/.local/share/overtchat/cloud",
 };
 
 vi.mock("./paths.js", () => ({ runtimePaths: () => paths }));
@@ -116,6 +117,8 @@ const releaseImages = {
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 function config(
@@ -129,6 +132,7 @@ function config(
     voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.1.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    sandboxVersion: "0.1.0",
     ...releaseImages,
     appPort: 4718,
     bindAddress: "127.0.0.1",
@@ -146,6 +150,7 @@ function config(
     },
     stt: { provider: "disabled", bundledInstalled: false },
     voice: { installed: false },
+    sandbox: { installed: false, tier: "slim" },
     agents: { installed: false },
     ...overrides,
   };
@@ -156,6 +161,8 @@ const secrets: InstallationSecrets = {
   managementSecret: "management-secret",
   searxngSecret: "searxng-secret",
   voiceSharedSecret: "voice-secret",
+  sandboxToken: "sandbox-token",
+  cloudCredential: "",
 };
 
 beforeEach(() => {
@@ -168,6 +175,7 @@ beforeEach(() => {
     (_existing: null, previous: Partial<InstallationSecrets>) => ({
       ...previous,
       voiceSharedSecret: previous.voiceSharedSecret ?? "generated-voice-secret",
+      sandboxToken: previous.sandboxToken ?? "generated-sandbox-token",
     }),
   );
   mocks.latestReleaseManifest.mockResolvedValue({
@@ -177,6 +185,7 @@ beforeEach(() => {
     voiceVersion: "0.1.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    sandboxVersion: "0.1.0",
     ...releaseImages,
   });
   mocks.updateCliIfNeeded.mockResolvedValue(null);
@@ -242,7 +251,7 @@ describe("managed updates", () => {
     expect(mocks.requireDocker).not.toHaveBeenCalled();
   });
 
-  it("adds the voice secret when upgrading an older managed installation", async () => {
+  it("adds the voice secret and sandbox token when upgrading an older managed installation", async () => {
     const legacySecrets = {
       betterAuthSecret: secrets.betterAuthSecret,
       managementSecret: secrets.managementSecret,
@@ -255,7 +264,11 @@ describe("managed updates", () => {
     expect(mocks.initialSecrets).toHaveBeenCalledWith(null, legacySecrets);
     expect(mocks.renderStackEnvironment).toHaveBeenCalledWith(
       expect.anything(),
-      { ...legacySecrets, voiceSharedSecret: "generated-voice-secret" },
+      {
+        ...legacySecrets,
+        voiceSharedSecret: "generated-voice-secret",
+        sandboxToken: "generated-sandbox-token",
+      },
       paths,
     );
   });
@@ -370,6 +383,7 @@ describe("managed updates", () => {
       voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.3.0",
       connectorVersion: "0.5.0",
       sttVersion: "0.0.9",
+      sandboxVersion: "0.1.0",
       agents: { installed: true },
     });
     mocks.readInstallationConfig.mockResolvedValue(current);
@@ -380,6 +394,7 @@ describe("managed updates", () => {
       voiceVersion: "0.2.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     });
 
@@ -393,6 +408,7 @@ describe("managed updates", () => {
       voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.3.0",
       connectorVersion: "0.5.0",
       sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     };
     expect(mocks.prepareFiles).toHaveBeenCalledWith(expected, undefined);
@@ -443,6 +459,7 @@ describe("managed updates", () => {
       voiceVersion: "0.1.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     });
     mocks.requireDocker.mockRejectedValueOnce(new Error("pull failed"));
@@ -479,13 +496,13 @@ it("commits native speech and the updated app when the optional connector fails"
   mocks.readInstallationConfig.mockResolvedValue(previous);
   mocks.latestReleaseManifest.mockResolvedValue({
     format: 1, cliVersion: "0.1.1", appVersion: "0.15.0", voiceVersion: "0.1.0",
-    connectorVersion: "0.4.0", sttVersion: "0.1.0", ...releaseImages,
+    connectorVersion: "0.4.0", sttVersion: "0.1.0", sandboxVersion: "0.1.0", ...releaseImages,
   });
   const rollback = vi.fn(async () => {});
   const commit = vi.fn();
   vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit, rollback });
   mocks.installManagedConnector.mockRejectedValueOnce(new Error("connector failed"));
-  await update();
+  await expect(update()).rejects.toThrow("Agent Connections failed");
   expect(rollback).not.toHaveBeenCalled();
   expect(commit).toHaveBeenCalledOnce();
   expect(mocks.requireDocker.mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(1);
@@ -507,7 +524,7 @@ it("checks updates without Docker, credentials, self-update, or writes", async (
 it("updates the app when connector prerequisites are unavailable", async () => {
   mocks.readInstallationConfig.mockResolvedValue(config({ agents: { installed: true } }));
   mocks.checkManagedConnectorPrerequisites.mockRejectedValueOnce(new Error("No user session"));
-  await update();
+  await expect(update()).rejects.toThrow("Agent Connections failed");
   expect(mocks.installManagedConnector).not.toHaveBeenCalled();
   expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({ agents: { installed: true, pending: true } }));
   expect(mocks.checkManagedConnectorPrerequisites.mock.invocationCallOrder[0]).toBeLessThan(mocks.prepareFiles.mock.invocationCallOrder[0]);

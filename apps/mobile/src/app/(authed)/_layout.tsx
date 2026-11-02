@@ -2,8 +2,12 @@ import { useNotifications } from "@/lib/notifications/useNotifications";
 import * as Crypto from "expo-crypto";
 import { Stack } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
+import { RequiredTwoFactorNotice } from "@/components/RequiredTwoFactorNotice";
 import { ChatSessionContext, type ChatSession } from "@/lib/chat/session";
+import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { useTheme } from "@/lib/theme";
+
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
 
 type State = { id: string; isNew: boolean; projectId: string | null };
 
@@ -35,6 +39,11 @@ export default function AuthedLayout() {
   );
 
   useNotifications(session);
+  const twoFactor = useTwoFactorStatus();
+
+  if (twoFactor.data?.required && !twoFactor.data.enabled) {
+    return <RequiredTwoFactorNotice onCheckAgain={() => void twoFactor.refetch()} />;
+  }
 
   return (
     <ChatSessionContext.Provider value={session}>
@@ -47,7 +56,7 @@ export default function AuthedLayout() {
         }}
       >
         <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-        <Stack.Screen name="settings" />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="personalization" />
         <Stack.Screen name="search" />
         <Stack.Screen name="projects/[id]" />

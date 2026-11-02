@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import {
   openE2eDatabase,
   resetE2eDatabase,
+  setupUrl,
 } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
 test("save a private profile and manage memory", async ({ page }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.getByLabel("Name").fill("Memory Tester");
   await page.getByLabel("Email").fill("memory@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

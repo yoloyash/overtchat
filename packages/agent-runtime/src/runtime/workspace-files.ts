@@ -33,7 +33,7 @@ function fail(message) {
 
 function inside(root, candidate) {
   const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== "..");
+  return relative === "" || (!path.isAbsolute(relative) && !relative.startsWith(".." + path.sep) && relative !== "..");
 }
 
 function canonicalRoot() {

@@ -11,7 +11,7 @@ import {
   writeInstallationConfig,
   writeSecretsFile,
 } from "./config.js";
-import { completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
+import { assertAgentConnectionsComplete, completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
 import { installationSpinner as spinner } from "./install-progress.js";
 import { protectInstallationSecrets } from "./install-log.js";
 import { renderStackEnvironment } from "./compose.js";
@@ -22,7 +22,7 @@ import {
   requireDocker,
 } from "./docker.js";
 import { runtimePaths } from "./paths.js";
-import { requireSuccessful } from "./process.js";
+import { runUpdatedCli } from "./installation-lock.js";
 import {
   applyReleaseManifest,
   latestReleaseManifest,
@@ -75,7 +75,7 @@ export async function update(options: { check?: boolean; json?: boolean } = {}):
     if (updatedExecutable) {
       progress.stop("OvertChat manager updated");
       progressActive = false;
-      await requireSuccessful(updatedExecutable, ["update"], { inherit: true });
+      await runUpdatedCli(updatedExecutable, ["update"]);
       return;
     }
 
@@ -131,6 +131,7 @@ export async function update(options: { check?: boolean; json?: boolean } = {}):
     showSidecarReconciliation(reconciliation);
     reportPendingAgentConnections(nextConfig);
     outro(nextConfig.access ? accessSummary(nextConfig) : `Open: ${nextConfig.publicUrl}`);
+    assertAgentConnectionsComplete(nextConfig, interactive);
   } catch (error) {
     if (speechChange) {
       try {

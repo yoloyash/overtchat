@@ -10,25 +10,38 @@ import {
   type ImageGenerationOptions,
   type ImageGenerationOutput,
 } from "@overtchat/shared";
+import type { CompletedImageUsage } from "@/lib/db/chatTurns";
 import { getImageModelConfig } from "@/lib/db/modelConfigs";
 import { readFetchedImage, storeFetchedImage } from "@/lib/db/uploads";
 import {
   runImageProvider,
   type ImageConnection,
 } from "@/lib/providers/server/image-generation";
+import {
+  estimateImageGenerationCost,
+  PROVIDER_COST_SOURCE,
+} from "@/lib/providers/server/model-cost";
+import {
+  customImageOptions,
+  customImageSize,
+} from "@/lib/model-config/image-options";
 
 export const IMAGE_TOOL_PROMPT = `Image creation:
-Use generate_image only when the user asks to create an image, and edit_image when they ask to change or combine existing images. Never create extra images or automatically retry a failed generation. Each call produces one image.
+Use generate_image only when the user asks to create an image, and edit_image, when available, when they ask to change or combine existing images. If edit_image is unavailable, explain that the configured provider does not support editing. Never create extra images or automatically retry a failed generation. Each call produces one image.
 Images are displayed directly in chat with download and edit controls. Do not embed duplicate markdown images. Use the exact image IDs supplied in the conversation when editing. Never invent image IDs. If the reference is ambiguous, ask which image to use.
 The image model is separate from the conversational model. A text-only conversational model can still create and edit images using these tools.`;
 
 export { getImageCapability } from "./capability";
 
-function imageConnection(): ImageConnection {
-  const config = getImageModelConfig();
+function imageConnection(
+  config: ReturnType<typeof getImageModelConfig>,
+): ImageConnection {
   if (
     !config ||
-    (config.providerId !== "openai" && config.providerId !== "google")
+    (config.providerId !== "openai" &&
+      config.providerId !== "google" &&
+      config.providerId !== "openrouter" &&
+      config.providerId !== "custom")
   ) {
     throw new Error(
       "Image generation is not configured. Ask an administrator to enable an image model in Settings → Models.",
@@ -39,6 +52,9 @@ function imageConnection(): ImageConnection {
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
     model: config.model,
+    ...(config.providerId === "custom"
+      ? { providerOptions: config.providerOptions }
+      : {}),
   };
 }
 
@@ -96,14 +112,23 @@ export function createImageTools({
   messages,
   supportsImageInput,
   options,
-  onGenerate,
+  onUsage,
 }: {
   userId: string;
   messages: UIMessage[];
   supportsImageInput: boolean;
   options?: ImageGenerationOptions;
-  onGenerate?: () => void;
+  /** Reported once the provider returns, so a later failure cannot hide the charge. */
+  onUsage?: (usage: CompletedImageUsage) => void;
 }) {
+  // Snapshot the provider for this turn so configuration changes cannot expose
+  // editing for one backend and execute against another.
+  const config = getImageModelConfig();
+  const connection = config ? imageConnection(config) : undefined;
+  const customOptions =
+    connection?.providerId === "custom"
+      ? customImageOptions(connection.providerOptions)
+      : undefined;
   const allowedIds = referencedImageIds(messages);
   const generatedThisTurn = new Set<string>();
   let calls = 0;
@@ -124,14 +149,24 @@ export function createImageTools({
       size?: ImageGenerationOptions["size"];
       quality?: ImageGenerationOptions["quality"];
     },
+    toolCallId: string,
     signal?: AbortSignal,
   ): Promise<ImageGenerationOutput> {
     if (++calls > 4)
       throw new Error(
         "At most four image operations can run in one message. Send another message to continue.",
       );
-    const connection = imageConnection();
+    if (!connection)
+      throw new Error(
+        "Image generation is not configured. Ask an administrator to enable an image model in Settings → Models.",
+      );
     const referenceImageIds = input.image_ids ?? [];
+    if (
+      referenceImageIds.length &&
+      customOptions &&
+      !customOptions.supportsEditing
+    )
+      throw new Error("This image provider does not support editing.");
     const references: Uint8Array[] = [];
     for (const id of referenceImageIds) {
       if (!allowedIds.has(id))
@@ -145,22 +180,44 @@ export function createImageTools({
         );
       references.push(image.data);
     }
-    const size =
-      options?.size !== undefined && options.size !== "auto"
+    const size = customOptions
+      ? "auto"
+      : options?.size !== undefined && options.size !== "auto"
         ? options.size
         : (input.size ?? DEFAULT_IMAGE_OPTIONS.size);
     const quality =
-      connection.providerId === "google"
+      customOptions || connection.providerId === "google"
         ? "auto"
         : options?.quality !== undefined && options.quality !== "auto"
           ? options.quality
           : (input.quality ?? DEFAULT_IMAGE_OPTIONS.quality);
-    onGenerate?.();
     const generated = await runImageProvider(
       connection,
       { prompt: input.prompt, references, size, quality },
       signal,
     );
+    onUsage?.({
+      toolCallId,
+      occurredAt: new Date(),
+      providerId: connection.providerId,
+      model: connection.model,
+      inputTokens: generated.usage?.inputTokens,
+      outputTokens: generated.usage?.outputTokens,
+      totalTokens: generated.usage?.totalTokens,
+      ...(generated.reportedCost
+        ? {
+            costSource: PROVIDER_COST_SOURCE,
+            ...generated.reportedCost,
+            cacheReadCostNanoUsd: 0,
+            cacheWriteCostNanoUsd: 0,
+          }
+        : (estimateImageGenerationCost({
+            providerId: connection.providerId,
+            model: connection.model,
+            usage: generated.usage,
+            pricing: config?.pricing,
+          }) ?? {})),
+    });
     const filename = `generated-image.${generated.mediaType.split("/")[1].replace("jpeg", "jpg")}`;
     const { uploadUrl } = await storeFetchedImage({
       userId,
@@ -180,6 +237,11 @@ export function createImageTools({
       size,
       quality,
       referenceImageIds,
+      ...(customOptions
+        ? {
+            providerSize: customImageSize(customOptions, references.length > 0),
+          }
+        : {}),
       usage: generated.usage,
     };
   }
@@ -236,31 +298,41 @@ export function createImageTools({
     >({
       description:
         "Create one new image from a text prompt. Use only when the user requests an image. Results appear in chat.",
-      inputSchema: z.object(fields),
-      execute: (input, { abortSignal }) => execute(input, abortSignal),
+      inputSchema: customOptions
+        ? z.object(fields).omit({ size: true, quality: true })
+        : z.object(fields),
+      execute: (input, { abortSignal, toolCallId }) =>
+        execute(input, toolCallId, abortSignal),
       toModelOutput,
     }),
-    edit_image: tool<
-      {
-        prompt: string;
-        image_ids: string[];
-        size?: ImageGenerationOptions["size"];
-        quality?: ImageGenerationOptions["quality"];
-      },
-      ImageGenerationOutput,
-      Record<string, never>
-    >({
-      description:
-        "Edit or combine attached or previously generated images. Use exact image IDs from the conversation. Produces one new image and preserves the originals.",
-      inputSchema: z.object({
-        ...fields,
-        image_ids: z
-          .array(z.string().regex(/^[a-zA-Z0-9_-]+$/))
-          .min(1)
-          .max(8),
-      }),
-      execute: (input, { abortSignal }) => execute(input, abortSignal),
-      toModelOutput,
-    }),
+    ...(!customOptions || customOptions.supportsEditing
+      ? {
+          edit_image: tool<
+            {
+              prompt: string;
+              image_ids: string[];
+              size?: ImageGenerationOptions["size"];
+              quality?: ImageGenerationOptions["quality"];
+            },
+            ImageGenerationOutput,
+            Record<string, never>
+          >({
+            description:
+              "Edit or combine attached or previously generated images. Use exact image IDs from the conversation. Produces one new image and preserves the originals.",
+            inputSchema: (customOptions
+              ? z.object(fields).omit({ size: true, quality: true })
+              : z.object(fields)
+            ).extend({
+              image_ids: z
+                .array(z.string().regex(/^[a-zA-Z0-9_-]+$/))
+                .min(1)
+                .max(8),
+            }),
+            execute: (input, { abortSignal, toolCallId }) =>
+              execute(input, toolCallId, abortSignal),
+            toModelOutput,
+          }),
+        }
+      : {}),
   };
 }

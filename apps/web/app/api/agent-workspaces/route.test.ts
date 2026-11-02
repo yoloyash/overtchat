@@ -71,6 +71,42 @@ describe("atomic agent workspace route", () => {
     expect(mocks.reconcile).not.toHaveBeenCalled();
   });
 
+  it.each(["C:\\Users\\me\\project", "\\\\server\\share\\project"])(
+    "relays Windows workspace %s without Linux path normalization",
+    async (path) => {
+      const target = {
+        connectorId: "connector",
+        transport: "ssh",
+        sshAlias: "gaming-pc",
+      };
+      const response = await POST(request({ target, path }));
+      expect(response.status).toBe(201);
+      expect(mocks.reconcile).toHaveBeenCalledWith({
+        userId: "admin",
+        target,
+        path,
+      });
+    },
+  );
+
+  it.each(["C:project", "\\project", "\\\\.\\pipe\\agent"])(
+    "rejects non-workspace Windows path %s",
+    async (path) => {
+      const response = await POST(
+        request({
+          target: {
+            connectorId: "connector",
+            transport: "ssh",
+            sshAlias: "gaming-pc",
+          },
+          path,
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(mocks.reconcile).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects partial success when no provider could be attached", async () => {
     mocks.reconcile.mockResolvedValue({
       providers: 1,

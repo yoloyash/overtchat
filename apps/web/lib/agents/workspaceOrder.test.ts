@@ -10,6 +10,7 @@ function group(key: string): AgentWorkspaceGroup {
     key,
     name: key,
     path: `/srv/${key}`,
+    parentKey: null,
     targets: [],
     sessions: [],
     host: {

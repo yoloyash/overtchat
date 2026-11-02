@@ -50,6 +50,15 @@ describe("getDownloads", () => {
     expect(downloads.apk?.downloadUrl).toContain("mobile-v1.1.0/overtchat-v1.1.0.apk");
   });
 
+  it("exposes Windows only when the selected release contains its installer", () => {
+    const candidate = desktop("0.4.0", "2026-06-01");
+    candidate.assets.push({ name: "overtchat-0.4.0-windows-x64.exe",
+      browser_download_url: "https://github.com/yoloyash/overtchat/releases/download/desktop-v0.4.0/overtchat-0.4.0-windows-x64.exe" });
+    expect(getDownloads(normalizeReleases([candidate])).windows?.name).toBe("overtchat-0.4.0-windows-x64.exe");
+    expect(getDownloads(normalizeReleases([candidate, desktop("0.5.0", "2026-07-01")])).windows).toBeUndefined();
+    expect(getDownloads(normalizeReleases([desktop("0.3.0", "2026-05-01")])).windows).toBeUndefined();
+  });
+
   it("supports the original versioned AppImage filename", () => {
     const candidate = desktop("0.1.0", "2026-01-01");
     candidate.assets = candidate.assets.map((asset) => ({

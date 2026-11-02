@@ -6,6 +6,10 @@ import {
   updateModelConfig,
 } from "@/lib/db/modelConfigs";
 import {
+  adminModelConfigForClient,
+  restoreNewerProvider,
+} from "@/lib/model-config/legacy-clients";
+import {
   ModelConfigSchema,
   connectionForValidation,
 } from "@/lib/model-config/schema";
@@ -26,7 +30,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const guard = await requireAdmin(req);
-  if ("error" in guard) return guard.error;
+  if (guard.error) return guard.error;
 
   const { id } = await params;
   const existing = await getModelConfig(id);
@@ -39,6 +43,8 @@ export async function PATCH(
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // An omitted scope keeps the stored one, so the list's enable toggle and
+  // clients that predate per-user credentials never reset a model to shared.
   const parsed = ModelConfigSchema.safeParse(
     body && typeof body === "object" && !("credentialScope" in body)
       ? { ...body, credentialScope: existing.credentialScope }
@@ -50,16 +56,19 @@ export async function PATCH(
       { status: 400 },
     );
   }
+  const input = restoreNewerProvider(req, parsed.data, existing);
   try {
-    if (parsed.data.modelType !== "image")
-      createConfiguredLanguageModel(connectionForValidation(parsed.data));
+    if (input.modelType !== "image")
+      createConfiguredLanguageModel(connectionForValidation(input));
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });
   }
-  const row = await updateModelConfig(id, parsed.data);
+  const row = await updateModelConfig(id, input);
   if (!row) return new Response("Not found", { status: 404 });
-  return Response.json({ modelConfig: toAdminModelConfig(row) });
+  return Response.json({
+    modelConfig: adminModelConfigForClient(req, toAdminModelConfig(row)),
+  });
 }
 
 export async function DELETE(
@@ -67,7 +76,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const guard = await requireAdmin(req);
-  if ("error" in guard) return guard.error;
+  if (guard.error) return guard.error;
 
   const { id } = await params;
   await deleteModelConfig(id);

@@ -31,6 +31,7 @@ import {
   AGENT_PROVIDERS,
   agentDiscoveryTargetSchema,
   agentProviderMetadata,
+  isAbsoluteAgentPath,
   type AgentConnectionListItem,
   type AgentDiscoveryTarget,
   type AgentProviderId,
@@ -190,7 +191,7 @@ export function AddAgentWorkspaceDialog({
       setError("Choose a project folder.");
       return;
     }
-    if (!chosenPath.startsWith("/")) {
+    if (!isAbsoluteAgentPath(chosenPath)) {
       setError("Enter an absolute directory path.");
       return;
     }

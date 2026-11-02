@@ -2,8 +2,11 @@
 
 import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import {
+  forwardRef,
+  useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -38,6 +41,7 @@ import {
   MAX_AGENT_IMAGE_TOTAL_BYTES,
 } from "@overtchat/agent-bridge";
 import { getDataTransferFiles } from "@/lib/chat/attachments";
+import { useComposerDraft } from "@/lib/chat/use-composer-draft";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
@@ -67,28 +71,12 @@ function commandSource(source: AgentSlashCommand["source"]): string {
   return labels[source];
 }
 
-export function AgentComposer({
-  providerLabel,
-  commands,
-  queuedMessages,
-  supportsSteer,
-  supportsImages,
-  running,
-  pending,
-  stopping,
-  disabled,
-  isAdmin,
-  onBeforeDictate,
-  controls,
-  contextUsage,
-  onSubmit,
-  onStop,
-  onEditQueued,
-  onDeleteQueued,
-  onSteerQueued,
-  restoreDraftKey,
-  restoredDraft,
-}: {
+export interface AgentComposerHandle {
+  /** Attaches dropped files the same way the picker and paste do. */
+  addFiles: (files: readonly File[]) => void;
+}
+
+interface AgentComposerProps {
   providerLabel: string;
   commands: AgentSlashCommand[];
   queuedMessages: AgentQueuedMessage[];
@@ -98,6 +86,13 @@ export function AgentComposer({
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
+  /**
+   * Blocks sending while typing stays open, with the reason shown on the send
+   * button. Used while a new session is still loading its model defaults.
+   */
+  sendDisabledReason?: string | null;
+  /** Focus the textarea once it first becomes enabled so typing can start right away. */
+  autoFocus?: boolean;
   isAdmin: boolean;
   /** Stops text-to-speech before dictation so playback is not transcribed. */
   onBeforeDictate?: () => void;
@@ -113,13 +108,71 @@ export function AgentComposer({
   onSteerQueued: (id: string) => Promise<boolean>;
   restoreDraftKey?: string;
   restoredDraft?: { revision: number; text: string } | null;
-}) {
-  const [input, setInput] = useState("");
+  appendedDraft?: { revision: number; text: string } | null;
+  onAppendedDraftConsumed?: () => void;
+  /** Saves unsent text on this device so it survives navigation and reloads. */
+  draftUserId?: string;
+  draftScope?: string | null;
+}
+
+export const AgentComposer = forwardRef<
+  AgentComposerHandle,
+  AgentComposerProps
+>(function AgentComposer({
+  providerLabel,
+  commands,
+  queuedMessages,
+  supportsSteer,
+  supportsImages,
+  running,
+  pending,
+  stopping,
+  disabled,
+  sendDisabledReason = null,
+  autoFocus = false,
+  isAdmin,
+  onBeforeDictate,
+  controls,
+  contextUsage,
+  onSubmit,
+  onStop,
+  onEditQueued,
+  onDeleteQueued,
+  onSteerQueued,
+  restoreDraftKey,
+  restoredDraft,
+  appendedDraft,
+  onAppendedDraftConsumed,
+  draftUserId,
+  draftScope,
+}: AgentComposerProps, ref) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handleDraftRestore = useCallback(() => {
+    requestAnimationFrame(() => {
+      const element = textareaRef.current;
+      element?.setSelectionRange(element.value.length, element.value.length);
+    });
+  }, []);
+  const { value: input, setValue: setInput } = useComposerDraft({
+    userId: draftUserId,
+    scope: draftScope ?? null,
+    enabled: Boolean(draftScope),
+    onRestore: handleDraftRestore,
+  });
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  // The textarea can mount disabled for a tick (fork draft loading), which
+  // defeats the DOM autofocus attribute, so focus on the first enabled render.
+  const textareaEnabled = !(disabled || pending || submitting);
+  const autoFocusedRef = useRef(false);
+  useEffect(() => {
+    if (!autoFocus || !textareaEnabled || autoFocusedRef.current) return;
+    autoFocusedRef.current = true;
+    textareaRef.current?.focus();
+  }, [autoFocus, textareaEnabled]);
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const appliedAppendRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     attachments,
@@ -145,13 +198,10 @@ export function AgentComposer({
     setActiveIndex(0);
     setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
   });
-  const composerContextUsage =
-    contextUsage?.tokens !== null && contextUsage?.tokens !== undefined
-      ? {
-          usedTokens: contextUsage.tokens,
-          contextWindow: contextUsage.contextWindow,
-        }
-      : undefined;
+  const composerContextUsage = {
+    usedTokens: contextUsage?.tokens ?? null,
+    contextWindow: contextUsage?.contextWindow,
+  };
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -159,6 +209,18 @@ export function AgentComposer({
     element.style.height = "auto";
     element.style.height = `${element.scrollHeight}px`;
   }, [input]);
+
+  useEffect(() => {
+    if (!appendedDraft || appliedAppendRef.current === appendedDraft.revision) return;
+    const frame = requestAnimationFrame(() => {
+      appliedAppendRef.current = appendedDraft.revision;
+      setInput((current) => `${current}${current && !current.endsWith("\n\n") ? "\n\n" : ""}${appendedDraft.text}`);
+      const element = textareaRef.current;
+      element?.focus({ preventScroll: true });
+      onAppendedDraftConsumed?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [appendedDraft, onAppendedDraftConsumed, setInput]);
 
   useEffect(() => {
     if (!restoreDraftKey) return;
@@ -178,7 +240,7 @@ export function AgentComposer({
       cancelAnimationFrame(restoreFrame);
       if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
     };
-  }, [restoreDraftKey]);
+  }, [restoreDraftKey, setInput]);
 
   useEffect(() => {
     if (!restoredDraft) return;
@@ -195,7 +257,7 @@ export function AgentComposer({
       cancelAnimationFrame(restoreFrame);
       if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
     };
-  }, [restoredDraft]);
+  }, [restoredDraft, setInput]);
 
   const query = agentSlashCommandQuery(input);
   const filteredCommands = useMemo(() => {
@@ -291,12 +353,16 @@ export function AgentComposer({
         file.type as AgentPromptImage["mediaType"],
       ),
     );
-    if (images.length === 0) {
-      if (files.some((file) => file.type.startsWith("image/"))) {
-        toast.error({ title: "Use PNG, JPEG, GIF, or WebP images" });
-      }
-      return;
+    if (files.some((file) => !file.type.startsWith("image/"))) {
+      // Coding agents read other files from the workspace by path.
+      toast.error({
+        title: `${providerLabel} accepts images only`,
+        description: "Mention other files by their path instead.",
+      });
+    } else if (images.length === 0) {
+      toast.error({ title: "Use PNG, JPEG, GIF, or WebP images" });
     }
+    if (images.length === 0) return;
     if (!supportsImages) {
       toast.error({ title: "The selected model does not support images" });
       return;
@@ -327,6 +393,8 @@ export function AgentComposer({
     }
     addFiles(accepted);
   }
+
+  useImperativeHandle(ref, () => ({ addFiles: addImageFiles }));
 
   function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     const files = getDataTransferFiles(event.clipboardData);
@@ -663,21 +731,17 @@ export function AgentComposer({
             <AgentComposerControls {...controls} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {composerContextUsage && (
-              <>
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  compact
-                  side="top"
-                  className="@2xl:hidden"
-                />
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  side="top"
-                  className="hidden @2xl:inline-flex"
-                />
-              </>
-            )}
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              compact
+              side="top"
+              className="@2xl:hidden"
+            />
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              side="top"
+              className="hidden @2xl:inline-flex"
+            />
             <DictateButton
               dictation={dictation}
               disabled={disabled || pending || submitting}
@@ -711,16 +775,19 @@ export function AgentComposer({
                 pending ||
                 submitting ||
                 dictation.status !== "idle" ||
-                disabled
+                disabled ||
+                Boolean(sendDisabledReason)
               }
               onClick={submit}
               aria-label={
                 running ? `Queue message for ${providerLabel}` : "Send message"
               }
               title={
-                running
-                  ? `Queue after ${providerLabel} finishes`
-                  : "Send message"
+                sendDisabledReason
+                  ? sendDisabledReason
+                  : running
+                    ? `Queue after ${providerLabel} finishes`
+                    : "Send message"
               }
             >
               <ArrowUp />
@@ -730,7 +797,7 @@ export function AgentComposer({
       </div>
     </div>
   );
-}
+});
 
 function AgentImageChip({
   attachment,

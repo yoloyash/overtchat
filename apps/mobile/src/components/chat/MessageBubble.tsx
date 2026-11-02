@@ -1,3 +1,12 @@
+import { useChatPreferences } from "@/lib/chatPreferences";
+import { readMessageStats } from "@overtchat/shared/message-stats";
+import {
+  codeExecutionFileIndex,
+  openUIStateKey,
+  type CodeExecutionFile,
+  type OpenUIAction,
+  type OpenUIFormState,
+} from "@overtchat/shared";
 import type { FileUIPart, UIMessage } from "ai";
 import { groupMessageParts, isToolSettled } from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
@@ -11,10 +20,12 @@ import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
 import { AttachmentChip } from "./AttachmentChip";
 import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
+import { DocumentCard } from "./DocumentCard";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
+import { OpenUICard } from "./OpenUICard";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
 import { Sources } from "./Sources";
@@ -30,6 +41,10 @@ export function MessageBubble({
   onRegenerate,
   onContinue,
   onImageReference,
+  onOpenUIAction,
+  openuiStates,
+  liveOpenUI,
+  codeFiles,
   readOnly = false,
 }: {
   message: UIMessage;
@@ -42,13 +57,24 @@ export function MessageBubble({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onOpenUIAction?: (action: OpenUIAction) => void;
+  openuiStates?: Map<string, OpenUIFormState>;
+  liveOpenUI?: ReadonlySet<string>;
+  /** Files the conversation's runs returned, which replies link by name. */
+  codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const preferences = useChatPreferences();
+  const stats = preferences.messageStats ? readMessageStats(message) : null;
   const [copied, setCopied] = useState(false);
   const menu = useMeasuredPopoverAnchor();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
+  const ownFiles = useMemo(
+    () => (codeFiles ? undefined : codeExecutionFileIndex([message])),
+    [codeFiles, message],
+  );
 
   useEffect(() => {
     return () => {
@@ -129,7 +155,10 @@ export function MessageBubble({
               <Text
                 style={[
                   styles.userText,
-                  { color: colors.secondaryForeground, fontFamily: fonts.sansRegular },
+                  {
+                    color: colors.secondaryForeground,
+                    fontFamily: fonts.sansRegular,
+                  },
                 ]}
                 selectable
               >
@@ -150,7 +179,7 @@ export function MessageBubble({
     );
   }
 
-  const hasAnyText = message.parts.some((p) => p.type === "text");
+  const hasAnyText = text.trim().length > 0;
   const showActions = !streaming && hasAnyText;
   const assistantActions: MessageAction[] =
     !streaming && hasAnyText
@@ -185,6 +214,7 @@ export function MessageBubble({
                 key={`t-${seg.index}`}
                 text={(seg.part as { text: string }).text}
                 sourceLookup={sourceLookup}
+                codeFiles={codeFiles ?? ownFiles}
               />
             );
           }
@@ -198,18 +228,41 @@ export function MessageBubble({
               />
             );
           }
+          if (seg.kind === "openui") {
+            return (
+              <OpenUICard
+                messageId={message.id}
+                initialState={openuiStates?.get(openUIStateKey(message.id, seg.part.toolCallId))}
+                onAction={readOnly ? undefined : onOpenUIAction}
+                key={seg.part.toolCallId}
+                part={seg.part}
+                streaming={streaming}
+                deferred={
+                  liveOpenUI !== undefined &&
+                  !liveOpenUI.has(openUIStateKey(message.id, seg.part.toolCallId))
+                }
+              />
+            );
+          }
           if (seg.kind === "memory") {
             return (
               <MemoryArtifact key={`m-${seg.startIndex}`} parts={seg.parts} />
+            );
+          }
+          if (seg.kind === "document") {
+            return (
+              <DocumentCard
+                key={seg.part.toolCallId}
+                part={seg.part}
+                streaming={streaming}
+              />
             );
           }
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =
             trailing.type === "reasoning"
               ? (trailing as { state?: string }).state === "done"
-              : isToolSettled(
-                  trailing as Parameters<typeof isToolSettled>[0],
-                );
+              : isToolSettled(trailing as Parameters<typeof isToolSettled>[0]);
           const active = streaming && isLast && !trailingDone;
           return (
             <ChainOfThought
@@ -220,6 +273,32 @@ export function MessageBubble({
           );
         })}
         {!streaming ? <Sources message={message} /> : null}
+        {!streaming && stats && (
+          <Text
+            style={{
+              color: colors.mutedForeground,
+              fontFamily: fonts.sansRegular,
+              fontSize: 12,
+            }}
+          >
+            {[
+              stats.totalTokens !== undefined
+                ? `${stats.totalTokens.toLocaleString()} tokens`
+                : undefined,
+              stats.responseTokens !== undefined
+                ? `${stats.responseTokens.toLocaleString()} output`
+                : undefined,
+              stats.tps !== undefined
+                ? `${stats.tps.toFixed(1)} tok/s`
+                : undefined,
+              stats.ttftMs !== undefined
+                ? `${(stats.ttftMs / 1000).toFixed(2)}s to first token`
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
+        )}
         {streaming && !hasAnyText ? (
           <Text style={{ color: colors.mutedForeground }}>▍</Text>
         ) : null}
@@ -227,10 +306,10 @@ export function MessageBubble({
           <MessageActions
             copied={copied}
             onCopy={() => copyText(text)}
-            onRegenerate={
-              readOnly ? undefined : () => onRegenerate(message.id)
+            onRegenerate={readOnly ? undefined : () => onRegenerate(message.id)}
+            onContinue={
+              readOnly || !onContinue ? undefined : () => onContinue(message.id)
             }
-            onContinue={readOnly || !onContinue ? undefined : () => onContinue(message.id)}
             onSpeak={
               text ? () => void speech.play(message.id, text) : undefined
             }

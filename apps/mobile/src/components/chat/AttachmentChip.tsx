@@ -5,7 +5,8 @@ import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ImageView from "react-native-image-viewing";
-import { getApiBase, getAuthCookie } from "@/lib/api";
+import { getApiBase } from "@/lib/api";
+import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import {
   type AttachmentCategory,
   type AttachmentMeta,
@@ -62,7 +63,7 @@ export function AttachmentChip({
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
   const label = attachment.filename ?? "file";
-  const cookie = getAuthCookie();
+  const cookie = useAuthCookie();
   const [previewOpen, setPreviewOpen] = useState(false);
   const longPressedRef = useRef(false);
 
@@ -70,10 +71,10 @@ export function AttachmentChip({
     const localUri = meta?.localUri;
     const source = localUri
       ? { uri: localUri }
-      : {
+      : cookie ? {
         uri: resolveUrl(attachment.url),
-        headers: cookie ? { Cookie: cookie } : undefined,
-      };
+        headers: { Cookie: cookie },
+      } : undefined;
     return (
       <View
         style={[
@@ -122,7 +123,7 @@ export function AttachmentChip({
           <RemoveButton onPress={onRemove} label={label} compact />
         )}
         <ImageView
-          images={[source]}
+          images={source ? [source] : []}
           imageIndex={0}
           visible={previewOpen}
           onRequestClose={() => setPreviewOpen(false)}

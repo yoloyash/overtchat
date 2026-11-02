@@ -36,6 +36,8 @@ export function getDownloads(releases: ProductRelease[]) {
       "overtchat-linux-x64.AppImage",
       `overtchat-${version}-linux-x64.AppImage`,
     ),
+    // Older public releases predate Windows. Never borrow an older installer.
+    windows: desktop.assets.find((asset) => asset.name === `overtchat-${version}-windows-x64.exe`),
     apk,
   };
 }

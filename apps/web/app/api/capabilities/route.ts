@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/server";
 import { listServerCapabilities } from "@/lib/db/serverCapabilities";
 import { getImageCapability } from "@/lib/images/capability";
+import { getCodeExecutionCapability } from "@/lib/sandbox/client";
 import { getVoiceCapability } from "@/lib/voice/capability";
 
 export async function GET(request: Request) {
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
       chatPinning: true,
       images: getImageCapability(),
       voice: getVoiceCapability(),
+      codeExecution: await getCodeExecutionCapability(),
     },
   });
 }

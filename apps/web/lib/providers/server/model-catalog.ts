@@ -4,6 +4,10 @@ import type {
   ModelReasoningControls,
 } from "@overtchat/shared";
 import type { CatalogModelPricing } from "@/lib/model-config/schema";
+import {
+  readReasoningOverride,
+  reasoningControlsFromOverride,
+} from "@/lib/model-config/reasoning-override";
 import type { ProviderId } from "@/lib/providers/catalog";
 import catalogJson from "@/lib/providers/server/model-catalog.json";
 
@@ -94,15 +98,30 @@ export function catalogCapabilitiesFor(
 
 /**
  * Runtime self-reports win field-by-field over the exact catalog entry.
- * Missing runtime fields remain eligible for catalog fallback.
+ * Missing runtime fields remain eligible for catalog fallback. An
+ * administrator's thinking override replaces both.
  */
 export function resolveModelCapabilities(
   discovered: ModelCapabilities | null | undefined,
   providerId: ProviderId,
   model: string,
+  reasoningOverride?: unknown,
 ): ModelCapabilities | undefined {
   const fallback = catalogCapabilitiesFor(providerId, model);
-  return compactCapabilities({ ...fallback, ...discovered });
+  const override = readReasoningOverride(reasoningOverride);
+  const reasoningControls = override
+    ? reasoningControlsFromOverride(override)
+    : undefined;
+  return compactCapabilities({
+    ...fallback,
+    ...discovered,
+    ...(override
+      ? {
+          reasoningControls,
+          ...(reasoningControls ? { reasoning: true } : {}),
+        }
+      : {}),
+  });
 }
 
 /**

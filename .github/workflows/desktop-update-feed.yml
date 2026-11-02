@@ -52,7 +52,15 @@ jobs:
           assert.equal(release.isPrerelease, false);
           JS
           gh release download "$TAG" --dir release
-          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt)
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process';
+          import { desktopReleaseIncludesWindows } from './.github/scripts/publish-desktop-updates.mjs';
+          const checksums = ['desktop-checksums-arm64.txt', 'desktop-checksums-x64.txt', 'desktop-checksums-linux-x64.txt'];
+          if (await desktopReleaseIncludesWindows('release', process.env.TAG.slice('desktop-v'.length))) {
+            checksums.push('desktop-checksums-windows-x64.txt');
+          }
+          execFileSync('sha256sum', ['--check', ...checksums], { cwd: 'release', stdio: 'inherit' });
+          JS
       - name: Publish and verify the public update feeds
         shell: bash
         env:

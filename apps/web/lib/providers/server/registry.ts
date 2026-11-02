@@ -14,6 +14,7 @@ import { deepSeekAdapter } from "@/lib/providers/server/adapters/deepseek";
 import { googleAdapter } from "@/lib/providers/server/adapters/google";
 import { llamaCppAdapter } from "@/lib/providers/server/adapters/llamacpp";
 import { openAIAdapter } from "@/lib/providers/server/adapters/openai";
+import { openRouterAdapter } from "@/lib/providers/server/adapters/openrouter";
 import { sglangAdapter } from "@/lib/providers/server/adapters/sglang";
 import { vllmAdapter } from "@/lib/providers/server/adapters/vllm";
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
@@ -24,6 +25,7 @@ import type {
   AnthropicCacheControl,
   PromptCacheStrategy,
   DiscoveredModel,
+  ModelDiscoveryOptions,
 } from "@/lib/providers/server/types";
 
 const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
@@ -32,6 +34,7 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
   google: googleAdapter,
   deepseek: deepSeekAdapter,
   bedrock: bedrockAdapter,
+  openrouter: openRouterAdapter,
   vllm: vllmAdapter,
   llamacpp: llamaCppAdapter,
   sglang: sglangAdapter,
@@ -142,9 +145,13 @@ function readAnthropicCacheControl(value: unknown): AnthropicCacheControl {
 
 export function listProviderModels(
   connection: ProviderConnection,
+  options?: ModelDiscoveryOptions,
 ): Promise<DiscoveredModel[]> {
   validateProviderConnection(connection);
-  return getProviderAdapter(connection.providerId).listModels(connection);
+  return getProviderAdapter(connection.providerId).listModels(
+    connection,
+    options,
+  );
 }
 
 export function getProviderAdapter(providerId: ProviderId): ProviderAdapter {

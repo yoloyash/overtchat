@@ -9,15 +9,16 @@ import { AgentQuestionCard } from "./AgentQuestionCard";
 import { AgentApprovalCard } from "./AgentApprovalCard";
 
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Loader2,
@@ -44,12 +45,14 @@ import {
   useAgentSessionCommand,
   useAgentSessionUsage,
 } from "@/lib/queries/agentSessions";
+import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
 import { latestAgentTaskList } from "@/lib/agents/presentation";
 import {
   agentForkDraftKey,
   agentSessionDraftRestoreKey,
 } from "@/lib/agents/sessionDraft";
+import { agentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import {
   AGENT_CREATE_PREFERENCES_KEY,
   DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -58,8 +61,12 @@ import {
 } from "@/lib/agents/createPreferences";
 import { motionClasses } from "@/lib/motion";
 import { useLocalStorage } from "@/lib/useLocalStorage";
+import { usePaneResize } from "@/lib/usePaneResize";
 import { cn } from "@/lib/utils";
-import { AgentComposer } from "./AgentComposer";
+import { AgentComposer, type AgentComposerHandle } from "./AgentComposer";
+import { FileDropZone } from "@/components/chat/FileDropZone";
+import { agentImageDropLabels } from "@/lib/agents/imageDrop";
+import { terminalOutputQuote } from "./terminal-presentation";
 import {
   AgentInteractionDialog,
   AgentSessionStatsDialog,
@@ -71,6 +78,7 @@ import { AgentMessageList } from "./AgentMessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import { useSpeech } from "@/lib/useSpeech";
 import { authClient } from "@/lib/auth/client";
+import { useMarkAgentSessionSeen } from "@/lib/queries/agentSessionRead";
 import type { AgentRunActivity } from "./AgentActivity";
 import { AgentSessionContext } from "./AgentSessionContext";
 import { AgentSessionHeader } from "./AgentSessionHeader";
@@ -87,6 +95,16 @@ const MIN_WORKSPACE_PANE_WIDTH = 352;
 const MAX_WORKSPACE_PANE_WIDTH = 960;
 const MIN_TRANSCRIPT_WIDTH = 480;
 const WORKSPACE_PANE_WIDTH_KEY = "overtchat:agent-workspace-pane-width";
+const DEFAULT_TERMINAL_PANE_HEIGHT = 288;
+const MIN_TERMINAL_PANE_HEIGHT = 160;
+const MAX_TERMINAL_PANE_HEIGHT = 720;
+const MIN_TRANSCRIPT_HEIGHT = 240;
+const TERMINAL_PANE_HEIGHT_KEY = "overtchat:agent-terminal-pane-height";
+
+const AgentTerminalPane = lazy(
+  () =>
+    import("./AgentTerminalPane").then((module) => ({ default: module.AgentTerminalPane })),
+);
 
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -216,14 +234,6 @@ function workspaceFileSelections(value: unknown): AgentWorkspaceFileSelection[] 
   );
 }
 
-function clampWorkspacePaneWidth(width: number, viewportWidth: number): number {
-  const maximum = Math.max(
-    MIN_WORKSPACE_PANE_WIDTH,
-    Math.min(MAX_WORKSPACE_PANE_WIDTH, viewportWidth - MIN_TRANSCRIPT_WIDTH),
-  );
-  return Math.min(maximum, Math.max(MIN_WORKSPACE_PANE_WIDTH, width));
-}
-
 export function AgentSessionView({
   sessionId,
   provider,
@@ -231,6 +241,7 @@ export function AgentSessionView({
   workspaceName,
   workspacePath,
   initialSessionName,
+  hostLabel,
 }: {
   sessionId: string;
   provider: AgentProviderId;
@@ -238,10 +249,12 @@ export function AgentSessionView({
   workspaceName: string;
   workspacePath: string;
   initialSessionName: string;
+  hostLabel: string;
 }) {
   const providerLabel = agentProviderMetadata(provider).label;
   const navigate = useNavigate();
   const session = useAgentSession(sessionId);
+  useMarkAgentSessionSeen(sessionId);
   const speech = useSpeech();
   const stopSpeech = speech.stop;
   useEffect(() => () => stopSpeech(), [sessionId, stopSpeech]);
@@ -249,6 +262,16 @@ export function AgentSessionView({
   const isAdmin = authSession?.user.role === "admin";
   const command = useAgentSessionCommand(sessionId);
   const usageCommand = useAgentSessionUsage(sessionId);
+  // Read from the shared connection list, which refreshes after a rewind or
+  // edit swaps the provider session behind this chat.
+  const providerSessionId = useQuery({
+    ...agentConnectionListQuery,
+    select: (connections) =>
+      connections
+        .flatMap((connection) => connection.workspaces)
+        .flatMap((workspace) => workspace.sessions)
+        .find((item) => item.id === sessionId)?.providerSessionId ?? null,
+  }).data ?? null;
   const [storedPreferences, setStoredPreferences] = useLocalStorage<unknown>(
     AGENT_CREATE_PREFERENCES_KEY,
     DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -265,12 +288,20 @@ export function AgentSessionView({
   const [sessionUsageOpen, setSessionUsageOpen] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
+  const [terminalExpanded, setTerminalExpanded] = useState(false);
+  const [terminalDraft, setTerminalDraft] = useState<{ sessionId: string; text: string; revision: number } | null>(null);
+  const consumeTerminalDraft = useCallback(() => setTerminalDraft(null), []);
+  const terminalDraftRevision = useRef(0);
   const [restoredDraft, setRestoredDraft] = useState<{
     revision: number;
     text: string;
   } | null>(null);
   const [filesOpen, setFilesOpen] = useLocalStorage<boolean>(
     `overtchat:agent-workspace-pane:${sessionId}`,
+    false,
+  );
+  const [terminalOpen, setTerminalOpen] = useLocalStorage<boolean>(
+    `overtchat:agent-terminal-pane:${sessionId}`,
     false,
   );
   const [storedFileSelection, setStoredFileSelection] =
@@ -282,10 +313,6 @@ export function AgentSessionView({
     `overtchat:agent-workspace-tabs:${sessionId}`,
     [],
   );
-  const [storedPaneWidth, setStoredPaneWidth] = useLocalStorage<unknown>(
-    WORKSPACE_PANE_WIDTH_KEY,
-    DEFAULT_WORKSPACE_PANE_WIDTH,
-  );
   const selectedFile = useMemo(
     () => workspaceFileSelection(storedFileSelection),
     [storedFileSelection],
@@ -295,21 +322,39 @@ export function AgentSessionView({
     [storedOpenFiles],
   );
   const [viewportWidth, setViewportWidth] = useState(1440);
-  const [dragPaneWidth, setDragPaneWidth] = useState<number | null>(null);
-  const [resizingPane, setResizingPane] = useState(false);
-  const resizeStart = useRef<{ pointerX: number; width: number } | null>(null);
-  const preferredPaneWidth =
-    typeof storedPaneWidth === "number" && Number.isFinite(storedPaneWidth)
-      ? storedPaneWidth
-      : DEFAULT_WORKSPACE_PANE_WIDTH;
-  const paneWidth =
-    dragPaneWidth ?? clampWorkspacePaneWidth(preferredPaneWidth, viewportWidth);
+  const [viewportHeight, setViewportHeight] = useState(900);
+  const [openedTerminalSession, setOpenedTerminalSession] = useState<string | null>(
+    terminalOpen ? sessionId : null,
+  );
+  const paneResize = usePaneResize({
+    storageKey: WORKSPACE_PANE_WIDTH_KEY,
+    defaultSize: DEFAULT_WORKSPACE_PANE_WIDTH,
+    minSize: MIN_WORKSPACE_PANE_WIDTH,
+    maxSize: Math.min(
+      MAX_WORKSPACE_PANE_WIDTH,
+      viewportWidth - MIN_TRANSCRIPT_WIDTH,
+    ),
+    edge: "left",
+  });
+  const terminalResize = usePaneResize({
+    storageKey: TERMINAL_PANE_HEIGHT_KEY,
+    defaultSize: DEFAULT_TERMINAL_PANE_HEIGHT,
+    minSize: MIN_TERMINAL_PANE_HEIGHT,
+    maxSize: Math.min(
+      MAX_TERMINAL_PANE_HEIGHT,
+      viewportHeight - MIN_TRANSCRIPT_HEIGHT,
+    ),
+    edge: "top",
+  });
 
   useEffect(() => {
-    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
-    updateViewportWidth();
-    window.addEventListener("resize", updateViewportWidth);
-    return () => window.removeEventListener("resize", updateViewportWidth);
+    const updateViewport = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
   useEffect(() => {
@@ -364,62 +409,6 @@ export function AgentSessionView({
     [openFiles, selectedFile?.path, setStoredFileSelection, setStoredOpenFiles],
   );
 
-  function paneWidthFromPointer(pointerX: number): number {
-    const start = resizeStart.current;
-    if (!start) return paneWidth;
-    return clampWorkspacePaneWidth(
-      start.width + start.pointerX - pointerX,
-      viewportWidth,
-    );
-  }
-
-  function startPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    resizeStart.current = { pointerX: event.clientX, width: paneWidth };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragPaneWidth(paneWidth);
-    setResizingPane(true);
-  }
-
-  function movePaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!resizeStart.current) return;
-    event.preventDefault();
-    setDragPaneWidth(paneWidthFromPointer(event.clientX));
-  }
-
-  function finishPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!resizeStart.current) return;
-    const width = paneWidthFromPointer(event.clientX);
-    resizeStart.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setStoredPaneWidth(width);
-    setDragPaneWidth(null);
-    setResizingPane(false);
-  }
-
-  function cancelPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
-    resizeStart.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setDragPaneWidth(null);
-    setResizingPane(false);
-  }
-
-  function resizePaneWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const step = event.shiftKey ? 64 : 24;
-    let width: number | null = null;
-    if (event.key === "ArrowLeft") width = paneWidth + step;
-    if (event.key === "ArrowRight") width = paneWidth - step;
-    if (event.key === "Home") width = MIN_WORKSPACE_PANE_WIDTH;
-    if (event.key === "End") width = MAX_WORKSPACE_PANE_WIDTH;
-    if (width === null) return;
-    event.preventDefault();
-    setStoredPaneWidth(clampWorkspacePaneWidth(width, viewportWidth));
-  }
   const workspaceNavigation = useMemo(
     () => ({ openFile: openWorkspaceFile }),
     [openWorkspaceFile],
@@ -553,17 +542,23 @@ export function AgentSessionView({
     }
 
     if (input.type === "show_usage") return showUsage();
+    if (input.type === "compact") {
+      // Some providers answer a manual compaction only when it finishes.
+      // Release the composer now so follow-up messages queue behind it.
+      void run(input);
+      return true;
+    }
 
     const toastTitle =
-      input.type === "compact"
-        ? "Compaction started"
-        : input.type === "set_session_name"
-          ? "Session renamed"
-          : input.type === "set_auto_compaction"
-            ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
-            : undefined;
+      input.type === "set_session_name"
+        ? "Session renamed"
+        : input.type === "set_auto_compaction"
+          ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
+          : undefined;
     return run(input, { toastTitle });
   }
+
+  const composerRef = useRef<AgentComposerHandle>(null);
 
   if (session.isPending) {
     return <AgentSessionLoading providerLabel={providerLabel} />;
@@ -607,10 +602,12 @@ export function AgentSessionView({
     snapshot.error ??
     (session.error instanceof Error ? session.error.message : undefined);
   const pendingCommand = command.isPending ? command.variables?.type : null;
+  const compacting =
+    pendingCommand === "compact" || snapshot.state.isCompacting === true;
   const activity: AgentRunActivity | null =
     pendingCommand === "abort"
       ? "stopping"
-      : pendingCommand === "compact" || snapshot.state.isCompacting === true
+      : compacting
         ? "compacting"
         : session.streamStatus === "reconnecting"
           ? "reconnecting"
@@ -620,22 +617,37 @@ export function AgentSessionView({
   const activityStartedAt =
     activity === "working"
       ? snapshot.activeTurn?.startedAt ?? null
-      : (activity === "stopping" || pendingCommand === "compact") &&
-          command.submittedAt > 0
-        ? command.submittedAt
-        : null;
+      : activity === "compacting"
+        ? snapshot.activeTurn?.startedAt ??
+          (command.submittedAt > 0 ? command.submittedAt : null)
+        : activity === "stopping" && command.submittedAt > 0
+          ? command.submittedAt
+          : null;
   const composerDisabled =
     exited || Boolean(readOnly) || Boolean(snapshot.pendingInteraction);
   const controlsDisabled = composerDisabled || command.isPending;
+  // Compaction is a turn: the composer keeps accepting input and queues it,
+  // the same as while the agent is working.
+  const composerPending = command.isPending && pendingCommand !== "compact";
+  const supportsImages = selectedModel?.input.includes("image") === true;
 
   return (
     <AgentWorkspaceNavigationProvider value={workspaceNavigation}>
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <FileDropZone
+          data-titlebar-interior={filesOpen || undefined}
+          className="flex min-w-0 flex-1 flex-col overflow-hidden"
+          disabled={composerDisabled}
+          accepting={supportsImages}
+          kind="images"
+          onFiles={(files) => composerRef.current?.addFiles(files)}
+          {...agentImageDropLabels(providerLabel)}
+        >
           <AgentSessionHeader
             provider={provider}
             workspaceId={workspaceId}
             workspacePath={workspacePath}
+            providerSessionId={providerSessionId}
             running={running}
             commandPending={command.isPending}
             readOnly={Boolean(readOnly)}
@@ -643,6 +655,8 @@ export function AgentSessionView({
             accountUsagePending={usageCommand.isPending}
             filesOpen={filesOpen}
             onToggleFiles={() => setFilesOpen(!filesOpen)}
+            terminalOpen={terminalOpen}
+            onToggleTerminal={() => { setOpenedTerminalSession(sessionId); setTerminalOpen(!terminalOpen); }}
             onShowWorkspaceChanges={() => {
               setStoredFileSelection(null);
               setFilesOpen(true);
@@ -659,6 +673,7 @@ export function AgentSessionView({
             }}
           />
 
+          <div className="flex min-h-0 flex-1 flex-col" inert={terminalOpen && terminalExpanded}>
           {readOnly && (
             <section
               aria-label={`Read-only ${providerLabel} session`}
@@ -766,13 +781,16 @@ export function AgentSessionView({
               />
               <AgentComposer
                 key={sessionId}
+                ref={composerRef}
+                appendedDraft={terminalDraft?.sessionId === sessionId ? terminalDraft : null}
+                onAppendedDraftConsumed={consumeTerminalDraft}
                 providerLabel={providerLabel}
                 commands={snapshot.commands}
                 queuedMessages={snapshot.queuedMessages}
                 supportsSteer={snapshot.capabilities.steer}
-                supportsImages={selectedModel?.input.includes("image") === true}
+                supportsImages={supportsImages}
                 running={running}
-                pending={command.isPending}
+                pending={composerPending}
                 stopping={pendingCommand === "abort"}
                 disabled={composerDisabled}
                 isAdmin={isAdmin}
@@ -853,9 +871,53 @@ export function AgentSessionView({
                 }
                 restoreDraftKey={agentSessionDraftRestoreKey(sessionId)}
                 restoredDraft={restoredDraft}
+                draftUserId={authSession?.user.id}
+                draftScope={agentComposerDraftScope(sessionId)}
               />
             </div>
           </div>
+
+          </div>
+          {(terminalOpen || openedTerminalSession === sessionId) && (
+            <div
+              data-testid="agent-terminal-pane"
+              style={terminalExpanded ? undefined : { height: `${terminalResize.size}px` }}
+              className={cn("shrink-0 border-t bg-background", terminalExpanded ? "absolute inset-x-0 top-12 bottom-0 z-20" : "relative", !terminalOpen && "hidden")}
+            >
+              <div
+                {...terminalResize.separatorProps}
+                aria-label="Resize workspace terminal"
+                tabIndex={0}
+                className={cn(
+                  "group absolute inset-x-0 top-0 z-10 h-2 -translate-y-1/2 touch-none cursor-row-resize outline-none select-none",
+                  terminalExpanded && "hidden",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute inset-x-0 top-1/2 h-px bg-border motion-colors group-hover:bg-primary/70 group-focus-visible:h-0.5 group-focus-visible:bg-primary",
+                    terminalResize.resizing && "h-0.5 bg-primary",
+                  )}
+                />
+              </div>
+              <Suspense fallback={<div className="p-3 text-xs text-muted-foreground">Opening terminal…</div>}>
+              <AgentTerminalPane
+                key={sessionId}
+                sessionId={sessionId}
+                hostLabel={hostLabel}
+                workspacePath={workspacePath}
+                expanded={terminalExpanded}
+                onToggleExpanded={() => setTerminalExpanded(!terminalExpanded)}
+                onAddToChat={composerDisabled ? undefined : (selection) => {
+                  setTerminalExpanded(false);
+                  setTerminalDraft({ sessionId, revision: ++terminalDraftRevision.current, text: terminalOutputQuote(selection) });
+                }}
+                active={terminalOpen}
+                onClose={() => { setOpenedTerminalSession(sessionId); setTerminalOpen(false); }}
+              />
+              </Suspense>
+            </div>
+          )}
 
           <RenameAgentSessionDialog
             providerLabel={providerLabel}
@@ -892,7 +954,7 @@ export function AgentSessionView({
                   type: "compact",
                   ...(customInstructions ? { customInstructions } : {}),
                 },
-                { closeCompact: true, toastTitle: "Compaction started" },
+                { closeCompact: true },
               )
             }
           />
@@ -911,6 +973,7 @@ export function AgentSessionView({
           />
           <AgentUsageDialog
             open={usageOpen}
+            providerLabel={providerLabel}
             usage={usage}
             pending={usageCommand.isPending}
             error={usageError}
@@ -927,7 +990,7 @@ export function AgentSessionView({
             stats={snapshot.stats}
             onOpenChange={setSessionUsageOpen}
           />
-        </div>
+        </FileDropZone>
 
         <button
           type="button"
@@ -944,46 +1007,28 @@ export function AgentSessionView({
           inert={!filesOpen}
           style={
             {
-              "--workspace-pane-width": `${paneWidth}px`,
+              "--workspace-pane-width": `${paneResize.size}px`,
             } as CSSProperties
           }
           className={cn(
             "absolute inset-y-0 right-0 z-30 w-[min(34rem,calc(100%-1rem))] overflow-hidden xl:relative xl:z-auto xl:w-0 xl:shrink-0 xl:shadow-none",
-            !resizingPane && "xl:motion-width",
+            !paneResize.resizing && "xl:motion-width",
             filesOpen
               ? "pointer-events-auto xl:w-(--workspace-pane-width)"
               : "pointer-events-none xl:w-0",
           )}
         >
           <div
-            role="separator"
+            {...paneResize.separatorProps}
             aria-label="Resize workspace files"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_WORKSPACE_PANE_WIDTH}
-            aria-valuemax={clampWorkspacePaneWidth(
-              MAX_WORKSPACE_PANE_WIDTH,
-              viewportWidth,
-            )}
-            aria-valuenow={Math.round(paneWidth)}
             tabIndex={filesOpen ? 0 : -1}
             data-testid="agent-workspace-resize-handle"
-            onPointerDown={startPaneResize}
-            onPointerMove={movePaneResize}
-            onPointerUp={finishPaneResize}
-            onPointerCancel={cancelPaneResize}
-            onDoubleClick={() =>
-              setStoredPaneWidth(DEFAULT_WORKSPACE_PANE_WIDTH)
-            }
-            onKeyDown={resizePaneWithKeyboard}
-            className={cn(
-              "group absolute inset-y-0 left-0 z-40 hidden w-2 touch-none cursor-col-resize outline-none select-none xl:block",
-              resizingPane && "cursor-col-resize",
-            )}
+            className="group absolute inset-y-0 left-0 z-40 hidden w-2 touch-none cursor-col-resize outline-none select-none xl:block"
           >
             <span
               className={cn(
                 "absolute inset-y-0 left-0 w-px bg-border motion-colors group-hover:bg-primary/70 group-focus-visible:w-0.5 group-focus-visible:bg-primary",
-                resizingPane && "w-0.5 bg-primary",
+                paneResize.resizing && "w-0.5 bg-primary",
               )}
             />
           </div>

@@ -56,12 +56,12 @@ export async function detectTailscale(): Promise<{
   }
   const problems: Record<string, string> = {
     NeedsLogin:
-      process.platform === "darwin"
+      process.platform === "darwin" || process.platform === "win32"
         ? "Tailscale needs sign-in. Open Tailscale, sign in, then retry."
         : "Tailscale needs sign-in. Run sudo tailscale up, complete sign-in, then retry.",
     NeedsMachineAuth:
       "This device is waiting for approval in the Tailscale admin console. Approve it, then retry.",
-    Stopped: process.platform === "darwin"
+    Stopped: process.platform === "darwin" || process.platform === "win32"
       ? "Tailscale is disconnected. Connect in the Tailscale app, then retry."
       : "Tailscale is disconnected. Run sudo tailscale up, then retry.",
   };

@@ -12,12 +12,27 @@ const preferences = vi.hoisted(() => ({
 vi.mock("@/lib/queries/modelPreferences", () => ({
   useModelPreferences: () => preferences,
 }));
+const project = vi.hoisted(() => ({
+  data: undefined as { defaultModelId: string | null } | undefined,
+  isPending: true,
+}));
+vi.mock("@/lib/queries/projects", () => ({
+  useOptionalProject: (id: string | null | undefined) =>
+    id ? project : { data: undefined, isPending: true },
+}));
 let root: Root;
 let current: ReturnType<typeof useSelectedModel>;
-function Probe({ initialModelId }: { initialModelId?: string }) {
+function Probe({
+  initialModelId,
+  projectId,
+}: {
+  initialModelId?: string;
+  projectId?: string;
+}) {
   const selection = useSelectedModel(
     [{ id: "model-a" }, { id: "model-b" }, { id: "model-c" }],
     initialModelId,
+    projectId,
   );
   useEffect(() => {
     current = selection;
@@ -27,6 +42,8 @@ function Probe({ initialModelId }: { initialModelId?: string }) {
 beforeEach(() => {
   preferences.data = { defaultModelId: "model-b" };
   preferences.isPending = preferences.isFetching = false;
+  project.data = undefined;
+  project.isPending = true;
   const { window } = parseHTML(
     '<html><body><div id="root"></div></body></html>',
   );
@@ -85,5 +102,26 @@ it.each([null, "deleted"])(
     preferences.data.defaultModelId = defaultModelId;
     await act(async () => root.render(<Probe />));
     expect(current[0]).toBe("model-a");
+  },
+);
+it("starts new project chats with the project's default model", async () => {
+  await act(async () => root.render(<Probe projectId="p" />));
+  expect(current[0]).toBe("");
+  project.data = { defaultModelId: "model-c" };
+  project.isPending = false;
+  await act(async () => root.render(<Probe projectId="p" />));
+  expect(current[0]).toBe("model-c");
+  await act(async () =>
+    root.render(<Probe key="saved" projectId="p" initialModelId="model-a" />),
+  );
+  expect(current[0]).toBe("model-a");
+});
+it.each([null, "deleted"])(
+  "falls back to the account default when the project default is %s",
+  async (defaultModelId) => {
+    project.data = { defaultModelId };
+    project.isPending = false;
+    await act(async () => root.render(<Probe projectId="p" />));
+    expect(current[0]).toBe("model-b");
   },
 );

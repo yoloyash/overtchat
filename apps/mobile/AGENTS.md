@@ -6,9 +6,10 @@ changes require rebuilding the development client.
 
 ## Product boundary
 
-The server URL is selected at runtime and stored on the device. Mobile does not
-implement server setup, first-user signup, or administration; those flows remain
-in the web app.
+The server URL is selected at runtime and stored on the device. Mobile supports
+account settings and server administration through authenticated APIs. Server
+installation and first-user signup remain outside the native app.
+Advanced MCP and agent workspace setup can open the matching web settings page.
 
 ## Architecture
 
@@ -17,6 +18,9 @@ in the web app.
 - `src/app/(authed)/_layout.tsx` owns the active chat session and authenticated
   navigation stack. The drawer selects chats and projects through
   `src/lib/chat/session.ts`.
+- `src/app/(authed)/settings` owns the settings stack. Admin destinations use
+  `AdminGate`; server APIs independently enforce authorization. Keep credentials
+  out of persisted caches and preserve settings scope (device, account, server).
 - `src/lib/server-url.ts` owns the selected server. `src/lib/auth/client.ts`
   creates the Better Auth client for that server, and `src/lib/api.ts` is the
   authenticated HTTP boundary.
@@ -34,18 +38,26 @@ in the web app.
 - Mobile does not expose workspace file browsing. Tool command, change, and
   output details use `AgentToolDetails`; these are supplied by the agent and do
   not fetch workspace files. Approval actions preserve provider response values.
+- `AgentTranscript` is an inverted `FlatList`, so offset 0 is the newest
+  content. Keep its `maintainVisibleContentPosition` constant: iOS reapplies
+  the anchor from the last update made with it enabled. Following the newest
+  content and holding an expanded row in place are handled in the component.
 - `src/lib/agents/stream.ts` owns the foreground SSE lifecycle. Use bridge
   replicas for cursor/epoch reconciliation, abort subscriptions while away,
   and reconcile before reconnecting. Never automatically retry agent commands.
+  Hermes copies strings on slice and concatenation, so parsing must stay
+  linear in the bytes received; per-line buffer copies froze the JS thread on
+  large bursts.
   Drafts and unresolved message identities are scoped to server, user, and
   session in `src/lib/agents/drafts.ts`.
 
 ## Platform constraints
 
 Better Auth stores the mobile cookie in SecureStore. Use `authFetch` for
-authenticated requests; uploads must attach `getAuthCookie()` to the
-`expo/fetch` multipart request explicitly. Changing servers must also reset the
-cached auth client.
+authenticated requests; cookie reads are asynchronous. Authentication upgrade
+and native validation are documented in
+`docs/development.md#authentication-upgrade-validation`. Changing servers must
+also reset the cached auth client.
 
 `src/polyfills.js` must load before the AI SDK streaming stack. Test streaming
 on both Android and iOS after changing the transport or its polyfills.

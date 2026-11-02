@@ -5,11 +5,21 @@ const RELEASE_MANIFEST_URL = "https://overtchat.com/install-manifest.json";
 const REQUEST_TIMEOUT_MS = 5_000;
 const SEMVER_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)$/u;
 
+export type AppUpdateMethod = "overtchat" | "compose";
+
 export type AppUpdateStatus = {
   currentVersion: string;
   latestVersion: string | null;
   updateAvailable: boolean;
+  updateMethod: AppUpdateMethod;
 };
+
+/** Installs without the management CLI update by pulling a newer image. */
+function updateMethod(): AppUpdateMethod {
+  return process.env.OVERTCHAT_UPDATE_METHOD?.trim().toLowerCase() === "compose"
+    ? "compose"
+    : "overtchat";
+}
 
 function updateCheckDisabled(): boolean {
   return /^(1|true|yes)$/iu.test(
@@ -64,7 +74,7 @@ export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
   // Local UI testing uses the real authenticated endpoint, including from Electron.
   if (process.env.NODE_ENV === "development" && process.env.OVERTCHAT_SERVER_UPDATE_PREVIEW === "1") {
     const [major, minor, patch] = parseVersion(APP_VERSION) ?? [0, 0, 0];
-    return { currentVersion: APP_VERSION, latestVersion: `${major}.${minor}.${patch + 1}`, updateAvailable: true };
+    return { currentVersion: APP_VERSION, latestVersion: `${major}.${minor}.${patch + 1}`, updateAvailable: true, updateMethod: updateMethod() };
   }
   const latest = updateCheckDisabled() ? null : await fetchLatestVersion();
   return {
@@ -72,5 +82,6 @@ export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
     latestVersion: latest,
     updateAvailable:
       latest !== null && isNewerVersion(APP_VERSION, latest),
+    updateMethod: updateMethod(),
   };
 }

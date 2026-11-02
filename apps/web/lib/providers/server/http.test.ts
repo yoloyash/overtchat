@@ -3,11 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  createTemplateRenderer,
+  gatewayReasoningControls,
   listAnthropicModels,
   listGoogleModels,
   listLlamaCppModels,
   listOpenAIModels,
-  listVllmModels,
+  listOpenRouterImageModels,
 } from "./http";
 
 afterEach(() => {
@@ -66,6 +68,164 @@ describe("provider model discovery", () => {
         headers: { Authorization: "Bearer secret" },
       }),
     );
+  });
+
+  it("turns gateway reasoning metadata into thinking controls", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          data: [
+            {
+              id: "vendor/optional-thinking",
+              context_length: 1_048_576,
+              supported_parameters: ["reasoning", "reasoning_effort", "tools"],
+              reasoning: {
+                mandatory: false,
+                default_enabled: true,
+                supported_efforts: ["max", "high", "low", "none"],
+                default_effort: "max",
+              },
+            },
+            {
+              id: "vendor/toggle-only",
+              supported_parameters: ["reasoning"],
+              reasoning: { mandatory: false, default_enabled: true },
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      listOpenAIModels("https://gateway.example.test/api/v1", "secret"),
+    ).resolves.toEqual([
+      {
+        id: "vendor/optional-thinking",
+        contextWindow: 1_048_576,
+        capabilities: {
+          toolCalling: true,
+          reasoning: true,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "max",
+            efforts: ["low", "high", "max"],
+          },
+          structuredOutput: false,
+        },
+      },
+      {
+        id: "vendor/toggle-only",
+        capabilities: {
+          toolCalling: false,
+          reasoning: true,
+          structuredOutput: false,
+        },
+      },
+    ]);
+  });
+
+  it("reads gateway context, output limits, and supported parameters", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          data: [
+            {
+              id: "vendor/tool-model",
+              context_length: 200_000,
+              architecture: {
+                input_modalities: ["text", "image"],
+                output_modalities: ["text"],
+              },
+              top_provider: {
+                context_length: 128_000,
+                max_completion_tokens: 32_000,
+              },
+              supported_parameters: [
+                "tools",
+                "tool_choice",
+                "reasoning",
+                "structured_outputs",
+              ],
+            },
+            {
+              id: "vendor/text-model",
+              context_length: 8192,
+              supported_parameters: ["temperature", "max_tokens"],
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      listOpenAIModels("https://gateway.example.test/api/v1", "secret"),
+    ).resolves.toEqual([
+      {
+        id: "vendor/text-model",
+        contextWindow: 8192,
+        capabilities: {
+          toolCalling: false,
+          reasoning: false,
+          structuredOutput: false,
+        },
+      },
+      {
+        id: "vendor/tool-model",
+        contextWindow: 200_000,
+        capabilities: {
+          maxOutputTokens: 32_000,
+          inputModalities: ["text", "image"],
+          outputModalities: ["text"],
+          toolCalling: true,
+          reasoning: true,
+          structuredOutput: true,
+        },
+      },
+    ]);
+  });
+
+  it("lists OpenRouter image models from the images listing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            id: "qwen/qwen-image-2.1-turbo",
+            architecture: {
+              input_modalities: ["text", "image"],
+              output_modalities: ["image"],
+            },
+            supported_parameters: { aspect_ratio: { type: "enum" } },
+          },
+          { id: "bytedance-seed/seedream-4.5" },
+          { id: "" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const models = await listOpenRouterImageModels(
+      "https://openrouter.ai/api/v1/",
+      "router-key",
+    );
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://openrouter.ai/api/v1/images/models");
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer router-key",
+    );
+    expect(models).toEqual([
+      {
+        id: "bytedance-seed/seedream-4.5",
+        capabilities: { outputModalities: ["image"] },
+      },
+      {
+        id: "qwen/qwen-image-2.1-turbo",
+        capabilities: {
+          inputModalities: ["text", "image"],
+          outputModalities: ["image"],
+        },
+      },
+    ]);
   });
 
   it("paginates Anthropic models with native headers", async () => {
@@ -278,297 +438,140 @@ describe("provider model discovery", () => {
       }),
     );
   });
+});
 
-  it("discovers Qwen 3.8 llama.cpp effort aliases from rendered prompts", async () => {
+describe("chat template rendering", () => {
+  it("falls back from vLLM's renderer to /tokenize and keeps using it", async () => {
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/v1/models")) {
-        return Response.json({ data: [{ id: "qwen3.8-27b" }] });
-      }
-      if (url.includes("/props?")) {
-        return Response.json({
-          chat_template_caps: { supports_reasoning_effort: true },
-        });
+      if (url.endsWith("/chat/completions/render")) {
+        return new Response("Not Found", { status: 404 });
       }
       const body = JSON.parse(String(init?.body)) as {
-        reasoning_effort?: string;
+        chat_template_kwargs?: { enable_thinking?: unknown };
       };
-      const effort = body.reasoning_effort;
-      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
-        return new Response("unsupported effort", {
-          status: 500,
-          statusText: "Internal Server Error",
-        });
+      const thinking = body.chat_template_kwargs?.enable_thinking;
+      if (thinking === "invalid") {
+        return new Response("bad kwargs", { status: 400 });
       }
-      const prompt =
-        effort === "none"
-          ? "thinking:off"
-          : effort === "low"
-            ? "thinking:low"
-            : effort === "medium"
-              ? "thinking:medium"
-              : "thinking:xhigh";
-      return Response.json({ prompt });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      listLlamaCppModels("http://localhost:8080/v1", null),
-    ).resolves.toEqual([
-      {
-        id: "qwen3.8-27b",
-        capabilities: {
-          reasoning: true,
-          reasoningControls: {
-            toggle: true,
-            defaultLevel: "xhigh",
-            efforts: ["low", "medium", "xhigh"],
-          },
-          temperature: true,
-        },
-      },
-    ]);
-  });
-
-  it("discovers toggle-only Qwen 3.6 behavior when effort values are ignored", async () => {
-    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/v1/models")) {
-        return Response.json({ data: [{ id: "qwen3.6-35b-a3b" }] });
-      }
-      if (url.includes("/props?")) {
-        return Response.json({
-          chat_template_caps: { supports_reasoning_effort: false },
-        });
-      }
-      const body = JSON.parse(String(init?.body)) as {
-        reasoning_effort?: string;
-      };
       return Response.json({
-        prompt:
-          body.reasoning_effort === "none" ? "thinking:off" : "thinking:on",
+        count: 2,
+        tokens: [100, thinking === false ? 0 : 1],
       });
     });
     vi.stubGlobal("fetch", fetchMock);
+    const render = createTemplateRenderer(
+      "vllm",
+      "http://localhost:8000/v1",
+      "secret",
+      "mimo",
+    );
 
+    await expect(render({})).resolves.toBe("tokens:[100,1]");
     await expect(
-      listLlamaCppModels("http://localhost:8080/v1", null),
-    ).resolves.toEqual([
-      {
-        id: "qwen3.6-35b-a3b",
-        capabilities: {
-          reasoning: true,
-          reasoningControls: { toggle: true, defaultLevel: "on" },
-          temperature: true,
-        },
-      },
-    ]);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
-  });
-
-  it("discovers GLM 5.3 effort levels without inventing a thinking toggle", async () => {
-    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/v1/models")) {
-        return Response.json({ data: [{ id: "glm-5.3-flash" }] });
-      }
-      if (url.includes("/props?")) {
-        return Response.json({
-          chat_template_caps: { supports_reasoning_effort: true },
-        });
-      }
-      const body = JSON.parse(String(init?.body)) as {
-        reasoning_effort?: string;
-      };
-      const effort = body.reasoning_effort;
-      const projected =
-        effort === "low" ? "Low" : effort === "high" ? "High" : "Max";
-      return Response.json({ prompt: `Reasoning Effort: ${projected}` });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
+      render({ chat_template_kwargs: { enable_thinking: false } }),
+    ).resolves.toBe("tokens:[100,0]");
     await expect(
-      listLlamaCppModels("http://localhost:8080/v1", null),
-    ).resolves.toEqual([
-      {
-        id: "glm-5.3-flash",
-        capabilities: {
-          reasoning: true,
-          reasoningControls: {
-            toggle: false,
-            defaultLevel: "max",
-            efforts: ["low", "high", "max"],
-          },
-          temperature: true,
-        },
-      },
-    ]);
-  });
-
-  it("keeps DeepSeek V4 toggles when its low effort matches unknown values", async () => {
-    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/v1/models")) {
-        return Response.json({ data: [{ id: "deepseek-v4-flash-0731" }] });
-      }
-      if (url.includes("/props?")) {
-        return Response.json({
-          chat_template_caps: { supports_reasoning_effort: true },
-        });
-      }
-      const body = JSON.parse(String(init?.body)) as {
-        reasoning_effort?: string;
-        chat_template_kwargs?: { enable_thinking?: boolean };
-      };
-      if (body.chat_template_kwargs?.enable_thinking === false) {
-        return Response.json({ prompt: "thinking:off" });
-      }
-      const effort = body.reasoning_effort;
-      const prompt =
-        effort === "high"
-          ? "Reasoning Effort: Absolute maximum"
-          : effort === "max"
-            ? "Reasoning Effort: Beyond maximum"
-            : "thinking:on";
-      return Response.json({ prompt });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      listLlamaCppModels("http://localhost:8080/v1", null),
-    ).resolves.toEqual([
-      {
-        id: "deepseek-v4-flash-0731",
-        capabilities: {
-          reasoning: true,
-          reasoningControls: {
-            toggle: true,
-            defaultLevel: "on",
-            efforts: ["high", "max"],
-          },
-          temperature: true,
-        },
-      },
-    ]);
-  });
-
-  it("drops an equivalent effort group when the runtime does not identify its projection", async () => {
-    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/v1/models")) {
-        return Response.json({ data: [{ id: "ambiguous-model" }] });
-      }
-      if (url.includes("/props?")) {
-        return Response.json({
-          chat_template_caps: { supports_reasoning_effort: true },
-        });
-      }
-      const body = JSON.parse(String(init?.body)) as {
-        reasoning_effort?: string;
-      };
-      const effort = body.reasoning_effort;
-      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
-        return new Response("unsupported effort", { status: 400 });
-      }
-      const prompt =
-        effort === "none"
-          ? "thinking:off"
-          : effort === "high" || effort === "xhigh"
-            ? "thinking:deep"
-            : "thinking:low";
-      return Response.json({ prompt });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      listLlamaCppModels("http://localhost:8080/v1", null),
-    ).resolves.toEqual([
-      {
-        id: "ambiguous-model",
-        capabilities: {
-          reasoning: true,
-          reasoningControls: {
-            toggle: true,
-            defaultLevel: "low",
-            efforts: ["low"],
-          },
-          temperature: true,
-        },
-      },
-    ]);
-  });
-
-  it("discovers vLLM controls from deterministic render token IDs", async () => {
-    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/v1/models")) {
-        return Response.json({ data: [{ id: "served-model" }] });
-      }
-      const body = JSON.parse(String(init?.body)) as {
-        reasoning_effort?: string;
-        tokens?: number[];
-      };
-      if (url.endsWith("/detokenize")) {
-        const token = body.tokens?.at(-1);
-        return Response.json({
-          prompt:
-            token === 0
-              ? "thinking:off"
-              : token === 1
-                ? "thinking:low"
-                : token === 2
-                  ? "thinking:medium"
-                  : "thinking:xhigh",
-        });
-      }
-      const effort = body.reasoning_effort;
-      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
-        return new Response("unsupported effort", {
-          status: 400,
-          statusText: "Bad Request",
-        });
-      }
-      const token =
-        effort === "none"
-          ? 0
-          : effort === "low"
-            ? 1
-            : effort === "medium"
-              ? 2
-              : 3;
-      return Response.json({ token_ids: [100, token] });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      listVllmModels("http://localhost:8000/v1", "nerdtastic"),
-    ).resolves.toEqual([
-      {
-        id: "served-model",
-        capabilities: {
-          reasoning: true,
-          reasoningControls: {
-            toggle: true,
-            defaultLevel: "xhigh",
-            efforts: ["low", "medium", "xhigh"],
-          },
-        },
-      },
-    ]);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/v1/chat/completions/render",
+      render({ chat_template_kwargs: { enable_thinking: "invalid" } }),
+    ).resolves.toBeUndefined();
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith("/chat/completions/render"),
+      ),
+    ).toHaveLength(1);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://localhost:8000/tokenize",
       expect.objectContaining({
         headers: {
-          Authorization: "Bearer nerdtastic",
           "Content-Type": "application/json",
+          Authorization: "Bearer secret",
         },
       }),
     );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/detokenize",
-      expect.objectContaining({
-        body: JSON.stringify({ model: "served-model", tokens: [100, 3] }),
-      }),
+    const lastBody = JSON.parse(
+      String(fetchMock.mock.calls.at(-1)?.[1]?.body),
+    ) as Record<string, unknown>;
+    expect(lastBody).toMatchObject({
+      model: "mimo",
+      add_generation_prompt: true,
+      messages: [{ role: "user", content: "hi" }],
+    });
+  });
+
+  it("renders llama.cpp prompts through /apply-template", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ prompt: "<think>" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const render = createTemplateRenderer(
+      "llamacpp",
+      "http://localhost:8080/v1",
+      null,
+      "local",
     );
+
+    await expect(render({})).resolves.toBe("text:<think>");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/apply-template",
+      expect.anything(),
+    );
+  });
+
+  it("reports an unavailable renderer when no endpoint answers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("Not Found", { status: 404 })),
+    );
+    const render = createTemplateRenderer(
+      "vllm",
+      "http://localhost:8000/v1",
+      null,
+      "m",
+    );
+    await expect(render({})).resolves.toBeUndefined();
+  });
+});
+
+describe("gatewayReasoningControls", () => {
+  it("hides the off level when reasoning is mandatory", () => {
+    expect(
+      gatewayReasoningControls({
+        mandatory: true,
+        supported_efforts: ["xhigh", "high", "medium", "low", "none"],
+        default_effort: "medium",
+      }),
+    ).toEqual({
+      toggle: false,
+      defaultLevel: "medium",
+      efforts: ["low", "medium", "high", "xhigh"],
+    });
+  });
+
+  it("defaults to off when the model starts with reasoning disabled", () => {
+    expect(
+      gatewayReasoningControls({
+        mandatory: false,
+        default_enabled: false,
+        supported_efforts: ["high", "medium", "low", "none"],
+        default_effort: "medium",
+      }),
+    ).toEqual({
+      toggle: true,
+      defaultLevel: "off",
+      efforts: ["low", "medium", "high"],
+    });
+  });
+
+  it("ignores unknown efforts and incomplete metadata", () => {
+    expect(
+      gatewayReasoningControls({
+        supported_efforts: ["ultra", "none"],
+        default_effort: "ultra",
+      }),
+    ).toBeUndefined();
+    expect(
+      gatewayReasoningControls({ supported_efforts: ["high", "low"] }),
+    ).toBeUndefined();
+    expect(gatewayReasoningControls({ mandatory: true })).toBeUndefined();
+    expect(gatewayReasoningControls(null)).toBeUndefined();
+    expect(gatewayReasoningControls("high")).toBeUndefined();
   });
 });

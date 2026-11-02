@@ -58,6 +58,32 @@ describe("chat request parsing", () => {
     await expect(parseChatRequest(request({ ...validBody, imageGeneration: { size: "unbounded" } }))).rejects.toBeInstanceOf(ChatRequestError);
   });
 
+  it("accepts document rendering support only when advertised and fingerprints it", async () => {
+    const legacy = await parseChatRequest(request(validBody));
+    expect(legacy.documentsSupported).toBe(false);
+    const current = await parseChatRequest(request({ ...validBody, documentsSupported: true }));
+    expect(current.documentsSupported).toBe(true);
+    expect(chatRequestFingerprint(current)).not.toBe(
+      chatRequestFingerprint({ ...current, clientRequestId: current.clientRequestId, documentsSupported: false }),
+    );
+    await expect(
+      parseChatRequest(request({ ...validBody, documentsSupported: "yes" })),
+    ).rejects.toBeInstanceOf(ChatRequestError);
+  });
+
+  it("accepts code execution rendering support only when advertised and fingerprints it", async () => {
+    const legacy = await parseChatRequest(request(validBody));
+    expect(legacy.codeExecutionSupported).toBe(false);
+    const current = await parseChatRequest(request({ ...validBody, codeExecutionSupported: true }));
+    expect(current.codeExecutionSupported).toBe(true);
+    expect(chatRequestFingerprint(current)).not.toBe(
+      chatRequestFingerprint({ ...current, codeExecutionSupported: false }),
+    );
+    await expect(
+      parseChatRequest(request({ ...validBody, codeExecutionSupported: 1 })),
+    ).rejects.toBeInstanceOf(ChatRequestError);
+  });
+
   it("validates and normalizes an explicit submit request", async () => {
     await expect(
       parseChatRequest(

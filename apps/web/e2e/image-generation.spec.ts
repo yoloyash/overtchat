@@ -1,7 +1,11 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import {
+  openE2eDatabase,
+  resetE2eDatabase,
+  setupUrl,
+} from "./helpers/database";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=";
@@ -10,20 +14,202 @@ let baseUrl: string;
 let failure = false;
 let hold = false;
 let chatFailure = false;
-const requests: Array<{ url: string; body: string; contentType: string }> = [];
+let customImages = false;
+let customEditSizes = false;
+const requests: Array<{
+  url: string;
+  body: string;
+  contentType: string;
+  authorization?: string;
+}> = [];
 const chatRequests: Array<Record<string, unknown>> = [];
+
+function imageModelId(): string {
+  const db = openE2eDatabase();
+  try {
+    return (
+      db
+        .prepare("SELECT id FROM model_configs WHERE model_type = 'image'")
+        .get() as { id: string }
+    ).id;
+  } finally {
+    db.close();
+  }
+}
+
+function imageUsageRows() {
+  const db = openE2eDatabase();
+  try {
+    return db
+      .prepare(
+        `SELECT provider_id AS providerId, model, input_tokens AS inputTokens,
+                output_tokens AS outputTokens, cost_source AS costSource,
+                total_cost_nano_usd AS totalCostNanoUsd
+         FROM generation_usage WHERE context = 'image'`,
+      )
+      .all();
+  } finally {
+    db.close();
+  }
+}
 
 test.beforeAll(async () => {
   provider = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = Buffer.concat(chunks).toString();
+    if (req.url === "/v1/images/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          data: [
+            {
+              id: "qwen/qwen-image-2.1-turbo",
+              architecture: {
+                input_modalities: ["text", "image"],
+                output_modalities: ["image"],
+              },
+            },
+            {
+              id: "openai/gpt-5-image",
+              architecture: {
+                input_modalities: ["text", "image"],
+                output_modalities: ["image"],
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+    if (req.url === "/v1/images" && req.method === "POST") {
+      requests.push({
+        url: req.url,
+        body,
+        contentType: String(req.headers["content-type"]),
+        authorization: req.headers.authorization,
+      });
+      const payload = JSON.parse(body);
+      const editing = Array.isArray(payload.input_references);
+      const valid =
+        payload.model === "qwen/qwen-image-2.1-turbo" &&
+        payload.n === 1 &&
+        req.headers.authorization === "Bearer private-router-key" &&
+        (!editing ||
+          payload.input_references[0]?.image_url?.url ===
+            `data:image/png;base64,${png}`);
+      res.writeHead(valid ? 200 : 400, {
+        "Content-Type": "application/json",
+      });
+      res.end(
+        JSON.stringify(
+          valid
+            ? {
+                created: 1,
+                data: [{ b64_json: png, media_type: "image/png" }],
+                usage: {
+                  prompt_tokens: 12,
+                  completion_tokens: 4_175,
+                  total_tokens: 4_187,
+                  cost: 0.0184,
+                  is_byok: false,
+                  cost_details: {
+                    upstream_inference_cost: 0.0184,
+                    upstream_inference_prompt_cost: 0,
+                    upstream_inference_completions_cost: 0.0184,
+                  },
+                },
+              }
+            : {
+                error: {
+                  message: "Unexpected OpenRouter image request",
+                  code: 400,
+                },
+              },
+        ),
+      );
+      return;
+    }
     if (req.url?.includes("/images/")) {
       requests.push({
         url: req.url,
         body,
         contentType: String(req.headers["content-type"]),
+        authorization: req.headers.authorization,
       });
+      if (customEditSizes) {
+        const editing = req.url === "/v1/images/edits";
+        const form = editing
+          ? await new Response(Buffer.concat(chunks), {
+              headers: { "Content-Type": String(req.headers["content-type"]) },
+            }).formData()
+          : undefined;
+        const payload = form ? Object.fromEntries(form) : JSON.parse(body);
+        const reference = form?.get("image[]");
+        const valid =
+          (editing || req.url === "/v1/images/generations") &&
+          payload.model === "local-images" &&
+          payload.size === (editing ? "512x512" : "1024x1024") &&
+          payload.prompt === (editing ? "Make the kite blue" : "A red kite") &&
+          payload.response_format === "b64_json" &&
+          (!editing ||
+            (reference instanceof File &&
+              Buffer.from(await reference.arrayBuffer()).equals(
+                Buffer.from(png, "base64"),
+              )));
+        res.writeHead(valid ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(
+          JSON.stringify(
+            valid
+              ? { data: [{ b64_json: png }] }
+              : { error: "Wrong size or reference for image operation" },
+          ),
+        );
+        return;
+      }
+      if (customImages) {
+        const payload = JSON.parse(body);
+        const expected = {
+          model: "flux2-klein-4b",
+          prompt: "A red kite",
+          n: 1,
+          size: "512x512",
+          seed: 7,
+          response_format: payload.response_format,
+        };
+        const valid =
+          req.url === "/v1/images/generations" &&
+          !req.headers.authorization &&
+          ["b64_json", "url"].includes(payload.response_format) &&
+          Object.keys(payload).length === Object.keys(expected).length &&
+          Object.entries(expected).every(
+            ([key, value]) => payload[key] === value,
+          );
+        res.writeHead(valid ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(
+          JSON.stringify(
+            valid
+              ? {
+                  data: [
+                    payload.response_format === "url"
+                      ? { url: `data:image/png;base64,${png}` }
+                      : { b64_json: png },
+                  ],
+                  usage: {
+                    prompt_tokens: 7,
+                    completion_tokens: 1_000,
+                    total_tokens: 1_007,
+                  },
+                }
+              : { error: "Invalid Halogen-compatible request" },
+          ),
+        );
+        return;
+      }
       if (hold) return; // The client must abort this operation when Stop is pressed.
       res.writeHead(failure ? 503 : 200, {
         "Content-Type": "application/json",
@@ -39,7 +225,11 @@ test.beforeAll(async () => {
               }
             : {
                 data: [{ b64_json: png }],
-                usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 },
+                usage: {
+                  input_tokens: 12,
+                  output_tokens: 4_160,
+                  total_tokens: 4_172,
+                },
               },
         ),
       );
@@ -55,6 +245,7 @@ test.beforeAll(async () => {
         url: req.url,
         body,
         contentType: String(req.headers["content-type"]),
+        authorization: req.headers.authorization,
       });
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -153,6 +344,9 @@ test.beforeAll(async () => {
                 name: edit ? "edit_image" : "generate_image",
                 arguments: JSON.stringify({
                   prompt: edit ? "Make the kite blue" : "A red kite",
+                  ...(customImages
+                    ? { size: "1024x1024", quality: "low" }
+                    : {}),
                   ...(edit ? { image_ids: [reference] } : {}),
                 }),
               },
@@ -183,7 +377,9 @@ test.beforeEach(async ({ page }) => {
   failure = false;
   hold = false;
   chatFailure = false;
-  await page.goto("/signup");
+  customImages = false;
+  customEditSizes = false;
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Image Admin");
   await page.locator("#email").fill("image@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -411,11 +607,74 @@ test("retains a completed image when the subsequent chat model step fails", asyn
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Couldn't complete the response. Please try again." }),
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Chat model failed after image creation" }),
   ).toBeVisible();
   await page.reload();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();
   expect(requests).toHaveLength(1);
+  expect(imageUsageRows()).toEqual([
+    expect.objectContaining({ model: "gpt-image-1", outputTokens: 4_160 }),
+  ]);
+});
+
+test("prices images at administrator rates and shows them beside chat usage", async ({
+  page,
+}) => {
+  await test.step("enter input and output rates for the image model", async () => {
+    await page.goto(`/settings/models/${imageModelId()}`);
+    const section = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Usage cost" }) });
+    await expect(section).toContainText("No catalog pricing");
+    await section.getByRole("switch", { name: "Custom pricing" }).click();
+    await expect(page.locator("#p-price-cache-read")).toHaveCount(0);
+    await expect(page.locator("#p-price-cache-write")).toHaveCount(0);
+    await page.locator("#p-price-input").fill("5");
+    await page.locator("#p-price-output").fill("40");
+    const save = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/model-configs/") &&
+        response.request().method() === "PATCH",
+    );
+    await page.getByRole("button", { name: "Save changes" }).click();
+    expect((await save).ok()).toBeTruthy();
+  });
+
+  await test.step("record the image apart from the unpriced chat model", async () => {
+    await page.goto("/");
+    await page.locator("textarea").fill("Generate an image of a red kite");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toBeVisible();
+    await expect.poll(imageUsageRows).toEqual([
+      {
+        providerId: "openai",
+        model: "gpt-image-1",
+        inputTokens: 12,
+        outputTokens: 4_160,
+        costSource: "model_config",
+        totalCostNanoUsd: 166_460_000,
+      },
+    ]);
+  });
+
+  await test.step("show image cost in the usage popover", async () => {
+    await page.reload();
+    const usage = page.getByTitle("Usage");
+    await expect(usage).toContainText("$0.166");
+    await usage.click();
+    await expect(page.getByRole("region", { name: "Session" })).toHaveCount(0);
+    const images = page.getByRole("region", { name: "Images" });
+    await expect(images).toContainText("1 image");
+    await expect(images).toContainText("$0.166");
+    await expect(images.getByText("Input").locator("..")).toContainText("12");
+    await expect(images.getByText("Output").locator("..")).toContainText(
+      "4,160",
+    );
+  });
 });
 
 test("deduplicates a repeated chat start and keeps temporary images out of saved chats", async ({
@@ -646,4 +905,410 @@ test("switches OpenAI to Gemini in Models, edits images, and removes tools when 
       }),
     );
   expect(requests).toHaveLength(2);
+});
+
+for (const responseFormat of ["b64_json", "url"] as const) {
+  test(`custom image provider saves settings and persists ${responseFormat} PNGs`, async ({
+    page,
+  }) => {
+    customImages = true;
+    if (responseFormat === "url")
+      await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/settings/models/new");
+    await page.locator("#p-model-type").click();
+    await page.getByRole("option", { name: "Image", exact: true }).click();
+    await page.locator("#p-provider").click();
+    await page
+      .getByRole("option", { name: "Custom (OpenAI-compatible)", exact: true })
+      .click();
+    await expect(page.locator("#p-api-format")).toHaveCount(0);
+    await page.locator("#p-base-url").fill(baseUrl);
+    await page.locator("#p-model").fill("flux2-klein-4b");
+    await page.locator("#p-label").fill("Local pictures");
+    await page.locator("#p-image-size").fill("512x512");
+    await page.locator("#p-image-response-format").selectOption(responseFormat);
+    await page.locator("#p-image-extra").fill('{"n": 5}');
+    await expect(
+      page.getByText("n cannot be set in extra image parameters."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Add model", exact: true }),
+    ).toBeDisabled();
+    await page.locator("#p-image-extra").fill('{"seed": 7}');
+    await expect(
+      page.getByRole("switch", { name: "Supports image editing", exact: true }),
+    ).not.toBeChecked();
+    await expect(page.locator("#p-api-key")).toHaveValue("");
+    const cost = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Usage cost" }) });
+    await expect(cost).toContainText("No catalog pricing");
+    await cost.getByRole("switch", { name: "Custom pricing" }).click();
+    await page.locator("#p-price-input").fill("5");
+    await page.locator("#p-price-output").fill("40");
+    await page.screenshot({
+      path: `/tmp/overtchat-custom-image-settings-${responseFormat}.png`,
+      fullPage: true,
+    });
+    const save = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/api/model-configs") &&
+        res.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Add model", exact: true }).click();
+    const response = await save;
+    expect(response.ok()).toBe(true);
+    const { modelConfig } = await response.json();
+    expect(modelConfig).toMatchObject({
+      providerId: "custom",
+      apiFormat: "openai-images",
+      apiKey: "",
+      pricing: { input: 5, output: 40, cacheRead: 0, cacheWrite: 0 },
+      providerOptions: {
+        size: "512x512",
+        responseFormat,
+        supportsEditing: false,
+        extraBody: { seed: 7 },
+      },
+    });
+    await page.goto(`/settings/models/${modelConfig.id}`);
+    await expect(page.locator("#p-image-size")).toHaveValue("512x512");
+    await expect(page.locator("#p-image-extra")).toHaveValue(/"seed": 7/);
+    const update = page.waitForResponse(
+      (res) =>
+        res.url().endsWith(`/api/model-configs/${modelConfig.id}`) &&
+        res.request().method() === "PATCH",
+    );
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    expect((await update).ok()).toBe(true);
+    const capabilities = await (
+      await page.request.get("/api/capabilities")
+    ).json();
+    expect(capabilities.capabilities.images).toEqual({
+      available: true,
+      model: "flux2-klein-4b",
+      supportsQuality: false,
+      supportsEditing: false,
+      configuredSize: "512x512",
+    });
+    expect(JSON.stringify(capabilities)).not.toContain('"seed"');
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Add to message", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: /Create image/ }).click();
+    await expect(
+      page.getByText("Size: 512x512", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Image size", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Image quality", { exact: true })).toHaveCount(
+      0,
+    );
+    await page.locator("textarea").fill("A red kite");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Edit / Use as reference" }),
+    ).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+    expect(JSON.parse(requests[0].body)).toEqual({
+      model: "flux2-klein-4b",
+      prompt: "A red kite",
+      n: 1,
+      size: "512x512",
+      seed: 7,
+      response_format: responseFormat,
+    });
+    expect(requests[0].authorization).toBeUndefined();
+    await expect.poll(imageUsageRows).toEqual([
+      {
+        providerId: "custom",
+        model: "flux2-klein-4b",
+        inputTokens: 7,
+        outputTokens: 1_000,
+        costSource: "model_config",
+        totalCostNanoUsd: 40_035_000,
+      },
+    ]);
+    const tools = chatRequests[0].tools as Array<{
+      function: {
+        name: string;
+        parameters: { properties: Record<string, unknown> };
+      };
+    }>;
+    expect(tools.some((tool) => tool.function.name === "edit_image")).toBe(
+      false,
+    );
+    expect(
+      tools.find((tool) => tool.function.name === "generate_image")?.function
+        .parameters.properties,
+    ).not.toHaveProperty("size");
+    const imageUrl = (await page
+      .locator("[data-image-generation] img")
+      .getAttribute("src"))!;
+    expect(await (await page.request.get(imageUrl)).body()).toEqual(
+      Buffer.from(png, "base64"),
+    );
+    const download = page.waitForEvent("download");
+    await page.getByRole("link", { name: "Download", exact: true }).click();
+    expect((await download).suggestedFilename()).toBe("generated-image.png");
+    await page.reload();
+    await expect(page.locator("[data-image-generation] img")).toHaveAttribute(
+      "src",
+      imageUrl,
+    );
+    await page.locator("[data-image-generation] summary").click();
+    await expect(page.locator("[data-image-generation]")).toContainText(
+      "Requested format: 512x512",
+    );
+    expect(
+      JSON.stringify(await (await page.request.get("/api/library")).json()),
+    ).toContain(imageUrl);
+    await page.screenshot({
+      path: `/tmp/overtchat-custom-image-chat-${responseFormat}.png`,
+      fullPage: true,
+    });
+  });
+}
+
+test("OpenRouter image models are discovered, billed at the reported charge, and edited inline", async ({
+  page,
+}) => {
+  await test.step("add an OpenRouter image model from its image listing", async () => {
+    await page.goto("/settings/models/new");
+    await page.locator("#p-model-type").click();
+    await page.getByRole("option", { name: "Image", exact: true }).click();
+    await page.locator("#p-provider").click();
+    await page.getByRole("option", { name: "OpenRouter", exact: true }).click();
+    await page.locator("#p-base-url").fill(baseUrl);
+    await page.locator("#p-api-key").fill("private-router-key");
+    // Discovery reads the image listing, not the chat listing the GET stub serves.
+    const trigger = page.locator("#p-model");
+    await expect(trigger).toContainText("openai/gpt-5-image");
+    await trigger.click();
+    await page
+      .getByRole("option", { name: "qwen/qwen-image-2.1-turbo", exact: true })
+      .click();
+    await expect(trigger).toContainText("qwen/qwen-image-2.1-turbo");
+    await page.locator("#p-label").fill("Router pictures");
+    const cost = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Usage cost" }) });
+    await expect(cost).toContainText("charge OpenRouter reports");
+    await expect(
+      cost.getByRole("switch", { name: "Custom pricing" }),
+    ).toHaveCount(0);
+    const save = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/api/model-configs") &&
+        res.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Add model", exact: true }).click();
+    const response = await save;
+    expect(response.ok()).toBe(true);
+    expect((await response.json()).modelConfig).toMatchObject({
+      providerId: "openrouter",
+      apiFormat: "auto",
+      model: "qwen/qwen-image-2.1-turbo",
+      pricing: null,
+      enabled: true,
+    });
+    const capabilities = await (
+      await page.request.get("/api/capabilities")
+    ).json();
+    expect(capabilities.capabilities.images).toEqual({
+      available: true,
+      model: "qwen/qwen-image-2.1-turbo",
+      supportsQuality: true,
+    });
+  });
+
+  await test.step("generate through the images endpoint and record the reported charge", async () => {
+    await page.goto("/");
+    await page.locator("textarea").fill("Generate an image of a red kite");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toBeVisible();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe("/v1/images");
+    expect(JSON.parse(requests[0].body)).toEqual({
+      model: "qwen/qwen-image-2.1-turbo",
+      prompt: "A red kite",
+      n: 1,
+    });
+    await expect.poll(imageUsageRows).toEqual([
+      {
+        providerId: "openrouter",
+        model: "qwen/qwen-image-2.1-turbo",
+        inputTokens: 12,
+        outputTokens: 4_175,
+        costSource: "provider",
+        totalCostNanoUsd: 18_400_000,
+      },
+    ]);
+  });
+
+  await test.step("edit with the stored image as an inline reference", async () => {
+    await page.locator("textarea").fill("Make the kite blue");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator("[data-image-generation] img")).toHaveCount(2);
+    expect(requests).toHaveLength(2);
+    const edit = JSON.parse(requests[1].body);
+    expect(edit).toMatchObject({
+      model: "qwen/qwen-image-2.1-turbo",
+      prompt: "Make the kite blue",
+      n: 1,
+    });
+    expect(edit.input_references).toEqual([
+      { type: "image_url", image_url: { url: `data:image/png;base64,${png}` } },
+    ]);
+  });
+
+  await test.step("show the reported charges in the usage popover", async () => {
+    await page.reload();
+    const usage = page.getByTitle("Usage");
+    await expect(usage).toContainText("$0.037");
+    await usage.click();
+    const images = page.getByRole("region", { name: "Images" });
+    await expect(images).toContainText("2 images");
+    await expect(images).toContainText("$0.037");
+  });
+});
+
+test("custom editing size persists and routes generation and edits at different sizes", async ({
+  page,
+}) => {
+  customEditSizes = true;
+  await page.goto("/settings/models/new");
+  await page.locator("#p-model-type").click();
+  await page.getByRole("option", { name: "Image", exact: true }).click();
+  await page.locator("#p-provider").click();
+  await page
+    .getByRole("option", { name: "Custom (OpenAI-compatible)", exact: true })
+    .click();
+  await page.locator("#p-base-url").fill(baseUrl);
+  await page.locator("#p-model").fill("local-images");
+  await page.locator("#p-label").fill("Local edit sizes");
+  await page.getByLabel("Generation size", { exact: true }).fill("1024x1024");
+  const editing = page.getByRole("switch", {
+    name: "Supports image editing",
+    exact: true,
+  });
+  await expect(editing).not.toBeChecked();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveCount(0);
+  await editing.click();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "",
+  );
+  await expect(
+    page.getByLabel("Editing size", { exact: true }),
+  ).toHaveAttribute("placeholder", "Same as generation");
+  await page.getByLabel("Editing size", { exact: true }).fill("512x512");
+  // Disabling and re-enabling editing preserves the configured override.
+  await editing.click();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveCount(0);
+  await editing.click();
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "512x512",
+  );
+  const save = page.waitForResponse(
+    (res) =>
+      res.url().endsWith("/api/model-configs") &&
+      res.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Add model", exact: true }).click();
+  const response = await save;
+  expect(response.ok()).toBe(true);
+  const { modelConfig } = await response.json();
+  expect(modelConfig.providerOptions).toMatchObject({
+    size: "1024x1024",
+    editSize: "512x512",
+    supportsEditing: true,
+  });
+  await page.goto(`/settings/models/${modelConfig.id}`);
+  await expect(page.getByLabel("Generation size", { exact: true })).toHaveValue(
+    "1024x1024",
+  );
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "512x512",
+  );
+  const imageSettings = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Image API settings",
+      exact: true,
+    }),
+  });
+  await imageSettings.screenshot({
+    path: "/tmp/overtchat-edit-size-desktop.png",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await imageSettings.screenshot({
+    path: "/tmp/overtchat-edit-size-mobile.png",
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const update = page.waitForResponse(
+    (res) =>
+      res.url().endsWith(`/api/model-configs/${modelConfig.id}`) &&
+      res.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  expect((await update).ok()).toBe(true);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Add to message", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: /Create image/ }).click();
+  await page.locator("textarea").fill("A red kite");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator("[data-image-generation] img")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Stop generating", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit / Use as reference" }).click();
+  await page.locator("textarea").fill("Make it blue");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator("[data-image-generation] img")).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: "Stop generating", exact: true }),
+  ).toHaveCount(0);
+  expect(requests.map((request) => request.url)).toEqual([
+    "/v1/images/generations",
+    "/v1/images/edits",
+  ]);
+  await page.reload();
+  const cards = page.locator("[data-image-generation]");
+  await expect(cards).toHaveCount(2);
+  await cards.nth(0).locator("summary").click();
+  await cards.nth(1).locator("summary").click();
+  await expect(cards.nth(0)).toContainText("Requested format: 1024x1024");
+  await expect(cards.nth(1)).toContainText("Requested format: 512x512");
+  await page.goto(`/settings/models/${modelConfig.id}`);
+  await page.getByLabel("Editing size", { exact: true }).fill("");
+  const reset = page.waitForResponse(
+    (res) =>
+      res.url().endsWith(`/api/model-configs/${modelConfig.id}`) &&
+      res.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  const resetResponse = await reset;
+  expect(resetResponse.ok()).toBe(true);
+  expect(
+    (await resetResponse.json()).modelConfig.providerOptions,
+  ).not.toHaveProperty("editSize");
+  await page.goto(`/settings/models/${modelConfig.id}`);
+  await expect(page.getByLabel("Editing size", { exact: true })).toHaveValue(
+    "",
+  );
 });

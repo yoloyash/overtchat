@@ -6,6 +6,8 @@ export type ProjectListItem = {
   id: string;
   name: string;
   instructions: string | null;
+  /** New chats in the project start with this model when it is available. */
+  defaultModelId: string | null;
   updatedAt: number;
 };
 
@@ -38,6 +40,15 @@ export function useProject(id: string) {
   });
 }
 
+/** Idle without a project, such as for a chat outside any project. */
+export function useOptionalProject(id: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.project(id ?? ""),
+    queryFn: () => fetchProject(id!),
+    enabled: Boolean(id),
+  });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
@@ -67,17 +78,23 @@ export function useUpdateProject(id: string) {
     mutationFn: async (patch: {
       name?: string;
       instructions?: string | null;
-    }) => {
+      defaultModelId?: string | null;
+    }): Promise<ProjectListItem> => {
       const res = await authFetch(`${getApiBase()}/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      if (!res.ok) throw new Error(`Failed to update (${res.status})`);
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `Failed to update (${res.status})`);
+      }
+      const json = (await res.json()) as { project: ProjectListItem };
+      return json.project;
     },
-    onSuccess: () => {
+    onSuccess: (project) => {
+      qc.setQueryData(queryKeys.project(id), project);
       qc.invalidateQueries({ queryKey: queryKeys.projects() });
-      qc.invalidateQueries({ queryKey: queryKeys.project(id) });
     },
   });
 }

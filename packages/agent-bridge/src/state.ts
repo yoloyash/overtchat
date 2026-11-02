@@ -223,6 +223,24 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
       return next;
     }
   }
+  // A tool result belongs to its call. Several results can complete in the
+  // same millisecond, so the timestamp heuristic below must not see them.
+  if (role === "toolResult") {
+    const toolCallId = toolCallIdOf(message);
+    if (toolCallId) {
+      const index = next.findIndex(
+        (candidate) =>
+          roleOf(candidate) === "toolResult" &&
+          toolCallIdOf(candidate) === toolCallId,
+      );
+      if (index >= 0) {
+        next[index] = message;
+        return next;
+      }
+      next.push(message);
+      return next;
+    }
+  }
   const timestamp = timestampOf(message);
   if (timestamp !== null) {
     const index = next.findIndex(
@@ -237,20 +255,6 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
     if (index >= 0) {
       next[index] = message;
       return next;
-    }
-  }
-  if (role === "toolResult") {
-    const toolCallId = toolCallIdOf(message);
-    if (toolCallId) {
-      const index = next.findIndex(
-        (candidate) =>
-          roleOf(candidate) === "toolResult" &&
-          toolCallIdOf(candidate) === toolCallId,
-      );
-      if (index >= 0) {
-        next[index] = message;
-        return next;
-      }
     }
   }
   next.push(message);
@@ -407,8 +411,8 @@ export function applyAgentRuntimeEnvelope(
     return {
       ...current,
       status: "running",
-      activeTurn: current.activeTurn ?? {
-        startedAt: runtimeEventTimestamp(event),
+      activeTurn: {
+        startedAt: current.activeTurn?.startedAt ?? runtimeEventTimestamp(event),
       },
       state: { ...current.state, isStreaming: true },
       error: undefined,
@@ -423,12 +427,13 @@ export function applyAgentRuntimeEnvelope(
       status: event.status,
       activeTurn:
         event.status === "running"
-          ? (current.activeTurn ?? {
+          ? {
               startedAt:
-                typeof event.startedAt === "number"
+                current.activeTurn?.startedAt ??
+                (typeof event.startedAt === "number"
                   ? event.startedAt
-                  : runtimeEventTimestamp(event),
-            })
+                  : runtimeEventTimestamp(event)),
+            }
           : null,
       state: {
         ...current.state,

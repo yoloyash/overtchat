@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { KeyRound, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Plus, ShieldOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -29,6 +29,7 @@ import {
 } from "../SettingsRows";
 import { AddUserDialog } from "./AddUserDialog";
 import { ResetPasswordDialog } from "./ResetPasswordDialog";
+import { ResetTwoFactorDialog } from "./ResetTwoFactorDialog";
 
 type PendingRoleChange = {
   user: UserRow;
@@ -41,6 +42,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   const setRoleMutation = useSetUserRole();
   const [addOpen, setAddOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
+  const [twoFactorTarget, setTwoFactorTarget] = useState<UserRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<UserRow | null>(null);
   const [pendingRoleChange, setPendingRoleChange] =
     useState<PendingRoleChange | null>(null);
@@ -110,12 +112,13 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
         description={`${users.length} user${users.length === 1 ? "" : "s"} configured.`}
         contentClassName="overflow-x-auto divide-y-0"
       >
-        <table className="w-full min-w-[42rem] text-sm">
+        <table className="w-full min-w-[48rem] text-sm">
           <thead className="border-b bg-muted/30 text-xs text-muted-foreground uppercase tracking-wide">
             <tr>
               <th className="px-3 py-2.5 text-left font-medium">Name</th>
               <th className="px-3 py-2.5 text-left font-medium">Email</th>
               <th className="px-3 py-2.5 text-left font-medium">Role</th>
+              <th className="px-3 py-2.5 text-left font-medium">Two-factor</th>
               <th className="px-3 py-2.5 text-left font-medium">Created</th>
               <th className="px-3 py-2.5 text-right font-medium">Actions</th>
             </tr>
@@ -157,6 +160,9 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   )}
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
+                  {u.twoFactorEnabled ? "On" : "Off"}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
                   {new Date(u.createdAt).toLocaleDateString()}
                 </td>
                 <td className="px-3 py-3 text-right">
@@ -174,6 +180,16 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                       >
                         <KeyRound data-icon="inline-start" /> Reset password
                       </Button>
+                      {u.twoFactorEnabled && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setTwoFactorTarget(u)}
+                        >
+                          <ShieldOff data-icon="inline-start" /> Reset two-factor
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"
@@ -201,6 +217,14 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
         onOpenChange={setAddOpen}
         onCreated={invalidateUsers}
       />
+      {twoFactorTarget && (
+        <ResetTwoFactorDialog
+          key={twoFactorTarget.id}
+          target={twoFactorTarget}
+          onClose={() => setTwoFactorTarget(null)}
+          onReset={invalidateUsers}
+        />
+      )}
       {resetTarget && (
         <ResetPasswordDialog
           key={resetTarget.id}

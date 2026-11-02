@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const TICKET_VERSION = 1;
+const TICKET_VERSION = 2;
 const TICKET_CONNECT_WINDOW_SECONDS = 120;
 const TICKET_LIFETIME_SECONDS = 8 * 60 * 60;
 
@@ -12,8 +12,8 @@ export interface VoiceTicketPayload {
   userId: string;
   chatId: string;
   projectId: string | null;
-  newChat: boolean;
-  historyThroughRowId: number | null;
+  sessionId: string;
+  reasoningLevel?: import("@overtchat/shared").ChatReasoningLevel;
   modelConfigId: string;
   webSearchEnabled: boolean;
   timeZone: string;
@@ -80,11 +80,7 @@ export function verifyVoiceTicket(
     typeof payload.chatId !== "string" ||
     !payload.chatId ||
     (payload.projectId !== null && typeof payload.projectId !== "string") ||
-    typeof payload.newChat !== "boolean" ||
-    (payload.historyThroughRowId !== null &&
-      (typeof payload.historyThroughRowId !== "number" ||
-        !Number.isSafeInteger(payload.historyThroughRowId) ||
-        payload.historyThroughRowId <= 0)) ||
+    typeof payload.sessionId !== "string" || !payload.sessionId ||
     typeof payload.modelConfigId !== "string" ||
     !payload.modelConfigId ||
     typeof payload.webSearchEnabled !== "boolean" ||

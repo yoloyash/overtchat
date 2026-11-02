@@ -63,7 +63,7 @@ export async function probeClaudeTarget(
     );
   }
   const remoteCwd = (
-    await executeOnHost(resolved.target, { command: "/bin/pwd" })
+    await executeOnHost(resolved.target, { command: "node", args: ["-e", "process.stdout.write(process.cwd())"] })
   ).stdout.trim();
   const client = startClaudeRuntime(resolved.target, {
     executable,

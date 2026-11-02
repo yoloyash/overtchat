@@ -2,6 +2,7 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -28,17 +29,13 @@ export function AgentQueuedMessages({
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
-  const { colors, fonts } = useTheme();
+  const { colors, fonts, radii } = useTheme();
   if (!messages.length) return null;
   return (
     <ScrollView
       accessibilityLabel="Pending messages"
       style={{ maxHeight: 160 }}
-      contentContainerStyle={{
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        gap: 8,
-      }}
+      contentContainerStyle={{ gap: 8 }}
       keyboardShouldPersistTaps="handled"
     >
       {messages.map((message) => {
@@ -53,9 +50,9 @@ export function AgentQueuedMessages({
               flexWrap: "wrap",
               alignItems: "center",
               gap: 8,
-              borderWidth: 1,
+              borderWidth: StyleSheet.hairlineWidth,
               borderColor: colors.border,
-              borderRadius: 12,
+              borderRadius: radii.xl,
               paddingLeft: 12,
               paddingRight: 4,
               paddingVertical: 6,

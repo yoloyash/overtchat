@@ -174,6 +174,11 @@ export class ConnectorStateJournal {
     return state;
   }
 
+  sessionDescriptor(sessionId: string): AgentDaemonSessionDescriptor | undefined {
+    this.assertOpen();
+    return this.sessionState(sessionId)?.descriptor;
+  }
+
   sessionQueue(sessionId: string): readonly AgentQueuedMessage[] {
     this.assertOpen();
     return this.sessionState(sessionId)?.queuedMessages ?? [];

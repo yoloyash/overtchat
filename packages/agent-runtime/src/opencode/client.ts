@@ -898,7 +898,8 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
           this.activeSelection = undefined;
           this.emit({ type: "turn_end", status: "completed" });
         } else if (status?.type === "retry") {
-          this.emit({ type: "rpc_error", command: "prompt", error: String(status.message ?? "OpenCode is retrying the turn.") });
+          // A retry is not the prompt failing; the turn goes on.
+          this.emit({ type: "rpc_error", command: "retry", error: String(status.message ?? "OpenCode is retrying the turn.") });
         }
         break;
       }

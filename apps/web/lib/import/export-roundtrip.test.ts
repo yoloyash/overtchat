@@ -146,6 +146,84 @@ function seedExportSource() {
 }
 
 describe("native export/import compatibility", () => {
+  it("remaps submitted OpenUI state to imported message identities", async () => {
+    const source = {
+      format: "overtchat",
+      chats: [
+        {
+          title: "Form replay",
+          messages: [
+            {
+              id: "form-answer",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-present_openui",
+                  toolCallId: "form-tool",
+                  state: "output-available",
+                  input: { ui: 'root = Card([TextContent("Booking")])' },
+                  output: { displayed: true, text: "Booking to Kyoto" },
+                },
+              ],
+              createdAt: 1,
+            },
+            {
+              id: "form-user",
+              role: "user",
+              parts: [{ type: "text", text: "Book" }],
+              metadata: {
+                openuiAction: {
+                  messageId: "form-answer",
+                  toolCallId: "form-tool",
+                  message: "Book",
+                  formState: { trip: { destination: { value: "Kyoto" } } },
+                  context: { ticket: "T-42" },
+                },
+              },
+              createdAt: 2,
+            },
+          ],
+        },
+      ],
+    };
+    await importChats(
+      "form-user",
+      new TextEncoder().encode(JSON.stringify(source)),
+    );
+    const chat = raw
+      .prepare("SELECT id FROM chats WHERE user_id = 'form-user'")
+      .get() as { id: string };
+    const exported = await exportChat(chat.id, "form-user");
+    const imported = exported!.chats[0].messages;
+    expect(imported[0].id).not.toBe("form-answer");
+    expect(imported[1].metadata).toMatchObject({
+      openuiAction: {
+        messageId: imported[0].id,
+        toolCallId: "form-tool",
+        context: { ticket: "T-42" },
+      },
+    });
+    expect(
+      raw
+        .prepare(
+          "SELECT message_id FROM messages_fts WHERE messages_fts MATCH 'Kyoto' AND user_id = 'form-user'",
+        )
+        .get(),
+    ).toEqual({ message_id: imported[0].id });
+    source.chats[0].messages[1].id = "form-answer";
+    await expect(
+      importChats(
+        "duplicate-user",
+        new TextEncoder().encode(JSON.stringify(source)),
+      ),
+    ).rejects.toThrow("Duplicate message IDs");
+    expect(
+      raw
+        .prepare("SELECT id FROM chats WHERE user_id = 'duplicate-user'")
+        .all(),
+    ).toEqual([]);
+  });
+
   it("round-trips the native export envelope and message metadata", async () => {
     seedExportSource();
 

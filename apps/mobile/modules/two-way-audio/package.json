@@ -1,0 +1,9 @@
+{
+  "name": "@overtchat/two-way-audio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Foreground PCM audio for OvertChat, adapted from Speechmatics and Paseo",
+  "license": "MIT",
+  "author": "Speechmatics; Paseo contributors; OvertChat contributors",
+  "homepage": "https://github.com/yoloyash/overtchat"
+}

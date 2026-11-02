@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
     getChatGenerationByRequestId: vi.fn(),
     inlineUploads: vi.fn(),
     modelConfigForUser: vi.fn((row: unknown) => row),
+    getSandboxStatus: vi.fn(),
     getModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
     listEffectiveMcpServers: vi.fn(),
@@ -80,7 +81,8 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("server-only", () => ({}));
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  ...await importOriginal<typeof import("ai")>(),
   generateText: mocks.generateText,
   consumeStream: mocks.consumeStream,
   convertToModelMessages: mocks.convertToModelMessages,
@@ -150,6 +152,10 @@ vi.mock("@/lib/db/chatTurns", () => ({
   getChatGenerationByRequestId: mocks.getChatGenerationByRequestId,
 }));
 vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
+vi.mock("@/lib/sandbox/client", () => ({
+  getSandboxStatus: mocks.getSandboxStatus,
+  runInSandbox: vi.fn(),
+}));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
   modelConfigForUser: mocks.modelConfigForUser,
@@ -501,6 +507,118 @@ describe("chat route setup boundary", () => {
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    "never re-enables OpenUI merely because history contains a card (supported=%s)",
+    async (supported) => {
+      const history = [
+        {
+          id: "card",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-present_openui",
+              toolCallId: "t",
+              state: "output-available",
+              input: { ui: 'root = Card([TextContent("Saved answer")])' },
+              output: { displayed: true },
+            },
+          ],
+        },
+      ];
+      mocks.getChat.mockResolvedValue(existingChat());
+      mocks.getMessages.mockResolvedValue(history);
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        openuiSupported: supported,
+        openuiEnabled: false,
+      });
+      expect((await POST(request())).status).toBe(200);
+      expect(mocks.agentSettings[0].tools).not.toHaveProperty("present_openui");
+      expect(mocks.agentSettings[0].instructions).not.toEqual(
+        expect.objectContaining({
+          content: expect.stringContaining("Interactive UI (OpenUI)"),
+        }),
+      );
+      expect(
+        mocks.convertToModelMessages.mock.calls[0][1].tools,
+      ).toHaveProperty("present_openui");
+    },
+  );
+
+  it("rejects a forced card that cannot fit before committing a turn", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(4096);
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      openuiSupported: true,
+      forceOpenUI: true,
+    });
+    expect((await POST(request())).status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+  });
+
+  it("removes OpenUI after two unsuccessful presentations so the next step can answer in text", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      openuiSupported: true,
+      openuiEnabled: true,
+    });
+    expect((await POST(request())).status).toBe(200);
+    const prepare = mocks.agentSettings[0].prepareStep as (
+      input: object,
+    ) => Promise<{ activeTools?: string[]; instructions?: string }>;
+    const prepared = await prepare({
+      messages: convertedMessages,
+      steps: [
+        { toolCalls: [{ toolName: "present_openui" }] },
+        { toolCalls: [{ toolName: "present_openui" }] },
+      ],
+      stepNumber: 2,
+    });
+    expect(prepared.activeTools).not.toContain("present_openui");
+    expect(prepared.instructions).toContain("readable Markdown");
+  });
+
+  it("persists a validated card action and rejects a source outside owned history", async () => {
+    const action = {
+      messageId: "card",
+      toolCallId: "t",
+      message: "Book",
+      context: { ticket: "T-42" },
+    };
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      openuiSupported: true,
+      openuiAction: action,
+    });
+    expect((await POST(request())).status).toBe(409);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue([
+      {
+        id: "card",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-present_openui",
+            toolCallId: "t",
+            state: "output-available",
+            input: { ui: "root = Card([])" },
+            output: { displayed: true },
+          },
+        ],
+      },
+    ]);
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userMessage: expect.objectContaining({
+          metadata: expect.objectContaining({ openuiAction: action }),
+        }),
+      }),
+    );
+  });
+
   it("reconstructs saved model context from persisted history", async () => {
     const storedMessages = [
       {
@@ -523,6 +641,7 @@ describe("chat route setup boundary", () => {
     expect(mocks.inlineUploads).toHaveBeenCalledWith(
       [...storedMessages, ...messages],
       "user",
+      expect.objectContaining({ tokenBudget: 30_720, readerAvailable: true }),
     );
     expect(mocks.uiStreamOptions?.originalMessages).toEqual([
       ...storedMessages,
@@ -554,7 +673,11 @@ describe("chat route setup boundary", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(200);
-    expect(mocks.inlineUploads).toHaveBeenCalledWith([storedUser], "user");
+    expect(mocks.inlineUploads).toHaveBeenCalledWith(
+      [storedUser],
+      "user",
+      expect.objectContaining({ tokenBudget: 30_720 }),
+    );
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         truncateFromMessageId: "assistant-message",
@@ -898,6 +1021,202 @@ describe("chat route setup boundary", () => {
     consoleSpy.mockRestore();
   });
 
+  it("keeps finished document versions when the provider stream later errors", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let observedRead: Promise<ReadableStreamReadResult<unknown>> | undefined;
+    mocks.agentStream.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "error", error: new Error("provider failed") });
+          controller.close();
+        },
+      }),
+    });
+    mocks.toUIMessageStream.mockImplementation((options: Record<string, unknown>) => {
+      mocks.uiStreamOptions = options;
+      observedRead = (options.stream as ReadableStream<unknown>).getReader().read();
+      return new ReadableStream();
+    });
+
+    await POST(request());
+    await observedRead;
+    const document = {
+      type: "tool-create_document",
+      toolCallId: "doc",
+      state: "output-available",
+      input: { title: "Plan", type: "markdown", content: "Body" },
+      output: { id: "plan", title: "Plan", type: "markdown", version: 1, content: "Body" },
+    };
+    await (mocks.uiStreamOptions?.onEnd as (event: unknown) => Promise<void>)({
+      isAborted: false,
+      responseMessage: {
+        id: "assistant-message",
+        role: "assistant",
+        parts: [
+          document,
+          { type: "tool-update_document", toolCallId: "pending", state: "input-available", input: { id: "plan" } },
+          { type: "text", text: "Broken partial" },
+        ],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assistantMessage: { id: "assistant-message", parts: [document] },
+        status: "error",
+      }),
+    );
+    consoleSpy.mockRestore();
+  });
+
+  describe("model-created documents", () => {
+    it("offers document tools to clients that render them", async () => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, documentsSupported: true });
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.agentSettings[0].toolOrder).toEqual([
+        "web_search",
+        "fetch_url",
+        "create_document",
+        "update_document",
+      ]);
+      expect(Object.keys(mocks.agentSettings[0].tools as object)).toEqual(
+        expect.arrayContaining(["create_document", "update_document"]),
+      );
+      expect(
+        (mocks.agentSettings[0].instructions as { content: string }).content,
+      ).toContain("Use create_document for substantial standalone content");
+    });
+
+    it.each([
+      ["clients without a renderer", {}, {}],
+      ["voice answers", { documentsSupported: true, responseStyle: "voice" }, {}],
+      ["models without tool calling", { documentsSupported: true }, { toolCallingEnabled: false }],
+    ])("keeps document tools away from %s", async (_name, requestOverrides, modelOverrides) => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, ...requestOverrides });
+      mocks.getModelConfig.mockResolvedValue({ ...modelConfig, ...modelOverrides });
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(Object.keys((mocks.agentSettings[0].tools ?? {}) as object)).not.toContain(
+        "create_document",
+      );
+      expect(JSON.stringify(mocks.agentSettings[0].instructions ?? "")).not.toContain(
+        "create_document",
+      );
+      // Saved documents still replay through the tool definitions.
+      expect(Object.keys(mocks.convertToModelMessages.mock.calls[0][1].tools)).toEqual(
+        expect.arrayContaining(["create_document", "update_document"]),
+      );
+    });
+  });
+
+  describe("code execution", () => {
+    const sandbox = {
+      state: "available",
+      info: {
+        tier: "slim",
+        version: "0.1.0",
+        packages: { pandas: "2.2.3" },
+        tools: [],
+        skills: [{ name: "charts", description: "Make charts.", path: "/opt/skills/charts/SKILL.md" }],
+        limits: {
+          timeout_seconds: 60,
+          max_timeout_seconds: 300,
+          max_input_bytes: 1_000_000,
+          max_output_files: 20,
+          max_output_bytes: 1_000_000,
+        },
+      },
+    };
+
+    it("offers run_python to clients that render runs when the sandbox is healthy", async () => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, codeExecutionSupported: true });
+      mocks.getSandboxStatus.mockResolvedValue(sandbox);
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.agentSettings[0].toolOrder).toEqual(["web_search", "fetch_url", "run_python"]);
+      expect(
+        (mocks.agentSettings[0].instructions as { content: string }).content,
+      ).toContain("charts (/opt/skills/charts/SKILL.md): Make charts.");
+      expect(mocks.inlineUploads.mock.calls[0][2]).toMatchObject({ codeExecution: true });
+    });
+
+    it.each([
+      ["clients without a renderer", {}, {}, false],
+      ["voice answers", { codeExecutionSupported: true, responseStyle: "voice" }, {}, false],
+      ["models without tool calling", { codeExecutionSupported: true }, { toolCallingEnabled: false }, false],
+      ["an unavailable sandbox", { codeExecutionSupported: true }, {}, true],
+    ])("keeps run_python away from %s", async (_name, requestOverrides, modelOverrides, probed) => {
+      mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, ...requestOverrides });
+      mocks.getModelConfig.mockResolvedValue({ ...modelConfig, ...modelOverrides });
+      mocks.getSandboxStatus.mockResolvedValue({ state: "unreachable", error: "down" });
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.getSandboxStatus).toHaveBeenCalledTimes(probed ? 1 : 0);
+      expect(Object.keys((mocks.agentSettings[0].tools ?? {}) as object)).not.toContain("run_python");
+      expect(JSON.stringify(mocks.agentSettings[0].instructions ?? "")).not.toContain("run_python");
+      expect(mocks.inlineUploads.mock.calls[0][2]).toMatchObject({ codeExecution: false });
+      // Earlier runs still replay through the tool definition.
+      expect(Object.keys(mocks.convertToModelMessages.mock.calls[0][1].tools)).toContain("run_python");
+    });
+
+    it("keeps runs that returned files when the provider stream later errors", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let observedRead: Promise<ReadableStreamReadResult<unknown>> | undefined;
+      mocks.agentStream.mockResolvedValue({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: "error", error: new Error("provider failed") });
+            controller.close();
+          },
+        }),
+      });
+      mocks.toUIMessageStream.mockImplementation((options: Record<string, unknown>) => {
+        mocks.uiStreamOptions = options;
+        observedRead = (options.stream as ReadableStream<unknown>).getReader().read();
+        return new ReadableStream();
+      });
+
+      await POST(request());
+      await observedRead;
+      const output = { exitCode: 0, timedOut: false, durationMs: 5, stdout: "", stderr: "" };
+      const withFiles = {
+        type: "tool-run_python",
+        toolCallId: "chart",
+        state: "output-available",
+        input: { code: "plt.show()" },
+        output: {
+          ...output,
+          files: [{ id: "f1", url: "/api/uploads/f1", name: "chart.png", mediaType: "image/png", size: 10 }],
+        },
+      };
+      await (mocks.uiStreamOptions?.onEnd as (event: unknown) => Promise<void>)({
+        isAborted: false,
+        responseMessage: {
+          id: "assistant-message",
+          role: "assistant",
+          parts: [
+            { type: "tool-run_python", toolCallId: "print", state: "output-available", input: { code: "print(1)" }, output: { ...output, files: [] } },
+            withFiles,
+            { type: "text", text: "Broken partial" },
+          ],
+        },
+      });
+
+      expect(mocks.completeChatStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assistantMessage: { id: "assistant-message", parts: [withFiles] },
+          status: "error",
+        }),
+      );
+      consoleSpy.mockRestore();
+    });
+  });
+
   it("does not discard an assistant for an ordinary UI tool error", async () => {
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
@@ -1067,14 +1386,12 @@ describe("chat route setup boundary", () => {
     expect(mocks.agentStream).not.toHaveBeenCalled();
   });
 
-  it("does not continue a voice chat through the text generation route", async () => {
+  it("continues an existing voice chat through ordinary text generation", async () => {
     mocks.getChat.mockResolvedValue({ ...existingChat(), kind: "voice" });
-
     const response = await POST(request());
-
-    expect(response.status).toBe(409);
-    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
-    expect(mocks.agentStream).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalled();
+    expect(mocks.agentStream).toHaveBeenCalled();
   });
 
   it("uses automatic tools normally and forces only the first requested step", async () => {
@@ -1142,7 +1459,7 @@ describe("chat route setup boundary", () => {
       supportsImageInput: true,
     });
     expect(mocks.convertToModelMessages).toHaveBeenCalledWith(messages, {
-      tools: mocks.chatTools,
+      tools: expect.objectContaining(mocks.chatTools),
       ignoreIncompleteToolCalls: true,
     });
   });
@@ -1192,6 +1509,57 @@ describe("chat route setup boundary", () => {
     );
   });
 
+  it("forwards a custom level's request fields", async () => {
+    const off = { chat_template_kwargs: { thinking: false } };
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "off",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "vllm",
+      apiFormat: "auto",
+      reasoningOverride: {
+        defaultLevel: "on",
+        requests: { on: { chat_template_kwargs: { thinking: true } }, off },
+      },
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: { toggle: true, defaultLevel: "on" },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningLevel: "off", reasoningRequest: off }),
+    );
+  });
+
+  it("rejects levels a custom configuration does not define", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "on",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "vllm",
+      apiFormat: "auto",
+      reasoningOverride: {
+        defaultLevel: "high",
+        requests: { off: {}, high: { reasoning_effort: "high" } },
+      },
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: { toggle: true, defaultLevel: "high", efforts: ["high"] },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(400);
+    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
+  });
+
   it("rejects reasoning levels absent from discovered controls", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
@@ -1212,6 +1580,144 @@ describe("chat route setup boundary", () => {
       "Reasoning level low is unavailable for this model",
     );
     expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
+  });
+
+  describe("attached document reading", () => {
+    const documentMessage = {
+      id: "user-message",
+      role: "user" as const,
+      parts: [
+        {
+          type: "file" as const,
+          url: "/api/uploads/doc",
+          mediaType: "application/pdf",
+          filename: "report.pdf",
+        },
+        { type: "text" as const, text: "Summarize the report" },
+      ],
+    };
+
+    it("offers file tools when a document is only partly included", async () => {
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        messages: [documentMessage],
+      });
+      mocks.inlineUploads.mockImplementation(
+        async (value: unknown, _userId: string, options: { onPartial?: (id: string) => void }) => {
+          options.onPartial?.("doc");
+          return value;
+        },
+      );
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.inlineUploads).toHaveBeenCalledWith(
+        [documentMessage],
+        "user",
+        expect.objectContaining({
+          tokenBudget: 30_720,
+          readerAvailable: true,
+          fileNames: new Map([["doc", "report.pdf"]]),
+        }),
+      );
+      expect(Object.keys(mocks.agentSettings[0].tools as object)).toEqual([
+        "web_search",
+        "fetch_url",
+        "read_file",
+        "search_files",
+      ]);
+      expect(mocks.agentSettings[0].toolOrder).toEqual([
+        "web_search",
+        "fetch_url",
+        "read_file",
+        "search_files",
+      ]);
+    });
+
+    it("keeps file tools out when every document fits", async () => {
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        webSearchEnabled: false,
+        messages: [documentMessage],
+      });
+      mocks.inlineUploads.mockImplementation(async (value: unknown) => value);
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+      // Earlier reads in history still convert while the tools are not offered.
+      expect(
+        Object.keys(mocks.convertToModelMessages.mock.calls[0][1].tools),
+      ).toEqual(expect.arrayContaining(["read_file", "search_files"]));
+    });
+
+    it("offers file tools for documents attached before a checkpoint", async () => {
+      const history = [
+        documentMessage,
+        { id: "a1", role: "assistant" as const, parts: [{ type: "text" as const, text: "It covers Q3." }] },
+        { id: "u2", role: "user" as const, parts: [{ type: "text" as const, text: "Thanks" }] },
+      ];
+      const checkpoint = createContextCheckpoint(history, "u2", "The user shared report.pdf.");
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        webSearchEnabled: false,
+        temporary: true,
+        messages: [
+          ...history,
+          {
+            id: "a2",
+            role: "assistant" as const,
+            parts: [{ type: "text" as const, text: "Anytime" }],
+            metadata: { contextCheckpoint: checkpoint },
+          },
+          { id: "u3", role: "user" as const, parts: [{ type: "text" as const, text: "What was the net revenue?" }] },
+        ],
+      });
+      mocks.inlineUploads.mockImplementation(async (value: unknown) => value);
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.inlineUploads.mock.calls[0][0].map((m: { id: string }) => m.id)).not.toContain(
+        "user-message",
+      );
+      expect(Object.keys(mocks.agentSettings[0].tools as object)).toEqual([
+        "read_file",
+        "search_files",
+      ]);
+    });
+
+    it("keeps file tools out when the model cannot call tools", async () => {
+      mocks.getModelConfig.mockResolvedValue({ ...modelConfig, toolCallingEnabled: false });
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        messages: [documentMessage],
+      });
+      mocks.inlineUploads.mockImplementation(
+        async (value: unknown, _userId: string, options: { onPartial?: (id: string) => void }) => {
+          options.onPartial?.("doc");
+          return value;
+        },
+      );
+
+      expect((await POST(request())).status).toBe(200);
+
+      expect(mocks.inlineUploads).toHaveBeenCalledWith(
+        [documentMessage],
+        "user",
+        expect.objectContaining({ readerAvailable: false }),
+      );
+      expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    });
+
+    it("budgets attachments for models with unknown context windows", async () => {
+      mocks.resolveModelContextWindow.mockReturnValue(undefined);
+      expect((await POST(request())).status).toBe(200);
+      expect(mocks.inlineUploads).toHaveBeenCalledWith(
+        messages,
+        "user",
+        expect.objectContaining({ tokenBudget: 16_000 }),
+      );
+    });
   });
 
   it("removes web tools when the capability is disabled", async () => {
@@ -1578,13 +2084,32 @@ describe("chat route setup boundary", () => {
     );
   });
 
+  it("uses identical system instructions and tools for voice and text turns", async () => {
+    mocks.inlineUploads.mockImplementation(async (value) => value);
+    await POST(request());
+    const text = mocks.agentSettings[0];
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, responseStyle: "voice" });
+    await POST(request());
+    const voice = mocks.agentSettings[1];
+    expect(voice.instructions).toEqual(text.instructions);
+    expect(voice.tools).toEqual(text.tools);
+    expect(voice.toolOrder).toEqual(text.toolOrder);
+    expect(voice.providerOptions).toEqual(text.providerOptions);
+    expect(mocks.commitChatTurn).toHaveBeenLastCalledWith(expect.objectContaining({
+      userMessage: { id: "user-message", parts: messages[0].parts, metadata: { responseStyle: "voice-v1" } },
+    }));
+    const voiceInput = mocks.convertToModelMessages.mock.calls.at(-1)?.[0];
+    expect(JSON.stringify(voiceInput)).toContain("For this response only");
+    expect(JSON.stringify(mocks.convertToModelMessages.mock.calls[0][0])).not.toContain("For this response only");
+  });
+
   it("keeps prompt content and persisted UI messages unchanged", async () => {
     const originalMessages = structuredClone(messages);
 
     await POST(request());
 
     expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
-    expect(mocks.uiStreamOptions?.originalMessages).toBe(messages);
+    expect(mocks.uiStreamOptions?.originalMessages).toEqual(messages);
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         userMessage: { id: "user-message", parts: messages[0].parts },
@@ -2074,6 +2599,69 @@ describe("chat route setup boundary", () => {
           cacheWriteCostNanoUsd: 12_500,
           totalCostNanoUsd: 138_500,
         }),
+      }),
+    );
+  });
+
+  it("keeps the chat model's cost and records image charges separately", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      pricing: { input: 2, output: 8, cacheRead: 0.2, cacheWrite: 2.5 },
+    });
+
+    await POST(request());
+    const { onUsage } = mocks.createImageTools.mock.calls[0][0] as {
+      onUsage: (usage: Record<string, unknown>) => void;
+    };
+    const image = {
+      toolCallId: "kite",
+      occurredAt: new Date("2026-10-27T12:00:00.000Z"),
+      providerId: "google",
+      model: "gemini-3.1-flash-image",
+      outputTokens: 1_290,
+      totalCostNanoUsd: 77_405_000,
+    };
+    onUsage(image);
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => unknown;
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+
+    messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 100,
+          inputTokenDetails: {
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            noCacheTokens: 100,
+          },
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      },
+    });
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Here is your kite" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: expect.objectContaining({
+          model: modelConfig.model,
+          totalCostNanoUsd: 280_000,
+        }),
+        imageUsage: [image],
       }),
     );
   });

@@ -62,7 +62,7 @@ test("probes start concurrently, tolerate failures, and retain compatibility inf
     await barrier;
     if (origin.endsWith(":4718")) return unavailable;
     if (origin.endsWith(":4717")) throw new Error("Network unavailable");
-    return { ok: true, version: "old", apiLevel: 0, problem: { kind: "server-outdated", version: "old" } };
+    return { ok: true, origin, version: "old", apiLevel: 0, problem: { kind: "server-outdated", version: "old" } };
   }, environment);
   assert.deepEqual(await discovery, [{ origin: "http://localhost:49317", version: "old", problem: { kind: "server-outdated", version: "old" } }]);
   assert.equal(started.length, 3);

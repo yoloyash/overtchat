@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test, type Page } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 let server: Server;
 let baseUrl: string;
@@ -12,7 +12,7 @@ const prefix = "```python\ndef answer():\n    return ";
 
 async function setup(page: Page, endpoint: string, modelName = "continuation-fixture", parts = [{ type: "text", text: prefix }]) {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Continuation Tester");
   await page.locator("#email").fill("continuation@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

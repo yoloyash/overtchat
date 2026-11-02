@@ -30,8 +30,19 @@ it("maps friendly service names to Compose services and forwards follow/tail", a
     { inherit: true },
   );
 });
+it("follows the installed code sandbox tier", async () => {
+  const installation = await managedInstallation();
+  installation.config.sandbox = { installed: true, tier: "full" };
+  await logs("sandbox", false, 10);
+  expect(requireDocker).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.arrayContaining(["logs", "--tail", "10", "sandbox-full"]),
+    { inherit: true },
+  );
+});
 it("rejects disabled or unknown services before running Docker", async () => {
   await expect(logs("voice", false, 100)).rejects.toThrow("uninstalled");
+  await expect(logs("sandbox", false, 100)).rejects.toThrow("uninstalled");
   expect(requireDocker).not.toHaveBeenCalled();
 });
 it("reads native file logs without requiring Docker", async () => {

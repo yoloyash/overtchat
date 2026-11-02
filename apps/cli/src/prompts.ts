@@ -9,12 +9,13 @@ import {
   text,
 } from "@clack/prompts";
 import { commandExists } from "./process.js";
-import { promptAccess } from "./access-prompts.js";
+import { promptAccess, type AccessPromptOptions } from "./access-prompts.js";
 import type {
   ExistingInstallation,
   Gpu,
   InstallationConfig,
   KokoroGpuVariant,
+  SandboxTier,
   SearchProvider,
   SttProvider,
   TtsProvider,
@@ -264,6 +265,9 @@ export function existingInstallationSummary(
             : "Parakeet (CPU)",
         ]
       : []),
+    ...(existing.sandboxTier
+      ? [existing.sandboxTier === "full" ? "Code sandbox (full)" : "Code sandbox"]
+      : []),
   ];
   return [
     `Version: ${existing.appVersion ?? "unknown"}`,
@@ -409,6 +413,7 @@ export async function promptInstallationConfig(
   gpus: Gpu[],
   existing?: ExistingInstallation,
   appleChip?: string | null,
+  options: AccessPromptOptions = {},
 ): Promise<InstallationConfig> {
   intro("OvertChat setup");
   if (existing) {
@@ -426,7 +431,7 @@ export async function promptInstallationConfig(
       process.exit(0);
     }
   }
-  const configured = await promptAccess(initial);
+  const configured = await promptAccess(initial, options);
   const search = await promptSearch(initial.search);
   const tts = await promptTts(initial.tts, gpus, appleChip);
   const stt = await promptStt(initial.stt, gpus, appleChip);
@@ -447,6 +452,21 @@ export async function promptInstallationConfig(
       "Realtime voice set up later",
     );
   }
+  note(
+    "Models can run Python on a chat's files in an isolated container without internet access: analyze spreadsheets, make charts, edit images, and create Word, Excel, PDF or PowerPoint files.",
+    "Code execution",
+  );
+  const sandbox = chosen(
+    await select<SandboxTier | "later">({
+      message: "Install code execution?",
+      initialValue: initial.sandbox.installed ? initial.sandbox.tier : "later",
+      options: [
+        { value: "slim", label: "Standard", hint: "Python data, chart, image and document libraries; about 500 MB" },
+        { value: "full", label: "Full", hint: "also pandoc, LibreOffice, OCR and ffmpeg; about 2 GB" },
+        { value: "later", label: "Set up later" },
+      ],
+    }),
+  );
   const agents = await detectedAgents();
   note(
     [
@@ -483,6 +503,10 @@ export async function promptInstallationConfig(
     tts,
     stt,
     voice: { installed: installVoice },
+    sandbox:
+      sandbox === "later"
+        ? { ...initial.sandbox, installed: false }
+        : { installed: true, tier: sandbox },
     agents: { installed: installAgents },
     disableUpdateCheck: !checkForUpdates,
   };

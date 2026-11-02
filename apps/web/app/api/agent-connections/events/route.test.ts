@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   listAgentConnections: vi.fn(),
   subscribeSessionDirectory: vi.fn(),
   unsubscribeDirectory: vi.fn(),
+  getOwnedAgentWorkspace: vi.fn(),
+  watchWorkspaceGit: vi.fn(),
+  unwatchGit: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,10 +21,12 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 vi.mock("@/lib/db/agentConnections", () => ({
   listAgentConnections: mocks.listAgentConnections,
+  getOwnedAgentWorkspace: mocks.getOwnedAgentWorkspace,
 }));
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: {
     subscribeSessionDirectory: mocks.subscribeSessionDirectory,
+    watchWorkspaceGit: mocks.watchWorkspaceGit,
   },
 }));
 
@@ -101,6 +106,34 @@ describe("agent connection session-directory stream", () => {
     expect(mocks.unsubscribeDirectory).toHaveBeenCalledOnce();
   });
 
+  it("passes alerts for the stream's client along, until it disconnects", async () => {
+    const { agentClientRegistry } = await import("@/lib/notifications/presence");
+    const notification = {
+      sessionId: "session",
+      reason: "completed" as const,
+      eventId: "session:1",
+      title: "Finished: Fix tests",
+      body: "Done.",
+      provider: "codex" as const,
+    };
+    const response = await GET(
+      new Request("http://server.test/api/agent-connections/events?client=tab-00000001"),
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    expect(agentClientRegistry.deliver("owner", "tab-00000001", notification)).toBe(true);
+    const delivered = new TextDecoder().decode((await reader.read()).value);
+    expect(delivered).toBe(`event: notification\ndata: ${JSON.stringify(notification)}\n\n`);
+    await reader.cancel();
+    expect(agentClientRegistry.deliver("owner", "tab-00000001", notification)).toBe(false);
+    // Streams without a client id, or with a malformed one, are not told.
+    const anonymous = await GET(
+      new Request("http://server.test/api/agent-connections/events?client=x"),
+    );
+    await anonymous.body!.getReader().cancel();
+    expect(agentClientRegistry.deliver("owner", "x", notification)).toBe(false);
+  });
+
   it("does not expose the directory to non-admin users", async () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "member", role: "user" },
@@ -113,5 +146,51 @@ describe("agent connection session-directory stream", () => {
     expect(response.status).toBe(403);
     expect(mocks.listAgentConnections).not.toHaveBeenCalled();
     expect(mocks.subscribeSessionDirectory).not.toHaveBeenCalled();
+  });
+
+  it("streams Git watch events only for owned requested workspaces", async () => {
+    mocks.getOwnedAgentWorkspace.mockImplementation(async (id: string) =>
+      id === "owned"
+        ? {
+            host: { connectorId: "connector", transport: "ssh", sshAlias: "box" },
+            connection: { shellMode: "login" },
+            workspace: { id: "owned", path: "/srv/project" },
+          }
+        : null,
+    );
+    let gitListener:
+      | ((event: { type: "live"; live: boolean }) => void)
+      | undefined;
+    mocks.watchWorkspaceGit.mockImplementation((_target, listener) => {
+      gitListener = listener;
+      return mocks.unwatchGit;
+    });
+
+    const response = await GET(
+      new Request(
+        "http://server.test/api/agent-connections/events?git=owned,foreign,owned",
+      ),
+    );
+
+    expect(mocks.getOwnedAgentWorkspace).toHaveBeenCalledTimes(2);
+    expect(mocks.watchWorkspaceGit).toHaveBeenCalledOnce();
+    expect(mocks.watchWorkspaceGit).toHaveBeenCalledWith(
+      {
+        connectorId: "connector",
+        workspaceId: "owned",
+        target: { transport: "ssh", alias: "box", shellMode: "login" },
+        path: "/srv/project",
+      },
+      expect.any(Function),
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    gitListener?.({ type: "live", live: true });
+    const live = new TextDecoder().decode((await reader.read()).value);
+    expect(live).toBe(
+      `event: git\ndata: ${JSON.stringify({ workspaceId: "owned", live: true })}\n\n`,
+    );
+    await reader.cancel();
+    expect(mocks.unwatchGit).toHaveBeenCalledOnce();
   });
 });

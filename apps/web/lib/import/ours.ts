@@ -1,6 +1,7 @@
 import { ImportError, type ImportedChat, type ImportedPart } from "./types";
 
 type OursMessage = {
+  id?: string;
   role?: string;
   parts?: unknown;
   metadata?: unknown;
@@ -66,6 +67,7 @@ export function importOurs(data: unknown): ImportedChat[] {
       .map((m) => {
         const metadata = normalizeMetadata(m.metadata);
         return {
+          ...(typeof m.id === "string" ? { sourceId: m.id } : {}),
           role: normalizeRole(m.role),
           parts: m.parts as ImportedPart[],
           ...(metadata ? { metadata } : {}),

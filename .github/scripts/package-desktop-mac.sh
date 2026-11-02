@@ -48,7 +48,7 @@ export CSC_KEYCHAIN="$KEYCHAIN"
 export CSC_NAME="(C35DR2MHM7)"
 unset CSC_LINK CSC_KEY_PASSWORD KEYCHAIN_PASSWORD MACOS_DEVELOPER_ID_P12 MACOS_DEVELOPER_ID_PASSWORD
 
-npm run package:mac:release -w apps/desktop -- "--$ARCH"
+node .github/scripts/desktop-mac-network-retry.mjs npm run package:mac:release -w apps/desktop -- "--$ARCH"
 VERSION="$(node -p "require('./apps/desktop/package.json').version")"
 APP=apps/desktop/release/mac/overtchat.app
 [[ "$ARCH" != arm64 ]] || APP=apps/desktop/release/mac-arm64/overtchat.app
@@ -68,8 +68,8 @@ with open(sys.argv[1]) as file:
 assert result['status'] == 'Accepted', f"DMG notarization failed: {result['status']} ({result['id']})"
 print(f"DMG notarization accepted: {result['id']}")
 PY
-xcrun stapler staple "$DMG"
-xcrun stapler validate "$DMG"
+node .github/scripts/desktop-mac-network-retry.mjs xcrun stapler staple "$DMG"
+node .github/scripts/desktop-mac-network-retry.mjs xcrun stapler validate "$DMG"
 codesign --verify --strict "$DMG"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
 

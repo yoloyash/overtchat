@@ -5,7 +5,7 @@ import path from "node:path";
 import { JSONParser, TokenType } from "@streamparser/json";
 import { isHostConnectorEvent } from "@overtchat/agent-bridge";
 import { isCommandEntry, isCommandResult, isRecord, isSessionState, stableCommandResult } from "./state-format.js";
-import { configureJournalDatabase, createJournalSchema, openJournalDatabase, syncJournalFile, type JournalDatabase } from "./journal-sqlite.js";
+import { configureJournalDatabase, createJournalSchema, openJournalDatabase, syncJournalFile, syncJournalDirectory, type JournalDatabase } from "./journal-sqlite.js";
 
 export async function journalFileKind(file: string): Promise<"missing" | "json" | "sqlite"> {
   let handle;
@@ -205,6 +205,6 @@ export async function initializeJournalFile(file: string): Promise<void> {
   await syncJournalFile(staging);
   if (kind === "json") await archiveOriginal(file);
   await rename(staging, file);
-  await syncJournalFile(path.dirname(file));
+  await syncJournalDirectory(path.dirname(file));
   for (const suffix of ["-wal", "-shm"]) await rm(`${staging}${suffix}`, { force: true });
 }

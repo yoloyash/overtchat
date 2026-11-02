@@ -72,6 +72,27 @@ describe("native SSE parsing", () => {
       ["runtime", "next"],
     ]);
   });
+  it("keeps partial lines across many small chunks", () => {
+    const received = vi.fn();
+    const parse = createEventParser(received);
+    const stream =
+      "event: a\r\ndata: one\r\n\r\nevent: b\ndata: two\ndata: three\n\n";
+    for (const character of stream) parse(character);
+    expect(received.mock.calls).toEqual([
+      ["a", "one"],
+      ["b", "two\nthree"],
+    ]);
+  });
+  it("treats a lone CR as a line ending once the next chunk arrives", () => {
+    const received = vi.fn();
+    const parse = createEventParser(received);
+    for (const chunk of ["data: one\r", "\r", "data: t", "wo", "\r\n\r\n"])
+      parse(chunk);
+    expect(received.mock.calls).toEqual([
+      ["message", "one"],
+      ["message", "two"],
+    ]);
+  });
   it("does not dispatch an incomplete event", () => {
     const received = vi.fn();
     const parse = createEventParser(received);

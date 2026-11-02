@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { atomicWrite } from "./atomic-file.js";
+import { protectWindowsDirectory } from "./windows.js";
 import type {
   ExistingInstallation,
   InstallationConfig,
@@ -22,6 +24,10 @@ export type InstallationSecrets = {
   managementSecret: string;
   searxngSecret: string;
   voiceSharedSecret: string;
+  // Shared by the app and the code sandbox.
+  sandboxToken: string;
+  // Issued by OvertChat Cloud when this server is linked; empty otherwise.
+  cloudCredential: string;
 };
 
 function generatedSecret(): string {
@@ -60,11 +66,14 @@ export function defaultInstallationConfig(
     voiceImage: `${VOICE_IMAGE}:${manifest.voiceVersion}`,
     connectorVersion: manifest.connectorVersion,
     sttVersion: manifest.sttVersion,
+    sandboxVersion: manifest.sandboxVersion,
     redisImage: manifest.redisImage,
     searxngImage: manifest.searxngImage,
     kokoroImage: manifest.kokoroImage,
     kokoroGpuImage: manifest.kokoroGpuImage,
     kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+    cloudTunnelImage: manifest.cloudTunnelImage,
+    cloudProxyImage: manifest.cloudProxyImage,
     appPort: existing?.appPort ?? DEFAULT_APP_PORT,
     bindAddress: existing?.bindAddress ?? "0.0.0.0",
     publicUrl:
@@ -119,6 +128,9 @@ export function defaultInstallationConfig(
             }
           : { provider: "disabled", bundledInstalled: false },
     voice: { installed: existing?.bundledServices.voice ?? false },
+    sandbox: existing?.sandboxTier
+      ? { installed: true, tier: existing.sandboxTier }
+      : { installed: false, tier: "slim" },
     agents: { installed: false },
     ...(existing?.composeWorkingDir
       ? { adoptedFrom: existing.composeWorkingDir }
@@ -159,6 +171,10 @@ export async function readInstallationConfig(
         config.voiceImage ??
         `${VOICE_IMAGE}:${config.voiceVersion ?? "0.0.0"}`,
       voice: config.voice ?? { installed: false },
+      // State from before code execution; the next manifest selects a
+      // published sandbox when it is installed.
+      sandboxVersion: config.sandboxVersion ?? "0.0.0",
+      sandbox: config.sandbox ?? { installed: false, tier: "slim" },
     };
     return withoutProviderKeys(normalizeInstallationConfig(migrated));
   } catch (error) {
@@ -221,6 +237,10 @@ export function normalizeInstallationConfig(
         tts.provider !== "disabled" &&
         stt.provider !== "disabled",
     },
+    sandbox: {
+      installed: config.sandbox.installed,
+      tier: config.sandbox.tier === "full" ? "full" : "slim",
+    },
   };
 }
 
@@ -235,12 +255,18 @@ function withoutApiKey<T extends { apiKey?: string }>(
 export function withoutProviderKeys(
   config: InstallationConfig,
 ): InstallationConfig {
-  return {
+  const persisted = {
     ...config,
     search: withoutApiKey(config.search),
     tts: withoutApiKey(config.tts),
     stt: withoutApiKey(config.stt),
   };
+  if (config.access?.cloud?.credential) {
+    const cloud = { ...config.access.cloud };
+    delete cloud.credential;
+    persisted.access = { ...config.access, cloud };
+  }
+  return persisted;
 }
 
 export function initialSecrets(
@@ -258,6 +284,8 @@ export function initialSecrets(
       existing?.environment.get("SEARXNG_SECRET") ||
       generatedSecret(),
     voiceSharedSecret: previous.voiceSharedSecret || generatedSecret(),
+    sandboxToken: previous.sandboxToken || generatedSecret(),
+    cloudCredential: previous.cloudCredential ?? "",
   };
 }
 
@@ -289,6 +317,8 @@ export async function readInstallationSecrets(
       managementSecret: values.get("OVERTCHAT_MANAGEMENT_SECRET"),
       searxngSecret: values.get("SEARXNG_SECRET"),
       voiceSharedSecret: values.get("VOICE_SHARED_SECRET"),
+      sandboxToken: values.get("SANDBOX_TOKEN"),
+      cloudCredential: values.get("OVERTCHAT_CLOUD_CREDENTIAL"),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
@@ -302,10 +332,8 @@ async function writeAtomic(
   mode: number,
 ): Promise<void> {
   await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
-  const temporary = `${destination}.new-${process.pid}`;
-  await writeFile(temporary, contents, { encoding: "utf8", mode });
-  await chmod(temporary, mode);
-  await rename(temporary, destination);
+  await protectWindowsDirectory(path.dirname(destination));
+  await atomicWrite(destination, contents, mode);
 }
 
 export async function writeInstallationConfig(

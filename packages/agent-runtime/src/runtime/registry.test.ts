@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
   steer: vi.fn(),
   abort: vi.fn(),
+  compact: vi.fn(),
   forkSession: vi.fn(),
   rewind: vi.fn(),
   stop: vi.fn(),
@@ -45,6 +46,9 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     provider,
     steering: provider === "hermes" ? "restart" : undefined,
     pollUsage: provider === "pi" || provider === "omp",
+    ...(provider === "opencode"
+      ? { busyFromState: (state: Record<string, unknown>) => state.isStreaming === true }
+      : {}),
     capabilities: { steer: true },
     probeConnection: vi.fn(),
     probeTarget: vi.fn(),
@@ -65,6 +69,7 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
         prompt: mocks.prompt,
         steer: mocks.steer,
         abort: mocks.abort,
+        compact: mocks.compact,
         setModel: mocks.setModel,
         setThinkingLevel: mocks.setThinkingLevel,
         setMode: mocks.setMode,
@@ -181,6 +186,26 @@ describe("agent runtime", () => {
     expect(runtime.snapshot().queuedMessages).toEqual([]);
     expect(mocks.getMessages).toHaveBeenCalledOnce();
     expect(mocks.prompt).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
+  it("retains an interrupted compaction marker when the provider restarts", async () => {
+    const displayed = [
+      { id: "old", role: "user", content: "Keep this history" },
+      { id: "compaction:old", role: "compactionSummary", status: "running", trigger: "auto", timestamp: 1 },
+    ];
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadTranscript: async () => displayed,
+    });
+    const runtime = await registry.getOrStart({
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "omp", target: { transport: "local" }, executable: "omp", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    expect(runtime.snapshot().messages).toEqual([displayed[0], { ...displayed[1], status: "interrupted" }]);
+    expect(mocks.getMessages).not.toHaveBeenCalled();
     await registry.stopAll();
   });
 
@@ -1010,6 +1035,112 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
+  it("acknowledges a manual compaction once it starts and queues prompts behind it", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "omp",
+      target: { transport: "local" },
+      executable: "omp",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    let finishCompaction!: (result: unknown) => void;
+    mocks.compact.mockImplementation(() => {
+      mocks.eventSubscriber?.({ type: "compaction_start", reason: "manual" });
+      return new Promise((resolve) => {
+        finishCompaction = resolve;
+      });
+    });
+
+    await expect(runtime.command({ type: "compact" })).resolves.toBeUndefined();
+    expect(mocks.compact).toHaveBeenCalledWith(undefined);
+    expect(runtime.snapshot()).toMatchObject({
+      status: "running",
+      state: { isCompacting: true },
+    });
+
+    await runtime.command(
+      { type: "queue", message: "Continue after compaction" },
+      "after-compaction",
+    );
+    expect(runtime.snapshot().queuedMessages).toMatchObject([
+      { id: "after-compaction", status: "pending" },
+    ]);
+    expect(mocks.prompt).not.toHaveBeenCalled();
+
+    finishCompaction({ tokensBefore: 42_000 });
+    mocks.eventSubscriber?.({ type: "compaction_end" });
+    await vi.waitFor(() => {
+      expect(mocks.prompt).toHaveBeenCalledWith(
+        "Continue after compaction",
+        undefined,
+        { clientMessageId: "after-compaction" },
+      );
+    });
+    expect(runtime.snapshot().error).toBeUndefined();
+    await registry.stopAll();
+  });
+
+  it("rejects a compaction the provider refuses and reports one that fails after starting", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "omp",
+      target: { transport: "local" },
+      executable: "omp",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    const events: unknown[] = [];
+    runtime.subscribe((envelope) => events.push(envelope));
+
+    mocks.compact.mockRejectedValueOnce(new Error("Context compaction is already running."));
+    await expect(runtime.command({ type: "compact" })).rejects.toThrow(
+      "Context compaction is already running.",
+    );
+    expect(runtime.snapshot().error).toBeUndefined();
+
+    let failCompaction!: (error: Error) => void;
+    mocks.compact.mockImplementationOnce(() => {
+      mocks.eventSubscriber?.({ type: "compaction_start", reason: "manual" });
+      return new Promise((_resolve, reject) => {
+        failCompaction = reject;
+      });
+    });
+    await expect(runtime.command({ type: "compact", customInstructions: "Keep names" })).resolves.toBeUndefined();
+    expect(mocks.compact).toHaveBeenLastCalledWith("Keep names");
+    failCompaction(new Error("Summarizer unavailable."));
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().error).toBe("Summarizer unavailable.");
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "runtime_event",
+        data: { type: "rpc_error", command: "compact", error: "Summarizer unavailable." },
+      }),
+    );
+    mocks.eventSubscriber?.({ type: "compaction_end", error: "Summarizer unavailable." });
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().status).toBe("idle");
+    });
+    await registry.stopAll();
+  });
+
   it("marks a queued prompt uncertain when the provider call rejects", async () => {
     mocks.prompt.mockRejectedValueOnce(new Error("transport disconnected"));
     const registry = new AgentRuntimeRegistry({
@@ -1231,6 +1362,155 @@ describe("agent runtime", () => {
     });
     expect(runtime.snapshot().queuedMessages).toEqual([]);
     await registry.stopAll();
+  });
+
+  describe("directory status", () => {
+    async function startCodex(provider: AgentProviderId = "codex") {
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+      const runtime = await registry.getOrStart({
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider,
+        target: { transport: "local" },
+        executable: provider,
+        cwd: "/workspace",
+        sessionId: "session",
+        providerSessionId: "provider-session",
+        providerSessionPath: "/sessions/provider-session.jsonl",
+        launchConfig: {},
+      });
+      return { registry, runtime };
+    }
+
+    it("reports a completed turn with a preview of the reply", async () => {
+      const { registry, runtime } = await startCodex();
+      expect(runtime.directoryStatus()).toEqual({
+        runtimeStatus: "idle",
+        turnStartedAt: null,
+        attention: null,
+        lastTurn: null,
+      });
+
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      const { turnStartedAt } = runtime.directoryStatus();
+      expect(runtime.directoryStatus()).toMatchObject({
+        runtimeStatus: "running",
+        turnStartedAt: expect.any(Number),
+      });
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      mocks.eventSubscriber?.({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Fixed the **flaky** test." }],
+        },
+      });
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn).toMatchObject({
+          outcome: "completed",
+          startedAt: turnStartedAt,
+          preview: "Fixed the flaky test.",
+        }),
+      );
+      expect(runtime.directoryStatus()).toMatchObject({
+        runtimeStatus: "idle",
+        turnStartedAt: null,
+      });
+      await registry.stopAll();
+    });
+
+    it("keeps a mid-turn provider error after settling clears it", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      mocks.eventSubscriber?.({
+        type: "rpc_error",
+        command: "prompt",
+        error: "Rate limit reached",
+      });
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn).toMatchObject({
+          outcome: "failed",
+          error: "Rate limit reached",
+        }),
+      );
+      expect(runtime.snapshot().error).toBeUndefined();
+      await registry.stopAll();
+    });
+
+    it("fails a turn whose end the provider reports as failed", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      mocks.eventSubscriber?.({ type: "turn_end", status: "failed" });
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn?.outcome).toBe("failed"),
+      );
+      await registry.stopAll();
+    });
+
+    it("reports a user abort as stopped", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      await runtime.command({ type: "abort" });
+
+      expect(runtime.directoryStatus().lastTurn).toMatchObject({
+        outcome: "stopped",
+      });
+      await registry.stopAll();
+    });
+
+    it("reports a stop as stopped when the provider settles after acknowledging it", async () => {
+      const { registry, runtime } = await startCodex("opencode");
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({ type: "agent_start" });
+      // The provider still reports work right after acknowledging the abort.
+      mocks.getState.mockResolvedValueOnce({
+        isStreaming: true,
+        sessionId: "provider-session",
+        sessionFile: "/sessions/provider-session.jsonl",
+      });
+      await runtime.command({ type: "abort" });
+      expect(runtime.directoryStatus().runtimeStatus).toBe("running");
+
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn?.outcome).toBe("stopped"),
+      );
+      await registry.stopAll();
+    });
+
+    it("summarizes a pending approval until it resolves", async () => {
+      const { registry, runtime } = await startCodex();
+      await runtime.command({ type: "prompt", message: "Fix it" }, "message");
+      mocks.eventSubscriber?.({
+        type: "interaction_request",
+        id: "approval",
+        method: "select",
+        title: "Allow Bash?",
+        approvalKind: "tool",
+        toolDetail: { type: "shell", command: "npm ci" },
+      });
+      expect(runtime.directoryStatus().attention).toEqual({
+        kind: "approval",
+        id: "approval",
+        requestedAt: expect.any(Number),
+        title: "Allow Bash",
+        detail: "npm ci",
+      });
+
+      mocks.eventSubscriber?.({ type: "interaction_resolved", id: "approval" });
+      expect(runtime.directoryStatus().attention).toBeNull();
+      await registry.stopAll();
+    });
   });
 
   it("stops the active turn without starting a replacement prompt", async () => {
