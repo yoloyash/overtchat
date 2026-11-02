@@ -23,8 +23,10 @@ dismiss_launcher_anr() {
   local windows
   windows="$(adb shell dumpsys window windows 2>/dev/null || true)"
   if grep -Fq "Application Not Responding: com.android.launcher3" <<< "$windows"; then
-    echo "Dismissing an Android emulator launcher ANR."
-    adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+    # Back cannot clear this dialog while the launcher stays hung, and the dialog
+    # hides the app from uiautomator. Android removes it with the stopped process.
+    echo "Stopping a hung Android emulator launcher."
+    adb shell am force-stop com.android.launcher3 >/dev/null 2>&1 || true
     sleep 1
   fi
 }
