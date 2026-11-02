@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -25,37 +24,25 @@ import { MessageBubble } from "./MessageBubble";
 
 const noop = () => {};
 
-export function ShareChatButton({
+/** Share sheet for one chat, opened from the header menu. */
+export function ShareChatModal({
   chatId,
-  disabled,
+  open,
+  onClose,
 }: {
   chatId: string;
-  disabled?: boolean;
+  open: boolean;
+  onClose: () => void;
 }) {
-  const { colors } = useTheme();
-  const [open, setOpen] = useState(false);
   return (
-    <>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Share chat"
-        disabled={disabled}
-        onPress={() => setOpen(true)}
-        style={{ padding: 12, opacity: disabled ? 0.4 : 1 }}
-      >
-        <Ionicons name="share-outline" size={22} color={colors.foreground} />
-      </Pressable>
-      <Modal
-        visible={open}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setOpen(false)}
-      >
-        {open && (
-          <ShareChatContent chatId={chatId} onClose={() => setOpen(false)} />
-        )}
-      </Modal>
-    </>
+    <Modal
+      visible={open}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      {open && <ShareChatContent chatId={chatId} onClose={onClose} />}
+    </Modal>
   );
 }
 

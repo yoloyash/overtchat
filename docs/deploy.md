@@ -835,8 +835,8 @@ administrators create subsequent accounts.
 
 ## Shared chat links
 
-Use **Share chat** in a saved conversation to preview it and create a public
-link. Anyone who can reach your server and has the link can read the snapshot
+Use **Share chat** in a saved conversation (on mobile, **Share** in the chat
+header's actions menu) to preview it and create a public link. Anyone who can reach your server and has the link can read the snapshot
 without an account, including its attachments, generated images, reasoning,
 tool results, and artifacts. System instructions, provider metadata, and account
 settings are excluded. Recipients cannot edit the chat or run its tools.

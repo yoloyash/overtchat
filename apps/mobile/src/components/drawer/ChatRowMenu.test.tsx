@@ -54,11 +54,20 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(pinningSupported: boolean, pinned = false, pinPending = false) {
+async function render(
+  pinningSupported: boolean,
+  pinned = false,
+  pinPending = false,
+  extra: Partial<React.ComponentProps<typeof ChatRowMenu>> = {},
+) {
   await act(async () => root.render(
     <ChatRowMenu from={null} visible pinned={pinned} pinningSupported={pinningSupported}
-      pinPending={pinPending} onSelect={onSelect} onClose={onClose} />,
+      pinPending={pinPending} onSelect={onSelect} onClose={onClose} {...extra} />,
   ));
+}
+
+function labels() {
+  return Array.from(container.querySelectorAll("button")).map((item) => item.getAttribute("aria-label"));
 }
 
 function button(name: string) {
@@ -69,8 +78,7 @@ it("keeps existing actions and omits pinning for an older server", async () => {
   await render(false);
   expect(button("Pin")).toBeNull();
   expect(button("Unpin")).toBeNull();
-  expect(Array.from(container.querySelectorAll("button")).map((item) => item.getAttribute("aria-label")))
-    .toEqual(["Rename", "Move to project", "Delete"]);
+  expect(labels()).toEqual(["Rename", "Move to project", "Delete"]);
   await act(async () => button("Rename")!.click());
   expect(onSelect).toHaveBeenCalledWith("rename");
 });
@@ -89,4 +97,21 @@ it("prevents repeat pin writes while leaving other actions available", async () 
   await act(async () => button("Pin")!.click());
   expect(onSelect).not.toHaveBeenCalled();
   expect(button("Rename")!.disabled).toBe(false);
+});
+
+it("adds Share between Pin and Rename for the header, with the chat title above", async () => {
+  await render(true, false, false, { shareable: true, title: "  Weekend plans  " });
+  expect(labels()).toEqual(["Pin", "Share", "Rename", "Move to project", "Delete"]);
+  expect(container.textContent).toContain("Weekend plans");
+  await act(async () => button("Share")!.click());
+  expect(onSelect).toHaveBeenCalledExactlyOnceWith("share");
+});
+
+it("greys out only the actions the caller blocks while a response streams", async () => {
+  await render(true, false, false, { shareable: true, disabledActions: ["share", "delete"] });
+  expect(button("Share")!.disabled).toBe(true);
+  expect(button("Delete")!.disabled).toBe(true);
+  expect(button("Rename")!.disabled).toBe(false);
+  await act(async () => button("Delete")!.click());
+  expect(onSelect).not.toHaveBeenCalled();
 });
