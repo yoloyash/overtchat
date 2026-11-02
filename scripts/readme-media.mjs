@@ -16,8 +16,10 @@ if (!["generate", "serve"].includes(mode) || process.argv.length !== 3) {
 
 const sourceFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root })
   .toString().split("\0").filter(Boolean).filter((file) =>
-    /^(apps\/web\/|packages\/(shared|agent-bridge)\/)/.test(file) &&
-    (!/(^|\/)(e2e|scripts)\/|\.(test|spec)\.|AGENTS\.md$|\.env/.test(file) || file.startsWith("apps/web/media/")) ||
+    /^(apps\/web\/|packages\/(shared|agent-bridge|voice-client)\/)/.test(file) &&
+    (!/(^|\/)(e2e|scripts)\/|\.(test|spec)\.|AGENTS\.md$|\.env/.test(file) || file.startsWith("apps/web/media/") ||
+      // playwright.config.ts at the web root imports these, so the build's type check needs them.
+      file.startsWith("apps/web/e2e/helpers/")) ||
     ["package.json", "package-lock.json", "apps/site/public/install-manifest.json"].includes(file),
   ).sort();
 // Refuse concurrent capture runs. Never reuse a developer's server or database.
