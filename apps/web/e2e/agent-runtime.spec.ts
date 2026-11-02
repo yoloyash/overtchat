@@ -296,6 +296,17 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
             ],
             events: ["Checked the runtime suite.", "$ npm test\n476 passed"],
           },
+          {
+            type: "subagent",
+            id: "task",
+            action: "task",
+            prompt: "Read the runtime tests",
+            status: "completed",
+            receivers: [],
+            events: ["Grep runtimeStatus", "The suite covers the runtime."],
+            title: "Survey the runtime tests",
+            agentType: "Explore",
+          },
         ],
         timestamp: 6.5,
       },
@@ -1538,9 +1549,11 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.locator('[data-activity-sequence="first"]'),
   ).toHaveCount(1);
+  // Each subagent launch is its own activity row: the Codex collab call and
+  // the Claude Code task sit between the first and last tool groups.
   await expect(
     page.locator('[data-activity-sequence="middle"]'),
-  ).toHaveCount(1);
+  ).toHaveCount(2);
   await expect(
     page.locator('[data-activity-sequence="last"]'),
   ).toHaveCount(1);
@@ -1639,10 +1652,18 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByText("Running command", { exact: true }),
   ).not.toBeVisible();
-  const subagentActivity = page.getByTestId("agent-subagent-activity");
+  const subagentActivity = page
+    .getByTestId("agent-subagent-activity")
+    .filter({ hasText: "Started subagent" });
   await expect(subagentActivity).toContainText("Started subagent");
   await subagentActivity.getByRole("button").click();
   await expect(subagentActivity).toContainText("Checked the runtime suite.");
+  const taskActivity = page
+    .getByTestId("agent-subagent-activity")
+    .filter({ hasText: "Ran subagent" });
+  await expect(taskActivity).toContainText("Explore · Survey the runtime tests");
+  await taskActivity.getByRole("button").click();
+  await expect(taskActivity).toContainText("The suite covers the runtime.");
   await expect(
     page.getByText("Turn changes", { exact: true }),
   ).toHaveCount(0);

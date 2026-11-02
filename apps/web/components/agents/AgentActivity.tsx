@@ -20,6 +20,8 @@ import {
   agentToolStatus,
   describeAgentActivity,
   describeAgentTool,
+  describeSubagentActivity,
+  isSubagentRunning,
   type AgentActivityEntry,
   type AgentActivitySequencePosition,
   type AgentToolActivity,
@@ -272,25 +274,16 @@ function SubagentActivityStep({
   >["activity"];
   showIcon?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const running = ["inProgress", "pendingInit", "running"].includes(
-    activity.status,
-  );
-  const count = Math.max(1, activity.receivers.length);
-  const label =
-    activity.action === "spawnAgent"
-      ? running
-        ? "Starting subagent"
-        : "Started subagent"
-      : activity.action === "sendInput"
-        ? "Sent subagent input"
-        : activity.action === "wait"
-          ? running
-            ? "Waiting for subagents"
-            : "Waited for subagents"
-          : activity.action === "closeAgent"
-            ? "Closed subagent"
-            : `${count} ${count === 1 ? "subagent" : "subagents"}`;
+  const running = isSubagentRunning(activity.status);
+  const status: AgentToolStatus = running
+    ? "running"
+    : activity.status === "failed"
+      ? "failed"
+      : activity.status === "stopped"
+        ? "stopped"
+        : "completed";
+  const [open, setOpen] = useState(status === "failed");
+  const { label, summary } = describeSubagentActivity(activity);
   const canOpen =
     Boolean(activity.prompt) ||
     activity.receivers.length > 0 ||
@@ -313,17 +306,17 @@ function SubagentActivityStep({
             <Users className="size-3.5 text-muted-foreground" />
           </DisclosureLeadIcon>
         )}
-        <span className="min-w-0 flex-1 font-normal text-muted-foreground motion-colors group-hover:text-foreground">
-          {label}
+        <span className="min-w-0 flex flex-1 items-baseline gap-2">
+          <span className="shrink-0 font-normal text-muted-foreground motion-colors group-hover:text-foreground">
+            {label}
+          </span>
+          {summary && (
+            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+              {summary}
+            </span>
+          )}
         </span>
-        {running ? (
-          <Loader2
-            className={cn(
-              "mt-0.5 size-3.5 shrink-0 text-muted-foreground",
-              motionClasses.spinner,
-            )}
-          />
-        ) : null}
+        <ToolStatusIcon status={status} />
         {canOpen && !showIcon && (
           <ChevronRight
             className={cn(

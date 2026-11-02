@@ -38,7 +38,24 @@ import {
   renameClaudeSession,
 } from "@overtchat/agent-runtime/claude/sessions";
 import { forkClaudeSession } from "@overtchat/agent-runtime/claude/rewind";
+import {
+  appendSubagentEvents,
+  clipEvent,
+  isBackgroundLaunchResult,
+  isInterruptedResult,
+  isSubagentTool,
+  subagentLaunchPart,
+  summarizeChildToolUse,
+  type SubagentStatus,
+} from "@overtchat/agent-runtime/claude/subagents";
 import { parseClaudeUsage } from "@overtchat/agent-runtime/claude/usage";
+
+/** Where a Task/Agent launch lives in the transcript, by its tool_use id. */
+type SubagentOwner = {
+  messageId: string;
+  partId: string;
+  backgrounded: boolean;
+};
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -151,6 +168,16 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** The text of a tool_result, whether Claude sent a string or blocks. */
+function resultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.flatMap((part) => {
+    const block = record(part);
+    return block?.type === "text" && typeof block.text === "string" ? [block.text] : [];
+  }).join("\n");
+}
+
 function commandRows(commands: readonly SlashCommand[]): AgentSlashCommand[] {
   return commands.map((command) => ({
     name: command.name,
@@ -258,6 +285,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private readonly pendingInteractions = new Map<string, PendingInteraction>();
   private readonly assistantMessages = new Map<string, AssistantProjection>();
   private readonly toolNames = new Map<string, string>();
+  /** Task/Agent tool_use ids, including nested ones, to the part they feed. */
+  private readonly subagents = new Map<string, SubagentOwner>();
+  /** Native task ids to the Task/Agent tool_use that started them. */
+  private readonly subagentTasks = new Map<string, string>();
   private input = new ClaudeInputQueue();
   private sdkQuery!: Query;
   private consumeGeneration = 0;
@@ -558,6 +589,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       this.messages = saved.messages;
       this.assistantMessages.clear();
       this.toolNames.clear();
+      this.subagents.clear();
+      this.subagentTasks.clear();
       this.currentStreamMessageId = undefined;
       this.contextInputUsage = undefined;
       this.updateContextUsage(null);
@@ -705,6 +738,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         ...(this.selectedModel ? { model: this.selectedModel } : {}),
         ...thinkingOptions(this.thinkingOptionId),
         includePartialMessages: true,
+        // Without this the SDK forwards only a subagent's tool blocks.
+        forwardSubagentText: true,
         // Stop ends only the main turn, as in Claude Code. Claude stops its own
         // tasks with TaskStop, and /reload ends them all.
         perTaskStopAffordance: true,
@@ -987,6 +1022,56 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       }));
       return;
     }
+    if (subtype === "task_started" && typeof message.task_id === "string") {
+      // Only Task/Agent launches have a part; background shells do not.
+      const toolUseId = typeof message.tool_use_id === "string" ? message.tool_use_id : null;
+      const owner = toolUseId ? this.subagents.get(toolUseId) : undefined;
+      if (!toolUseId || !owner) return;
+      this.subagentTasks.set(message.task_id, toolUseId);
+      if (message.is_backgrounded === true) owner.backgrounded = true;
+      this.updateSubagent(toolUseId, (part) => ({
+        ...part,
+        status: "running",
+        title: typeof message.description === "string" && message.description.trim()
+          ? message.description
+          : part.title,
+        agentType: typeof message.subagent_type === "string"
+          ? message.subagent_type
+          : part.agentType,
+      }));
+      return;
+    }
+    if (subtype === "task_updated" && typeof message.task_id === "string") {
+      const toolUseId = this.subagentTasks.get(message.task_id);
+      const patch = record(message.patch);
+      const owner = toolUseId ? this.subagents.get(toolUseId) : undefined;
+      if (!toolUseId || !owner || !patch) return;
+      if (patch.is_backgrounded === true) owner.backgrounded = true;
+      const status = patch.status === "completed" ? "completed"
+        : patch.status === "failed" ? "failed"
+          : patch.status === "killed" ? "stopped"
+            : patch.status === "running" || patch.status === "pending" ? "running"
+              : null;
+      this.updateSubagent(toolUseId, (part) => ({
+        ...part,
+        ...(status ? { status } : {}),
+        ...(typeof patch.description === "string" && patch.description.trim()
+          ? { title: patch.description }
+          : {}),
+      }));
+      return;
+    }
+    if (subtype === "task_notification" && typeof message.task_id === "string") {
+      const toolUseId = typeof message.tool_use_id === "string"
+        ? message.tool_use_id
+        : this.subagentTasks.get(message.task_id);
+      if (!toolUseId) return;
+      const status: SubagentStatus = message.status === "failed" ? "failed"
+        : message.status === "stopped" ? "stopped"
+          : "completed";
+      this.updateSubagent(toolUseId, (part) => ({ ...part, status }));
+      return;
+    }
     if (subtype === "status") {
       if (message.status === "compacting" && !this.compacting) {
         this.compacting = true;
@@ -1040,13 +1125,14 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleStream(message: SDKMessage & Record<string, unknown>): void {
     const event = record(message.event);
     if (!event) return;
-    if (!message.parent_tool_use_id) {
-      if (event.type === "message_start") {
-        this.contextInputUsage = undefined;
-        this.readRequestUsage(record(record(event.message)?.usage));
-      } else if (event.type === "message_delta") {
-        this.readRequestUsage(record(event.usage), true);
-      }
+    // A child's stream must not become, or hijack, the parent's live message.
+    // Its completed blocks arrive as assistant frames and feed the part.
+    if (message.parent_tool_use_id) return;
+    if (event.type === "message_start") {
+      this.contextInputUsage = undefined;
+      this.readRequestUsage(record(record(event.message)?.usage));
+    } else if (event.type === "message_delta") {
+      this.readRequestUsage(record(event.usage), true);
     }
     if (event.type === "message_start") {
       const native = record(event.message);
@@ -1092,7 +1178,14 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleAssistant(message: SDKMessage & Record<string, unknown>): void {
     const native = record(message.message);
     if (!native || typeof native.id !== "string") return;
-    if (!message.parent_tool_use_id && native.model !== "<synthetic>") {
+    if (typeof message.parent_tool_use_id === "string") {
+      this.appendSubagentActivity(
+        message.parent_tool_use_id,
+        Array.isArray(native.content) ? native.content : [],
+      );
+      return;
+    }
+    if (native.model !== "<synthetic>") {
       this.readRequestUsage(record(native.usage));
     }
     const projection = this.ensureAssistant(native.id);
@@ -1132,6 +1225,20 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       projection.content[destination] = { type: "thinking", thinking: block.thinking };
     } else if (block.type === "tool_use" && typeof block.id === "string") {
       const name = typeof block.name === "string" ? block.name : "tool";
+      if (isSubagentTool(name)) {
+        const previous = record(projection.content[destination]);
+        projection.content[destination] = subagentLaunchPart(
+          block.id,
+          record(block.input),
+          previous?.type === "subagent" ? previous : null,
+        );
+        if (!this.subagents.has(block.id)) {
+          this.subagents.set(block.id, {
+            messageId, partId: block.id, backgrounded: false,
+          });
+        }
+        return;
+      }
       this.toolNames.set(block.id, name);
       projection.content[destination] = {
         type: "toolCall",
@@ -1139,6 +1246,107 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         name,
         arguments: record(block.input) ?? block.input ?? {},
       };
+    }
+  }
+
+  private findSubagent(
+    toolUseId: string,
+  ): { owner: SubagentOwner; projection: AssistantProjection; index: number } | null {
+    const owner = this.subagents.get(toolUseId);
+    const projection = owner ? this.assistantMessages.get(owner.messageId) : undefined;
+    if (!owner || !projection) return null;
+    const index = projection.content.findIndex(
+      (part) => part.type === "subagent" && part.id === owner.partId,
+    );
+    return index >= 0 ? { owner, projection, index } : null;
+  }
+
+  /** Replace the part rather than mutate it: emitted copies share references. */
+  private updateSubagent(
+    toolUseId: string,
+    patch: (part: Record<string, unknown>) => Record<string, unknown>,
+  ): void {
+    const found = this.findSubagent(toolUseId);
+    if (!found) return;
+    const part = found.projection.content[found.index]!;
+    const next = patch(part);
+    if (next === part) return;
+    found.projection.content[found.index] = next;
+    this.publishAssistant(found.projection, "message_update");
+  }
+
+  /** Log a child's completed blocks under the launch that owns it. */
+  private appendSubagentActivity(parentToolUseId: string, content: unknown[]): void {
+    const owner = this.subagents.get(parentToolUseId);
+    if (!owner) return;
+    const additions: string[] = [];
+    for (const value of content) {
+      const block = record(value);
+      if (!block) continue;
+      if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+        additions.push(clipEvent(block.text.trim()));
+      } else if (block.type === "tool_use" && typeof block.id === "string") {
+        const name = typeof block.name === "string" ? block.name : "tool";
+        // A nested launch folds into the top-level part; depth is not shown.
+        if (isSubagentTool(name)) this.subagents.set(block.id, owner);
+        else this.toolNames.set(block.id, name);
+        additions.push(summarizeChildToolUse(name, record(block.input)));
+      }
+    }
+    if (additions.length === 0) return;
+    this.updateSubagent(owner.partId, (part) => ({
+      ...part,
+      events: appendSubagentEvents(
+        Array.isArray(part.events) ? part.events as string[] : [],
+        additions,
+      ),
+    }));
+  }
+
+  /** Only failures of a child's tools are worth a line in the parent view. */
+  private appendSubagentToolFailures(parentToolUseId: string, content: unknown[]): void {
+    const owner = this.subagents.get(parentToolUseId);
+    if (!owner) return;
+    const additions: string[] = [];
+    for (const value of content) {
+      const block = record(value);
+      if (block?.type !== "tool_result" || block.is_error !== true) continue;
+      const toolName = typeof block.tool_use_id === "string"
+        ? this.toolNames.get(block.tool_use_id) ?? "tool"
+        : "tool";
+      const text = resultText(block.content).split("\n")[0] ?? "";
+      additions.push(clipEvent(`${toolName} failed${text ? `: ${text}` : ""}`, 400));
+    }
+    if (additions.length === 0) return;
+    this.updateSubagent(owner.partId, (part) => ({
+      ...part,
+      events: appendSubagentEvents(
+        Array.isArray(part.events) ? part.events as string[] : [],
+        additions,
+      ),
+    }));
+  }
+
+  /** A foreground Task settles on its tool_result; a backgrounded one on its
+   * task_notification, after an immediate launch notice. */
+  private settleSubagentResult(toolUseId: string, block: Record<string, unknown>): void {
+    const owner = this.subagents.get(toolUseId);
+    if (!owner) return;
+    const text = resultText(block.content);
+    if (block.is_error !== true && isBackgroundLaunchResult(text)) {
+      owner.backgrounded = true;
+      return;
+    }
+    if (owner.backgrounded) return;
+    const status: SubagentStatus = block.is_error !== true ? "completed"
+      : isInterruptedResult(text) ? "stopped" : "failed";
+    this.updateSubagent(toolUseId, (part) => ({ ...part, status }));
+  }
+
+  private stopRunningSubagents(): void {
+    for (const owner of new Set(this.subagents.values())) {
+      this.updateSubagent(owner.partId, (part) =>
+        part.status === "running" ? { ...part, status: "stopped" } : part);
     }
   }
 
@@ -1158,9 +1366,17 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     }
     const native = record(message.message);
     if (!native || !Array.isArray(native.content)) return;
+    if (typeof message.parent_tool_use_id === "string") {
+      this.appendSubagentToolFailures(message.parent_tool_use_id, native.content);
+      return;
+    }
     for (const blockValue of native.content) {
       const block = record(blockValue);
       if (block?.type !== "tool_result" || typeof block.tool_use_id !== "string") continue;
+      if (this.subagents.has(block.tool_use_id)) {
+        this.settleSubagentResult(block.tool_use_id, block);
+        continue;
+      }
       const content = typeof block.content === "string"
         ? [{ type: "text", text: block.content }]
         : Array.isArray(block.content)
@@ -1495,6 +1711,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private resetActivity(): void {
     this.endActivity();
     this.backgroundTasks.clear();
+    // A restarted or exited CLI takes its tasks with it.
+    this.stopRunningSubagents();
     this.compacting = false;
     this.settleCompactionDivider({ status: "interrupted" });
     this.activeTurnHasAssistantText = false;

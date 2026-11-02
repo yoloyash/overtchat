@@ -1579,6 +1579,34 @@ Set `CLAUDE_COMMAND` or `CLAUDE_BACKGROUND_MODEL` to override the executable or
 model; existing sessions and settings are not changed. Validated with Claude
 Code 2.1.304.
 
+### Claude subagents
+
+A Claude Code `Task`/`Agent` tool call projects as the `subagent` transcript
+part Codex collab calls already use, with `action: "task"`, the task
+description as `title`, the `subagent_type` as `agentType`, and a bounded log
+of the child's activity in `events` (its text, one line per tool call, and
+failed tool results). The query sets `forwardSubagentText`; without it the SDK
+forwards only a child's tool blocks. Frames carrying `parent_tool_use_id` feed
+the owning part and never enter the parent transcript, child stream events are
+ignored so they cannot hijack the parent's live message, and a nested launch
+folds into the top-level part. Unknown parents are dropped.
+
+Status comes from the tool result for a foreground launch and from
+`task_started`/`task_updated`/`task_notification` for a backgrounded one; the
+launch notice tool result keeps the part running. A query restart or exit marks
+running parts stopped. The Task tool result itself is not replayed as a tool
+result: it repeats the child's last reply.
+
+Reload reads `<session>/subagents/*.meta.json`, whose `toolUseId` names the
+launch, and summarizes `agent-<id>.jsonl` the same way, so a reopened session
+shows the parts the live stream produced. Background shells (`local_bash`
+tasks) have no transcript representation.
+
+```sh
+npm run test -w packages/agent-runtime -- src/claude/client.test.ts src/claude/sessions.test.ts
+npm run test -w apps/web -- lib/agents/presentation.test.ts
+```
+
 ### Agent attention state
 
 Each runtime summarizes what session lists and notifications show: a pending

@@ -9,11 +9,13 @@ import {
   agentToolStatus,
   describeAgentActivity,
   describeAgentTool,
+  describeSubagentActivity,
   formatAgentToolDetail,
   latestAgentTaskList,
   presentAgentError,
   presentOmpSystemNotice,
   projectAgentTranscript,
+  type AgentSubagentActivity,
   type AgentToolActivity,
 } from "./presentation";
 
@@ -798,5 +800,62 @@ describe("compaction timeline", () => {
       { label: "Context compacted", detail: "From 0 tokens", active: false },
     ]);
     expect(folded.some((item) => item.type === "work_summary")).toBe(true);
+  });
+});
+
+describe("subagent activity presentation", () => {
+  const activity = (
+    overrides: Partial<AgentSubagentActivity>,
+  ): AgentSubagentActivity => ({
+    id: "task-1",
+    action: "task",
+    prompt: null,
+    status: "completed",
+    receivers: [],
+    events: [],
+    title: null,
+    agentType: null,
+    ...overrides,
+  });
+
+  it("labels Claude Code launches by outcome with the agent type and task", () => {
+    expect(
+      describeSubagentActivity(
+        activity({ status: "running", title: "Survey tests", agentType: "Explore" }),
+      ),
+    ).toEqual({ label: "Running subagent", summary: "Explore · Survey tests" });
+    expect(describeSubagentActivity(activity({ status: "failed" }))).toEqual({
+      label: "Subagent failed",
+      summary: null,
+    });
+    expect(
+      describeSubagentActivity(activity({ status: "stopped", title: "Survey" })),
+    ).toMatchObject({ label: "Subagent stopped", summary: "Survey" });
+    expect(describeSubagentActivity(activity({}))).toMatchObject({
+      label: "Ran subagent",
+    });
+  });
+
+  it("keeps the Codex collab labels", () => {
+    expect(
+      describeSubagentActivity(
+        activity({ action: "spawnAgent", status: "inProgress" }),
+      ),
+    ).toMatchObject({ label: "Starting subagent" });
+    expect(
+      describeSubagentActivity(activity({ action: "wait", status: "completed" })),
+    ).toMatchObject({ label: "Waited for subagents" });
+  });
+
+  it("marks a group failed when one of its subagents failed", () => {
+    expect(
+      describeAgentActivity(
+        [
+          { type: "subagent", id: "a", activity: activity({}) },
+          { type: "subagent", id: "b", activity: activity({ status: "failed" }) },
+        ],
+        false,
+      ),
+    ).toMatchObject({ label: "Used 2 subagents", status: "failed" });
   });
 });
