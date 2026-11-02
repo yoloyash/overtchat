@@ -152,12 +152,13 @@ export const newAgentSessionRoute = createRoute({
     if (!workspaceId || !provider || !isAgentProviderId(provider)) {
       throw redirect({ to: "/agents", replace: true });
     }
+    // The folder may be another agent's record: an agent the machine has
+    // starts from any record of the folder, and the server files the session
+    // under the agent's own.
     const connection = await findInListQuery(
       context.queryClient,
       agentConnectionListQuery,
-      (item) =>
-        item.provider === provider &&
-        item.workspaces.some((workspace) => workspace.id === workspaceId),
+      (item) => item.workspaces.some((workspace) => workspace.id === workspaceId),
     );
     const workspace = connection?.workspaces.find((item) => item.id === workspaceId);
     if (!workspace) throw redirect({ to: "/agents", replace: true });

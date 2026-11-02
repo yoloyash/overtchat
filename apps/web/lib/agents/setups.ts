@@ -1,6 +1,8 @@
 import type {
   AgentConnectionListItem,
+  AgentDiscoveryTarget,
   AgentProviderId,
+  AgentProviderSnapshot,
 } from "@overtchat/agent-bridge";
 import { agentSessionActivityAt } from "@/lib/agents/attention";
 import {
@@ -22,8 +24,23 @@ export type AgentSetup = {
   hostKey: string;
   hostLabel: string;
   transport: AgentConnectionListItem["host"]["transport"];
+  /** The machine as the connector reaches it, for asking what it has. */
+  target: AgentDiscoveryTarget;
   /** Latest activity of the setup's sessions; 0 when it has none. */
   activityAt: number;
+};
+
+/** An agent a new session can start with in a folder. */
+export type AgentSetupAgent = {
+  provider: AgentProviderId;
+  /**
+   * The folder record the session starts from. Until the agent has its own
+   * record for the folder, another agent's record stands in; the server
+   * creates the agent's own on launch.
+   */
+  workspaceId: string;
+  /** False when the machine's last detection did not find the agent. */
+  detected: boolean;
 };
 
 /**
@@ -44,6 +61,7 @@ export function recentAgentSetups(
         hostKey: agentTargetKey(agentConnectionTarget(connection)),
         hostLabel: agentHostLabel(connection.host),
         transport: connection.host.transport,
+        target: agentConnectionTarget(connection),
         activityAt: Math.max(
           0,
           ...workspace.sessions.map(agentSessionActivityAt),
@@ -102,17 +120,64 @@ export function agentSetupsForWorkspace(
 }
 
 /**
- * The setup to open when the folder changes: the agent already chosen if the
- * folder has it, otherwise the folder's most recently used agent.
+ * The agents a new session can start with in the folder: the agents that have
+ * the folder, in last-used order, then the rest of the machine's agents, as
+ * its last detection found them. Which agents a machine has is a property of
+ * the machine, not of the folder: a folder added before an agent was
+ * installed, or never used with it, still gets it. Without a detection only
+ * the folder's own agents are known.
+ */
+export function agentSetupAgentsForWorkspace(
+  setups: readonly AgentSetup[],
+  hostKey: string,
+  workspacePath: string,
+  snapshot: AgentProviderSnapshot | undefined,
+): AgentSetupAgent[] {
+  const own = agentSetupsForWorkspace(setups, hostKey, workspacePath);
+  const anchor = own[0];
+  const agents: AgentSetupAgent[] = own.map((setup) => ({
+    provider: setup.provider,
+    workspaceId: setup.workspaceId,
+    detected: true,
+  }));
+  if (!anchor || !snapshot) return agents;
+  const detected = snapshot.providers.filter(
+    (entry) => !agents.some((agent) => agent.provider === entry.provider),
+  );
+  // Detected agents before the ones the machine does not have.
+  for (const ready of [true, false]) {
+    for (const entry of detected) {
+      if ((entry.status === "ready") !== ready) continue;
+      agents.push({
+        provider: entry.provider,
+        workspaceId: anchor.workspaceId,
+        detected: ready,
+      });
+    }
+  }
+  return agents;
+}
+
+/**
+ * The agent to open when the folder changes: the agent already chosen when
+ * the folder's machine has it, otherwise the folder's most recently used
+ * agent.
  */
 export function agentSetupForWorkspace(
   setups: readonly AgentSetup[],
   hostKey: string,
   workspacePath: string,
   provider: AgentProviderId,
-): AgentSetup | undefined {
-  const candidates = agentSetupsForWorkspace(setups, hostKey, workspacePath);
+  snapshot: AgentProviderSnapshot | undefined,
+): AgentSetupAgent | undefined {
+  const agents = agentSetupAgentsForWorkspace(
+    setups,
+    hostKey,
+    workspacePath,
+    snapshot,
+  );
   return (
-    candidates.find((setup) => setup.provider === provider) ?? candidates[0]
+    agents.find((agent) => agent.provider === provider && agent.detected) ??
+    agents[0]
   );
 }
