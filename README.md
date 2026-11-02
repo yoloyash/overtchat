@@ -2,7 +2,7 @@
   <img src=".github/assets/banner.png" alt="OvertChat" width="400">
 </p>
 
-<p align="center"><strong>Your AI chat. Actually yours.</strong></p>
+<p align="center"><strong>Local AI, without the clutter.</strong></p>
 <p align="center">Local and hosted models, live voice, and coding agents in one self-hosted app,<br>with native clients for every screen you own.</p>
 
 <p align="center">
