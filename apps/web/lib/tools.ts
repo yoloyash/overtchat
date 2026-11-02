@@ -2,6 +2,12 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { FetchedImage, FetchedUrl } from "@overtchat/shared";
 
+const FETCH_TEXT_SOURCES =
+  "pages, PDFs, text files, Reddit posts with comments, X posts, and YouTube videos as transcripts";
+
+const REDDIT_FETCH_LIMIT =
+  "Reddit allows about one post fetch per minute; if a Reddit fetch reports that limit, tell the user how long to wait instead of retrying.";
+
 export interface WebToolOptions {
   userId: string;
   supportsImageInput: boolean;
@@ -32,8 +38,8 @@ export function createWebTools({
     >({
       description:
         supportsImageInput
-          ? "Fetch a provided or discovered URL. Returns a chunk of readable text from pages, PDFs, and text files, or an image for visual inspection. When a text result has truncated=true, call again with the same URL and startIndex equal to nextStartIndex."
-          : "Fetch a provided or discovered URL as a chunk of readable text from pages, PDFs, and text files. When a result has truncated=true, call again with the same URL and startIndex equal to nextStartIndex. The selected model cannot inspect image URLs.",
+          ? `Fetch a provided or discovered URL. Returns a chunk of readable text from ${FETCH_TEXT_SOURCES}, or an image for visual inspection. When a text result has truncated=true, call again with the same URL and startIndex equal to nextStartIndex. ${REDDIT_FETCH_LIMIT}`
+          : `Fetch a provided or discovered URL as a chunk of readable text from ${FETCH_TEXT_SOURCES}. When a result has truncated=true, call again with the same URL and startIndex equal to nextStartIndex. ${REDDIT_FETCH_LIMIT} The selected model cannot inspect image URLs.`,
       inputSchema: z.object({
         url: z.string().url(),
         startIndex: z

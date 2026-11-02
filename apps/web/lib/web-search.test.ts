@@ -9,7 +9,7 @@ vi.mock("@/lib/db/serverCapabilities", () => ({
   getServerCapability: mocks.getCapability,
 }));
 
-import { fetchReadable, searchWeb } from "./web";
+import { fetchFailure, fetchReadable, searchWeb } from "./web";
 
 describe("configured web search provider", () => {
   afterEach(() => {
@@ -332,5 +332,63 @@ describe("published Web Basics fetch integration", () => {
       contentType: "image/png",
       extractor: "image",
     });
+  });
+});
+
+describe("fetch failures shown to users and models", () => {
+  function httpStatusError(status: number, message: string): Error {
+    const error = new Error(message);
+    error.name = "HttpStatusError";
+    return Object.assign(error, { status });
+  }
+
+  it("turns a Reddit throttle into a plain wait instruction", () => {
+    const error = fetchFailure(
+      "https://www.reddit.com/r/selfhosted/comments/abc123/title/",
+      httpStatusError(
+        429,
+        "HTTP status 429: Reddit throttles anonymous feed requests to about one per minute per IP; retry after 42s",
+      ),
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      "Reddit allows this server about one post fetch per minute, and that limit was just reached. Try again in 42 seconds.",
+    );
+  });
+
+  it("suggests about a minute when Reddit omits the reset time", () => {
+    const error = fetchFailure(
+      "https://redd.it/abc123",
+      httpStatusError(
+        429,
+        "HTTP status 429: Reddit throttles anonymous feed requests to about one per minute per IP",
+      ),
+    );
+    expect((error as Error).message).toBe(
+      "Reddit allows this server about one post fetch per minute, and that limit was just reached. Try again in about a minute.",
+    );
+  });
+
+  it("leaves other Reddit errors and other hosts' throttles alone", () => {
+    const notFound = httpStatusError(404, "HTTP status 404");
+    expect(
+      fetchFailure("https://www.reddit.com/comments/abc123", notFound),
+    ).toBe(notFound);
+    const otherHost = httpStatusError(429, "HTTP status 429");
+    expect(fetchFailure("https://example.com/reddit.com", otherHost)).toBe(
+      otherHost,
+    );
+    expect(fetchFailure("not a url", otherHost)).toBe(otherHost);
+  });
+
+  it("keeps Web Basics' own message for a throttle elsewhere", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("slow down", { status: 429 })),
+    );
+
+    await expect(
+      fetchReadable("https://1.1.1.1/overtchat-throttled"),
+    ).rejects.toThrow("HTTP status 429");
   });
 });
