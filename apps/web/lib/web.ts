@@ -128,7 +128,7 @@ const REDDIT_HOST = /(^|\.)(reddit\.com|redd\.it)$/u;
  * Reddit serves anonymous post feeds about once per minute per IP and Web
  * Basics reports the throttle as an HTTP 429 whose message ends with the
  * seconds to wait. Users and models both read tool errors verbatim, so the
- * server-side wording is replaced with a plain instruction to wait.
+ * server-side wording is replaced with a short instruction to wait.
  */
 export function fetchFailure(url: string, error: unknown): unknown {
   if (!isRedditThrottle(url, error)) return error;
@@ -137,9 +137,7 @@ export function fetchFailure(url: string, error: unknown): unknown {
     seconds === undefined
       ? "Try again in about a minute."
       : `Try again in ${seconds} seconds.`;
-  return new Error(
-    `Reddit allows this server about one post fetch per minute, and that limit was just reached. ${wait}`,
-  );
+  return new Error(`Reddit rate limited this server. ${wait}`);
 }
 
 function isRedditThrottle(url: string, error: unknown): error is Error {

@@ -352,7 +352,7 @@ describe("fetch failures shown to users and models", () => {
     );
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toBe(
-      "Reddit allows this server about one post fetch per minute, and that limit was just reached. Try again in 42 seconds.",
+      "Reddit rate limited this server. Try again in 42 seconds.",
     );
   });
 
@@ -365,7 +365,7 @@ describe("fetch failures shown to users and models", () => {
       ),
     );
     expect((error as Error).message).toBe(
-      "Reddit allows this server about one post fetch per minute, and that limit was just reached. Try again in about a minute.",
+      "Reddit rate limited this server. Try again in about a minute.",
     );
   });
 
