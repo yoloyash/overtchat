@@ -67,19 +67,9 @@ export default function AgentsScreen() {
       }),
     [groups, search, expanded],
   );
+  // The folder screen knows which agents its machine has, so a new chat
+  // starts there even when only one agent has chats in the folder.
   function openWorkspace(group: WorkspaceGroup, create = false) {
-    if (create && group.targets.length === 1) {
-      const target = group.targets[0];
-      router.push({
-        pathname: "/agents/new",
-        params: {
-          workspace: target.workspace.id,
-          provider: target.provider,
-          name: group.name,
-        },
-      });
-      return;
-    }
     router.push({
       pathname: "/agents/workspace",
       params: {
