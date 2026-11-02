@@ -4,6 +4,10 @@ import type {
   AgentProviderId,
   AgentProviderSnapshot,
 } from "@overtchat/agent-bridge";
+import {
+  agentWorkspaceAgents,
+  type AgentWorkspaceAgent,
+} from "@overtchat/shared/agent-creation";
 import { agentSessionActivityAt } from "@/lib/agents/attention";
 import {
   agentConnectionTarget,
@@ -30,18 +34,7 @@ export type AgentSetup = {
   activityAt: number;
 };
 
-/** An agent a new session can start with in a folder. */
-export type AgentSetupAgent = {
-  provider: AgentProviderId;
-  /**
-   * The folder record the session starts from. Until the agent has its own
-   * record for the folder, another agent's record stands in; the server
-   * creates the agent's own on launch.
-   */
-  workspaceId: string;
-  /** False when the machine's last detection did not find the agent. */
-  detected: boolean;
-};
+export type AgentSetupAgent = AgentWorkspaceAgent;
 
 /**
  * Every setup, most recently used first. Setups without sessions follow in
@@ -120,12 +113,8 @@ export function agentSetupsForWorkspace(
 }
 
 /**
- * The agents a new session can start with in the folder: the agents that have
- * the folder, in last-used order, then the rest of the machine's agents, as
- * its last detection found them. Which agents a machine has is a property of
- * the machine, not of the folder: a folder added before an agent was
- * installed, or never used with it, still gets it. Without a detection only
- * the folder's own agents are known.
+ * The agents a new session can start with in the folder: those with the
+ * folder in last-used order, then the rest the machine has.
  */
 export function agentSetupAgentsForWorkspace(
   setups: readonly AgentSetup[],
@@ -133,29 +122,10 @@ export function agentSetupAgentsForWorkspace(
   workspacePath: string,
   snapshot: AgentProviderSnapshot | undefined,
 ): AgentSetupAgent[] {
-  const own = agentSetupsForWorkspace(setups, hostKey, workspacePath);
-  const anchor = own[0];
-  const agents: AgentSetupAgent[] = own.map((setup) => ({
-    provider: setup.provider,
-    workspaceId: setup.workspaceId,
-    detected: true,
-  }));
-  if (!anchor || !snapshot) return agents;
-  const detected = snapshot.providers.filter(
-    (entry) => !agents.some((agent) => agent.provider === entry.provider),
+  return agentWorkspaceAgents(
+    agentSetupsForWorkspace(setups, hostKey, workspacePath),
+    snapshot,
   );
-  // Detected agents before the ones the machine does not have.
-  for (const ready of [true, false]) {
-    for (const entry of detected) {
-      if ((entry.status === "ready") !== ready) continue;
-      agents.push({
-        provider: entry.provider,
-        workspaceId: anchor.workspaceId,
-        detected: ready,
-      });
-    }
-  }
-  return agents;
 }
 
 /**

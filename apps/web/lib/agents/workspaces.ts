@@ -6,6 +6,7 @@ import type {
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
+import { agentWorkspaceAgents } from "@overtchat/shared/agent-creation";
 
 export type AgentWorkspaceTarget = {
   connection: AgentConnectionListItem;
@@ -168,22 +169,21 @@ export function nestAgentWorkspaceGroups(groups: AgentWorkspaceGroup[]): {
   return { roots, worktrees };
 }
 
+/** The agents the folder's plus button offers: its own and the rest the machine has. */
 export function projectAgentWorkspaceProviders(
   group: AgentWorkspaceGroup,
   snapshot: AgentProviderSnapshot | undefined,
 ): AgentWorkspaceProviderTarget[] {
-  const representativeWorkspace = group.targets[0]!.workspace;
-  const providers = new Set<AgentProviderId>(
-    snapshot?.providers.flatMap((entry) =>
-      entry.status === "ready" ? [entry.provider] : [],
-    ) ?? [],
+  const byId = new Map(
+    group.targets.map(({ workspace }) => [workspace.id, workspace]),
   );
-  for (const { connection } of group.targets) providers.add(connection.provider);
-  return [...providers].map((provider) => ({
-    provider,
-    workspace:
-      group.targets.find(
-        ({ connection }) => connection.provider === provider,
-      )?.workspace ?? representativeWorkspace,
-  }));
+  return agentWorkspaceAgents(
+    group.targets.map(({ connection, workspace }) => ({
+      provider: connection.provider,
+      workspaceId: workspace.id,
+    })),
+    snapshot,
+  ).flatMap(({ provider, workspaceId, detected }) =>
+    detected ? [{ provider, workspace: byId.get(workspaceId)! }] : [],
+  );
 }
