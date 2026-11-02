@@ -84,7 +84,7 @@ vi.mock("react-native", () => {
   };
 });
 
-import { ShareChatButton } from "./ShareChatButton";
+import { ShareChatModal } from "./ShareChatModal";
 
 let root: Root;
 let container: HTMLElement;
@@ -158,19 +158,19 @@ async function click(label: string) {
   await act(async () => button(label).click());
   await settle();
 }
-async function render(disabled = false) {
+async function render(open = true) {
   await act(async () =>
     root.render(
       <QueryClientProvider client={qc}>
-        <ShareChatButton chatId="chat/id" disabled={disabled} />
+        <ShareChatModal chatId="chat/id" open={open} onClose={() => {}} />
       </QueryClientProvider>,
     ),
   );
+  await settle();
 }
 
 it("previews without publishing, creates and shares the selected server URL, updates and revokes", async () => {
   await render();
-  await click("Share chat");
   expect(writes).toEqual([]);
   await click("Preview current conversation");
   expect(container.querySelector('[data-readonly="true"]')?.textContent).toBe(
@@ -198,11 +198,10 @@ it("previews without publishing, creates and shares the selected server URL, upd
   ).toBe(true);
 });
 
-it("keeps publication disabled while generating and surfaces server failures without a phantom link", async () => {
-  await render(true);
-  expect(button("Share chat").disabled).toBe(true);
+it("loads nothing while closed and surfaces server failures without a phantom link", async () => {
   await render(false);
-  await click("Share chat");
+  expect(mocks.fetch).not.toHaveBeenCalled();
+  await render(true);
   mocks.fetch.mockImplementationOnce(
     async () =>
       new Response("Wait for the response to finish before sharing.", {
@@ -224,7 +223,6 @@ it("uses the configured Cloud share address while connected through LAN", async 
     url: "https://smiths.overtchat.app/share/share-token",
   };
   await render();
-  await click("Share chat");
   await click("Share link");
   expect(mocks.share).toHaveBeenCalledWith({
     message: shared.url,
@@ -240,7 +238,6 @@ it("uses the configured Cloud share address while connected through LAN", async 
 it("shares a LAN address when the server has no public address", async () => {
   mocks.server = "http://192.168.1.20:4718";
   await render();
-  await click("Share chat");
   await click("Create link");
   await click("Share link");
   expect(mocks.share).toHaveBeenCalledWith({

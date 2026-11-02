@@ -48,7 +48,11 @@ import { ErrorNotice } from "@/components/ErrorNotice";
 import { VoiceControls } from "@/components/chat/VoiceControls";
 import { useMobileVoice } from "@/lib/voice/useMobileVoice";
 import { Composer } from "@/components/chat/Composer";
-import { ShareChatButton } from "@/components/chat/ShareChatButton";
+import { ChatHeaderMenu } from "@/components/chat/ChatHeaderMenu";
+import { ShareChatModal } from "@/components/chat/ShareChatModal";
+import { useChatActions } from "@/components/chat/useChatActions";
+import type { ChatRowAction } from "@/components/drawer/ChatRowMenu";
+import { useChats } from "@/lib/queries/chats";
 import { MessageList } from "@/components/chat/MessageList";
 import { DocumentViewer } from "@/components/chat/DocumentViewer";
 import { DocumentViewerProvider } from "@/components/chat/DocumentViewerContext";
@@ -223,6 +227,23 @@ function ChatSurface({
   const { data: capabilitiesData } = useCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
   const [chatPersisted, setChatPersisted] = useState(!isNew);
+  const pinningSupported = capabilitiesData?.capabilities.chatPinning === true;
+  const { data: chatList } = useChats();
+  // The drawer's list is the source for title, pin state, and project. A chat
+  // that just persisted may not be listed yet; fall back to what we know.
+  const chatItem = useMemo(
+    () =>
+      chatList?.find((c) => c.id === chatId) ?? {
+        id: chatId,
+        title: null,
+        pinned: false,
+        projectId,
+      },
+    [chatList, chatId, projectId],
+  );
+  const chatActions = useChatActions();
+  const { openRename, togglePin, openMove, openDeleteConfirm } = chatActions;
+  const [shareOpen, setShareOpen] = useState(false);
   const webSearchEnabled = useWebSearchEnabled();
   const openuiEnabled = useOpenUIEnabled();
   const reasoningLevels = useReasoningLevels();
@@ -445,6 +466,18 @@ function ChatSurface({
     startNewChat();
   }, [startNewChat]);
 
+  const onHeaderAction = useCallback(
+    (action: ChatRowAction) => {
+      Keyboard.dismiss();
+      if (action === "share") setShareOpen(true);
+      else if (action === "rename") openRename(chatItem);
+      else if (action === "pin" || action === "unpin") togglePin(chatItem);
+      else if (action === "move") openMove(chatItem);
+      else openDeleteConfirm(chatItem);
+    },
+    [openRename, togglePin, openMove, openDeleteConfirm, chatItem],
+  );
+
   const pickFromCamera = useCallback(async () => {
     addSheetRef.current?.dismiss();
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -540,9 +573,6 @@ function ChatSurface({
         : "",
       headerRight: () => (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          {chatPersisted && (
-            <ShareChatButton chatId={chatId} disabled={streaming || voice.busy} />
-          )}
           {usage && (
             <ChatUsageButton
               usage={usage}
@@ -554,16 +584,40 @@ function ChatSurface({
           )}
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="New chat"
             onPress={onNewChat}
             hitSlop={10}
             style={styles.headerRight}
           >
             <Ionicons name="create-outline" size={22} color={colors.foreground} />
           </Pressable>
+          <ChatHeaderMenu
+            title={chatItem.title}
+            pinned={!!chatItem.pinned}
+            pinPending={chatActions.pinPending}
+            pinningSupported={pinningSupported}
+            disabled={!chatPersisted}
+            disabledActions={streaming || voice.busy ? ["share", "delete"] : []}
+            onSelect={onHeaderAction}
+          />
         </View>
       ),
     });
-  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy, usage]);
+  }, [
+    navigation,
+    colors,
+    fonts,
+    project,
+    onNewChat,
+    onHeaderAction,
+    chatItem,
+    chatActions.pinPending,
+    pinningSupported,
+    chatPersisted,
+    streaming,
+    voice.busy,
+    usage,
+  ]);
 
   function requestBody(
     action: ChatRequestAction,
@@ -970,6 +1024,12 @@ function ChatSurface({
       />
 
       <ChatUsageSheet ref={usageSheetRef} usage={usage} />
+      {chatActions.sheets}
+      <ShareChatModal
+        chatId={chatId}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </KeyboardAvoidingView>
     {documentTarget ? (
       <DocumentViewer

@@ -14,19 +14,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { UserAvatar } from "@/components/ui/UserAvatar";
-import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { getAuthClient } from "@/lib/auth/client";
 import { useChatSession } from "@/lib/chat/session";
 import { groupByDate, type DateBucket } from "@/lib/dateGroups";
-import {
-  useChats,
-  useDeleteChat,
-  useMoveChat,
-  useRenameChat,
-  useSetChatPinned,
-  type ChatListItem,
-} from "@/lib/queries/chats";
+import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import {
   useCreateProject,
   useProjects,
@@ -34,12 +26,11 @@ import {
 } from "@/lib/queries/projects";
 import { useCapabilities } from "@/lib/queries/capabilities";
 import { useTheme } from "@/lib/theme";
-import { toastError, toastSuccess } from "@/lib/toast";
+import { toastError } from "@/lib/toast";
+import { useChatActions } from "@/components/chat/useChatActions";
 import { ChatRowMenu } from "./ChatRowMenu";
 import { DrawerAgents } from "./DrawerAgents";
 import { CreateProjectSheet } from "./CreateProjectSheet";
-import { MoveToProjectSheet } from "./MoveToProjectSheet";
-import { RenameChatSheet } from "./RenameChatSheet";
 
 type ListEntry =
   | { kind: "section"; key: string; label: string }
@@ -67,24 +58,18 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const session = getAuthClient().useSession();
   const user = session.data?.user;
 
-  const renameMutation = useRenameChat();
-  const deleteMutation = useDeleteChat();
-  const moveMutation = useMoveChat();
-  const pinMutation = useSetChatPinned();
   const createProjectMutation = useCreateProject();
-
-  const renameSheetRef = useRef<BottomSheetModal>(null);
-  const deleteSheetRef = useRef<BottomSheetModal>(null);
-  const moveSheetRef = useRef<BottomSheetModal>(null);
   const createProjectSheetRef = useRef<BottomSheetModal>(null);
-  const [renameTarget, setRenameTarget] = useState<{
-    id: string;
-    title: string | null;
-  } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ChatListItem | null>(null);
-  const [moveTarget, setMoveTarget] = useState<ChatListItem | null>(null);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const chatActions = useChatActions({
+    onMoved: (projectId) => {
+      if (projectId) {
+        // Reveal the chat in its new home.
+        setExpanded((prev) => ({ ...prev, [projectId]: true }));
+      }
+    },
+  });
 
   const userRefreshing = useRef(false);
   const wasFetching = useRef(false);
@@ -224,75 +209,6 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     router.navigate("/chat");
   }
 
-  function openRename(item: ChatListItem) {
-    setRenameTarget({ id: item.id, title: item.title });
-    renameSheetRef.current?.present();
-  }
-
-  function openMove(item: ChatListItem) {
-    setMoveTarget(item);
-    moveSheetRef.current?.present();
-  }
-
-  function openDeleteConfirm(item: ChatListItem) {
-    setDeleteTarget(item);
-    deleteSheetRef.current?.present();
-  }
-
-  function submitRename(id: string, title: string) {
-    renameMutation.mutate(
-      { id, title },
-      {
-        onSuccess: () => toastSuccess("Renamed"),
-        onError: (e) => toastError("Couldn't rename chat", e),
-      },
-    );
-  }
-
-  function togglePin(item: ChatListItem) {
-    pinMutation.mutate(
-      { id: item.id, pinned: !item.pinned },
-      {
-        onError: (error) => toastError(
-          item.pinned ? "Couldn't unpin chat" : "Couldn't pin chat",
-          error,
-        ),
-      },
-    );
-  }
-
-  function submitMove(projectId: string | null) {
-    if (!moveTarget) return;
-    if (moveTarget.projectId === projectId) return;
-    const id = moveTarget.id;
-    moveMutation.mutate(
-      { id, projectId },
-      {
-        onSuccess: () => {
-          if (projectId) {
-            // Reveal the chat in its new home.
-            setExpanded((prev) => ({ ...prev, [projectId]: true }));
-          }
-        },
-        onError: (e) => toastError("Couldn't move chat", e),
-      },
-    );
-  }
-
-  function confirmDelete() {
-    if (!deleteTarget) return;
-    const target = deleteTarget;
-    deleteMutation.mutate(target.id, {
-      onSuccess: () => {
-        if (sessionChatId === target.id) {
-          startSessionNewChat(null);
-        }
-        toastSuccess("Chat deleted");
-      },
-      onError: (e) => toastError("Couldn't delete chat", e),
-    });
-  }
-
   function submitCreateProject(name: string) {
     createProjectMutation.mutate(
       { name },
@@ -420,12 +336,12 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                     isActive={entry.isActive}
                     indented
                     onTap={openChat}
-                    onRename={openRename}
-                    onPin={togglePin}
-                    pinPending={pinMutation.isPending}
+                    onRename={chatActions.openRename}
+                    onPin={chatActions.togglePin}
+                    pinPending={chatActions.pinPending}
                     pinningSupported={pinningSupported}
-                    onMove={openMove}
-                    onDelete={openDeleteConfirm}
+                    onMove={chatActions.openMove}
+                    onDelete={chatActions.openDeleteConfirm}
                   />
                 );
               case "project-empty":
@@ -469,12 +385,12 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                     item={entry.chat}
                     isActive={entry.isActive}
                     onTap={openChat}
-                    onRename={openRename}
-                    onPin={togglePin}
-                    pinPending={pinMutation.isPending}
+                    onRename={chatActions.openRename}
+                    onPin={chatActions.togglePin}
+                    pinPending={chatActions.pinPending}
                     pinningSupported={pinningSupported}
-                    onMove={openMove}
-                    onDelete={openDeleteConfirm}
+                    onMove={chatActions.openMove}
+                    onDelete={chatActions.openDeleteConfirm}
                   />
                 );
             }
@@ -520,30 +436,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
         </Pressable>
       </View>
 
-      <RenameChatSheet
-        ref={renameSheetRef}
-        chatId={renameTarget?.id ?? null}
-        initialTitle={renameTarget?.title ?? null}
-        onSubmit={submitRename}
-      />
-      <ConfirmSheet
-        ref={deleteSheetRef}
-        title="Delete chat?"
-        message={
-          deleteTarget?.title?.trim()
-            ? `${deleteTarget.title.trim()} will be permanently deleted.`
-            : "This chat will be permanently deleted."
-        }
-        confirmLabel="Delete"
-        destructive
-        onConfirm={confirmDelete}
-      />
-      <MoveToProjectSheet
-        ref={moveSheetRef}
-        projects={projects ?? []}
-        currentProjectId={moveTarget?.projectId ?? null}
-        onSelect={submitMove}
-      />
+      {chatActions.sheets}
       <CreateProjectSheet
         ref={createProjectSheetRef}
         submitting={createProjectMutation.isPending}
@@ -738,6 +631,7 @@ function ChatRow({
       <ChatRowMenu
         from={menu.anchorRect}
         visible={menu.visible}
+        title={item.title}
         pinned={!!item.pinned}
         pinPending={pinPending}
         pinningSupported={pinningSupported}
