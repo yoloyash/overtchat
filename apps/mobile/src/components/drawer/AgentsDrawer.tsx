@@ -34,6 +34,7 @@ import {
 import {
   agentHostLabel,
   groupWorkspaces,
+  workspaceNewSessionParams,
   type WorkspaceGroup,
 } from "@/lib/agents/workspaces";
 import {
@@ -105,6 +106,7 @@ export function AgentsDrawer({
       }),
     [groups, grouping, collapsed, showAllDone, activeSessionId],
   );
+  const sections = useMemo(() => agentAttentionSections(groups), [groups]);
   const working = useMemo(
     () => groups.some((group) => group.sessions.some(({ session }) => session.runtimeStatus === "running")),
     [groups],
@@ -149,19 +151,10 @@ export function AgentsDrawer({
       router.navigate("/agents");
       return;
     }
-    // The folder's most recently used agent, else the first with a record of it.
-    const recent = group.sessions[0];
-    router.navigate({
-      pathname: "/agents",
-      params: {
-        workspace: recent?.workspaceId ?? group.targets[0]!.workspace.id,
-        provider: recent?.provider ?? group.targets[0]!.provider,
-      },
-    });
+    router.navigate({ pathname: "/agents", params: workspaceNewSessionParams(group) });
   }
   function markAllRead() {
-    const { ready } = agentAttentionSections(groups);
-    for (const entry of ready) {
+    for (const entry of sections.ready) {
       setRead.mutate({ sessionId: entry.item.session.id, read: true });
     }
   }
@@ -181,10 +174,7 @@ export function AgentsDrawer({
     });
   }
 
-  const readyCount = useMemo(
-    () => agentAttentionSections(groups).ready.length,
-    [groups],
-  );
+  const readyCount = sections.ready.length;
   const listActions: AgentMenuItem[] = [];
   if (readyCount > 0) {
     listActions.push({
@@ -280,7 +270,9 @@ export function AgentsDrawer({
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
       <View style={styles.list}>
         <FlashList<AgentDrawerEntry>
-          data={connections.isPending || connections.error ? [] : entries}
+          // A refresh that fails keeps the sessions already listed; the next
+          // poll tries again. Only a list that never loaded shows the error.
+          data={connections.data ? entries : []}
           keyExtractor={(entry) => entry.key}
           getItemType={(entry) => entry.kind}
           contentContainerStyle={styles.listContent}

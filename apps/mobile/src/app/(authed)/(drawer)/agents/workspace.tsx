@@ -4,8 +4,8 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  agentSessionActivityAt,
   agentSessionState,
+  agentSessionStateSince,
 } from "@overtchat/shared/agent-attention";
 import {
   AgentButton,
@@ -23,6 +23,7 @@ import {
   agentHostLabel,
   groupWorkspaces,
   matchingSessions,
+  workspaceNewSessionParams,
 } from "@/lib/agents/workspaces";
 import { useTheme } from "@/lib/theme";
 import { useNow } from "@/lib/useNow";
@@ -50,12 +51,15 @@ export default function AgentWorkspaceScreen() {
   const sessions = useMemo<AgentAttentionItem[]>(
     () =>
       group
-        ? matchingSessions(group, search).map((item) => ({
-            item,
-            group,
-            state: agentSessionState(item.session),
-            since: agentSessionActivityAt(item.session),
-          }))
+        ? matchingSessions(group, search).map((item) => {
+            const state = agentSessionState(item.session);
+            return {
+              item,
+              group,
+              state,
+              since: agentSessionStateSince(item.session, state),
+            };
+          })
         : [],
     [group, search],
   );
@@ -63,15 +67,7 @@ export default function AgentWorkspaceScreen() {
   const now = useNow(working ? 1_000 : 30_000);
   function startSession() {
     if (!group) return;
-    // The folder's most recently used agent, else the first with a record of it.
-    const recent = group.sessions[0];
-    router.navigate({
-      pathname: "/agents",
-      params: {
-        workspace: recent?.workspaceId ?? group.targets[0]!.workspace.id,
-        provider: recent?.provider ?? group.targets[0]!.provider,
-      },
-    });
+    router.navigate({ pathname: "/agents", params: workspaceNewSessionParams(group) });
   }
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>

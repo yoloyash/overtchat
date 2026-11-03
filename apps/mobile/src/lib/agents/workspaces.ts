@@ -143,3 +143,17 @@ export function findAgentSession(groups: WorkspaceGroup[], id: string) {
 export function sessionTitle(session: AgentSessionListItem) {
   return agentSessionDisplayTitle(session) || "New session";
 }
+/**
+ * Where a new session in a folder starts: with the agent used there most
+ * recently, else the first agent with a record of the folder.
+ */
+export function workspaceNewSessionParams(group: WorkspaceGroup): {
+  workspace: string;
+  provider: AgentProviderId;
+} {
+  const recent = group.sessions[0];
+  return {
+    workspace: recent?.workspaceId ?? group.targets[0]!.workspace.id,
+    provider: recent?.provider ?? group.targets[0]!.provider,
+  };
+}

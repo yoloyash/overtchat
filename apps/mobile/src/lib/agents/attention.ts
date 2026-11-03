@@ -1,4 +1,7 @@
-import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import {
+  agentProviderMetadata,
+  type AgentSessionListItem,
+} from "@overtchat/agent-bridge";
 import {
   AGENT_ATTENTION_SECTIONS,
   agentAttentionSections,
@@ -28,6 +31,13 @@ export const AGENT_SESSION_PREVIEW_COUNT = 7;
  */
 export type AgentSessionRowContext = "all" | "workspace";
 
+/** What a waiting session asks, on one line: its request, then the detail. */
+export function agentAttentionText(
+  attention: NonNullable<AgentSessionListItem["attention"]>,
+): string {
+  return [attention.title, attention.detail].filter(Boolean).join(" · ");
+}
+
 /** The second line of a row: what the session is asking, or where it runs. */
 export function agentSessionRowMeta(
   entry: AgentAttentionItem,
@@ -35,9 +45,7 @@ export function agentSessionRowMeta(
 ): string {
   const { item, group } = entry;
   const { attention } = item.session;
-  if (attention) {
-    return [attention.title, attention.detail].filter(Boolean).join(" · ");
-  }
+  if (attention) return agentAttentionText(attention);
   return context === "all"
     ? `${group.name} · ${agentHostLabel(group.host)}`
     : agentProviderMetadata(item.provider).label;

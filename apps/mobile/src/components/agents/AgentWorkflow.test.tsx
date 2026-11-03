@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   back: vi.fn(),
   setParams: vi.fn(),
+  // One object, as the real hook returns, so effects keyed on it run once.
+  navigation: { setParams: (params: object) => mocks.setParams(params) },
   setRead: vi.fn(),
   sync: vi.fn(),
   pathname: "/chat",
@@ -325,6 +327,7 @@ vi.mock("expo-secure-store", () => ({
 }));
 vi.mock("expo-router", async () => ({
   useFocusEffect: (await import("react")).useEffect,
+  useNavigation: () => mocks.navigation,
   useLocalSearchParams: () => mocks.params,
   usePathname: () => mocks.pathname,
   router: {
@@ -1814,6 +1817,37 @@ describe("agents drawer and navigation", () => {
       params: { focus: "1" },
     });
     expect(closeDrawer).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the listed sessions when a refresh fails, and offers a retry only before any loaded", async () => {
+    setupSessions();
+    const failed = {
+      ...agentConnections(),
+      error: new Error("offline"),
+    } as ReturnType<typeof useAgentConnections>;
+    await render(<AgentsDrawer connections={failed} pathname="/chat" onNavigate={vi.fn()} />);
+    expect(rowLabels().length).toBeGreaterThan(0);
+    expect(container.textContent).not.toContain("Couldn't load agent sessions");
+    await render(<div key="remount" />);
+    const unloaded = {
+      ...agentConnections(),
+      data: undefined,
+      error: new Error("offline"),
+    } as ReturnType<typeof useAgentConnections>;
+    await render(<AgentsDrawer connections={unloaded} pathname="/chat" onNavigate={vi.fn()} />);
+    expect(rowLabels()).toEqual([]);
+    expect(container.textContent).toContain("Couldn't load agent sessions. Tap to retry.");
+  });
+
+  it("writes the most recent setup into the home's route once, and keeps a named one", async () => {
+    mocks.params = {};
+    await renderNewAgent();
+    expect(mocks.setParams).toHaveBeenCalledTimes(1);
+    expect(mocks.setParams).toHaveBeenCalledWith({ workspace: "workspace", provider: "codex" });
+    await render(<div key="remount" />);
+    mocks.params = { workspace: "workspace", provider: "codex" };
+    await renderNewAgent();
+    expect(mocks.setParams).toHaveBeenCalledTimes(1);
   });
 
   it("folds a group and remembers it, then groups by workspace on request", async () => {

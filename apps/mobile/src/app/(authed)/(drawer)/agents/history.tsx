@@ -12,7 +12,11 @@ import { AgentFeedback, AgentText } from "@/components/agents/AgentPrimitives";
 import { AgentSearch, AgentSessionRow } from "@/components/agents/AgentNavigation";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { SelectionSheet } from "@/components/ui/SelectionSheet";
-import { agentSessionRowTitle, type AgentAttentionItem } from "@/lib/agents/attention";
+import {
+  agentAttentionText,
+  agentSessionRowTitle,
+  type AgentAttentionItem,
+} from "@/lib/agents/attention";
 import {
   agentSessionCreatedAt,
   agentSessionHosts,
@@ -35,9 +39,7 @@ const ALL = "";
 /** What a history row says under its setup: the request, the error, or the reply. */
 export function agentHistorySnippet(entry: AgentAttentionItem): string | null {
   const { session } = entry.item;
-  if (session.attention) {
-    return [session.attention.title, session.attention.detail].filter(Boolean).join(" · ");
-  }
+  if (session.attention) return agentAttentionText(session.attention);
   if (entry.state === "failed") return session.lastTurn?.error || "The last turn failed.";
   if (session.lastTurn?.preview) return session.lastTurn.preview;
   const title = agentSessionRowTitle(entry);
@@ -162,6 +164,7 @@ export default function AgentHistoryScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        style={styles.filterBar}
         contentContainerStyle={styles.filters}
       >
         {hosts.length > 1 &&
@@ -324,6 +327,9 @@ export default function AgentHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  // A scroll view grows into free space; the pill row keeps its own height
+  // however short the list below it is.
+  filterBar: { flexGrow: 0, flexShrink: 0 },
   filters: {
     flexDirection: "row",
     gap: 8,

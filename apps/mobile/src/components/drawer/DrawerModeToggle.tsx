@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { AgentAttentionCounts } from "@overtchat/shared/agent-attention";
+import { agentSessionStateColor } from "@/components/agents/AgentSessionStatus";
 import type { SidebarMode } from "@/lib/agents/sidebarMode";
 import { useTheme } from "@/lib/theme";
 
@@ -38,7 +39,8 @@ export function DrawerModeToggle({
   agentCounts: AgentAttentionCounts;
   onSelect: (mode: SidebarMode) => void;
 }) {
-  const { colors, fonts, radii } = useTheme();
+  const theme = useTheme();
+  const { colors, fonts, radii } = theme;
   return (
     <View
       accessibilityRole="tablist"
@@ -83,13 +85,23 @@ export function DrawerModeToggle({
               {label}
             </Text>
             {badge && agentCounts.needsYou > 0 ? (
-              <View style={[styles.count, { borderRadius: radii.pill }]}>
+              <View
+                style={[
+                  styles.count,
+                  {
+                    borderRadius: radii.pill,
+                    backgroundColor: agentSessionStateColor("approval", theme),
+                  },
+                ]}
+              >
                 <Text style={[styles.countText, { fontFamily: fonts.sansSemiBold }]}>
                   {agentCounts.needsYou > 9 ? "9+" : agentCounts.needsYou}
                 </Text>
               </View>
             ) : badge ? (
-              <View style={styles.dot} />
+              <View
+                style={[styles.dot, { backgroundColor: agentSessionStateColor("unread", theme) }]}
+              />
             ) : null}
           </Pressable>
         );
@@ -123,8 +135,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f59e0b",
   },
   countText: { color: "#ffffff", fontSize: 10, fontVariant: ["tabular-nums"] },
-  dot: { width: 6, height: 6, borderRadius: 6, backgroundColor: "#16a34a" },
+  dot: { width: 6, height: 6, borderRadius: 6 },
 });

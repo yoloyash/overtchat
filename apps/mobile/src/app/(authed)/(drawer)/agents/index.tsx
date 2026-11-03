@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, StyleSheet, Text, View } from "react-native";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -71,6 +71,19 @@ export default function NewAgentScreen() {
     ? setups.find((setup) => setup.workspaceId === requested.workspaceId)
     : setups[0];
   const provider = requested?.provider ?? folder?.provider;
+  // Opened without a setup, the screen writes the most recent one into its
+  // route, as the web does, so activity elsewhere while a message is typed
+  // cannot switch the folder or agent underneath it.
+  const navigation = useNavigation<{
+    setParams: (params: { workspace: string; provider: string }) => void;
+  }>();
+  const pin = requested ? undefined : setups[0];
+  const pinWorkspace = pin?.workspaceId;
+  const pinProvider = pin?.provider;
+  useEffect(() => {
+    if (!pinWorkspace || !pinProvider) return;
+    navigation.setParams({ workspace: pinWorkspace, provider: pinProvider });
+  }, [navigation, pinWorkspace, pinProvider]);
 
   if (!folder || !provider) {
     if (connections.isPending) {

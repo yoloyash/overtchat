@@ -6,7 +6,11 @@ import type {
 } from "@overtchat/agent-bridge";
 
 // The mode hook reads the route; these tests only use the pure helpers.
-vi.mock("expo-router", () => ({ usePathname: () => "/chat" }));
+vi.mock("expo-router", () => ({
+  usePathname: () => "/chat",
+  useSegments: () => [],
+  useGlobalSearchParams: () => ({}),
+}));
 import { agentDrawerEntries, agentSessionRowMeta } from "./attention";
 import {
   agentSessionHosts,
@@ -22,8 +26,10 @@ import {
   recentAgentSetups,
 } from "./setups";
 import {
+  claimSidebarModeMemory,
   rememberSidebarMode,
   resetSidebarModeMemory,
+  screenHref,
   sidebarModeForPath,
   sidebarModeHref,
 } from "./sidebarMode";
@@ -301,16 +307,36 @@ describe("drawer mode", () => {
     expect(sidebarModeForPath(path, current)).toBe(mode);
   });
 
-  it("returns each mode to the screen it was left on, else its home", () => {
+  it("returns each mode to the screen it was left on, with its params, else its home", () => {
     resetSidebarModeMemory();
+    claimSidebarModeMemory("https://a.example:me");
     expect(sidebarModeHref("chat")).toBe("/chat");
     expect(sidebarModeHref("agents")).toBe("/agents");
-    rememberSidebarMode("agents", "/agent/123");
+    // A folder screen comes back showing the same folder.
+    const folder = screenHref(["(authed)", "(drawer)", "agents", "workspace"], {
+      workspace: "w1",
+      name: "app",
+    });
+    expect(folder).toEqual({
+      pathname: "/(authed)/(drawer)/agents/workspace",
+      params: { workspace: "w1", name: "app" },
+    });
+    rememberSidebarMode("agents", folder);
     rememberSidebarMode("agents", null);
-    expect(sidebarModeHref("agents")).toBe("/agent/123");
-    rememberSidebarMode("chat", "/projects/9");
-    expect(sidebarModeHref("chat")).toBe("/projects/9");
-    resetSidebarModeMemory();
+    expect(sidebarModeHref("agents")).toEqual(folder);
+    const project = screenHref(["(authed)", "(drawer)", "projects", "[id]"], { id: "9" });
+    rememberSidebarMode("chat", project);
+    expect(sidebarModeHref("chat")).toEqual(project);
+    // The search box focuses once; a return to history does not repeat it.
+    expect(
+      screenHref(["(authed)", "(drawer)", "agents", "history"], { focus: "1" }),
+    ).toEqual({ pathname: "/(authed)/(drawer)/agents/history", params: {} });
+    // The same account keeps its screens; another account, or another server, starts afresh.
+    claimSidebarModeMemory("https://a.example:me");
+    expect(sidebarModeHref("agents")).toEqual(folder);
+    claimSidebarModeMemory("https://b.example:me");
     expect(sidebarModeHref("agents")).toBe("/agents");
+    expect(sidebarModeHref("chat")).toBe("/chat");
+    resetSidebarModeMemory();
   });
 });

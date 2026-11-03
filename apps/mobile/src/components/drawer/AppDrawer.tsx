@@ -24,6 +24,7 @@ import {
   useSidebarMode,
   type SidebarMode,
 } from "@/lib/agents/sidebarMode";
+import { getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useChatSession } from "@/lib/chat/session";
 import { groupByDate, type DateBucket } from "@/lib/dateGroups";
@@ -72,7 +73,8 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   // the chat drawer alone.
   const isAdmin =
     (user as { role?: string | null } | undefined)?.role === "admin";
-  const sidebarMode = useSidebarMode();
+  // Each account on each server returns to its own screens.
+  const sidebarMode = useSidebarMode(user ? `${getApiBase()}:${user.id}` : null);
   const mode: SidebarMode = isAdmin ? sidebarMode : "chat";
   // The list is only read while the drawer is open, where the toggle's count
   // and the Agents half show it.
