@@ -6,6 +6,8 @@ import type {
   AgentSessionListItem,
 } from "@overtchat/agent-bridge";
 import {
+  AGENT_SESSION_STATE_LABELS,
+  agentSessionCanToggleRead,
   agentSessionHasUnseenTurn,
   type AgentSessionState,
 } from "@/lib/agents/attention";
@@ -14,17 +16,8 @@ import { useSetAgentSessionRead } from "@/lib/queries/agentSessionRead";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-const STATE_LABELS: Record<AgentSessionState, string> = {
-  approval: "Needs approval",
-  question: "Has a question",
-  failed: "Failed",
-  working: "Working",
-  unread: "Finished",
-  idle: "",
-};
-
 export function agentSessionStateLabel(state: AgentSessionState): string {
-  return STATE_LABELS[state];
+  return AGENT_SESSION_STATE_LABELS[state];
 }
 
 /**
@@ -78,18 +71,7 @@ function AgentWorkingRing({ className }: { className?: string }) {
   );
 }
 
-/** Whether a session has a finished turn its owner can mark read or unread. */
-export function agentSessionCanToggleRead(
-  session: AgentSessionListItem,
-  state: AgentSessionState,
-): boolean {
-  return (
-    session.lastTurn != null &&
-    state !== "working" &&
-    state !== "approval" &&
-    state !== "question"
-  );
-}
+export { agentSessionCanToggleRead };
 
 /** Marks a row's finished turn read or unread; shown when the row is hovered. */
 export function AgentSessionReadToggle({

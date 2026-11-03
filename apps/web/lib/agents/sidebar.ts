@@ -9,11 +9,10 @@ import { agentSessionState } from "@/lib/agents/attention";
 
 export const AGENT_SESSION_PREVIEW_COUNT = 7;
 
-export function agentSessionDisplayTitle(
-  session: Pick<AgentSessionListItem, "name" | "firstMessage">,
-): string | null {
-  return session.name || session.firstMessage || null;
-}
+export {
+  agentSessionDisplayTitle,
+  withAgentSessionReadState,
+} from "@overtchat/shared/agent-attention";
 
 export function agentSessionIsRunning(
   session: AgentSessionListItem,
@@ -88,35 +87,4 @@ export function visibleAgentSessions(
       !visible.some((candidate) => candidate.id === session.id),
   );
   return [...visible, ...additionallyVisible];
-}
-
-/**
- * Moves a session's read watermark to its latest turn, or just before it so
- * that turn reads as unseen. Sessions without a finished turn are unchanged.
- */
-export function withAgentSessionReadState(
-  connections: AgentConnectionListItem[],
-  sessionId: string,
-  read: boolean,
-): AgentConnectionListItem[] {
-  let changed = false;
-  const next = connections.map((connection) => {
-    let connectionChanged = false;
-    const workspaces = connection.workspaces.map((workspace) => {
-      let workspaceChanged = false;
-      const sessions = workspace.sessions.map((session) => {
-        if (session.id !== sessionId || !session.lastTurn) return session;
-        const { endedAt } = session.lastTurn;
-        const readTurnEndedAt = read
-          ? Math.max(session.readTurnEndedAt ?? -Infinity, endedAt)
-          : endedAt - 1;
-        if (readTurnEndedAt === session.readTurnEndedAt) return session;
-        changed = connectionChanged = workspaceChanged = true;
-        return { ...session, readTurnEndedAt };
-      });
-      return workspaceChanged ? { ...workspace, sessions } : workspace;
-    });
-    return connectionChanged ? { ...connection, workspaces } : connection;
-  });
-  return changed ? next : connections;
 }

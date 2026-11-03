@@ -774,11 +774,20 @@ gestures. While an agent streams, check that the transcript follows new output
 at the bottom, holds still once you scroll up, and loads older history at the
 top, and that expanding work keeps the tapped row in place. Use an existing
 development client unless native modules change.
-For navigation changes, check the shared drawer from regular and agent chats,
-the remembered Agents section expansion, recent agent selection, workspace
-chat creation, and opening both chat types from push notifications. Check native
-Back alongside the conversation menu, edge-only drawer swipes on chat and agent
-list screens, and horizontal tool/code scrolling on agent detail screens.
+For navigation changes, check the drawer's Chat | Agents toggle as an
+administrator (each half returns to the screen it was left on; the count on
+Agents while in Chat), the status groups and their folding across an app
+restart, the workspace grouping, long-press mark read/unread, the new-session
+home with its machine, folder and agent pills, History search and filters,
+starting a session from a folder, and opening both chat types from push
+notifications. Check native Back alongside the conversation menu, edge-only
+drawer swipes on chat and agent list screens, and horizontal tool/code
+scrolling on agent detail screens.
+
+```sh
+npm run test -w apps/mobile -- src/lib/agents/attention.test.ts src/lib/queries/agents.test.tsx src/components/agents/AgentWorkflow.test.tsx
+npm run typecheck -w apps/mobile --
+```
 
 ### Mobile realtime voice
 

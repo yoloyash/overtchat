@@ -3,7 +3,10 @@ import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { FlashList } from "@shopify/flash-list";
 import * as Haptics from "expo-haptics";
 import { router, usePathname } from "expo-router";
-import type { DrawerContentComponentProps } from "expo-router/build/react-navigation/drawer";
+import {
+  useDrawerStatus,
+  type DrawerContentComponentProps,
+} from "expo-router/build/react-navigation/drawer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,8 +16,14 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { agentAttentionCounts } from "@overtchat/shared/agent-attention";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
+import {
+  sidebarModeHref,
+  useSidebarMode,
+  type SidebarMode,
+} from "@/lib/agents/sidebarMode";
 import { getAuthClient } from "@/lib/auth/client";
 import { useChatSession } from "@/lib/chat/session";
 import { groupByDate, type DateBucket } from "@/lib/dateGroups";
@@ -24,13 +33,15 @@ import {
   useProjects,
   type ProjectListItem,
 } from "@/lib/queries/projects";
+import { useAgentConnections } from "@/lib/queries/agents";
 import { useCapabilities } from "@/lib/queries/capabilities";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 import { useChatActions } from "@/components/chat/useChatActions";
+import { AgentsDrawer } from "./AgentsDrawer";
 import { ChatRowMenu } from "./ChatRowMenu";
-import { DrawerAgents } from "./DrawerAgents";
 import { CreateProjectSheet } from "./CreateProjectSheet";
+import { DrawerModeToggle } from "./DrawerModeToggle";
 
 type ListEntry =
   | { kind: "section"; key: string; label: string }
@@ -57,6 +68,26 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const pinningSupported = capabilities?.capabilities.chatPinning === true;
   const session = getAuthClient().useSession();
   const user = session.data?.user;
+  // Agents are an administrator's feature, as on the web; everyone else keeps
+  // the chat drawer alone.
+  const isAdmin =
+    (user as { role?: string | null } | undefined)?.role === "admin";
+  const sidebarMode = useSidebarMode();
+  const mode: SidebarMode = isAdmin ? sidebarMode : "chat";
+  // The list is only read while the drawer is open, where the toggle's count
+  // and the Agents half show it.
+  const open = useDrawerStatus() === "open";
+  const agentConnections = useAgentConnections({ enabled: isAdmin && open });
+  const agentCounts = useMemo(
+    () => agentAttentionCounts(agentConnections.data ?? []),
+    [agentConnections.data],
+  );
+  function switchMode(next: SidebarMode) {
+    if (next === mode) return;
+    props.navigation.closeDrawer();
+    // Each half returns to the screen it was left on, or its home.
+    router.navigate(sidebarModeHref(next));
+  }
 
   const createProjectMutation = useCreateProject();
   const createProjectSheetRef = useRef<BottomSheetModal>(null);
@@ -225,178 +256,188 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.root, { backgroundColor: colors.card }]}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="New chat"
-          onPress={startNewChatHere}
-          style={({ pressed }) => [
-            styles.newChat,
-            {
-              backgroundColor: pressed ? colors.accent : "transparent",
-              borderRadius: radii.md,
-            },
-          ]}
-        >
-          <Ionicons name="create-outline" size={20} color={colors.foreground} />
-          <Text
-            style={[
-              styles.newChatText,
-              { color: colors.foreground, fontFamily: fonts.sansSemiBold },
-            ]}
-          >
-            New chat
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Search chats"
-          onPress={() => {
-            props.navigation.closeDrawer();
-            router.push("/search");
-          }}
-          hitSlop={8}
-          style={({ pressed }) => [
-            styles.searchBtn,
-            {
-              backgroundColor: pressed ? colors.accent : "transparent",
-              borderRadius: radii.pill,
-            },
-          ]}
-        >
-          <Ionicons
-            name="search-outline"
-            size={20}
-            color={colors.foreground}
-          />
-        </Pressable>
-      </View>
-
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-      <View style={styles.list}>
-        <FlashList<ListEntry>
-          data={isPending || error ? [] : entries}
-          ListHeaderComponent={
-            <DrawerAgents onNavigate={() => props.navigation.closeDrawer()} />
-          }
-          ListEmptyComponent={
-            isPending ? (
-              <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
-            ) : error ? (
-              <Text style={[styles.empty, { color: colors.destructive, fontFamily: fonts.sansRegular }]}>
-                Couldn't load chats
+      {isAdmin && (
+        <DrawerModeToggle mode={mode} agentCounts={agentCounts} onSelect={switchMode} />
+      )}
+      {mode === "agents" ? (
+        <AgentsDrawer
+          connections={agentConnections}
+          pathname={pathname}
+          onNavigate={() => props.navigation.closeDrawer()}
+        />
+      ) : (
+        <>
+          <View style={styles.header}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="New chat"
+              onPress={startNewChatHere}
+              style={({ pressed }) => [
+                styles.newChat,
+                {
+                  backgroundColor: pressed ? colors.accent : "transparent",
+                  borderRadius: radii.md,
+                },
+              ]}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.foreground} />
+              <Text
+                style={[
+                  styles.newChatText,
+                  { color: colors.foreground, fontFamily: fonts.sansSemiBold },
+                ]}
+              >
+                New chat
               </Text>
-            ) : null
-          }
-          ListFooterComponent={
-            !isPending && !error && entries.length === 1 ? (
-              <Text style={[styles.empty, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-                No chats yet
-              </Text>
-            ) : null
-          }
-          keyExtractor={(e) => e.key}
-          getItemType={(e) => e.kind}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshing={isFetching && !isPending}
-          onRefresh={onPullToRefresh}
-          renderItem={({ item: entry }) => {
-            switch (entry.kind) {
-              case "section":
-                return (
-                  <Text
-                    style={[
-                      styles.sectionLabel,
-                      {
-                        color: colors.mutedForeground,
-                        fontFamily: fonts.sansMedium,
-                      },
-                    ]}
-                  >
-                    {entry.label}
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Search chats"
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push("/search");
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.searchBtn,
+                {
+                  backgroundColor: pressed ? colors.accent : "transparent",
+                  borderRadius: radii.pill,
+                },
+              ]}
+            >
+              <Ionicons
+                name="search-outline"
+                size={20}
+                color={colors.foreground}
+              />
+            </Pressable>
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.list}>
+            <FlashList<ListEntry>
+              data={isPending || error ? [] : entries}
+              ListEmptyComponent={
+                isPending ? (
+                  <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
+                ) : error ? (
+                  <Text style={[styles.empty, { color: colors.destructive, fontFamily: fonts.sansRegular }]}>
+                    Couldn't load chats
                   </Text>
-                );
-              case "project-row":
-                return (
-                  <ProjectRow
-                    project={entry.project}
-                    expanded={entry.expanded}
-                    isActive={entry.isActive}
-                    onToggle={() => toggleProject(entry.project.id)}
-                    onOpen={() => openProject(entry.project.id)}
-                    onNewChat={() => startNewChatInProject(entry.project.id)}
-                  />
-                );
-              case "project-chat":
-                return (
-                  <ChatRow
-                    item={entry.chat}
-                    isActive={entry.isActive}
-                    indented
-                    onTap={openChat}
-                    onRename={chatActions.openRename}
-                    onPin={chatActions.togglePin}
-                    pinPending={chatActions.pinPending}
-                    pinningSupported={pinningSupported}
-                    onMove={chatActions.openMove}
-                    onDelete={chatActions.openDeleteConfirm}
-                  />
-                );
-              case "project-empty":
-                return (
-                  <Text
-                    style={[
-                      styles.projectEmpty,
-                      {
-                        color: colors.mutedForeground,
-                        fontFamily: fonts.sansRegular,
-                      },
-                    ]}
-                  >
+                ) : null
+              }
+              ListFooterComponent={
+                !isPending && !error && entries.length === 1 ? (
+                  <Text style={[styles.empty, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
                     No chats yet
                   </Text>
-                );
-              case "new-project":
-                return (
-                  <NewProjectButton
-                    onPress={() => createProjectSheetRef.current?.present()}
-                  />
-                );
-              case "date-header":
-                return (
-                  <Text
-                    style={[
-                      styles.groupLabel,
-                      {
-                        color: colors.mutedForeground,
-                        fontFamily: fonts.sansMedium,
-                      },
-                    ]}
-                  >
-                    {entry.label}
-                  </Text>
-                );
-              case "pinned-chat":
-              case "chat-row":
-                return (
-                  <ChatRow
-                    item={entry.chat}
-                    isActive={entry.isActive}
-                    onTap={openChat}
-                    onRename={chatActions.openRename}
-                    onPin={chatActions.togglePin}
-                    pinPending={chatActions.pinPending}
-                    pinningSupported={pinningSupported}
-                    onMove={chatActions.openMove}
-                    onDelete={chatActions.openDeleteConfirm}
-                  />
-                );
-            }
-          }}
-        />
-      </View>
+                ) : null
+              }
+              keyExtractor={(e) => e.key}
+              getItemType={(e) => e.kind}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              refreshing={isFetching && !isPending}
+              onRefresh={onPullToRefresh}
+              renderItem={({ item: entry }) => {
+                switch (entry.kind) {
+                  case "section":
+                    return (
+                      <Text
+                        style={[
+                          styles.sectionLabel,
+                          {
+                            color: colors.mutedForeground,
+                            fontFamily: fonts.sansMedium,
+                          },
+                        ]}
+                      >
+                        {entry.label}
+                      </Text>
+                    );
+                  case "project-row":
+                    return (
+                      <ProjectRow
+                        project={entry.project}
+                        expanded={entry.expanded}
+                        isActive={entry.isActive}
+                        onToggle={() => toggleProject(entry.project.id)}
+                        onOpen={() => openProject(entry.project.id)}
+                        onNewChat={() => startNewChatInProject(entry.project.id)}
+                      />
+                    );
+                  case "project-chat":
+                    return (
+                      <ChatRow
+                        item={entry.chat}
+                        isActive={entry.isActive}
+                        indented
+                        onTap={openChat}
+                        onRename={chatActions.openRename}
+                        onPin={chatActions.togglePin}
+                        pinPending={chatActions.pinPending}
+                        pinningSupported={pinningSupported}
+                        onMove={chatActions.openMove}
+                        onDelete={chatActions.openDeleteConfirm}
+                      />
+                    );
+                  case "project-empty":
+                    return (
+                      <Text
+                        style={[
+                          styles.projectEmpty,
+                          {
+                            color: colors.mutedForeground,
+                            fontFamily: fonts.sansRegular,
+                          },
+                        ]}
+                      >
+                        No chats yet
+                      </Text>
+                    );
+                  case "new-project":
+                    return (
+                      <NewProjectButton
+                        onPress={() => createProjectSheetRef.current?.present()}
+                      />
+                    );
+                  case "date-header":
+                    return (
+                      <Text
+                        style={[
+                          styles.groupLabel,
+                          {
+                            color: colors.mutedForeground,
+                            fontFamily: fonts.sansMedium,
+                          },
+                        ]}
+                      >
+                        {entry.label}
+                      </Text>
+                    );
+                  case "pinned-chat":
+                  case "chat-row":
+                    return (
+                      <ChatRow
+                        item={entry.chat}
+                        isActive={entry.isActive}
+                        onTap={openChat}
+                        onRename={chatActions.openRename}
+                        onPin={chatActions.togglePin}
+                        pinPending={chatActions.pinPending}
+                        pinningSupported={pinningSupported}
+                        onMove={chatActions.openMove}
+                        onDelete={chatActions.openDeleteConfirm}
+                      />
+                    );
+                }
+              }}
+            />
+          </View>
+        </>
+      )}
 
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
         <UserAvatar name={user?.name} email={user?.email} image={user?.image} />

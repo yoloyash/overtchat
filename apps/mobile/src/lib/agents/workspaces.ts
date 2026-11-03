@@ -6,6 +6,7 @@ import type {
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
+import { agentSessionDisplayTitle } from "@overtchat/shared/agent-attention";
 import {
   agentWorkspaceAgents,
   type AgentWorkspaceAgent,
@@ -24,17 +25,36 @@ export type WorkspaceGroup = {
   targets: { provider: AgentProviderId; workspace: AgentWorkspaceListItem }[];
   sessions: WorkspaceSession[];
 };
-export const WORKSPACE_CHAT_PREVIEW = 5;
 
-export function recentAgentChats(groups: WorkspaceGroup[], limit = 5) {
-  return groups
-    .flatMap((group) => group.sessions.map((item) => ({ item, group })))
-    .sort(
-      (a, b) =>
-        (b.item.session.modifiedAt ?? b.item.session.createdAt ?? 0) -
-        (a.item.session.modifiedAt ?? a.item.session.createdAt ?? 0),
-    )
-    .slice(0, limit);
+/** How a machine is named everywhere: its SSH alias, else its name. */
+export function agentHostLabel(
+  host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
+): string {
+  return host.sshAlias || host.name || "This server";
+}
+
+/**
+ * The machine a connection reaches, as a key. Every agent on a machine has
+ * its own host row, so the row id would make each agent its own machine.
+ */
+export function agentTargetKey(target: AgentDiscoveryTarget): string {
+  return JSON.stringify([
+    target.connectorId,
+    target.transport,
+    target.transport === "ssh" ? target.sshAlias : "",
+  ]);
+}
+
+export function agentConnectionTarget(
+  connection: Pick<AgentConnectionListItem, "host">,
+): AgentDiscoveryTarget {
+  return connection.host.transport === "local"
+    ? { connectorId: connection.host.connectorId, transport: "local" }
+    : {
+        connectorId: connection.host.connectorId,
+        transport: "ssh",
+        sshAlias: connection.host.sshAlias!,
+      };
 }
 
 // A directory on the same connector/SSH target is one workspace, even when
@@ -46,9 +66,7 @@ export function groupWorkspaces(
   for (const connection of connections) {
     for (const workspace of connection.workspaces) {
       const key = JSON.stringify([
-        connection.host.connectorId,
-        connection.host.transport,
-        connection.host.transport === "ssh" ? connection.host.sshAlias : "",
+        agentTargetKey(agentConnectionTarget(connection)),
         workspace.path,
       ]);
       let group = groups.get(key);
@@ -83,13 +101,7 @@ export function groupWorkspaces(
 }
 /** The machine the folder is on, as the connector reaches it. */
 export function workspaceTarget(group: WorkspaceGroup): AgentDiscoveryTarget {
-  return group.host.transport === "local"
-    ? { connectorId: group.host.connectorId, transport: "local" }
-    : {
-        connectorId: group.host.connectorId,
-        transport: "ssh",
-        sshAlias: group.host.sshAlias!,
-      };
+  return agentConnectionTarget(group);
 }
 
 /**
@@ -110,14 +122,10 @@ export function workspaceAgents(
   ).filter((agent) => agent.detected);
 }
 
-export function workspaceMatches(group: WorkspaceGroup, search: string) {
-  return `${group.name} ${group.path} ${group.host.name} ${group.targets.map((t) => t.provider).join(" ")}`
-    .toLowerCase()
-    .includes(search.trim().toLowerCase());
-}
+/** The sessions in a folder whose title or first message contains the search. */
 export function matchingSessions(group: WorkspaceGroup, search: string) {
-  if (workspaceMatches(group, search)) return group.sessions;
   const query = search.trim().toLowerCase();
+  if (!query) return group.sessions;
   return group.sessions.filter(({ session }) =>
     `${session.name ?? ""} ${session.firstMessage ?? ""}`
       .toLowerCase()
@@ -133,5 +141,5 @@ export function findAgentSession(groups: WorkspaceGroup[], id: string) {
   return null;
 }
 export function sessionTitle(session: AgentSessionListItem) {
-  return session.name || session.firstMessage || "Untitled chat";
+  return agentSessionDisplayTitle(session) || "New session";
 }

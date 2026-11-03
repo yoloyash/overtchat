@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import {
+  agentSessionActivityAt,
+  agentSessionState,
+} from "@overtchat/shared/agent-attention";
 import {
   AgentButton,
   AgentFeedback,
-  AgentSheet,
   AgentText,
 } from "@/components/agents/AgentPrimitives";
 import {
@@ -15,31 +17,27 @@ import {
   AgentSearch,
   AgentSessionRow,
 } from "@/components/agents/AgentNavigation";
-import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
+import type { AgentAttentionItem } from "@/lib/agents/attention";
+import { useAgentConnections } from "@/lib/queries/agents";
 import {
-  useAgentConnections,
-  useAgentProviderSnapshot,
-} from "@/lib/queries/agents";
-import {
+  agentHostLabel,
   groupWorkspaces,
   matchingSessions,
-  workspaceAgents,
-  workspaceTarget,
 } from "@/lib/agents/workspaces";
 import { useTheme } from "@/lib/theme";
+import { useNow } from "@/lib/useNow";
 
+/** One folder: where it is, its branch, and every session in it. */
 export default function AgentWorkspaceScreen() {
   const params = useLocalSearchParams<{
     workspace: string;
     name?: string;
-    create?: string;
     search?: string;
   }>();
   const { colors, fonts } = useTheme();
   const insets = useSafeAreaInsets();
   const connections = useAgentConnections();
   const [search, setSearch] = useState(params.search ?? "");
-  const [creating, setCreating] = useState(params.create === "1");
   const group = useMemo(
     () =>
       groupWorkspaces(connections.data ?? []).find((group) =>
@@ -49,30 +47,32 @@ export default function AgentWorkspaceScreen() {
       ),
     [connections.data, params.workspace],
   );
-  const sessions = useMemo(
-    () => (group ? matchingSessions(group, search) : []),
+  const sessions = useMemo<AgentAttentionItem[]>(
+    () =>
+      group
+        ? matchingSessions(group, search).map((item) => ({
+            item,
+            group,
+            state: agentSessionState(item.session),
+            since: agentSessionActivityAt(item.session),
+          }))
+        : [],
     [group, search],
   );
-  // Which agents the machine has decides the choice, not which have chats here.
-  const snapshot = useAgentProviderSnapshot(group ? workspaceTarget(group) : null);
-  const agents = useMemo(
-    () => (group ? workspaceAgents(group, snapshot.data) : []),
-    [group, snapshot.data],
-  );
-  const agentsKnown = snapshot.isSuccess || snapshot.isError;
-  useEffect(() => {
-    if (!creating || !group || !agentsKnown || agents.length !== 1) return;
-    setCreating(false);
-    const agent = agents[0];
-    router.push({
-      pathname: "/agents/new",
+  const working = sessions.some(({ state }) => state === "working");
+  const now = useNow(working ? 1_000 : 30_000);
+  function startSession() {
+    if (!group) return;
+    // The folder's most recently used agent, else the first with a record of it.
+    const recent = group.sessions[0];
+    router.navigate({
+      pathname: "/agents",
       params: {
-        workspace: agent.workspaceId,
-        provider: agent.provider,
-        name: group.name,
+        workspace: recent?.workspaceId ?? group.targets[0]!.workspace.id,
+        provider: recent?.provider ?? group.targets[0]!.provider,
       },
     });
-  }, [creating, group, agents, agentsKnown]);
+  }
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack.Screen
@@ -80,10 +80,10 @@ export default function AgentWorkspaceScreen() {
           title: group?.name ?? params.name ?? "Workspace",
           headerRight: () => (
             <AgentButton
-              label="New chat"
+              label="New session"
               icon="add"
               disabled={!group}
-              onPress={() => setCreating(true)}
+              onPress={startSession}
             />
           ),
         }}
@@ -100,7 +100,7 @@ export default function AgentWorkspaceScreen() {
               size={14}
               color={colors.mutedForeground}
             />
-            <AgentText muted>{group.host.name}</AgentText>
+            <AgentText muted>{agentHostLabel(group.host)}</AgentText>
           </View>
           <Text
             numberOfLines={2}
@@ -127,7 +127,7 @@ export default function AgentWorkspaceScreen() {
       <AgentSearch
         value={search}
         onChangeText={setSearch}
-        placeholder="Search chats in this workspace"
+        placeholder="Search sessions in this workspace"
       />
       {(connections.isPending || connections.error) && (
         <AgentFeedback
@@ -141,21 +141,21 @@ export default function AgentWorkspaceScreen() {
       )}
       <FlatList
         data={sessions}
-        keyExtractor={(item) => item.session.id}
+        keyExtractor={(entry) => entry.item.session.id}
         keyboardShouldPersistTaps="handled"
         refreshing={connections.refreshing}
         onRefresh={() => void connections.refresh()}
         contentContainerStyle={{
-          paddingHorizontal: 12,
+          paddingHorizontal: 8,
           paddingBottom: insets.bottom + 20,
         }}
         ListHeaderComponent={
           group ? (
-            <View style={{ padding: 12 }}>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
               <AgentText muted>
                 {search
-                  ? `${sessions.length} matching chats`
-                  : `${sessions.length} chats · Most recent first`}
+                  ? `${sessions.length} matching ${sessions.length === 1 ? "session" : "sessions"}`
+                  : `${sessions.length} ${sessions.length === 1 ? "session" : "sessions"} · Most recent first`}
               </AgentText>
             </View>
           ) : null
@@ -164,52 +164,34 @@ export default function AgentWorkspaceScreen() {
           group ? (
             <View style={{ padding: 24, gap: 8 }}>
               <AgentText title>
-                {search ? "No matching chats" : "Start your first chat"}
+                {search ? "No matching sessions" : "Start your first session"}
               </AgentText>
               <AgentText muted>
                 {search
                   ? "Try another search."
-                  : "Choose an agent with the New chat button."}
+                  : "Use New session; the agent can be changed before sending."}
               </AgentText>
             </View>
           ) : null
         }
-        renderItem={({ item }) => (
+        renderItem={({ item: entry }) => (
           <AgentSessionRow
-            item={item}
-            workspaceName={group?.name ?? "Workspace"}
+            entry={entry}
+            context="workspace"
+            now={now}
+            onPress={() =>
+              router.push({
+                pathname: "/agent/[id]",
+                params: {
+                  id: entry.item.session.id,
+                  workspace: entry.item.workspaceId,
+                  name: entry.group.name,
+                },
+              })
+            }
           />
         )}
       />
-      <AgentSheet
-        visible={creating && !!group && agents.length > 1}
-        snapPoints={[`${Math.min(70, 20 + agents.length * 9)}%`]}
-        closeLabel="Close agent picker"
-        title="Choose an agent"
-        onClose={() => setCreating(false)}
-      >
-        <AgentText muted>{group?.name}</AgentText>
-        {group &&
-          agents.map((agent) => (
-            <AgentButton
-              key={agent.provider}
-              label={agentProviderMetadata(agent.provider).label}
-              leading={<AgentProviderIcon provider={agent.provider} size={26} />}
-              chevron
-              onPress={() => {
-                setCreating(false);
-                router.push({
-                  pathname: "/agents/new",
-                  params: {
-                    workspace: agent.workspaceId,
-                    provider: agent.provider,
-                    name: group.name,
-                  },
-                });
-              }}
-            />
-          ))}
-      </AgentSheet>
     </View>
   );
 }

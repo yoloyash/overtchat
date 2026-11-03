@@ -27,6 +27,7 @@ import type {
   AgentUsageSnapshot,
   AgentProviderNotice,
 } from "@overtchat/agent-bridge";
+import { withAgentSessionReadState } from "@overtchat/shared/agent-attention";
 import { getApiBase } from "@/lib/api";
 import { agentFetch, agentJson } from "@/lib/agents/api";
 import { AgentSessionStream, type StreamStatus } from "@/lib/agents/stream";
@@ -45,6 +46,41 @@ export function useAgentForeground() {
   return focused && active;
 }
 
+type ReadChange = { sessionId: string; read: boolean };
+
+async function putAgentSessionRead({ sessionId, read }: ReadChange) {
+  await agentFetch(`/api/agent-sessions/${encodeURIComponent(sessionId)}/read`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ read }),
+  });
+}
+
+/**
+ * Marks a session's latest finished turn read or unread. The session list
+ * moves at once so the drawer follows the tap, and is refetched if the server
+ * refuses.
+ */
+export function useSetAgentSessionRead() {
+  const queryClient = useQueryClient();
+  const key = queryKeys.agentConnections(getApiBase());
+  const apply = ({ sessionId, read }: ReadChange) =>
+    queryClient.setQueryData<AgentConnectionListItem[]>(key, (current) =>
+      current ? withAgentSessionReadState(current, sessionId, read) : current,
+    );
+  return useMutation({
+    mutationFn: putAgentSessionRead,
+    retry: false,
+    onMutate: async (change) => {
+      // A list fetched before the change would undo it.
+      await queryClient.cancelQueries({ queryKey: key });
+      apply(change);
+    },
+    onSuccess: (_result, change) => apply(change),
+    onError: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+}
+
 /**
  * Tells the server the owner has seen the session: when it opens in the
  * foreground, and whenever a turn ends while it is open.
@@ -54,16 +90,44 @@ export function useMarkAgentSessionSeen(
   status: AgentRuntimeStatus | undefined,
 ) {
   const active = useAgentForeground();
+  const queryClient = useQueryClient();
+  const key = queryKeys.agentConnections(getApiBase());
   useEffect(() => {
     if (!active || status === undefined || status === "running") return;
-    void agentFetch(`/api/agent-sessions/${encodeURIComponent(id)}/read`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ read: true }),
-    }).catch(() => {
-      // Servers that predate read state answer 404; nothing to show.
-    });
-  }, [id, active, status]);
+    void putAgentSessionRead({ sessionId: id, read: true })
+      .then(() => {
+        // The drawer's list follows without waiting for its next poll.
+        queryClient.setQueryData<AgentConnectionListItem[]>(key, (current) =>
+          current ? withAgentSessionReadState(current, id, true) : current,
+        );
+      })
+      .catch(() => {
+        // Servers that predate read state answer 404; nothing to show.
+      });
+    // The key only changes with the server, which remounts the screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, active, status, queryClient]);
+}
+
+/**
+ * Asks the connector to reconcile every workspace's sessions, then refreshes
+ * the list. Failures for single workspaces come back as messages.
+ */
+export function useSyncAgentWorkspaces() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { result } = await agentJson<{
+        result: { failures: { message: string }[] };
+      }>("/api/agent-workspaces/sync", {});
+      return result;
+    },
+    retry: false,
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agentConnections(getApiBase()),
+      }),
+  });
 }
 
 async function fetchAgentConnections({ signal }: { signal: AbortSignal }) {
