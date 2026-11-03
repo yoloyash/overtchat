@@ -309,7 +309,8 @@ function AgentSession({
                   .renameSession !== false
               }
               ready={ready}
-              busy={busy || mutation.isPending}
+              busy={busy}
+              commandPending={mutation.isPending}
               usageSupported={snapshot?.capabilities.usage === true}
               workspaceKnown={!!workspace}
               providerSessionId={listing?.item.session.providerSessionId ?? null}

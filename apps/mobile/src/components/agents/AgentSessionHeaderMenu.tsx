@@ -11,8 +11,10 @@ export type AgentSessionMenuInput = {
   renameSupported: boolean;
   /** Connected to a writable session. */
   ready: boolean;
-  /** The agent is working or a command is in flight. */
+  /** The agent is working, so context cannot be compacted yet. */
   busy: boolean;
+  /** A command is in flight; another one would be dropped. */
+  commandPending: boolean;
   usageSupported: boolean;
   /** Omitted while the session's folder is unknown. */
   workspaceKnown: boolean;
@@ -35,14 +37,15 @@ export function agentSessionMenuSections(
       key: "rename",
       label: "Rename",
       icon: "pencil-outline",
-      disabled: !input.ready,
+      // Renaming is metadata, allowed mid-turn as on web.
+      disabled: !input.ready || input.commandPending,
       onSelect: input.onRename,
     });
   session.items.push({
     key: "compact",
     label: "Compact context",
     icon: "sparkles-outline",
-    disabled: !input.ready || input.busy,
+    disabled: !input.ready || input.busy || input.commandPending,
     onSelect: input.onCompact,
   });
   if (input.usageSupported)
@@ -50,7 +53,7 @@ export function agentSessionMenuSections(
       key: "usage",
       label: "Account usage",
       icon: "speedometer-outline",
-      disabled: !input.ready || input.busy,
+      disabled: !input.ready || input.busy || input.commandPending,
       onSelect: input.onUsage,
     });
   const workspace: AgentMenuSection = { items: [] };
