@@ -6,11 +6,13 @@ export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoun
 
 export const unstable_settings = { initialRouteName: "index" };
 
+/**
+ * The Agents half's own screens: a new session (the home, with the drawer
+ * button), history, and a folder. Conversations are drawer destinations
+ * beside the chat screen instead.
+ */
 export default function AgentsLayout() {
   const { colors } = useTheme();
-  const drawerOptions = {
-    headerLeft: () => <DrawerToggleButton tintColor={colors.foreground} />,
-  };
   return (
     <Stack
       screenOptions={{
@@ -22,9 +24,12 @@ export default function AgentsLayout() {
     >
       <Stack.Screen
         name="index"
-        options={{ title: "Agents", ...drawerOptions }}
+        options={{
+          title: "New agent",
+          headerLeft: () => <DrawerToggleButton tintColor={colors.foreground} />,
+        }}
       />
-      <Stack.Screen name="new" options={{ title: "New agent chat" }} />
+      <Stack.Screen name="history" options={{ title: "History" }} />
       <Stack.Screen name="workspace" />
     </Stack>
   );

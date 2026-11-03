@@ -31,8 +31,16 @@ Advanced MCP and agent workspace setup can open the matching web settings page.
   only in `src/lib/queries/keys.ts`.
 - Chat rendering and input behavior live under `src/components/chat`; the
   drawer and its project/chat mutations live under `src/components/drawer`.
-- `src/app/(authed)/(drawer)/agents` owns agent navigation within the shared
-  chat drawer. Agent transcripts, settings, and interaction sheets live in
+- The drawer has two halves, Chat and Agents, switched by a toggle that
+  administrators see; `src/lib/agents/sidebarMode.ts` derives the half from
+  the open route and remembers where each was left. The Agents half
+  (`src/components/drawer/AgentsDrawer.tsx`) lists every session grouped by
+  what it needs or by folder, with the state derived by
+  `@overtchat/shared/agent-attention`, which the web sidebar shares. Agent
+  conversations are drawer destinations at `(drawer)/agent/[id]`;
+  `src/app/(authed)/(drawer)/agents` is the Agents stack: the new-session
+  home with machine, folder and agent pickers, history, and a folder. Agent
+  transcripts, settings, and interaction sheets live in
   `src/components/agents`; authenticated queries and commands live in
   `src/lib/queries/agents.ts`.
 - Mobile does not expose workspace file browsing. Tool command, change, and

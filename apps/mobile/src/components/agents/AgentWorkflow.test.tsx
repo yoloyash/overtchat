@@ -22,6 +22,11 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   navigate: vi.fn(),
   back: vi.fn(),
+  setParams: vi.fn(),
+  // One object, as the real hook returns, so effects keyed on it run once.
+  navigation: { setParams: (params: object) => mocks.setParams(params) },
+  setRead: vi.fn(),
+  sync: vi.fn(),
   pathname: "/chat",
   canGoBack: false,
   toggleDrawer: vi.fn(),
@@ -77,6 +82,7 @@ vi.mock("react-native", async () => {
     accessibilityLabel?: string;
     accessibilityState?: { selected?: boolean; expanded?: boolean };
     onPress?: () => void;
+    onLongPress?: () => void;
     disabled?: boolean;
     value?: string;
     onChangeText?: (value: string) => void;
@@ -200,6 +206,7 @@ vi.mock("react-native", async () => {
     Pressable: ({
       children,
       onPress,
+      onLongPress,
       disabled,
       accessibilityLabel,
       accessibilityState,
@@ -212,6 +219,7 @@ vi.mock("react-native", async () => {
         data-testid={testID}
         disabled={disabled}
         onClick={onPress}
+        onContextMenu={onLongPress}
       >
         {children}
       </button>
@@ -249,6 +257,11 @@ vi.mock("react-native", async () => {
       />
     ),
   };
+});
+// The drawer's virtualized list renders like the plain one here.
+vi.mock("@shopify/flash-list", async () => {
+  const { FlatList } = await import("react-native");
+  return { FlashList: FlatList };
 });
 vi.mock("@gorhom/bottom-sheet", async () => {
   const { useState, useRef, useImperativeHandle, forwardRef } = await import(
@@ -314,6 +327,7 @@ vi.mock("expo-secure-store", () => ({
 }));
 vi.mock("expo-router", async () => ({
   useFocusEffect: (await import("react")).useEffect,
+  useNavigation: () => mocks.navigation,
   useLocalSearchParams: () => mocks.params,
   usePathname: () => mocks.pathname,
   router: {
@@ -321,6 +335,7 @@ vi.mock("expo-router", async () => ({
     push: mocks.push,
     navigate: mocks.navigate,
     back: mocks.back,
+    setParams: mocks.setParams,
     canGoBack: () => mocks.canGoBack,
   },
   Stack: {
@@ -479,6 +494,7 @@ vi.mock("react-native-reanimated", async () => {
   const transition = { delay: () => transition, duration: () => transition, reduceMotion: () => transition };
   return {
     default: { View }, FadeIn: transition, ReduceMotion: { System: "system" },
+    Easing: { linear: "linear" },
     useSharedValue: (value: number) => useRef({ value }).current,
     useAnimatedStyle: (style: () => unknown) => style(),
     withTiming: (value: number) => value,
@@ -502,6 +518,8 @@ vi.mock("@/lib/queries/agents", async () => {
   }),
   useAgentCommand: () => ({ mutateAsync: mocks.send, isPending: false }),
   useMarkAgentSessionSeen: () => {},
+  useSetAgentSessionRead: () => ({ mutate: mocks.setRead, isPending: false }),
+  useSyncAgentWorkspaces: () => ({ mutate: mocks.sync, isPending: false }),
   useAgentConnections: () => ({
     data: mocks.connections,
     refetch: vi.fn(),
@@ -537,11 +555,12 @@ vi.mock("@/lib/agents/drafts", async () => {
 });
 
 import AgentSessionScreen from "@/app/(authed)/(drawer)/agent/[id]";
-import AgentsScreen from "@/app/(authed)/(drawer)/agents/index";
+import NewAgentScreen from "@/app/(authed)/(drawer)/agents/index";
+import AgentHistoryScreen from "@/app/(authed)/(drawer)/agents/history";
 import AgentWorkspaceScreen from "@/app/(authed)/(drawer)/agents/workspace";
-import { DrawerAgents } from "@/components/drawer/DrawerAgents";
+import { AgentsDrawer } from "@/components/drawer/AgentsDrawer";
+import type { useAgentConnections } from "@/lib/queries/agents";
 import { AgentDetailSections } from "./AgentToolDetails";
-import NewAgentScreen from "@/app/(authed)/(drawer)/agents/new";
 
 let root: Root;
 let container: HTMLElement;
@@ -643,15 +662,97 @@ async function click(label: string) {
   expect(button, `button ${label}`).not.toBeNull();
   await act(async () => button!.click());
 }
-async function input(value: string) {
+async function input(value: string, label = "Message agent") {
   const field = container.querySelector(
-    'input[aria-label="Message agent"]',
+    `input[aria-label="${label}"]`,
   ) as HTMLInputElement;
+  expect(field, `input ${label}`).not.toBeNull();
   await act(async () => {
     field.value = value;
     field.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
+async function longPress(label: string) {
+  const button = container.querySelector(
+    `button[aria-label="${label}"]`,
+  ) as HTMLButtonElement | null;
+  expect(button, `button ${label}`).not.toBeNull();
+  await act(async () => {
+    button!.dispatchEvent(new Event("contextmenu", { bubbles: true }));
+  });
+}
+const localHost = {
+  id: "host",
+  connectorId: "connector",
+  name: "My computer",
+  transport: "local" as const,
+  sshAlias: null,
+};
+function chat(
+  id: string,
+  overrides: Partial<AgentConnectionListItem["workspaces"][number]["sessions"][number]> = {},
+): AgentConnectionListItem["workspaces"][number]["sessions"][number] {
+  return {
+    id,
+    providerSessionId: `native-${id}`,
+    name: id,
+    firstMessage: null,
+    messageCount: 2,
+    createdAt: 1,
+    modifiedAt: 1,
+    runtimeStatus: "idle",
+    ...overrides,
+  };
+}
+function connection(
+  provider: AgentConnectionListItem["provider"],
+  workspaces: AgentConnectionListItem["workspaces"],
+): AgentConnectionListItem {
+  return {
+    id: provider,
+    provider,
+    executable: provider,
+    detectedVersion: null,
+    lastValidatedAt: null,
+    host: localHost,
+    workspaces,
+  };
+}
+/** The new-session screen resolves its folder from the list, so one must exist. */
+async function renderNewAgent() {
+  if (!mocks.connections.length) {
+    mocks.connections = [
+      connection("codex", [
+        { id: "workspace", path: "/project", name: "Project", sessions: [] },
+      ]),
+    ];
+  }
+  await render(<NewAgentScreen />);
+}
+function agentConnections() {
+  return {
+    data: mocks.connections,
+    isPending: false,
+    error: null,
+    refreshing: false,
+    refresh: vi.fn(),
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useAgentConnections>;
+}
+function renderAgentsDrawer(pathname = "/chat", onNavigate = vi.fn()) {
+  return render(
+    <AgentsDrawer
+      key={`${pathname}:${mocks.connections.length}`}
+      connections={agentConnections()}
+      pathname={pathname}
+      onNavigate={onNavigate}
+    />,
+  );
+}
+const rowLabels = () =>
+  [...container.querySelectorAll('button[aria-label*="My computer"]')].map((row) =>
+    row.getAttribute("aria-label"),
+  );
 
 it("keeps the drawer button on the left, the session menu on the right, and the context control reachable", async () => {
   await render();
@@ -1017,7 +1118,10 @@ describe("agent history actions", () => {
       { message: "", images: [], forkContext },
     );
     expect(mocks.push).toHaveBeenCalledWith(
-      expect.objectContaining({ pathname: "/agents/new" }),
+      expect.objectContaining({
+        pathname: "/agents",
+        params: expect.objectContaining({ workspace: "workspace", provider: "codex" }),
+      }),
     );
   });
 });
@@ -1219,7 +1323,7 @@ describe("native agent screen workflows", () => {
     expect(mocks.draft.message).toBe("Save for later");
   });
   it("opens the composer without creating a session, then sends using resolved defaults", async () => {
-    await render(<NewAgentScreen />);
+    await renderNewAgent();
     expect(mocks.api).not.toHaveBeenCalled();
     expect(
       container.querySelector('button[aria-label="Start chat"]'),
@@ -1277,7 +1381,7 @@ describe("native agent screen workflows", () => {
       modes: [{ id: "safe", label: "Safe" }],
       defaultModeId: "safe",
     };
-    await render(<NewAgentScreen />);
+    await renderNewAgent();
     await input("Hello");
     await click("Send message");
     expect(mocks.api.mock.calls[0][1]).toEqual({
@@ -1296,7 +1400,7 @@ describe("native agent screen workflows", () => {
       modes: [{ id: "safe", label: "Safe" }],
       defaultModeId: "safe",
     };
-    await render(<NewAgentScreen />);
+    await renderNewAgent();
     await input("Hello");
     await click("Model, effort, and permissions");
     await click("Model");
@@ -1318,7 +1422,7 @@ describe("native agent screen workflows", () => {
     mocks.api
       .mockResolvedValueOnce({ session: { id: "created" } })
       .mockRejectedValueOnce(new Error("Disconnected"));
-    await render(<NewAgentScreen />);
+    await renderNewAgent();
     await input("Keep this message");
     await click("Send message");
     expect(mocks.api).toHaveBeenCalledTimes(2);
@@ -1343,7 +1447,7 @@ describe("native agent screen workflows", () => {
   it("preserves attached fork history and retry identity when its first send fails", async () => {
     mocks.draft.forkContext = { text: "Previous history", launchConfig: { model: model.id } };
     mocks.api.mockResolvedValueOnce({ session: { id: "fork-created" } }).mockRejectedValueOnce(new Error("Disconnected"));
-    await render(<NewAgentScreen />);
+    await renderNewAgent();
     await input("Continue here");
     await click("Send message");
     const message = "Previous history\n\nContinue here";
@@ -1356,7 +1460,7 @@ describe("native agent screen workflows", () => {
 
   it("keeps the draft if creation fails and doesn't send or navigate", async () => {
     mocks.api.mockRejectedValueOnce(new Error("Provider unavailable"));
-    await render(<NewAgentScreen />);
+    await renderNewAgent();
     await input("Keep this draft");
     await click("Send message");
     expect(mocks.api).toHaveBeenCalledTimes(1);
@@ -1366,7 +1470,7 @@ describe("native agent screen workflows", () => {
   });
   it("allows drafting while defaults are unavailable and prevents creation", async () => {
     mocks.catalog = undefined;
-    await render(<NewAgentScreen />);
+    await renderNewAgent();
     await input("Write while loading");
     expect(
       (
@@ -1607,220 +1711,300 @@ describe("agent presentation regressions", () => {
   });
 });
 
-describe("workspace navigation at scale", () => {
-  function setupWorkspaces() {
-    const sessions = Array.from({ length: 105 }, (_, i) => ({
-      id: `chat-${i}`,
-      providerSessionId: `native-${i}`,
-      name: `Chat ${i}`,
-      firstMessage: null,
-      messageCount: 2,
-      createdAt: i,
-      modifiedAt: i,
-      runtimeStatus: "idle" as const,
-    }));
-    const host = {
-      id: "host",
-      connectorId: "connector",
-      name: "My computer",
-      transport: "local" as const,
-      sshAlias: null,
-    };
-    const connection = {
-      id: "codex",
-      provider: "codex" as const,
-      executable: "codex",
-      detectedVersion: null,
-      lastValidatedAt: null,
-      host,
-      workspaces: [
-        { id: "workspace", path: "/project", name: "Project", sessions },
+describe("agents drawer and navigation", () => {
+  const completed = { outcome: "completed" as const, startedAt: 10, endedAt: 40 };
+  function setupSessions() {
+    const done = Array.from({ length: 9 }, (_, i) =>
+      chat(`Done ${i}`, { modifiedAt: 100 - i, lastTurn: completed, readTurnEndedAt: 40 }),
+    );
+    mocks.connections = [
+      connection("codex", [
+        {
+          id: "workspace",
+          path: "/project",
+          name: "Project",
+          sessions: [
+            chat("Deploy", {
+              runtimeStatus: "running",
+              attention: {
+                kind: "approval",
+                id: "request",
+                requestedAt: 500,
+                title: "Allow Bash",
+                detail: "npm test",
+              },
+            }),
+            chat("Migrate", {
+              lastTurn: { ...completed, outcome: "failed", endedAt: 300, error: "Boom" },
+            }),
+            chat("Refactor", { lastTurn: { ...completed, endedAt: 200 } }),
+            chat("Index", { runtimeStatus: "running", turnStartedAt: 400 }),
+            ...done,
+          ],
+        },
         {
           id: "other",
           path: "/other",
           name: "Other project",
           sessions: [
-            {
-              ...sessions[0],
-              id: "other-chat",
+            chat("other-chat", {
               name: "Other chat",
-              modifiedAt: null,
-              createdAt: 300,
-            },
+              modifiedAt: 50,
+              lastTurn: completed,
+              readTurnEndedAt: 40,
+            }),
           ],
         },
-      ],
-    };
-    mocks.connections = [
-      connection,
-      {
-        ...connection,
-        id: "claude",
-        provider: "claude",
-        workspaces: [
-          {
-            id: "claude-workspace",
-            name: "Project",
-            path: "/project",
-            sessions: [
-              {
-                ...sessions[0],
-                id: "claude-chat",
-                name: "Claude chat",
-                modifiedAt: 200,
-              },
-            ],
-          },
-        ],
-      },
+      ]),
+      connection("claude", [
+        {
+          id: "claude-workspace",
+          path: "/project",
+          name: "Project",
+          sessions: [
+            chat("claude-chat", {
+              name: "Claude chat",
+              modifiedAt: 200,
+              lastTurn: completed,
+              readTurnEndedAt: 40,
+            }),
+          ],
+        },
+      ]),
     ];
   }
-  it("opens the five most recent agent chats directly from the drawer and marks the current one", async () => {
-    setupWorkspaces();
-    mocks.pathname = "/agent/claude-chat";
+
+  it("lists sessions by what they need, shortens Done, and opens sessions and the home", async () => {
+    setupSessions();
     const closeDrawer = vi.fn();
-    await render(<DrawerAgents onNavigate={closeDrawer} />);
-    await click("Expand agents");
-    const rows = [...container.querySelectorAll('button[aria-label*="My computer"]')];
-    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
-      "Other chat, Codex, Other project · My computer",
+    await renderAgentsDrawer("/agent/other-chat", closeDrawer);
+    const text = container.textContent!;
+    const order = ["Needs input", "Failed", "Ready to review", "Working", "Done"].map((label) =>
+      text.indexOf(label),
+    );
+    expect(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1]))).toBe(true);
+    // The open session stays listed although Done is shortened to seven.
+    expect(rowLabels()).toEqual([
+      "Needs approval: Deploy, Codex, Project · My computer",
+      "Failed: Migrate, Codex, Project · My computer",
+      "Finished: Refactor, Codex, Project · My computer",
+      "Working: Index, Codex, Project · My computer",
       "Claude chat, Claude Code, Project · My computer",
-      "Chat 104, Codex, Project · My computer",
-      "Chat 103, Codex, Project · My computer",
-      "Chat 102, Codex, Project · My computer",
+      ...[0, 1, 2, 3, 4, 5].map((i) => `Done ${i}, Codex, Project · My computer`),
+      "Other chat, Codex, Other project · My computer",
     ]);
-    expect(rows[1].getAttribute("aria-selected")).toBe("true");
-    expect(rows[0].getAttribute("aria-selected")).toBe("false");
+    expect(text).toContain("Allow Bash · npm test");
+    expect(
+      container
+        .querySelector('button[aria-label="Other chat, Codex, Other project · My computer"]')
+        ?.getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(container.querySelector('[data-testid="agent-state-working"]')).not.toBeNull();
+    await click("Show 3 more sessions");
+    expect(rowLabels()).toHaveLength(15);
+    expect(container.querySelector('button[aria-label="Show fewer sessions"]')).not.toBeNull();
     await click("Claude chat, Claude Code, Project · My computer");
     expect(closeDrawer).toHaveBeenCalledTimes(1);
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       pathname: "/agent/[id]",
       params: { id: "claude-chat", workspace: "claude-workspace", name: "Project" },
     });
-    await click("View all agents");
+    await click("New agent");
     expect(mocks.navigate).toHaveBeenLastCalledWith("/agents");
-    expect(closeDrawer).toHaveBeenCalledTimes(2);
-    expect(container.querySelector('button[aria-label="New agent chat"]')).toBeNull();
-  });
-
-  it("starts collapsed and remembers expansion across drawer remounts", async () => {
-    setupWorkspaces();
-    const drawer = (key: string) => <DrawerAgents key={key} onNavigate={() => {}} />;
-    await render(drawer("first"));
-    expect(container.querySelector('button[aria-label="Expand agents"]')?.getAttribute("aria-expanded")).toBe("false");
-    expect(container.textContent).not.toContain("Claude chat");
-    expect(container.textContent).not.toContain("View all");
-    expect(container.querySelector('button[aria-label="New agent chat"]')).toBeNull();
-    await click("Expand agents");
-    expect(container.querySelector('button[aria-label="Collapse agents"]')?.getAttribute("aria-expanded")).toBe("true");
-    expect(container.textContent).toContain("Claude chat");
-    expect(mocks.storage.get("overtchat.drawer.agentsExpanded")).toBe("1");
-    await render(drawer("reopened"));
-    expect(container.textContent).toContain("Claude chat");
-    await click("Collapse agents");
-    expect(mocks.storage.get("overtchat.drawer.agentsExpanded")).toBe("0");
-    mocks.pathname = "/agent/claude-chat";
-    await render(drawer("agent-chat"));
-    expect(container.querySelector('button[aria-label="Expand agents"]')).not.toBeNull();
-    expect(container.textContent).not.toContain("Claude chat");
-    expect(mocks.navigate).not.toHaveBeenCalled();
-  });
-
-  it("keeps provider selection in the workspace with plain provider names", async () => {
-    setupWorkspaces();
-    await render(<AgentsScreen />);
-    await click("New chat in Project");
+    await click("Search agent sessions");
     expect(mocks.push).toHaveBeenLastCalledWith({
-      pathname: "/agents/workspace",
-      params: { workspace: "workspace", name: "Project", create: "1" },
+      pathname: "/agents/history",
+      params: { focus: "1" },
     });
-    await render(<AgentWorkspaceScreen />);
-    await click("New chat");
-    const picker = container.querySelector('[role="dialog"]');
-    expect(picker?.textContent).toContain("Project");
-    expect(picker?.querySelector('button[aria-label="Codex"]')).not.toBeNull();
-    expect(picker?.querySelector('button[aria-label="Claude Code"]')).not.toBeNull();
-    expect(picker?.textContent).not.toContain("New Claude Code chat in Project");
-    await click("Claude Code");
-    expect(mocks.push).toHaveBeenLastCalledWith({
-      pathname: "/agents/new",
-      params: { workspace: "claude-workspace", provider: "claude", name: "Project" },
-    });
-    expect(mocks.api).not.toHaveBeenCalled();
+    expect(closeDrawer).toHaveBeenCalledTimes(3);
   });
 
-  it("keeps agent navigation available when there are no sessions", async () => {
-    await render(<DrawerAgents onNavigate={() => {}} />);
-    await click("Expand agents");
-    expect(container.textContent).toContain("No agent chats yet");
-    await click("View all agents");
-    expect(mocks.navigate).toHaveBeenCalledWith("/agents");
+  it("keeps the listed sessions when a refresh fails, and offers a retry only before any loaded", async () => {
+    setupSessions();
+    const failed = {
+      ...agentConnections(),
+      error: new Error("offline"),
+    } as ReturnType<typeof useAgentConnections>;
+    await render(<AgentsDrawer connections={failed} pathname="/chat" onNavigate={vi.fn()} />);
+    expect(rowLabels().length).toBeGreaterThan(0);
+    expect(container.textContent).not.toContain("Couldn't load agent sessions");
+    await render(<div key="remount" />);
+    const unloaded = {
+      ...agentConnections(),
+      data: undefined,
+      error: new Error("offline"),
+    } as ReturnType<typeof useAgentConnections>;
+    await render(<AgentsDrawer connections={unloaded} pathname="/chat" onNavigate={vi.fn()} />);
+    expect(rowLabels()).toEqual([]);
+    expect(container.textContent).toContain("Couldn't load agent sessions. Tap to retry.");
   });
 
-  it("shows global recents above collapsed workspaces and opens chats and full history", async () => {
-    setupWorkspaces();
-    await render(<AgentsScreen />);
+  it("writes the most recent setup into the home's route once, and keeps a named one", async () => {
+    mocks.params = {};
+    await renderNewAgent();
+    expect(mocks.setParams).toHaveBeenCalledTimes(1);
+    expect(mocks.setParams).toHaveBeenCalledWith({ workspace: "workspace", provider: "codex" });
+    await render(<div key="remount" />);
+    mocks.params = { workspace: "workspace", provider: "codex" };
+    await renderNewAgent();
+    expect(mocks.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it("folds a group and remembers it, then groups by workspace on request", async () => {
+    setupSessions();
+    await renderAgentsDrawer();
+    await click("Collapse Done");
+    expect(container.textContent).not.toContain("Done 0");
+    expect(JSON.parse(mocks.storage.get("overtchat.drawer.agentGroupsCollapsed")!)).toEqual(["done"]);
+    await render(<div key="remount" />);
+    await renderAgentsDrawer();
+    expect(container.textContent).not.toContain("Done 0");
     expect(
-      [...container.querySelectorAll('button[aria-label*="My computer"]')].map(
-        (button) => button.getAttribute("aria-label"),
-      ),
-    ).toEqual([
-      "Other chat, Codex, Other project · My computer",
-      "Claude chat, Claude Code, Project · My computer",
-      "Chat 104, Codex, Project · My computer",
-      "Chat 103, Codex, Project · My computer",
-      "Chat 102, Codex, Project · My computer",
-    ]);
-    expect(container.textContent).toContain("Other project");
-    expect(container.textContent).not.toContain("Chat 0");
-    expect(
-      container.querySelectorAll('button[aria-label="Expand Project"]'),
-    ).toHaveLength(1);
-    await click("Other chat, Codex, Other project · My computer");
-    expect(mocks.push).toHaveBeenLastCalledWith({
-      pathname: "/agent/[id]",
-      params: { id: "other-chat", workspace: "other", name: "Other project" },
+      container.querySelector('button[aria-label="Expand Done"]')?.getAttribute("aria-expanded"),
+    ).toBe("false");
+    await click("Agent list options");
+    await click("Group by workspace");
+    expect(mocks.storage.get("overtchat.drawer.agentGrouping")).toBe("workspace");
+    expect(container.textContent).toContain("Workspaces");
+    expect(container.textContent).toContain("My computer · 14 sessions");
+    expect(container.textContent).toContain("My computer · 1 session");
+    expect(container.textContent).toContain("Done 0");
+    await click("New session in Project");
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      pathname: "/agents",
+      params: { workspace: "claude-workspace", provider: "claude" },
     });
-    await click("Expand Project");
-    expect(container.textContent).toContain("Chat 101");
     await click("Collapse Project");
-    expect(container.textContent).not.toContain("Chat 101");
-    expect(container.textContent).toContain("Claude chat");
-    await click("Expand Project");
-    await click("View all 106 chats");
+    expect(container.textContent).not.toContain("Done 0");
+    // Folded, the folder shows the most urgent state of its sessions.
+    expect(container.querySelector('[data-testid="agent-state-approval"]')).not.toBeNull();
+  });
+
+  it("marks finished sessions read from a row and all at once", async () => {
+    setupSessions();
+    await renderAgentsDrawer();
+    await longPress("Finished: Refactor, Codex, Project · My computer");
+    await click("Mark as read");
+    expect(mocks.setRead).toHaveBeenLastCalledWith({ sessionId: "Refactor", read: true });
+    await longPress("Done 0, Codex, Project · My computer");
+    await click("Mark as unread");
+    expect(mocks.setRead).toHaveBeenLastCalledWith({ sessionId: "Done 0", read: false });
+    await longPress("Working: Index, Codex, Project · My computer");
+    expect(container.querySelector('[role="menu"] button[aria-label="Mark as read"]')).toBeNull();
+    await click("Open workspace");
     expect(mocks.push).toHaveBeenLastCalledWith({
       pathname: "/agents/workspace",
       params: { workspace: "workspace", name: "Project" },
     });
+    mocks.setRead.mockClear();
+    await click("Agent list options");
+    await click("Mark all as read");
+    expect(mocks.setRead.mock.calls).toEqual([[{ sessionId: "Refactor", read: true }]]);
+    await click("Agent list options");
+    await click("Refresh sessions");
+    expect(mocks.sync).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains how to add a workspace when there is none", async () => {
+    await renderAgentsDrawer();
+    expect(container.textContent).toContain("No sessions yet.");
+    mocks.params = {};
+    await render(<NewAgentScreen />);
+    expect(container.textContent).toContain("Your agents, on your phone");
+    await click("Agent connections");
+    expect(mocks.push).toHaveBeenLastCalledWith("/settings/connections");
+  });
+
+  it("starts the home in the most recent setup and switches folder and agent through the pills", async () => {
+    setupSessions();
+    mocks.params = {};
+    await render(<NewAgentScreen />);
+    expect(container.textContent).toContain("New Codex session");
+    expect(container.textContent).toContain("Project · My computer");
+    expect(container.querySelector('button[aria-label^="Machine:"]')).toBeNull();
+    await click("Workspace: Project");
+    await click("Other project");
+    expect(mocks.setParams).toHaveBeenLastCalledWith({
+      workspace: "other",
+      provider: "codex",
+      chooseWorkspace: "0",
+    });
+    await click("Agent: Codex");
+    expect(
+      container.querySelector('[role="dialog"] button[aria-label="Claude Code"]'),
+    ).not.toBeNull();
+    await click("Claude Code");
+    expect(mocks.setParams).toHaveBeenLastCalledWith({
+      workspace: "claude-workspace",
+      provider: "claude",
+      chooseWorkspace: "0",
+    });
+    expect(mocks.api).not.toHaveBeenCalled();
+  });
+
+  it("opens the named folder on the home and keeps a fork on its agent", async () => {
+    setupSessions();
+    mocks.params = { workspace: "other", provider: "codex", fork: "fork-1" };
+    mocks.draft.forkContext = { text: "Previous history", launchConfig: {} };
+    await render(<NewAgentScreen />);
+    expect(container.textContent).toContain("Other project · My computer");
+    expect(container.textContent).toContain("Chat history attached · Other project");
+    expect(container.querySelector('button[aria-label^="Agent:"]')).toBeNull();
+    await click("Change workspace");
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("Project");
+  });
+
+  it("starts a folder's session with its most recent agent and opens its sessions", async () => {
+    setupSessions();
+    mocks.params = { workspace: "workspace", name: "Project" };
     await render(<AgentWorkspaceScreen />);
-    expect(container.textContent).toContain("Chat 0");
-    await click("Claude chat, Claude Code");
+    expect(container.textContent).toContain("14 sessions · Most recent first");
+    await click("New session");
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      pathname: "/agents",
+      params: { workspace: "claude-workspace", provider: "claude" },
+    });
+    await click("Claude chat, Claude Code, Project · My computer");
     expect(mocks.push.mock.lastCall?.[0].params).toEqual({
       id: "claude-chat",
       workspace: "claude-workspace",
       name: "Project",
     });
+    await input("Refactor", "Search sessions in this workspace");
+    expect(rowLabels()).toEqual(["Finished: Refactor, Codex, Project · My computer"]);
   });
-  it("finds an older chat outside the preview without expanding all histories", async () => {
-    setupWorkspaces();
-    await render(<AgentsScreen />);
-    const field = container.querySelector(
-      'input[aria-label="Search workspaces and chats"]',
-    ) as HTMLInputElement;
-    await act(async () => {
-      field.value = "Chat 0";
-      field.dispatchEvent(new window.Event("input", { bubbles: true }));
-    });
-    expect(container.textContent).toContain("Chat 0");
-    expect(container.textContent).not.toContain("Other project");
-    expect(container.textContent).not.toContain("Recent chats");
-    expect(container.querySelectorAll("[data-provider]")).toHaveLength(1);
+
+  it("searches history by every word and narrows it by folder and agent", async () => {
+    setupSessions();
+    mocks.params = {};
+    await render(<AgentHistoryScreen />);
+    expect(rowLabels()).toHaveLength(15);
+    expect(container.textContent).toContain("Older");
+    expect(container.textContent).toContain("Allow Bash · npm test");
+    expect(container.textContent).toContain("Boom");
+    await input("refactor project", "Search sessions");
+    expect(rowLabels()).toEqual(["Finished: Refactor, Codex, Project · My computer"]);
     await click("Clear search");
-    expect(container.textContent).toContain("Recent chats");
-    expect(container.textContent).not.toContain("Chat 0");
+    await click("Filter by folder");
+    await click("Other project");
+    expect(rowLabels()).toEqual(["Other chat, Codex, Other project · My computer"]);
+    // An agent with no sessions in the folder is not offered.
+    await click("Filter by agent");
     expect(
-      container.querySelector('button[aria-label="Expand Project"]'),
-    ).not.toBeNull();
+      container.querySelector('[role="dialog"] button[aria-label="Claude Code"]'),
+    ).toBeNull();
+    await click("Codex");
+    await click("Filter by folder");
+    await click("All folders");
+    expect(rowLabels()).toHaveLength(14);
+    await click("Filter by agent");
+    await click("Claude Code");
+    expect(rowLabels()).toEqual(["Claude chat, Claude Code, Project · My computer"]);
+    await click("Claude chat, Claude Code, Project · My computer");
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      pathname: "/agent/[id]",
+      params: { id: "claude-chat", workspace: "claude-workspace", name: "Project" },
+    });
   });
 });
 
@@ -1970,60 +2154,30 @@ describe("agent working indicators", () => {
     await render();
     expect(spinner()).toBeNull();
   });
-  it("shows activity on running chat rows and on their collapsed workspace", async () => {
+  it("shows a turning mark on working rows and on their folded workspace", async () => {
     mocks.connections = [
-      {
-        id: "codex",
-        provider: "codex",
-        executable: "codex",
-        detectedVersion: null,
-        lastValidatedAt: null,
-        host: {
-          id: "host",
-          connectorId: "connector",
-          name: "Computer",
-          transport: "local",
-          sshAlias: null,
+      connection("codex", [
+        {
+          id: "workspace",
+          name: "Project",
+          path: "/project",
+          sessions: [chat("Working chat", { runtimeStatus: "running", turnStartedAt: 1 })],
         },
-        workspaces: [
-          {
-            id: "workspace",
-            name: "Project",
-            path: "/project",
-            sessions: [
-              {
-                id: "running-chat",
-                providerSessionId: "native",
-                name: "Working chat",
-                firstMessage: null,
-                messageCount: 2,
-                modifiedAt: 1,
-                createdAt: 1,
-                runtimeStatus: "running",
-              },
-            ],
-          },
-        ],
-      },
+      ]),
     ];
-    await render(<AgentsScreen />);
-    expect(
-      container.querySelector('[aria-label="Agent working"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="1 agent working in Project"]'),
-    ).not.toBeNull();
-    await click("Expand Project");
+    mocks.storage.set("overtchat.drawer.agentGrouping", "workspace");
+    await renderAgentsDrawer();
+    const working = () => container.querySelector('[data-testid="agent-state-working"]');
+    expect(working()).not.toBeNull();
+    expect(container.textContent).toContain("Working chat");
     await click("Collapse Project");
-    expect(
-      container.querySelector('[aria-label="1 agent working in Project"]'),
-    ).not.toBeNull();
+    expect(container.textContent).not.toContain("Working chat");
+    expect(working()).not.toBeNull();
     mocks.connections[0].workspaces[0].sessions[0].runtimeStatus = "idle";
     mocks.connections = [...mocks.connections];
-    await render(<AgentsScreen />);
-    expect(
-      container.querySelector('[aria-label="1 agent working in Project"]'),
-    ).toBeNull();
+    await render(<div key="remount" />);
+    await renderAgentsDrawer();
+    expect(working()).toBeNull();
   });
 });
 
@@ -2213,6 +2367,11 @@ describe("audit regressions", () => {
           finish = resolve;
         }),
     );
+    mocks.connections = [
+      connection("codex", [
+        { id: "workspace", path: "/project", name: "Project", sessions: [] },
+      ]),
+    ];
     await render(<NewAgentScreen key="old" />);
     await input("Old request");
     await click("Send message");
@@ -2273,61 +2432,28 @@ describe("delivery recovery", () => {
   });
 });
 
-it("opens a single-agent workspace directly in the new chat composer", async () => {
+it("starts an empty folder's session with the agent that has its record", async () => {
   mocks.connections = [
-    {
-      id: "connection",
-      provider: "codex",
-      executable: "codex",
-      detectedVersion: null,
-      lastValidatedAt: null,
-      host: {
-        id: "host",
-        connectorId: "connector",
-        name: "Host",
-        transport: "local",
-        sshAlias: null,
-      },
-      workspaces: [
-        { id: "workspace", name: "Solo", path: "/solo", sessions: [] },
-      ],
-    },
+    connection("codex", [
+      { id: "workspace", name: "Solo", path: "/solo", sessions: [] },
+    ]),
   ];
-  await render(<AgentsScreen />);
-  // The folder screen knows which agents the machine has, so it decides.
-  await click("New chat in Solo");
-  expect(mocks.push).toHaveBeenLastCalledWith({
-    pathname: "/agents/workspace",
-    params: { workspace: "workspace", name: "Solo", create: "1" },
-  });
-  mocks.params = { workspace: "workspace", name: "Solo", create: "1" };
+  mocks.params = { workspace: "workspace", name: "Solo" };
   await render(<AgentWorkspaceScreen />);
-  expect(mocks.push).toHaveBeenLastCalledWith({
-    pathname: "/agents/new",
-    params: { workspace: "workspace", provider: "codex", name: "Solo" },
+  expect(container.textContent).toContain("Start your first session");
+  await click("New session");
+  expect(mocks.navigate).toHaveBeenLastCalledWith({
+    pathname: "/agents",
+    params: { workspace: "workspace", provider: "codex" },
   });
   expect(container.querySelector('[role="dialog"]')).toBeNull();
 });
 
 it("offers every agent the machine has, starting from the folder's record", async () => {
   mocks.connections = [
-    {
-      id: "connection",
-      provider: "codex",
-      executable: "codex",
-      detectedVersion: null,
-      lastValidatedAt: null,
-      host: {
-        id: "host",
-        connectorId: "connector",
-        name: "Host",
-        transport: "local",
-        sshAlias: null,
-      },
-      workspaces: [
-        { id: "workspace", name: "Solo", path: "/solo", sessions: [] },
-      ],
-    },
+    connection("codex", [
+      { id: "workspace", name: "Solo", path: "/solo", sessions: [] },
+    ]),
   ];
   // Detection finds Claude Code on the machine though no chat used it here.
   mocks.providerSnapshot = {
@@ -2340,18 +2466,22 @@ it("offers every agent the machine has, starting from the folder's record", asyn
           : { provider, status: "unavailable" },
     ),
   };
-  mocks.params = { workspace: "workspace", name: "Solo", create: "1" };
-  await render(<AgentWorkspaceScreen />);
+  mocks.params = { workspace: "workspace", provider: "codex" };
+  await render(<NewAgentScreen />);
+  expect(container.textContent).toContain("New Codex session");
+  await click("Agent: Codex");
   const picker = container.querySelector('[role="dialog"]');
   expect(
     [...(picker?.querySelectorAll("button[aria-label]") ?? [])]
       .map((button) => button.getAttribute("aria-label"))
-      .filter((label) => label !== "Close agent picker"),
+      .filter((label) => label !== "Close Agent"),
   ).toEqual(["Codex", "Claude Code"]);
   await click("Claude Code");
-  expect(mocks.push).toHaveBeenLastCalledWith({
-    pathname: "/agents/new",
-    params: { workspace: "workspace", provider: "claude", name: "Solo" },
+  // The folder's record stands in until Claude Code has its own.
+  expect(mocks.setParams).toHaveBeenLastCalledWith({
+    workspace: "workspace",
+    provider: "claude",
+    chooseWorkspace: "0",
   });
 });
 

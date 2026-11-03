@@ -1,21 +1,33 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import { useTheme } from "@/lib/theme";
-import { sessionTitle, type WorkspaceSession } from "@/lib/agents/workspaces";
+import {
+  agentSessionRowMeta,
+  agentSessionRowTime,
+  agentSessionRowTitle,
+  type AgentAttentionItem,
+  type AgentSessionRowContext,
+} from "@/lib/agents/attention";
+import { agentHostLabel } from "@/lib/agents/workspaces";
 import { useAgentGitStatus } from "@/lib/queries/agents";
-import { AgentWorkingIndicator } from "./AgentWorkingIndicator";
 import { AgentProviderIcon } from "./AgentProviderIcon";
+import {
+  AgentSessionStatusIcon,
+  agentSessionStateColor,
+  agentSessionStateLabel,
+} from "./AgentSessionStatus";
 
 export function AgentSearch({
   value,
   onChangeText,
-  placeholder = "Search workspaces and chats",
+  placeholder = "Search sessions",
+  autoFocus = false,
 }: {
   value: string;
   onChangeText: (value: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }) {
   const { colors, fonts } = useTheme();
   return (
@@ -44,6 +56,8 @@ export function AgentSearch({
         onChangeText={onChangeText}
         autoCorrect={false}
         autoCapitalize="none"
+        autoFocus={autoFocus}
+        returnKeyType="search"
         style={{
           flex: 1,
           minWidth: 0,
@@ -72,109 +86,119 @@ export function AgentSearch({
   );
 }
 
+/** What a row announces: its state, title, agent and folder. */
+export function agentSessionRowLabel(entry: AgentAttentionItem): string {
+  const { item, group, state } = entry;
+  const stateLabel = agentSessionStateLabel(state);
+  return `${stateLabel ? `${stateLabel}: ` : ""}${agentSessionRowTitle(entry)}, ${agentProviderMetadata(item.provider).label}, ${group.name} · ${agentHostLabel(group.host)}`;
+}
+
+/**
+ * One agent session, in the web sidebar's row design: its state in a fixed
+ * slot before the title, the age or live working time on the right, and a
+ * second line led by the agent's mark. An optional third line carries what
+ * the session asks, why it failed, or how it last replied.
+ */
 export function AgentSessionRow({
-  item,
-  workspaceName,
-  contextLabel,
-  compact = false,
+  entry,
+  context,
+  now,
+  time,
   selected = false,
+  detail,
   onPress,
+  onLongPress,
 }: {
-  item: WorkspaceSession;
-  workspaceName: string;
-  contextLabel?: string;
-  compact?: boolean;
+  entry: AgentAttentionItem;
+  context: AgentSessionRowContext;
+  now: number;
+  /** Replaces the age, where a list is sorted by another time. */
+  time?: string;
   selected?: boolean;
-  onPress?: () => void;
+  detail?: string | null;
+  onPress: () => void;
+  onLongPress?: () => void;
 }) {
-  const { colors, fonts } = useTheme();
-  const { session, provider, workspaceId } = item;
-  const running = session.runtimeStatus === "running";
-  const title = sessionTitle(session);
+  const theme = useTheme();
+  const { colors, fonts, radii } = theme;
+  const { item, state } = entry;
+  const emphasised = state !== "idle" && state !== "working";
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${title}, ${agentProviderMetadata(provider).label}${contextLabel ? `, ${contextLabel}` : ""}${running ? ", working" : ""}`}
-      onPress={
-        onPress ??
-        (() =>
-          router.push({
-            pathname: "/agent/[id]",
-            params: {
-              id: session.id,
-              workspace: workspaceId,
-              name: workspaceName,
-            },
-          }))
-      }
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: compact ? 8 : 12,
-        paddingHorizontal: 12,
-        paddingVertical: compact ? 9 : 13,
-        minHeight: compact ? 52 : 64,
-        borderRadius: 10,
-        backgroundColor: selected
-          ? colors.accent
-          : pressed
-            ? colors.muted
-            : "transparent",
-      })}
+      accessibilityLabel={agentSessionRowLabel(entry)}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={300}
+      style={({ pressed }) => [
+        styles.row,
+        {
+          borderRadius: radii.md,
+          backgroundColor: selected
+            ? colors.accent
+            : pressed
+              ? colors.muted
+              : "transparent",
+        },
+      ]}
     >
-      <AgentProviderIcon provider={provider} size={compact ? 18 : 24} />
-      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-        <Text
-          numberOfLines={1}
-          style={{
-            color: colors.foreground,
-            fontFamily: fonts.sansMedium,
-            fontSize: 14,
-          }}
-        >
-          {title}
-        </Text>
-        {contextLabel && !compact && (
+      <View style={styles.statusSlot}>
+        <AgentSessionStatusIcon state={state} />
+      </View>
+      <View style={styles.body}>
+        <View style={styles.titleLine}>
           <Text
             numberOfLines={1}
-            style={{
-              color: colors.mutedForeground,
-              fontFamily: fonts.sansRegular,
-              fontSize: 12,
-            }}
+            style={[
+              styles.title,
+              {
+                color: selected ? colors.accentForeground : colors.foreground,
+                fontFamily: emphasised ? fonts.sansMedium : fonts.sansRegular,
+              },
+            ]}
           >
-            {contextLabel}
+            {agentSessionRowTitle(entry)}
           </Text>
-        )}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          {running && <AgentWorkingIndicator />}
           <Text
-            numberOfLines={1}
-            style={{
-              color: colors.mutedForeground,
-              fontFamily: fonts.sansRegular,
-              fontSize: 12,
-            }}
+            style={[
+              styles.time,
+              { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+            ]}
           >
-            {compact
-              ? (contextLabel ?? agentProviderMetadata(provider).label)
-              : running
-                ? "Working"
-                : agentProviderMetadata(provider).label}
-            {!compact && session.modifiedAt
-              ? ` · ${new Date(session.modifiedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
-              : ""}
+            {time ?? agentSessionRowTime(entry, now)}
           </Text>
         </View>
+        <View style={styles.metaLine}>
+          <AgentProviderIcon provider={item.provider} size={12} />
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.meta,
+              { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+            ]}
+          >
+            {agentSessionRowMeta(entry, context)}
+          </Text>
+        </View>
+        {!!detail && (
+          <Text
+            numberOfLines={2}
+            style={[
+              styles.detail,
+              {
+                color:
+                  state === "failed" || state === "approval" || state === "question"
+                    ? agentSessionStateColor(state, theme)
+                    : colors.mutedForeground,
+                fontFamily: fonts.sansRegular,
+              },
+            ]}
+          >
+            {detail}
+          </Text>
+        )}
       </View>
-      {!compact && (
-        <Ionicons
-          name="chevron-forward"
-          size={15}
-          color={colors.mutedForeground}
-        />
-      )}
     </Pressable>
   );
 }
@@ -245,3 +269,28 @@ export function AgentBranch({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 9,
+    paddingLeft: 10,
+    paddingRight: 12,
+    minHeight: 52,
+  },
+  statusSlot: {
+    width: 14,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  body: { flex: 1, minWidth: 0, gap: 3 },
+  titleLine: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  title: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
+  time: { fontSize: 12, lineHeight: 20, fontVariant: ["tabular-nums"] },
+  metaLine: { flexDirection: "row", alignItems: "center", gap: 6 },
+  meta: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 16 },
+  detail: { fontSize: 12, lineHeight: 16, marginTop: 2 },
+});

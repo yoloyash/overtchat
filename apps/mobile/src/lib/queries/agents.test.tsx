@@ -11,6 +11,7 @@ import {
   useAgentSession,
   useAgentConnections,
   useMarkAgentSessionSeen,
+  useSetAgentSessionRead,
 } from "./agents";
 
 type StreamOptions = ConstructorParameters<typeof AgentSessionStream>[0];
@@ -289,4 +290,79 @@ it("marks the open session seen when it is idle in the foreground, not while it 
   root = createRoot(container);
   await render("idle");
   expect(mocks.fetch).toHaveBeenCalledTimes(1);
+});
+
+it("moves a session's read mark in the cached list at once and reverts it when the server refuses", async () => {
+  const listKey = queryKeys.agentConnections("https://chat.example");
+  const connections = [
+    {
+      id: "codex",
+      provider: "codex",
+      executable: "codex",
+      detectedVersion: null,
+      lastValidatedAt: null,
+      host: { id: "host", connectorId: "connector", name: "Computer", transport: "local", sshAlias: null },
+      workspaces: [
+        {
+          id: "workspace",
+          name: "Project",
+          path: "/project",
+          sessions: [
+            {
+              id: "session",
+              providerSessionId: "native",
+              name: "Finished",
+              firstMessage: null,
+              messageCount: 2,
+              createdAt: 1,
+              modifiedAt: 1,
+              runtimeStatus: "idle",
+              lastTurn: { outcome: "completed", startedAt: 10, endedAt: 50 },
+              readTurnEndedAt: null,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  client.setQueryData(listKey, connections);
+  let setRead!: ReturnType<typeof useSetAgentSessionRead>;
+  function ReadProbe() {
+    setRead = useSetAgentSessionRead();
+    return null;
+  }
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={client}>
+        <ReadProbe />
+      </QueryClientProvider>,
+    ),
+  );
+  const readTurnEndedAt = () =>
+    (client.getQueryData(listKey) as typeof connections)[0].workspaces[0].sessions[0].readTurnEndedAt;
+  let finish!: (value: unknown) => void;
+  mocks.fetch.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  await act(async () => {
+    setRead.mutate({ sessionId: "session", read: true });
+  });
+  await flushNotifications();
+  expect(readTurnEndedAt()).toBe(50);
+  expect(mocks.fetch).toHaveBeenCalledWith(
+    "/api/agent-sessions/session/read",
+    expect.objectContaining({ method: "PUT", body: JSON.stringify({ read: true }) }),
+  );
+  await act(async () => {
+    finish(new Response(null, { status: 204 }));
+  });
+  await flushNotifications();
+  expect(readTurnEndedAt()).toBe(50);
+
+  // Marking unread moves the mark just before the turn; a refusal refetches.
+  mocks.fetch.mockRejectedValueOnce(new Error("Refused"));
+  mocks.fetch.mockResolvedValue({ connections });
+  await act(async () => {
+    setRead.mutate({ sessionId: "session", read: false });
+  });
+  await flushNotifications();
+  expect(client.getQueryState(listKey)?.isInvalidated || readTurnEndedAt() === null).toBe(true);
 });

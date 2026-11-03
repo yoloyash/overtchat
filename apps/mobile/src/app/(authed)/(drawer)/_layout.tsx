@@ -25,7 +25,8 @@ export default function DrawerLayout() {
     >
       <Drawer.Screen name="chat" />
       {/* A conversation is a destination like a chat: the menu button opens
-          the drawer, and the Agents list below stays a browse stack. */}
+          the drawer. The Agents stack below holds the new-session home,
+          history and folders. */}
       <Drawer.Screen
         name="agent/[id]"
         options={{ title: "", headerTitleAlign: "left" }}

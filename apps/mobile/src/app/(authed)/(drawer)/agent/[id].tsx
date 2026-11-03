@@ -168,12 +168,12 @@ function AgentSession({
           images: [],
           forkContext: result.forkContext,
         });
+        // The new-session screen is the Agents home; it carries the history.
         router.push({
-          pathname: "/agents/new",
+          pathname: "/agents",
           params: {
             workspace,
             provider: snapshot.provider,
-            name,
             fork,
             chooseWorkspace: chooseWorkspace ? "1" : "0",
           },

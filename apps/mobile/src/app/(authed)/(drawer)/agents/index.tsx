@@ -1,333 +1,472 @@
-import { useMemo, useState } from "react";
-import { Pressable, SectionList, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { router, Stack } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Keyboard, StyleSheet, Text, View } from "react-native";
+import { router, Stack, useLocalSearchParams, useNavigation } from "expo-router";
+import { useHeaderHeight } from "expo-router/react-navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  KeyboardAvoidingView,
+  useKeyboardState,
+} from "react-native-keyboard-controller";
+import { randomUUID } from "expo-crypto";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  agentProviderMetadata,
+  agentPromptWithHistory,
+  isAgentProviderId,
+  type AgentProviderId,
+  type AgentSessionLaunchConfig,
+} from "@overtchat/agent-bridge";
+import { resolveAgentSessionDraftSelection } from "@overtchat/shared/agent-creation";
+import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
+import { AgentComposer } from "@/components/agents/AgentComposer";
+import {
+  AgentControls,
+  type AgentSettingsPanel,
+} from "@/components/agents/AgentControls";
+import {
+  AgentSetupPicker,
+  type AgentSetupPickerPanel,
+} from "@/components/agents/AgentSetupPicker";
 import {
   AgentButton,
   AgentFeedback,
+  AgentNotice,
   AgentText,
 } from "@/components/agents/AgentPrimitives";
-import {
-  AgentSearch,
-  AgentSessionRow,
-} from "@/components/agents/AgentNavigation";
-import { AgentWorkingIndicator } from "@/components/agents/AgentWorkingIndicator";
-import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
-import { useAgentConnections } from "@/lib/queries/agents";
-import {
-  groupWorkspaces,
-  recentAgentChats,
-  matchingSessions,
-  workspaceMatches,
-  WORKSPACE_CHAT_PREVIEW,
-  type WorkspaceGroup,
-} from "@/lib/agents/workspaces";
-import { agentJson } from "@/lib/agents/api";
+import { ErrorNotice } from "@/components/ErrorNotice";
+import { thinkingLabel } from "@/lib/agents/model";
+import { recentAgentSetups, type AgentSetup } from "@/lib/agents/setups";
+import { toastError } from "@/lib/toast";
 import { useTheme } from "@/lib/theme";
+import { useAgentConnections, useAgentCatalog } from "@/lib/queries/agents";
+import { useAgentDraft } from "@/lib/agents/drafts";
+import { agentJson } from "@/lib/agents/api";
+import { getAuthClient } from "@/lib/auth/client";
 
-export default function AgentsScreen() {
-  const { colors, fonts } = useTheme();
-  const insets = useSafeAreaInsets();
+/**
+ * The Agents home: a new session with the agent and workspace used most
+ * recently, or the ones the opener named. Pills above the composer switch
+ * the machine, folder and agent; the draft follows the switch.
+ */
+export default function NewAgentScreen() {
+  const params = useLocalSearchParams<{
+    workspace?: string;
+    provider?: string;
+    fork?: string;
+    chooseWorkspace?: string;
+  }>();
+  const { colors } = useTheme();
   const connections = useAgentConnections();
-  const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string>();
-  const groups = useMemo(
-    () => groupWorkspaces(connections.data ?? []),
+  const setups = useMemo(
+    () => recentAgentSetups(connections.data ?? []),
     [connections.data],
   );
-  const recentChats = useMemo(
-    () => recentAgentChats(groups),
-    [groups],
-  );
-  const sections = useMemo(
-    () =>
-      groups.flatMap((group) => {
-        const matches = matchingSessions(group, search);
-        if (
-          search.trim() &&
-          !workspaceMatches(group, search) &&
-          !matches.length
-        )
-          return [];
-        const closed = !search.trim() && !expanded.has(group.key);
-        return [
-          {
-            ...group,
-            closed,
-            matchedCount: matches.length,
-            runningCount: group.sessions.filter(
-              ({ session }) => session.runtimeStatus === "running",
-            ).length,
-            data: closed ? [] : matches.slice(0, WORKSPACE_CHAT_PREVIEW),
-          },
-        ];
-      }),
-    [groups, search, expanded],
-  );
-  // The folder screen knows which agents its machine has, so a new chat
-  // starts there even when only one agent has chats in the folder.
-  function openWorkspace(group: WorkspaceGroup, create = false) {
-    router.push({
-      pathname: "/agents/workspace",
-      params: {
-        workspace: group.targets[0].workspace.id,
-        name: group.name,
-        ...(create ? { create: "1" } : {}),
-        ...(search.trim() ? { search } : {}),
-      },
-    });
-  }
-  async function sync() {
-    setSyncing(true);
-    setSyncError(undefined);
-    try {
-      const { result } = await agentJson<{
-        result: { failures: { message: string }[] };
-      }>("/api/agent-workspaces/sync", {});
-      if (result.failures.length)
-        setSyncError(
-          result.failures.map((failure) => failure.message).join("\n"),
-        );
-      await connections.refetch();
-    } catch (error) {
-      setSyncError(
-        error instanceof Error ? error.message : "Couldn't sync sessions.",
+  const requested =
+    params.workspace && isAgentProviderId(params.provider ?? "")
+      ? { workspaceId: params.workspace, provider: params.provider as AgentProviderId }
+      : null;
+  // An agent without its own record of a folder starts from another agent's
+  // record, so the folder is looked up by id alone.
+  const folder = requested
+    ? setups.find((setup) => setup.workspaceId === requested.workspaceId)
+    : setups[0];
+  const provider = requested?.provider ?? folder?.provider;
+  // Opened without a setup, the screen writes the most recent one into its
+  // route, as the web does, so activity elsewhere while a message is typed
+  // cannot switch the folder or agent underneath it.
+  const navigation = useNavigation<{
+    setParams: (params: { workspace: string; provider: string }) => void;
+  }>();
+  const pin = requested ? undefined : setups[0];
+  const pinWorkspace = pin?.workspaceId;
+  const pinProvider = pin?.provider;
+  useEffect(() => {
+    if (!pinWorkspace || !pinProvider) return;
+    navigation.setParams({ workspace: pinWorkspace, provider: pinProvider });
+  }, [navigation, pinWorkspace, pinProvider]);
+
+  if (!folder || !provider) {
+    if (connections.isPending) {
+      return (
+        <View style={[styles.centered, { backgroundColor: colors.background }]}>
+          <Stack.Screen options={{ title: "New agent" }} />
+          <ActivityIndicator accessibilityLabel="Loading workspaces" color={colors.mutedForeground} />
+        </View>
       );
+    }
+    if (connections.error) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <Stack.Screen options={{ title: "New agent" }} />
+          <AgentFeedback
+            error={connections.error.message}
+            retry={() => void connections.refetch()}
+          />
+        </View>
+      );
+    }
+    if (requested) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <Stack.Screen options={{ title: "New agent" }} />
+          <AgentFeedback error="This workspace is no longer available. Pick another from the drawer." />
+        </View>
+      );
+    }
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background, gap: 12, padding: 24 }]}>
+        <Stack.Screen options={{ title: "New agent" }} />
+        <Ionicons name="folder-open-outline" size={32} color={colors.mutedForeground} />
+        <AgentText title>Your agents, on your phone</AgentText>
+        <AgentText muted>
+          Add an Agent Connection and a workspace on the web, then start a
+          session here.
+        </AgentText>
+        <AgentButton
+          label="Agent connections"
+          icon="settings-outline"
+          onPress={() => router.push("/settings/connections")}
+        />
+      </View>
+    );
+  }
+  return (
+    <NewAgent
+      key={`${folder.workspaceId}:${provider}:${params.fork ?? ""}`}
+      setups={setups}
+      workspace={folder.workspaceId}
+      provider={provider}
+      folder={folder}
+      chooseWorkspace={params.chooseWorkspace === "1"}
+      fork={params.fork}
+    />
+  );
+}
+
+function NewAgent({
+  setups,
+  workspace,
+  provider,
+  folder,
+  fork,
+  chooseWorkspace,
+}: {
+  setups: AgentSetup[];
+  workspace: string;
+  provider: AgentProviderId;
+  folder: AgentSetup;
+  fork?: string;
+  chooseWorkspace?: boolean;
+}) {
+  const { colors, fonts } = useTheme();
+  const authSession = getAuthClient().useSession();
+  const isAdmin =
+    (authSession.data?.user as { role?: string | null } | undefined)?.role ===
+    "admin";
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const keyboard = useKeyboardState((state) => state.isVisible);
+  const name = folder.workspaceName;
+  const [picker, setPicker] = useState<AgentSetupPickerPanel | null>(
+    chooseWorkspace ? "workspace" : null,
+  );
+  const catalog = useAgentCatalog(workspace, provider);
+  // One draft for the whole screen, as on the web, so switching the setup
+  // keeps what was typed. A fork carries its own history instead.
+  const { draft, setDraft, storageError, saveDraftToSession } = useAgentDraft(
+    fork ? `fork:${fork}` : "new:agent",
+  );
+  const [config, setConfig] = useState<AgentSessionLaunchConfig>(
+    draft.forkContext?.launchConfig ?? {},
+  );
+  const [settings, setSettings] = useState<AgentSettingsPanel | null>(null);
+  const [pending, setPending] = useState(false);
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [error, setError] = useState<string>();
+  const selection = resolveAgentSessionDraftSelection({
+    provider,
+    catalog: catalog.data,
+    modelId: config.model ?? "",
+    thinkingOptionId: config.thinkingOptionId ?? "",
+    modeId: config.modeId ?? "",
+  });
+  const model = selection.model;
+
+  async function send() {
+    if (
+      lock.current ||
+      !catalog.data ||
+      !model ||
+      (!draft.message.trim() && !draft.images.length)
+    )
+      return;
+    lock.current = true;
+    setPending(true);
+    setError(undefined);
+    let sessionId: string | undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 150_000);
+    const images = draft.images.map(({ uploadId, filename, mediaType }) => ({
+      uploadId,
+      filename,
+      mediaType,
+    }));
+    let message: string;
+    try {
+      message = agentPromptWithHistory(
+        draft.message.trim(),
+        draft.forkContext?.text,
+      );
+    } catch (cause) {
+      setError(String(cause));
+      lock.current = false;
+      setPending(false);
+      clearTimeout(timer);
+      return;
+    }
+    const command = {
+      type: "prompt" as const,
+      message,
+      ...(images.length ? { images } : {}),
+      clientMessageId: randomUUID(),
+    };
+    try {
+      const result = await agentJson<{ session: { id: string } }>(
+        `/api/agent-workspaces/${encodeURIComponent(workspace)}/sessions`,
+        {
+          provider,
+          launchConfig: {
+            model: model.id,
+            ...(selection.thinkingOptionId
+              ? { thinkingOptionId: selection.thinkingOptionId }
+              : {}),
+            ...(selection.modeId ? { modeId: selection.modeId } : {}),
+          },
+        },
+        controller.signal,
+      );
+      sessionId = result.session.id;
+      // Preserve the first prompt and its identity in the new chat before sending.
+      // If delivery fails, retry from that chat instead of creating another session.
+      if (!mounted.current) {
+        saveDraftToSession(sessionId, {
+          ...draft,
+          message,
+          forkContext: undefined,
+          pending: undefined,
+        });
+        return;
+      }
+      const submittedDraft = {
+        ...draft,
+        message,
+        forkContext: undefined,
+        pending: { fingerprint: JSON.stringify({ message, images }), command },
+      };
+      saveDraftToSession(sessionId, submittedDraft);
+      await agentJson(
+        `/api/agent-sessions/${encodeURIComponent(sessionId)}`,
+        command,
+        controller.signal,
+      );
+      saveDraftToSession(sessionId, (current) =>
+        current === submittedDraft ? { message: "", images: [] } : current,
+      );
+    } catch (cause) {
+      if (!mounted.current) return;
+      if (!sessionId)
+        setError(
+          `${cause instanceof Error ? cause.message : "Couldn't start the session."} If the connection was lost, check the session list before trying again.`,
+        );
+      else
+        toastError(
+          "First message couldn't be confirmed. Your draft is saved in the chat.",
+          cause,
+        );
     } finally {
-      setSyncing(false);
+      clearTimeout(timer);
+      if (sessionId) {
+        setDraft(
+          (current) =>
+            current === draft ? { message: "", images: [] } : current,
+          true,
+        );
+        if (mounted.current) {
+          // The conversation lives beside the chat screen, outside this
+          // stack, so a replace would leave this screen behind: pop it first.
+          if (router.canGoBack()) router.back();
+          router.navigate({
+            pathname: "/agent/[id]",
+            params: { id: sessionId, workspace, name },
+          });
+        }
+      }
+      lock.current = false;
+      if (mounted.current) setPending(false);
     }
   }
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Stack.Screen
-        options={{
-          title: "Agents",
-          headerRight: () => (
-            <AgentButton
-              label={syncing ? "Syncing…" : "Sync"}
-              icon="sync-outline"
-              disabled={syncing}
-              onPress={() => void sync()}
-            />
-          ),
-        }}
-      />
-      <AgentSearch value={search} onChangeText={setSearch} />
-      {(connections.isPending || connections.error || syncError) && (
-        <AgentFeedback
-          loading={connections.isPending}
-          error={syncError ?? connections.error?.message}
-          retry={() => {
-            setSyncError(undefined);
-            void connections.refetch();
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior="padding"
+      keyboardVerticalOffset={headerHeight}
+    >
+      <Stack.Screen options={{ title: "New agent" }} />
+      <View style={styles.hero}>
+        <AgentProviderIcon provider={provider} size={40} />
+        <AgentText title>
+          New {agentProviderMetadata(provider).label} session
+        </AgentText>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: colors.mutedForeground,
+            fontFamily: fonts.sansRegular,
+            fontSize: 14,
           }}
-        />
-      )}
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.session.id}
-        stickySectionHeadersEnabled={false}
-        keyboardShouldPersistTaps="handled"
-        refreshing={connections.refreshing}
-        onRefresh={() => void connections.refresh()}
-        contentContainerStyle={{
+        >
+          {name} · {folder.hostLabel}
+        </Text>
+      </View>
+      <View
+        style={{
           paddingHorizontal: 12,
-          paddingBottom: insets.bottom + 20,
+          paddingTop: 8,
+          paddingBottom: keyboard ? 8 : 12 + insets.bottom,
+          gap: 8,
         }}
-        ListHeaderComponent={
-          !search.trim() && groups.length > 0 ? (
-            <View>
-              {recentChats.length > 0 && (
-                <View style={{ paddingBottom: 12 }}>
-                  <Text
-                    accessibilityRole="header"
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      color: colors.foreground,
-                      fontFamily: fonts.sansSemiBold,
-                      fontSize: 16,
-                    }}
-                  >
-                    Recent chats
-                  </Text>
-                  {recentChats.map(({ item, group }) => (
-                    <AgentSessionRow
-                      key={item.session.id}
-                      item={item}
-                      workspaceName={group.name}
-                      contextLabel={`${group.name} · ${group.host.name}`}
-                    />
-                  ))}
-                </View>
-              )}
-              <Text
-                accessibilityRole="header"
-                style={{
-                  paddingHorizontal: 12,
-                  paddingTop: 8,
-                  color: colors.foreground,
-                  fontFamily: fonts.sansSemiBold,
-                  fontSize: 16,
-                }}
-              >
-                Workspaces
-              </Text>
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          !connections.isPending && !connections.error ? (
-            <View style={{ padding: 24, gap: 12, alignItems: "center" }}>
-              <Ionicons
-                name="folder-open-outline"
-                size={32}
-                color={colors.mutedForeground}
-              />
-              <AgentText title>
-                {search
-                  ? "No matching workspaces or chats"
-                  : "Your agents, on your phone"}
-              </AgentText>
-              <AgentText muted>
-                {search
-                  ? "Try another search."
-                  : "Add an Agent Connection and workspace on the web, then sync to discover your chats."}
-              </AgentText>
-            </View>
-          ) : null
-        }
-        renderSectionHeader={({ section }) => (
-          <View style={{ paddingTop: 12, paddingBottom: 4 }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${search.trim() ? "Open" : section.closed ? "Expand" : "Collapse"} ${section.name}`}
-                accessibilityState={{ expanded: !section.closed }}
-                onPress={() => {
-                  if (search.trim()) {
-                    openWorkspace(section);
-                    return;
-                  }
-                  setExpanded((current) => {
-                    const next = new Set(current);
-                    next.has(section.key)
-                      ? next.delete(section.key)
-                      : next.add(section.key);
-                    return next;
-                  });
-                }}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  minWidth: 0,
-                  minHeight: 52,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 9,
-                  paddingHorizontal: 8,
-                  borderRadius: 10,
-                  backgroundColor: pressed ? colors.muted : "transparent",
-                })}
-              >
-                <Ionicons
-                  name={section.closed ? "chevron-forward" : "chevron-down"}
-                  size={16}
-                  color={colors.mutedForeground}
-                />
-                {section.closed && section.runningCount > 0 ? (
-                  <AgentWorkingIndicator
-                    label={`${section.runningCount} ${section.runningCount === 1 ? "agent working" : "agents working"} in ${section.name}`}
-                  />
-                ) : (
-                  <Ionicons
-                    name="folder-outline"
-                    size={20}
-                    color={colors.foreground}
-                  />
-                )}
-                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: colors.foreground,
-                      fontFamily: fonts.sansSemiBold,
-                      fontSize: 15,
-                    }}
-                  >
-                    {section.name}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: colors.mutedForeground,
-                      fontFamily: fonts.sansRegular,
-                      fontSize: 12,
-                    }}
-                  >
-                    {section.host.name} · {section.matchedCount}{" "}
-                    {section.matchedCount === 1 ? "chat" : "chats"}
-                    {section.runningCount > 0
-                      ? ` · ${section.runningCount} working`
-                      : ""}
-                  </Text>
-                </View>
-                {section.closed && (
-                  <View style={{ flexDirection: "row", gap: 4 }}>
-                    {section.targets.map((target) => (
-                      <AgentProviderIcon
-                        key={target.workspace.id}
-                        provider={target.provider}
-                        size={16}
-                      />
-                    ))}
-                  </View>
-                )}
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`New chat in ${section.name}`}
-                onPress={() => openWorkspace(section, true)}
-                style={{ padding: 12, minHeight: 44 }}
-              >
-                <Ionicons name="add" size={22} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
-          </View>
+      >
+        {catalog.isPending && (
+          <ActivityIndicator
+            accessibilityLabel="Loading models"
+            color={colors.mutedForeground}
+          />
         )}
-        renderItem={({ item, section }) => (
-          <View
-            style={{
-              marginLeft: 23,
-              borderLeftWidth: 1,
-              borderColor: colors.border,
-              paddingLeft: 6,
-            }}
-          >
-            <AgentSessionRow item={item} workspaceName={section.name} />
-          </View>
+        {!!(
+          error ||
+          storageError ||
+          catalog.error ||
+          (catalog.data && !model)
+        ) && (
+          <ErrorNotice
+            message={
+              error ??
+              storageError ??
+              catalog.error?.message ??
+              "No models are available for this agent."
+            }
+            action={
+              catalog.error
+                ? { label: "Retry", onPress: () => void catalog.refetch() }
+                : undefined
+            }
+          />
         )}
-        renderSectionFooter={({ section }) =>
-          section.closed ? null : (
-            <View style={{ marginLeft: 30, paddingBottom: 12 }}>
-              {!section.data.length && (
-                <AgentText muted>No chats yet</AgentText>
-              )}
-              <AgentButton
-                label={
-                  section.matchedCount > WORKSPACE_CHAT_PREVIEW
-                    ? `View all ${section.matchedCount} chats`
-                    : "Open workspace"
-                }
-                icon="arrow-forward-outline"
-                onPress={() => openWorkspace(section)}
-              />
-            </View>
-          )
+        {draft.forkContext && (
+          <AgentNotice
+            icon="git-branch-outline"
+            message={`Chat history attached · ${name}`}
+            actions={[
+              {
+                label: "Change workspace",
+                onPress: () => setPicker("workspace"),
+              },
+              {
+                label: "Remove history",
+                onPress: () =>
+                  setDraft(
+                    ({ forkContext: _context, ...current }) => current,
+                    true,
+                  ),
+              },
+            ]}
+          />
+        )}
+        <AgentSetupPicker
+          setups={setups}
+          workspaceId={workspace}
+          provider={provider}
+          // A fork keeps its agent: history only reads back on the same one.
+          lockedProvider={draft.forkContext ? provider : null}
+          open={picker}
+          onOpen={setPicker}
+          onChange={(setup) =>
+            router.setParams({
+              workspace: setup.workspaceId,
+              provider: setup.provider,
+              chooseWorkspace: "0",
+            })
+          }
+        />
+        <AgentComposer
+          draft={draft}
+          setDraft={setDraft}
+          commands={[]}
+          provider={provider}
+          supportsImages={model?.input.includes("image") === true}
+          disabled={!catalog.data || !model}
+          sending={pending}
+          running={false}
+          isAdmin={isAdmin}
+          modelLabel={model?.label ?? "Loading model…"}
+          thinkingLabel={thinkingLabel(model ?? undefined, selection.thinkingOptionId)}
+          permission={(() => {
+            const mode = selection.modes.find((item) => item.id === selection.modeId);
+            return mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined;
+          })()}
+          onSettings={() => {
+            Keyboard.dismiss();
+            setSettings("settings");
+          }}
+          onPermissions={() => {
+            Keyboard.dismiss();
+            setSettings("permissions");
+          }}
+          onSend={() => void send()}
+          onStop={() => {}}
+        />
+      </View>
+      <AgentControls
+        visible={settings !== null}
+        initialPanel={settings ?? "settings"}
+        provider={provider}
+        onClose={() => setSettings(null)}
+        models={catalog.data?.models ?? []}
+        modelId={model?.id ?? ""}
+        modes={selection.modes}
+        modeId={selection.modeId}
+        thinking={selection.thinkingOptionId}
+        disabled={pending}
+        onModel={(model) =>
+          setConfig((value) => ({
+            ...value,
+            model: model.id,
+            thinkingOptionId: undefined,
+          }))
+        }
+        onMode={(mode) => setConfig((value) => ({ ...value, modeId: mode.id }))}
+        onThinking={(option) =>
+          setConfig((value) => ({ ...value, thinkingOptionId: option.id }))
         }
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
+  hero: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+    padding: 24,
+  },
+});
