@@ -1,5 +1,5 @@
 export type NotificationTarget = {
-  kind: "chat" | "agent";
+  kind: "chat" | "agent" | "sign-in";
   targetId: string;
   registrationId: string;
   notificationId: string;
@@ -12,7 +12,9 @@ export function parseNotificationTarget(
   if (!data || typeof data !== "object") return null;
   const value = data as Record<string, unknown>;
   if (
-    (value.kind !== "chat" && value.kind !== "agent") ||
+    (value.kind !== "chat" &&
+      value.kind !== "agent" &&
+      value.kind !== "sign-in") ||
     value.registrationId !== registrationId ||
     typeof value.targetId !== "string" ||
     !/^[A-Za-z0-9_-]{1,160}$/.test(value.targetId) ||

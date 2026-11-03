@@ -13,26 +13,52 @@ function codeFor(manualKey: string) {
   return createOTP(new TextDecoder().decode(secret)).totp();
 }
 
-async function signInWithPassword(page: Page) {
+async function enterPassword(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.locator("#password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
+}
+
+/** Signs in with the password, choosing a code over approval on another device. */
+async function signInWithPassword(page: Page) {
+  await enterPassword(page);
+  await expect(page.getByRole("heading", { name: "Approve this sign-in" })).toBeVisible();
+  await page.getByRole("button", { name: "Use your authenticator app" }).click();
   await expect(
     page.getByRole("heading", { name: "Two-factor authentication" }),
   ).toBeVisible();
 }
 
-test("set up an authenticator, then sign in with a code or a backup code", async ({
-  browser,
-  page,
-}, testInfo) => {
+async function createAdmin(page: Page) {
   await page.goto(await setupUrl());
   await page.getByLabel("Name").fill("Two-factor Admin");
   await page.getByLabel("Email").fill(email);
   await page.locator("#password").fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
+}
+
+/** Turns on two-factor for the signed-in page; returns the manual setup key. */
+async function setUpAuthenticator(page: Page) {
+  await page.goto("/settings/account");
+  await page.getByRole("button", { name: "Set up" }).click();
+  await page.getByLabel("Confirm your password").fill(password);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByLabel("Authenticator setup code")).toBeVisible();
+  const manualKey = (await page.locator("code.select-all").textContent()) ?? "";
+  await page.getByLabel("Enter the 6-digit code").fill(await codeFor(manualKey));
+  await page.getByRole("button", { name: "Turn on two-factor" }).click();
+  await page.getByRole("button", { name: "I saved them" }).click();
+  await expect(page.getByRole("button", { name: "New backup codes" })).toBeVisible();
+  return manualKey;
+}
+
+test("set up an authenticator, then sign in with a code or a backup code", async ({
+  browser,
+  page,
+}, testInfo) => {
+  await createAdmin(page);
 
   await page.goto("/settings/account");
   await page.getByRole("button", { name: "Set up" }).click();
@@ -107,5 +133,72 @@ test("suggests two-factor once after sign-in and opens setup", async ({
     await expect(prompt).toBeHidden();
   } finally {
     await context.close();
+  }
+});
+
+test("approve a sign-in from a browser that's already signed in", async ({
+  browser,
+  page,
+}, testInfo) => {
+  await createAdmin(page);
+  await setUpAuthenticator(page);
+  await page.goto("/");
+  const prompt = page.getByRole("dialog", { name: "Is this you signing in?" });
+
+  async function newSignIn() {
+    const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
+    const signingIn = await context.newPage();
+    await enterPassword(signingIn);
+    await expect(
+      signingIn.getByRole("heading", { name: "Approve this sign-in" }),
+    ).toBeVisible();
+    const shown = signingIn.getByLabel(/^Number \d{2}$/);
+    await expect(shown).toBeVisible();
+    return { context, signingIn, number: (await shown.textContent())!.trim() };
+  }
+
+  // Picking the wrong number blocks the sign-in.
+  const blocked = await newSignIn();
+  try {
+    await expect(prompt).toBeVisible({ timeout: 10_000 });
+    await expect(prompt).toContainText("Chrome on");
+    const choices = prompt.getByRole("group", { name: "Number choices" }).getByRole("button");
+    await expect(choices).toHaveCount(3);
+    const wrong = (await choices.allTextContents()).find((text) => text !== blocked.number)!;
+    await prompt.getByRole("button", { name: wrong, exact: true }).click();
+    await expect(page.getByText("Sign-in blocked").first()).toBeVisible();
+    await expect(
+      blocked.signingIn.getByText("The wrong number was picked"),
+    ).toBeVisible();
+  } finally {
+    await blocked.context.close();
+  }
+
+  // Picking the number shown signs the other browser in.
+  const approved = await newSignIn();
+  try {
+    await expect(prompt).toBeVisible({ timeout: 10_000 });
+    await prompt.getByRole("button", { name: approved.number, exact: true }).click();
+    await expect(page.getByText("Sign-in approved").first()).toBeVisible();
+    await approved.signingIn.waitForURL((url) => url.pathname === "/");
+    await expect(
+      approved.signingIn.getByRole("link", { name: /New chat/ }),
+    ).toBeVisible();
+  } finally {
+    await approved.context.close();
+  }
+
+  // Denying it ends the request on the signing-in browser.
+  const denied = await newSignIn();
+  try {
+    await expect(prompt).toBeVisible({ timeout: 10_000 });
+    await prompt.getByRole("button", { name: "No, it's not me" }).click();
+    await expect(denied.signingIn.getByText("The sign-in was denied")).toBeVisible();
+    // It can still use the authenticator instead.
+    await expect(
+      denied.signingIn.getByRole("button", { name: "Use your authenticator app" }),
+    ).toBeVisible();
+  } finally {
+    await denied.context.close();
   }
 });

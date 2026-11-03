@@ -11,6 +11,8 @@ export type NotificationPreferences = {
   chats: boolean;
   agents: boolean;
   previews: boolean;
+  /** Asks this device to approve sign-ins to the account. */
+  signIns: boolean;
 };
 export type NotificationScope = {
   server: string;
@@ -53,7 +55,7 @@ export function notificationSettings(scope: NotificationScope): Settings {
     try {
       const saved = JSON.parse(
         SecureStore.getItem(id) ?? "null",
-      ) as Settings | null;
+      ) as (Omit<Settings, "signIns"> & { signIns?: unknown }) | null;
       if (
         saved &&
         typeof saved.id === "string" &&
@@ -61,7 +63,15 @@ export function notificationSettings(scope: NotificationScope): Settings {
         typeof saved.agents === "boolean" &&
         typeof saved.previews === "boolean"
       )
-        settings = saved;
+        settings = {
+          ...saved,
+          // Saved before sign-in approval: devices that already notify also
+          // get sign-in requests.
+          signIns:
+            typeof saved.signIns === "boolean"
+              ? saved.signIns
+              : saved.chats || saved.agents,
+        };
     } catch {
       /* A missing/corrupt preference starts opted out. */
     }
@@ -70,6 +80,7 @@ export function notificationSettings(scope: NotificationScope): Settings {
       chats: false,
       agents: false,
       previews: false,
+      signIns: false,
     };
     cache.set(id, settings);
   }
@@ -136,6 +147,10 @@ async function permitted(request: boolean) {
       name: "Agent activity",
       importance: Notifications.AndroidImportance.HIGH,
     });
+    await Notifications.setNotificationChannelAsync("sign-in-requests", {
+      name: "Sign-in requests",
+      importance: Notifications.AndroidImportance.HIGH,
+    });
   }
   let permission = await Notifications.getPermissionsAsync();
   if (request && !permission.granted && permission.canAskAgain)
@@ -152,7 +167,7 @@ async function register(
 ) {
   if (paused.has(key(scope))) return;
   let next = { ...notificationSettings(scope), ...preferences };
-  const enabled = next.chats || next.agents;
+  const enabled = next.chats || next.agents || next.signIns;
   if (enabled) {
     if (!(await permitted(requestPermission))) {
       await updateServer(scope, next, false);
@@ -201,10 +216,10 @@ export function showNotificationIntro(scope: NotificationScope) {
     return;
   }
   const settings = notificationSettings(scope);
-  if (settings.chats || settings.agents) return;
+  if (settings.chats || settings.agents || settings.signIns) return;
   Alert.alert(
     "Know when it’s ready",
-    "Get notified when your response is ready, or when an agent needs you or finishes.",
+    "Get notified when your response is ready, when an agent needs you or finishes, or when someone signs in to your account.",
     [
       { text: "Not now", style: "cancel" },
       {
@@ -220,6 +235,7 @@ export function showNotificationIntro(scope: NotificationScope) {
           void changeNotificationPreferences(active.scope, {
             chats: true,
             agents: true,
+            signIns: true,
           }).catch((error: unknown) => {
             if (active && key(active.scope) === key(scope)) {
               Alert.alert(
@@ -261,7 +277,8 @@ export function changeNotificationPreferences(
 export function syncNotifications(scope: NotificationScope) {
   if (paused.has(key(scope))) return Promise.resolve();
   const settings = notificationSettings(scope);
-  if (!settings.chats && !settings.agents) return Promise.resolve();
+  if (!settings.chats && !settings.agents && !settings.signIns)
+    return Promise.resolve();
   return serialized(async () => {
     try {
       await register(scope, notificationSettings(scope), false);
@@ -306,13 +323,20 @@ Notifications.setNotificationHandler({
     const target = settings
       ? parseNotificationTarget(notification.request.content.data, settings.id)
       : null;
+    const enabled =
+      target?.kind === "chat"
+        ? settings?.chats
+        : target?.kind === "agent"
+          ? settings?.agents
+          : settings?.signIns;
     const show = Boolean(
       target &&
-        settings &&
-        (target.kind === "chat" ? settings.chats : settings.agents) &&
+        enabled &&
         !(
           AppState.currentState === "active" &&
-          active?.viewing === `${target.kind}:${target.targetId}`
+          // The app shows a sign-in request itself while it's open.
+          (target.kind === "sign-in" ||
+            active?.viewing === `${target.kind}:${target.targetId}`)
         ),
     );
     return {

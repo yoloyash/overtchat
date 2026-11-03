@@ -90,6 +90,7 @@ describe("per-device push settings", () => {
     expect(mocks.channel.mock.calls.map(([id, options]) => [id, options.name])).toEqual([
       ["chat-responses", "Chat responses"],
       ["agent-idle", "Agent activity"],
+      ["sign-in-requests", "Sign-in requests"],
     ]);
     expect(notificationSettings(scope).chats).toBe(true);
     const [url, init] = mocks.authFetch.mock.calls[0];
@@ -174,6 +175,59 @@ describe("per-device push settings", () => {
     expect(mocks.authFetch.mock.calls.at(-1)?.[1].method).toBe("DELETE");
     expect(mocks.dismiss).toHaveBeenCalled();
     expect(mocks.clear).toHaveBeenCalled();
+  });
+});
+
+describe("sign-in requests", () => {
+  it("can be the only thing this device is notified about", async () => {
+    await changeNotificationPreferences(scope, { signIns: true });
+    const [, init] = mocks.authFetch.mock.calls[0];
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toMatchObject({
+      chats: false,
+      agents: false,
+      signIns: true,
+    });
+    mocks.authFetch.mockClear();
+    await syncNotifications(scope);
+    expect(mocks.authFetch).toHaveBeenCalledTimes(1);
+  });
+  it("are on for devices that already had notifications on before they existed", () => {
+    // Settings saved by an app from before sign-in approval.
+    const saved = (server: string, chats: boolean) => {
+      const legacy = { ...scope, server };
+      const storageKey =
+        "overtchat.push." +
+        JSON.stringify([legacy.server, legacy.userId])
+          .split("")
+          .map((char) => char.charCodeAt(0).toString(16).padStart(4, "0"))
+          .join("");
+      mocks.storage.set(
+        storageKey,
+        JSON.stringify({ id: crypto.randomUUID(), chats, agents: false, previews: false }),
+      );
+      return notificationSettings(legacy);
+    };
+    expect(saved(`http://on-${crypto.randomUUID()}`, true).signIns).toBe(true);
+    expect(saved(`http://off-${crypto.randomUUID()}`, false).signIns).toBe(false);
+  });
+  it("show in the app instead of as a banner while it's open", async () => {
+    await changeNotificationPreferences(scope, { signIns: true });
+    setActiveNotificationScope(scope, null);
+    const data = {
+      kind: "sign-in",
+      targetId: "request",
+      registrationId: notificationSettings(scope).id,
+      notificationId: "notification",
+    };
+    const incoming = () =>
+      handleNotification({ request: { content: { data } } });
+    expect((await incoming()).shouldShowBanner).toBe(false);
+    mocks.appState.currentState = "background";
+    expect((await incoming()).shouldShowBanner).toBe(true);
+    await changeNotificationPreferences(scope, { signIns: false });
+    expect((await incoming()).shouldShowBanner).toBe(false);
+    clearActiveNotificationScope(scope);
   });
 });
 

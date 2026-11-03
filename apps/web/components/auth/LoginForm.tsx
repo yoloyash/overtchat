@@ -19,7 +19,8 @@ export function LoginForm() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
-  const [needsCode, setNeedsCode] = useState(false);
+  // The second step's methods, once the password is accepted.
+  const [twoFactorMethods, setTwoFactorMethods] = useState<string[] | null>(null);
 
   async function finish() {
     resetAuthState();
@@ -41,18 +42,23 @@ export function LoginForm() {
     }
     if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
       setSubmitting(false);
-      setNeedsCode(true);
+      setTwoFactorMethods(
+        "twoFactorMethods" in data && Array.isArray(data.twoFactorMethods)
+          ? data.twoFactorMethods
+          : [],
+      );
       return;
     }
     await finish();
   }
 
-  if (needsCode) {
+  if (twoFactorMethods) {
     return (
       <TwoFactorCodeForm
+        methods={twoFactorMethods}
         onVerified={finish}
         onRestart={(message) => {
-          setNeedsCode(false);
+          setTwoFactorMethods(null);
           setPassword("");
           setError(message);
         }}

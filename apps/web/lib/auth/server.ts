@@ -9,6 +9,7 @@ import { claimManagedHostConnector } from "@/lib/db/hostConnectors";
 import { passwordRecovery } from "./password-recovery";
 import { initialSetup } from "./initial-setup";
 import { twoFactorRecovery } from "./two-factor";
+import { signInApproval, signInApprovalOtp } from "./sign-in-approval";
 
 const extraTrustedOrigins =
   process.env.EXTRA_TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
@@ -25,6 +26,9 @@ export const auth = betterAuth({
     customRules: {
       "/admin/reset-user-password": { window: 60, max: 5 },
       "/setup-admin": { window: 60, max: 5 },
+      // A pending sign-in waits on this while the user answers. Requests are
+      // long-polled, and the plugin's default allows three per ten seconds.
+      "/two-factor/approval": { window: 10, max: 10 },
     },
     // E2E signs up from one address in parallel workers. Everywhere else,
     // Better Auth's default applies: limits are on in production.
@@ -43,8 +47,12 @@ export const auth = betterAuth({
     bearer(),
     expo(),
     // Authenticator apps list the server, so several servers stay apart.
-    twoFactor({ issuer: `OvertChat (${new URL(baseURL).host})` }),
+    twoFactor({
+      issuer: `OvertChat (${new URL(baseURL).host})`,
+      otpOptions: signInApprovalOtp,
+    }),
     twoFactorRecovery(),
+    signInApproval(),
     passwordRecovery(),
     initialSetup(),
   ],
