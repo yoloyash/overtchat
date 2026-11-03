@@ -70,6 +70,8 @@ export interface ConnectionFieldsProps {
   onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
   imageModel?: boolean;
+  /** Each person brings their own key (per-user credentials), so this one is optional. */
+  apiKeyOptional?: boolean;
   /** Names a provider that the desktop app's bundled catalog predates. */
   providerLabel?: string;
 }
@@ -86,6 +88,7 @@ export function ConnectionFields({
   onCapabilitySuggestion,
   autoFetchModels = false,
   imageModel = false,
+  apiKeyOptional = false,
   providerLabel,
 }: ConnectionFieldsProps) {
   // Undefined in a desktop app older than the provider; the server validates it.
@@ -383,11 +386,13 @@ export function ConnectionFields({
       <SettingsRow
         title="API key"
         description={
-          requiresKey
-            ? `Required for ${providerName}.`
-            : provider
-              ? "Optional for local or custom endpoints."
-              : `Enter the key ${providerName} needs, if any.`
+          apiKeyOptional
+            ? "Used by everyone without their own key under People. Leave empty if each person must bring one."
+            : requiresKey
+              ? `Required for ${providerName}.`
+              : provider
+                ? "Optional for local or custom endpoints."
+                : `Enter the key ${providerName} needs, if any.`
         }
         htmlFor="p-api-key"
         align="center"
@@ -397,8 +402,8 @@ export function ConnectionFields({
           <PasswordInput
             id="p-api-key"
             autoComplete="new-password"
-            placeholder={requiresKey ? "Required" : "Optional"}
-            required={requiresKey}
+            placeholder={requiresKey && !apiKeyOptional ? "Required" : "Optional"}
+            required={requiresKey && !apiKeyOptional}
             value={draft.apiKey}
             onChange={(e) => {
               onChange({ apiKey: e.target.value });

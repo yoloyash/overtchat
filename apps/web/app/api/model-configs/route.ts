@@ -8,6 +8,7 @@ import {
 import { adminModelConfigForClient } from "@/lib/model-config/legacy-clients";
 import {
   ModelConfigSchema,
+  connectionForValidation,
   type PublicModelConfig,
 } from "@/lib/model-config/schema";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
@@ -91,7 +92,8 @@ export async function POST(req: Request) {
     );
   }
   try {
-    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image")
+      createConfiguredLanguageModel(connectionForValidation(parsed.data));
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });

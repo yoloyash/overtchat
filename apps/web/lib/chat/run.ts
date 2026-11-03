@@ -126,7 +126,7 @@ import {
   codeExecutionPrompt,
   createCodeExecutionTools,
 } from "@/lib/sandbox/tools";
-import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
@@ -211,7 +211,10 @@ export async function runChat(
     }
   }
 
-  const modelConfig = await getModelConfig(modelConfigId);
+  const storedModelConfig = await getModelConfig(modelConfigId);
+  // A per-user model runs on this user's own key and endpoint where set.
+  const modelConfig =
+    storedModelConfig && modelConfigForUser(storedModelConfig, userId);
   if (!modelConfig || modelConfig.modelType === "image" || !modelConfig.enabled) {
     return new Response("Model config not found", { status: 404 });
   }

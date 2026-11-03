@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, max } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { modelConfigs } from "@/lib/db/schema";
+import { modelConfigs, modelConfigUserCredentials } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers/catalog";
 import {
   catalogPricingFor,
@@ -10,7 +10,9 @@ import {
 } from "@/lib/providers/server/model-catalog";
 import type {
   AdminModelConfig,
+  AdminModelUserCredential,
   ModelConfigInput,
+  ModelUserCredentialInput,
 } from "@/lib/model-config/schema";
 import { readReasoningOverride } from "@/lib/model-config/reasoning-override";
 
@@ -52,6 +54,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     toolCallingEnabled: row.toolCallingEnabled,
     enabled: row.enabled,
     taskModel: row.taskModel,
+    credentialScope: row.credentialScope,
     sortOrder: row.sortOrder,
   };
 }
@@ -113,7 +116,8 @@ export function getTaskModelConfig(): ModelConfigRow | null {
 
 export type SetTaskModelResult =
   | { status: "updated"; modelConfig: ModelConfigRow | null }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  | { status: "per_user" };
 
 export function setTaskModelConfig(id: string | null): SetTaskModelResult {
   return db.transaction((tx) => {
@@ -127,6 +131,8 @@ export function setTaskModelConfig(id: string | null): SetTaskModelResult {
       : null;
     if (id && (!target || target.modelType === "image"))
       return { status: "not_found" };
+    // Task work (titles) has no single user to bill, so it needs a shared connection.
+    if (target?.credentialScope === "user") return { status: "per_user" };
 
     tx.update(modelConfigs)
       .set({ taskModel: false, updatedAt: new Date() })
@@ -207,7 +213,9 @@ export async function updateModelConfig(
         .update(modelConfigs)
         .set({
           ...input,
-          ...(input.modelType === "image" ? { taskModel: false } : {}),
+          ...(input.modelType === "image" || input.credentialScope === "user"
+            ? { taskModel: false }
+            : {}),
           updatedAt: new Date(),
         })
         .where(eq(modelConfigs.id, id))
@@ -235,4 +243,100 @@ export function getImageModelConfig(): ModelConfigRow | null {
 
 export async function deleteModelConfig(id: string): Promise<void> {
   await db.delete(modelConfigs).where(eq(modelConfigs.id, id));
+}
+
+// --- per-user credentials --------------------------------------------------
+
+/**
+ * The connection `userId` chats with on `row`: the row itself for a shared
+ * model. On a per-user model, that person's own key and base URL take over;
+ * whatever they have not set falls back to the model's own.
+ */
+export function modelConfigForUser<T extends ModelConfigRow>(
+  row: T,
+  userId: string,
+): T {
+  if (row.credentialScope !== "user") return row;
+  const credential = getModelUserCredential(row.id, userId);
+  if (!credential) return row;
+  return {
+    ...row,
+    apiKey: credential.apiKey ?? row.apiKey,
+    baseUrl: credential.baseUrl ?? row.baseUrl,
+  };
+}
+
+export function getModelUserCredential(modelConfigId: string, userId: string) {
+  return (
+    db
+      .select()
+      .from(modelConfigUserCredentials)
+      .where(
+        and(
+          eq(modelConfigUserCredentials.modelConfigId, modelConfigId),
+          eq(modelConfigUserCredentials.userId, userId),
+        ),
+      )
+      .get() ?? null
+  );
+}
+
+function toAdminModelUserCredential(
+  row: typeof modelConfigUserCredentials.$inferSelect,
+): AdminModelUserCredential {
+  return {
+    userId: row.userId,
+    apiKey: row.apiKey,
+    baseUrl: row.baseUrl,
+    updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+export function listModelUserCredentials(
+  modelConfigId: string,
+): AdminModelUserCredential[] {
+  return db
+    .select()
+    .from(modelConfigUserCredentials)
+    .where(eq(modelConfigUserCredentials.modelConfigId, modelConfigId))
+    .all()
+    .map(toAdminModelUserCredential);
+}
+
+export function setModelUserCredential(
+  modelConfigId: string,
+  userId: string,
+  input: ModelUserCredentialInput,
+): AdminModelUserCredential {
+  const now = new Date();
+  const row = db
+    .insert(modelConfigUserCredentials)
+    .values({ modelConfigId, userId, ...input, apiKey: input.apiKey ?? null })
+    .onConflictDoUpdate({
+      target: [
+        modelConfigUserCredentials.modelConfigId,
+        modelConfigUserCredentials.userId,
+      ],
+      set: { ...input, updatedAt: now },
+    })
+    .returning()
+    .get();
+  return toAdminModelUserCredential(row);
+}
+
+export function deleteModelUserCredential(
+  modelConfigId: string,
+  userId: string,
+): boolean {
+  return (
+    db
+      .delete(modelConfigUserCredentials)
+      .where(
+        and(
+          eq(modelConfigUserCredentials.modelConfigId, modelConfigId),
+          eq(modelConfigUserCredentials.userId, userId),
+        ),
+      )
+      .run().changes > 0
+  );
 }

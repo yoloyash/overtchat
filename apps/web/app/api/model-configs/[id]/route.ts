@@ -9,7 +9,10 @@ import {
   adminModelConfigForClient,
   restoreNewerProvider,
 } from "@/lib/model-config/legacy-clients";
-import { ModelConfigSchema } from "@/lib/model-config/schema";
+import {
+  ModelConfigSchema,
+  connectionForValidation,
+} from "@/lib/model-config/schema";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
@@ -40,7 +43,13 @@ export async function PATCH(
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = ModelConfigSchema.safeParse(body);
+  // An omitted scope keeps the stored one, so the list's enable toggle and
+  // clients that predate per-user credentials never reset a model to shared.
+  const parsed = ModelConfigSchema.safeParse(
+    body && typeof body === "object" && !("credentialScope" in body)
+      ? { ...body, credentialScope: existing.credentialScope }
+      : body,
+  );
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
@@ -49,7 +58,8 @@ export async function PATCH(
   }
   const input = restoreNewerProvider(req, parsed.data, existing);
   try {
-    if (input.modelType !== "image") createConfiguredLanguageModel(input);
+    if (input.modelType !== "image")
+      createConfiguredLanguageModel(connectionForValidation(input));
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });

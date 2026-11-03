@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
     getChatGeneration: vi.fn(),
     getChatGenerationByRequestId: vi.fn(),
     inlineUploads: vi.fn(),
+    modelConfigForUser: vi.fn((row: unknown) => row),
     getSandboxStatus: vi.fn(),
     getModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
@@ -157,6 +158,7 @@ vi.mock("@/lib/sandbox/client", () => ({
 }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
+  modelConfigForUser: mocks.modelConfigForUser,
 }));
 vi.mock("@/lib/db/serverCapabilities", () => ({
   getServerCapability: mocks.getServerCapability,
@@ -467,6 +469,32 @@ describe("chat route setup boundary", () => {
     expect(response.status).toBe(404);
     expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("runs a per-user model on the signed-in user's own credential", async () => {
+    const own = {
+      ...modelConfig,
+      apiKey: "user-key",
+      baseUrl: "https://user.test/v1",
+    };
+    mocks.modelConfigForUser.mockReturnValue(own);
+
+    await POST(request());
+
+    expect(mocks.modelConfigForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id: modelConfig.id }),
+      "user",
+    );
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "user-key",
+        baseUrl: "https://user.test/v1",
+      }),
+    );
+    // Title generation falls back to the same connection.
+    expect(mocks.ensureChatTitle).toHaveBeenCalledWith(
+      expect.objectContaining({ fallbackModelConfig: own }),
+    );
   });
 
   it.each([false, true])(

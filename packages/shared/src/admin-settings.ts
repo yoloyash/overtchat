@@ -25,6 +25,14 @@ export interface CatalogModelPricing extends ModelPricing {
   tiered: boolean;
 }
 
+/**
+ * Who a model's connection belongs to. `shared`: one base URL and key for
+ * everyone. `user`: each person may have their own key and base URL, set by
+ * an administrator; whatever they have not set falls back to the model's own.
+ */
+export const MODEL_CREDENTIAL_SCOPES = ["shared", "user"] as const;
+export type ModelCredentialScope = (typeof MODEL_CREDENTIAL_SCOPES)[number];
+
 /** Admin-facing model config DTO. Includes secrets and provider options for editing. */
 export interface AdminModelConfig {
   modelType: "chat" | "image";
@@ -59,6 +67,8 @@ export interface AdminModelConfig {
   toolCallingEnabled: boolean;
   enabled: boolean;
   taskModel: boolean;
+  /** Absent on servers that predate per-user credentials; treat as `shared`. */
+  credentialScope?: ModelCredentialScope;
   sortOrder: number;
 }
 
