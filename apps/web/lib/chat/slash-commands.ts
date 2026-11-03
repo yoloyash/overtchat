@@ -1,6 +1,10 @@
-// A command is recognized only while the whole draft is a leading-slash token
-// (plus an optional argument), so prose mentioning "/etc/hosts" never opens the
-// menu and the menu closes as soon as the draft becomes a real message.
+// A command is recognized in two forms. The whole draft can be a leading-slash
+// token plus an optional argument, which is how `/model gpt` filters models and
+// `/search what's new` runs search with the question left in the box. Or the
+// word ending at the caret can be a slash token inside a longer draft, the way
+// an @-mention works, so "find me /sea" offers search without clearing the
+// sentence. Both forms require the slash to start a word, so "/etc/hosts" and
+// "and/or" never open the menu.
 
 import type { ComponentType } from "react";
 
@@ -49,22 +53,97 @@ export interface SlashCommandQuery {
   /** Text after the first whitespace run, verbatim. */
   argument: string;
   hasArgument: boolean;
+  /**
+   * Draft offsets of the invocation, from the slash through the argument. The
+   * composer replaces this span when a command runs so surrounding prose stays.
+   */
+  start: number;
+  end: number;
+  /** True for the inline form: a token inside a longer draft. */
+  inline: boolean;
+}
+
+export interface ParseSlashCommandOptions {
+  /** Caret offset. Enables the inline form, which reads the word ending here. */
+  caret?: number;
+  /**
+   * Names allowed to take an argument inline, i.e. the submenu commands. Any
+   * other inline token followed by a space is prose, so "use /new to start"
+   * sends as text rather than running `/new`.
+   */
+  argumentNames?: readonly string[];
 }
 
 // `[^\S\n]` keeps newlines out of the separator, so a multi-line draft is prose.
 const COMMAND_PATTERN = /^\/([a-z0-9-]*)(?:([^\S\n]+)([^\n]*))?$/i;
 
 /** Returns `null` when the draft isn't a command invocation. */
-export function parseSlashCommandQuery(value: string): SlashCommandQuery | null {
+export function parseSlashCommandQuery(
+  value: string,
+  options: ParseSlashCommandOptions = {},
+): SlashCommandQuery | null {
   // Tolerate leading whitespace a paste might add.
-  const match = COMMAND_PATTERN.exec(value.replace(/^[^\S\n]+/, ""));
+  const leading = /^[^\S\n]*/.exec(value)?.[0].length ?? 0;
+  const whole = COMMAND_PATTERN.exec(value.slice(leading));
+  if (whole) {
+    const [, name, separator, argument] = whole;
+    return {
+      name: name.toLowerCase(),
+      argument: argument ?? "",
+      hasArgument: separator !== undefined,
+      start: leading,
+      end: value.length,
+      inline: false,
+    };
+  }
+  if (options.caret === undefined) return null;
+  return parseInlineQuery(value, options.caret, options.argumentNames ?? []);
+}
+
+function parseInlineQuery(
+  value: string,
+  caret: number,
+  argumentNames: readonly string[],
+): SlashCommandQuery | null {
+  const before = value.slice(0, caret);
+  // Walk back to the last slash that starts a word. A slash inside a word, as
+  // in a path or "and/or", is skipped rather than treated as a boundary.
+  let index = before.lastIndexOf("/");
+  while (index > 0 && !/\s/.test(before[index - 1])) {
+    index = before.lastIndexOf("/", index - 1);
+  }
+  if (index < 0) return null;
+  const match = COMMAND_PATTERN.exec(before.slice(index));
   if (!match) return null;
-  const [, name, separator, argument] = match;
+  const [, rawName, separator, argument] = match;
+  const name = rawName.toLowerCase();
+  if (separator !== undefined && !argumentNames.includes(name)) return null;
   return {
-    name: name.toLowerCase(),
+    name,
     argument: argument ?? "",
     hasArgument: separator !== undefined,
+    start: index,
+    end: caret,
+    inline: true,
   };
+}
+
+/**
+ * The draft with the invocation span replaced by `text`, plus where the caret
+ * lands. Removing an inline token leaves its two neighbouring spaces touching,
+ * so one is dropped.
+ */
+export function replaceSlashCommandSpan(
+  value: string,
+  query: Pick<SlashCommandQuery, "start" | "end">,
+  text: string,
+): { value: string; caret: number } {
+  const before = value.slice(0, query.start);
+  let after = value.slice(query.end);
+  if (!text && after.startsWith(" ") && (before === "" || before.endsWith(" "))) {
+    after = after.slice(1);
+  }
+  return { value: before + text + after, caret: before.length + text.length };
 }
 
 function matches(command: SlashCommand, name: string): boolean {
@@ -89,7 +168,7 @@ export function filterSlashCommands(
  */
 export function resolveSlashCommand(
   commands: readonly SlashCommand[],
-  query: SlashCommandQuery,
+  query: Pick<SlashCommandQuery, "name">,
 ): SlashCommand | null {
   if (!query.name) return null;
   const exact = commands.find((command) => command.name === query.name);

@@ -57,6 +57,7 @@ import {
   filterSlashCommands,
   isSlashCommandAvailable,
   parseSlashCommandQuery,
+  replaceSlashCommandSpan,
   resolveSlashCommand,
   type SlashCommand,
 } from "@/lib/chat/slash-commands";
@@ -253,6 +254,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  // The inline command form reads the word ending at the caret, so the caret
+  // is mirrored into state from every change and selection move.
+  const [caret, setCaret] = useState(0);
+  // Set by `replaceDraft` and applied once the controlled value has rendered.
+  const pendingCaretRef = useRef<number | null>(null);
+  useEffect(() => {
+    const next = pendingCaretRef.current;
+    if (next === null) return;
+    pendingCaretRef.current = null;
+    textareaRef.current?.setSelectionRange(next, next);
+    setCaret(next);
+  }, [input]);
   const listboxId = useId();
   const optionIdPrefix = useId();
 
@@ -387,7 +400,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onToggleOpenUI,
   ]);
 
-  const query = parseSlashCommandQuery(input);
+  const argumentNames = useMemo(
+    () => commands.filter((command) => command.submenu).map((c) => c.name),
+    [commands],
+  );
+  const query = parseSlashCommandQuery(input, { caret, argumentNames });
   const exactCommand = query
     ? (commands.find((command) => command.name === query.name) ?? null)
     : null;
@@ -412,10 +429,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const rows = submenuModels
     ? toSlashCommandModelRows(submenuModels)
     : toSlashCommandRows(filteredCommands);
+  // An inline token with no match is most likely a path or a fraction, so the
+  // menu stays closed instead of announcing "no commands match".
   const menuOpen =
     query !== null &&
     input !== dismissedQuery &&
-    (submenu !== null || !query.hasArgument);
+    (submenu !== null || !query.hasArgument) &&
+    (!query.inline || rows.length > 0);
   // Filtering shrinks the list under the cursor, so clamp on read rather than
   // syncing an effect against the row count.
   const activeRow = Math.min(activeIndex, Math.max(0, rows.length - 1));
@@ -425,22 +445,31 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setActiveIndex(0);
   }
 
-  function replaceDraft(next: string) {
+  function replaceDraft(next: string, nextCaret = next.length) {
+    pendingCaretRef.current = nextCaret;
     setInput(next);
     setDismissedQuery(null);
     setActiveIndex(0);
     textareaRef.current?.focus({ preventScroll: true });
   }
 
+  /** Swaps the invocation span for `text`, leaving the rest of the draft. */
+  function replaceInvocation(text: string) {
+    if (!query) return;
+    const next = replaceSlashCommandSpan(input, query, text);
+    replaceDraft(next.value, next.caret);
+  }
+
   function runCommand(command: SlashCommand) {
     if (!isSlashCommandAvailable(command)) return;
     if (command.submenu) {
-      replaceDraft(`/${command.name} `);
+      replaceInvocation(`/${command.name} `);
       return;
     }
-    // Clear the draft before running: navigation unmounts the composer, and a
-    // toggle should leave an empty box ready for the real message.
-    replaceDraft("");
+    // Drop the invocation before running, keeping whatever else was typed:
+    // "/search what's new" leaves the question, "find me /search" leaves the
+    // sentence. Navigation then unmounts the composer with the draft saved.
+    replaceInvocation(query?.argument ?? "");
     if (command.action === "attach") fileInputRef.current?.click();
     else if (command.action === "dictate") startDictation();
     else command.run?.();
@@ -448,7 +477,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function selectRow(row: SlashCommandRow) {
     if (row.kind === "model") {
-      replaceDraft("");
+      replaceInvocation("");
       commandActions.onSelectModel(row.model.id);
       return;
     }
@@ -464,7 +493,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (e.key === "Escape" && menuOpen) {
       e.preventDefault();
       // Back out of the submenu one level before closing the menu.
-      if (submenu) replaceDraft(`/${query.name}`);
+      if (submenu) replaceInvocation(`/${query.name}`);
       else closeMenu();
       return true;
     }
@@ -475,9 +504,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         selectRow(rows[activeRow]);
         return true;
       }
-      // With the menu closed, a fully typed command still runs on Enter instead
-      // of sending "/temporary" as a message.
-      if (!submenu) {
+      // With the menu closed, a draft that is only a fully typed command still
+      // runs on Enter instead of sending "/temporary" as a message. An inline
+      // token whose menu was dismissed is prose and sends as typed.
+      if (!submenu && !query.inline) {
         const command = resolveSlashCommand(commands, query);
         if (command && isSlashCommandAvailable(command) && !command.submenu) {
           e.preventDefault();
@@ -500,7 +530,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (e.key === "Tab" && !e.shiftKey && !submenu) {
       e.preventDefault();
       const command = filteredCommands[activeRow];
-      if (command) replaceDraft(`/${command.name}${command.submenu ? " " : ""}`);
+      if (command) {
+        replaceInvocation(`/${command.name}${command.submenu ? " " : ""}`);
+      }
       return true;
     }
 
@@ -604,8 +636,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={textInputDisabled}
             onChange={(e) => {
               setInput(e.target.value);
+              setCaret(e.target.selectionStart);
               setActiveIndex(0);
             }}
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             // The textarea stays focused and owns the keyboard; the menu below is
