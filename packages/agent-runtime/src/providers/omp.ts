@@ -4,10 +4,12 @@ import type {
   AgentSlashCommand,
 } from "@overtchat/agent-bridge";
 import {
+  agentSessionHeldElsewhereMessage,
   mergeAgentSlashCommands,
   normalizeAgentSessionCommand,
 } from "@overtchat/agent-bridge";
 import { startOmp } from "@overtchat/agent-runtime/omp/client";
+import { probeOmpSessionLease } from "@overtchat/agent-runtime/omp/lease";
 import { OMP_MODES } from "@overtchat/agent-runtime/omp/config";
 import { parseOmpCommands } from "@overtchat/agent-runtime/omp/protocol";
 import { probeOmpTarget } from "@overtchat/agent-runtime/omp/probe";
@@ -93,7 +95,19 @@ function hasVisibleQueuedInput(state: Record<string, unknown>): boolean {
   });
 }
 
+const OMP_LABEL = "Oh My Pi";
+
 function sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity {
+  // OMP keeps one writer per session file. When it reports moving off the
+  // file it was asked to resume, the session we wanted is still owned by
+  // another process; the id it now reports belongs to a stray copy.
+  if (typeof state.persistenceNotice === "string") {
+    throw new Error(
+      /another omp process/i.test(state.persistenceNotice)
+        ? agentSessionHeldElsewhereMessage(OMP_LABEL)
+        : `${OMP_LABEL} could not keep writing the requested session file. ${state.persistenceNotice}`,
+    );
+  }
   if (typeof state.sessionFile !== "string" || !state.sessionFile) {
     throw new Error("Oh My Pi did not create a persistent session file.");
   }
@@ -185,6 +199,15 @@ export const ompProviderAdapter: AgentProviderAdapter = {
     // (can1357/oh-my-pi#14948). Queued steering and follow-ups still resume.
     return state.isStreaming === true || state.isCompacting === true ||
       hasVisibleQueuedInput(state);
+  },
+  async checkResume(target, launch) {
+    const lease = await probeOmpSessionLease(
+      target,
+      launch.executable,
+      launch.cwd,
+      launch.resume.providerSessionId,
+    );
+    if (lease === "held") throw new Error(agentSessionHeldElsewhereMessage(OMP_LABEL));
   },
   startSession(target, launch) {
     return startOmp(target, {

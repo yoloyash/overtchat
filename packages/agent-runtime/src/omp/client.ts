@@ -58,6 +58,7 @@ export class OmpClient {
   private todoRevision = 0;
   private todoItems: string | undefined;
   private turnTasks = new OmpTurnTasks();
+  private persistenceNotice: string | undefined;
   private chunk: { id: string; count: number; byteLength: number; parts: Buffer[] } | undefined;
 
   constructor(process: AgentProcess, private readonly modeId: string) {
@@ -108,6 +109,7 @@ export class OmpClient {
       ...(typeof nativeProvider === "string" && typeof nativeModelId === "string"
         ? { model: { provider: "omp", id: `${nativeProvider}/${nativeModelId}` } }
         : {}),
+      ...(this.persistenceNotice ? { persistenceNotice: this.persistenceNotice } : {}),
       modes: OMP_MODES,
       modeId: this.modeId,
     };
@@ -351,6 +353,12 @@ export class OmpClient {
     if (record.type === "ready") { this.handleReady(record); return; }
     if (record.type === "process_exit") {
       this.failReady(new Error(typeof record.error === "string" ? record.error : "Oh My Pi exited."));
+    }
+    // OMP says so when it stops writing the file it was asked to resume
+    // (another process owns it, or the file changed underneath). The id it
+    // reports from then on names a sibling copy, not the requested session.
+    if (record.type === "notice" && record.source === "session-persistence" && typeof record.message === "string") {
+      this.persistenceNotice = record.message;
     }
     if (record.type === "response" && record.command === "prompt" && record.success === false) {
       this.emit({ type: "rpc_error", command: "prompt", ...(typeof record.id === "string" ? { id: record.id } : {}), error: typeof record.error === "string" ? record.error : "Oh My Pi prompt failed.", ...(typeof record.code === "string" ? { code: record.code } : {}) });

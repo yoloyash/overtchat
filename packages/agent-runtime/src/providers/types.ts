@@ -137,6 +137,12 @@ export interface AgentProviderAdapter {
     target: HostTarget,
     launch: AgentSessionLaunch,
   ): AgentRuntimeClient;
+  /** Reject a resume before any process starts, such as a session another
+   * provider process still owns. Omitted when the provider cannot tell. */
+  checkResume?(
+    target: HostTarget,
+    launch: AgentSessionLaunch & { resume: NonNullable<AgentSessionLaunch["resume"]> },
+  ): Promise<void>;
   probeConnection(
     draft: AgentConnectionDraft,
   ): Promise<AgentReadyConnectionProbe>;

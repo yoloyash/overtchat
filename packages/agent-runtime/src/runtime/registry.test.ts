@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   setThinkingLevel: vi.fn(),
   setMode: vi.fn(),
   fetchCatalog: vi.fn(),
+  checkResume: vi.fn(),
   launches: [] as Array<Record<string, unknown>>,
   eventSubscriber: null as ((event: AgentRuntimeEvent) => void) | null,
 }));
@@ -54,6 +55,7 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     probeTarget: vi.fn(),
     listWorkspaceSessions: vi.fn(),
     fetchCatalog: mocks.fetchCatalog,
+    checkResume: mocks.checkResume,
     startSession: (_target: unknown, launch: Record<string, unknown>) => {
       mocks.launches.push(launch);
       return {
@@ -186,6 +188,35 @@ describe("agent runtime", () => {
     expect(runtime.snapshot().queuedMessages).toEqual([]);
     expect(mocks.getMessages).toHaveBeenCalledOnce();
     expect(mocks.prompt).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
+  it("refuses a resume the provider reports as held elsewhere before starting anything", async () => {
+    mocks.checkResume.mockRejectedValueOnce(new Error("This session is still open in another Oh My Pi process."));
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const descriptor = {
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "omp" as const, target: { transport: "local" as const }, executable: "omp", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    };
+    await expect(registry.getOrStart(descriptor)).rejects.toThrow("still open in another");
+    expect(mocks.checkResume).toHaveBeenCalledWith(
+      { transport: "local" },
+      expect.objectContaining({
+        executable: "omp",
+        cwd: "/workspace",
+        resume: { providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl" },
+      }),
+    );
+    expect(mocks.launches).toEqual([]);
+    expect(mocks.stop).not.toHaveBeenCalled();
+    expect(registry.get("session")).toBeNull();
+
+    // A provider that cannot tell lets the resume proceed as before.
+    mocks.checkResume.mockResolvedValueOnce(undefined);
+    const runtime = await registry.getOrStart(descriptor);
+    expect(runtime.snapshot().sessionId).toBe("session");
     await registry.stopAll();
   });
 
