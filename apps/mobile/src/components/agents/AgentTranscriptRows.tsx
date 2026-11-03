@@ -144,7 +144,8 @@ export function AgentActivityGroup({
               return (
                 <View key={entry.id} style={{ gap: 2, paddingVertical: 4 }}>
                   <AgentText>
-                    {entry.activity.action} · {entry.activity.status}
+                    {entry.activity.title ?? entry.activity.action} ·{" "}
+                    {entry.activity.status}
                   </AgentText>
                   {!!entry.activity.prompt && (
                     <AgentText muted>{entry.activity.prompt}</AgentText>

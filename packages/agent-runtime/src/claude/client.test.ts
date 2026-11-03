@@ -1278,3 +1278,112 @@ describe("Claude context reporting", () => {
     } finally { await client.stop(); await rm(fixture.root, { recursive: true, force: true }); }
   });
 });
+
+describe("Claude subagents", () => {
+  const role = (message: unknown) => (message as Record<string, unknown>).role;
+  const assistants = (messages: unknown[]) => messages.filter((message) => role(message) === "assistant");
+  const taskLaunch = (id: string, name = "Task") => ({
+    type: "assistant", parent_tool_use_id: null,
+    message: { id: "parent", content: [{ type: "tool_use", id, name, input: {
+      description: "Survey the runtime", prompt: "Read the runtime tests", subagent_type: "Explore",
+    } }] },
+  });
+
+  it("projects a foreground Task as a subagent part fed by its child's frames", async () => {
+    const { query, runtime, replica, events } = await createRuntimeForTest();
+    try {
+      expect(query.options).toMatchObject({ forwardSubagentText: true });
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push({ type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id: "parent", usage: {} } } });
+      query.push({ type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "task-1", name: "Task", input: {} } } });
+      query.push(taskLaunch("task-1"));
+      query.push({ type: "system", subtype: "task_started", task_id: "agent-1", tool_use_id: "task-1", description: "Survey the runtime", subagent_type: "Explore", task_type: "local_agent", is_backgrounded: false });
+      // The child's stream is neither a parent message nor the live one.
+      query.push({ type: "stream_event", parent_tool_use_id: "task-1", event: { type: "message_start", message: { id: "child-stream", usage: {} } } });
+      query.push({ type: "stream_event", parent_tool_use_id: "task-1", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Looking" } } });
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-1", content: [{ type: "tool_use", id: "child-grep", name: "Grep", input: { pattern: "runtimeStatus", path: "apps/web" } }] } });
+      query.push({ type: "user", parent_tool_use_id: "task-1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "child-grep", content: "No such path\nmore", is_error: true }] } });
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-2", content: [{ type: "text", text: "The suite covers the runtime." }] } });
+      await nextTask();
+      expect(assistants(replica().messages)).toEqual([expect.objectContaining({
+        id: "parent",
+        content: [expect.objectContaining({ type: "subagent", id: "task-1", status: "running" })],
+      })]);
+
+      query.push({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "task-1", content: "The suite covers the runtime." }] } });
+      await nextTask();
+      const messages = replica().messages;
+      expect(assistants(messages)).toEqual([expect.objectContaining({
+        id: "parent",
+        content: [{
+          type: "subagent", id: "task-1", action: "task", status: "completed", receivers: [],
+          title: "Survey the runtime", agentType: "Explore", prompt: "Read the runtime tests",
+          events: ["Grep runtimeStatus", "Grep failed: No such path", "The suite covers the runtime."],
+        }],
+      })]);
+      expect(messages.some((message) => role(message) === "toolResult")).toBe(false);
+      expect(events.some((event) => event.type === "tool_execution_end")).toBe(false);
+      expect(replica().messages).toEqual(runtime.snapshot().messages);
+    } finally { await runtime.stop(); }
+  });
+
+  it("keeps a backgrounded Agent running until its notification settles it", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push(taskLaunch("task-1", "Agent"));
+      query.push({ type: "system", subtype: "task_started", task_id: "agent-1", tool_use_id: "task-1", description: "Survey the runtime", task_type: "local_agent", is_backgrounded: true });
+      // A background shell has a part of its own in neither place.
+      query.push({ type: "system", subtype: "task_started", task_id: "shell-1", tool_use_id: "bash-1", description: "npm test", task_type: "local_bash", is_backgrounded: true });
+      query.push({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "task-1", content: "Async agent launched successfully.\nagentId: agent-1" }] } });
+      query.push(backgroundTasks("agent-1", "shell-1"));
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(assistants(replica().messages)[0]).toMatchObject({
+        content: [{ type: "subagent", id: "task-1", status: "running", events: [] }],
+      });
+
+      // The child keeps reporting after the parent turn ended.
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-1", content: [{ type: "text", text: "Finished the survey." }] } });
+      query.push({ type: "system", subtype: "task_notification", task_id: "agent-1", status: "completed", summary: "Agent finished" });
+      await nextTask();
+      expect(assistants(replica().messages)[0]).toMatchObject({
+        content: [{ type: "subagent", id: "task-1", status: "completed", events: ["Finished the survey."] }],
+      });
+      expect(runtime.snapshot().status).toBe("idle");
+      expect(assistants(replica().messages)).toHaveLength(1);
+    } finally { await runtime.stop(); }
+  });
+
+  it("folds nested launches into the top-level part and drops frames of unknown children", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push(taskLaunch("task-1"));
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-1", content: [{ type: "tool_use", id: "task-nested", name: "Agent", input: { description: "Check tests", prompt: "Run them" } }] } });
+      query.push({ type: "assistant", parent_tool_use_id: "task-nested", message: { id: "grandchild-1", content: [{ type: "text", text: "Tests pass." }] } });
+      query.push({ type: "assistant", parent_tool_use_id: "ghost", message: { id: "orphan", content: [{ type: "text", text: "Nobody owns me." }] } });
+      query.push({ type: "system", subtype: "task_updated", task_id: "unknown", patch: { status: "failed" } });
+      query.push({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "task-1", content: "[Request interrupted by user for tool use]", is_error: true }] } });
+      await nextTask();
+      expect(assistants(replica().messages)).toEqual([expect.objectContaining({
+        content: [expect.objectContaining({
+          id: "task-1", status: "stopped", events: ["Subagent: Check tests", "Tests pass."],
+        })],
+      })]);
+    } finally { await runtime.stop(); }
+  });
+
+  it("stops running subagents when the CLI goes away", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push(taskLaunch("task-1"));
+      await nextTask();
+      query.close();
+      await vi.waitFor(() => expect(assistants(replica().messages)[0]).toMatchObject({
+        content: [{ type: "subagent", id: "task-1", status: "stopped" }],
+      }));
+    } finally { await runtime.stop(); }
+  });
+});

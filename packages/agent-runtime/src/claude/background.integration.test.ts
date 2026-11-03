@@ -44,6 +44,18 @@ describe.runIf(process.env.RUN_CLAUDE_BACKGROUND_INTEGRATION === "1")("installed
       expect(await client.getState()).toMatchObject({ isStreaming: false, hasPendingAsyncWork: true });
       await runtime.refreshState();
       expect(runtime.snapshot().status).toBe("idle");
+      const subagentParts = () => runtime!.snapshot().messages.flatMap((message) => {
+        const content = (message as { content?: unknown }).content;
+        return Array.isArray(content)
+          ? content.filter((part) => (part as { type?: unknown }).type === "subagent")
+          : [];
+      });
+      if (kind === "subagent") {
+        // The launch is a subagent part, not a tool call, and it stays running
+        // while the parent is idle.
+        expect(subagentParts()).toEqual([expect.objectContaining({ action: "task", status: "running" })]);
+        expect(runtime.snapshot().messages.some((message) => (message as { role?: unknown }).role === "toolResult")).toBe(false);
+      }
       const startsBeforeRelease = events.filter((event) => event.type === "turn_start").length;
       await writeFile(releaseFile, "release");
       await vi.waitFor(() => {
@@ -52,6 +64,11 @@ describe.runIf(process.env.RUN_CLAUDE_BACKGROUND_INTEGRATION === "1")("installed
         expect(runtime!.snapshot().error).toBeUndefined();
       }, { timeout: 90_000, interval: 100 });
       expect(await client.getState()).toMatchObject({ isStreaming: false, hasPendingAsyncWork: false });
+      if (kind === "subagent") {
+        const [part] = subagentParts();
+        expect(part).toMatchObject({ status: "completed" });
+        expect((part as { events: string[] }).events.join("\n")).toContain("BACKGROUND_DONE");
+      }
     } finally {
       // Release the test-owned job even when an assertion fails.
       await writeFile(releaseFile, "release");
