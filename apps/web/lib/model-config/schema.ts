@@ -12,11 +12,25 @@ import {
 
 export type { PublicModelConfig } from "@overtchat/shared";
 
+import { MODEL_CREDENTIAL_SCOPES } from "@overtchat/shared/admin-settings";
 export type {
   AdminModelConfig,
   ModelPricing,
   CatalogModelPricing,
+  ModelCredentialScope,
 } from "@overtchat/shared/admin-settings";
+export { MODEL_CREDENTIAL_SCOPES };
+
+/**
+ * Admin-facing view of one person's credential. A null field means they use
+ * the model's own. Administrators see the key, as they do the model's.
+ */
+export interface AdminModelUserCredential {
+  userId: string;
+  apiKey: string | null;
+  baseUrl: string | null;
+  updatedAt: number;
+}
 
 const EndpointSchema = z
   .string()
@@ -136,9 +150,22 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
     .boolean()
     .nullish()
     .transform((value) => value ?? true),
+  // Omitted means "unchanged" on update (and `shared` on create), so clients
+  // that predate per-user credentials can't silently reset a model's scope.
+  credentialScope: z.enum(MODEL_CREDENTIAL_SCOPES).optional(),
 })
   .superRefine((value, context) => {
-    validateProviderConnection(value, context);
+    // Per-user models take each user's key; the model's own key is optional.
+    validateProviderConnection(value, context, {
+      apiKeyOptional: value.credentialScope === "user",
+    });
+    if (value.modelType === "image" && value.credentialScope === "user") {
+      context.addIssue({
+        code: "custom",
+        path: ["credentialScope"],
+        message: "Image models use a shared connection.",
+      });
+    }
     const override = value.reasoningOverride;
     if (
       override &&
@@ -230,6 +257,35 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
 
 export type ModelConfigInput = z.infer<typeof ModelConfigSchema>;
 
+/**
+ * The connection to validate a model config with before save. A per-user model
+ * may have no key of its own (each person brings one), so a placeholder stands
+ * in for providers that require one; it is never stored or sent.
+ */
+export function connectionForValidation(input: ModelConfigInput): ModelConfigInput {
+  return input.credentialScope === "user" && !input.apiKey
+    ? { ...input, apiKey: "per-user-credential" }
+    : input;
+}
+
+/**
+ * An administrator's write of one person's credential for a per-user model.
+ * An omitted `apiKey` keeps the stored one; `null` or "" removes it, so the
+ * person uses the model's own key again.
+ */
+export const ModelUserCredentialSchema = z.object({
+  apiKey: z
+    .string()
+    .trim()
+    .nullish()
+    .transform((value) => (value === undefined ? undefined : value || null)),
+  baseUrl: EndpointSchema.nullish().transform((value) => value ?? null),
+});
+
+export type ModelUserCredentialInput = z.infer<typeof ModelUserCredentialSchema>;
+/** The request body clients send (omit `apiKey` to keep the stored key). */
+export type ModelUserCredentialWrite = z.input<typeof ModelUserCredentialSchema>;
+
 export interface ModelDiscoveryInput {
   providerId: ProviderId;
   apiFormat: ApiFormat;
@@ -241,9 +297,10 @@ export interface ModelDiscoveryInput {
 function validateProviderConnection(
   value: z.infer<typeof ProviderConnectionObject>,
   context: z.RefinementCtx,
+  { apiKeyOptional = false }: { apiKeyOptional?: boolean } = {},
 ) {
   const provider = PROVIDERS[value.providerId];
-  if (provider.requiresApiKey && !value.apiKey) {
+  if (provider.requiresApiKey && !value.apiKey && !apiKeyOptional) {
     context.addIssue({
       code: "custom",
       path: ["apiKey"],

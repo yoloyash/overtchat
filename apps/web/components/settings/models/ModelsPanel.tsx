@@ -112,6 +112,7 @@ export function ModelsPanel() {
           systemPrompt: m.systemPrompt,
           providerOptions: m.providerOptions,
           toolCallingEnabled: m.toolCallingEnabled,
+          credentialScope: m.credentialScope,
           enabled: next,
         },
       });

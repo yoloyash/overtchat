@@ -142,3 +142,41 @@ describe("model updates", () => {
     },
   );
 });
+
+describe("credential scope updates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.session.mockResolvedValue({ user: { role: "admin" } });
+    mocks.update.mockImplementation((_id, input) => ({ ...input, id: "model" }));
+  });
+
+  it("keeps a per-user model per-user when a client omits the scope", async () => {
+    // e.g. the models list's enable toggle, or a client that predates the field
+    mocks.get.mockResolvedValue({ ...existing, apiKey: null, credentialScope: "user" });
+
+    const response = await PATCH(
+      request({ ...existing, apiKey: null, enabled: false }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.update.mock.calls[0][1]).toMatchObject({
+      credentialScope: "user",
+      enabled: false,
+    });
+  });
+
+  it("changes the scope when a client sends one", async () => {
+    mocks.get.mockResolvedValue({ ...existing, credentialScope: "user" });
+
+    const response = await PATCH(
+      request({ ...existing, credentialScope: "shared" }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.update.mock.calls[0][1]).toMatchObject({
+      credentialScope: "shared",
+    });
+  });
+});

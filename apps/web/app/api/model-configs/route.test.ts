@@ -102,6 +102,64 @@ describe("model config save validation", () => {
   });
 });
 
+describe("per-user models", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.resolveModelContextWindow.mockReturnValue(128_000);
+    mocks.resolveModelCapabilities.mockReturnValue({ inputModalities: ["text"] });
+  });
+
+  it("saves a per-user model without a key of its own, and never stores the validation placeholder", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "admin", role: "admin" } });
+    mocks.createModelConfig.mockImplementation(async (input) => ({ id: "m", ...input }));
+
+    const response = await POST(
+      request({
+        providerId: "openai",
+        apiFormat: "auto",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+        model: "gpt-5.6",
+        credentialScope: "user",
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.createModelConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialScope: "user", apiKey: null }),
+    );
+  });
+
+  it("lists per-user models to everyone, like shared ones", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "alice", role: "user" } });
+    const row = (id: string, credentialScope: string) => ({
+      id,
+      label: id,
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: null,
+      model: id,
+      enabled: true,
+      modelType: "chat",
+      credentialScope,
+      toolCallingEnabled: true,
+      providerOptions: null,
+    });
+    mocks.listModelConfigs.mockResolvedValue([
+      row("shared", "shared"),
+      row("personal", "user"),
+      { ...row("hidden", "user"), enabled: false },
+    ]);
+
+    const response = await GET(new Request("http://server.test/api/model-configs"));
+    const json = (await response.json()) as { modelConfigs: { id: string }[] };
+
+    // Anyone without their own key chats on the model's, so nothing is hidden.
+    expect(json.modelConfigs.map((m) => m.id)).toEqual(["shared", "personal"]);
+  });
+});
+
 describe("admin model configs", () => {
   const rows = [
     { id: "router", providerId: "openrouter", apiFormat: "auto" },

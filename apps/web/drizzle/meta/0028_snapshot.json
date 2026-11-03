@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "92694c15-1b61-459c-a354-3e350a37c803",
+  "id": "58c474c3-dad5-40e9-a9f9-318556360ffc",
   "prevId": "db7294c7-7f2e-44f2-b1d2-f9d8be018315",
   "tables": {
     "account": {
@@ -1668,6 +1668,103 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "model_config_user_credentials": {
+      "name": "model_config_user_credentials",
+      "columns": {
+        "model_config_id": {
+          "name": "model_config_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "api_key": {
+          "name": "api_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "base_url": {
+          "name": "base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+        }
+      },
+      "indexes": {
+        "model_config_user_credentials_userId_idx": {
+          "name": "model_config_user_credentials_userId_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "model_config_user_credentials_model_config_id_model_configs_id_fk": {
+          "name": "model_config_user_credentials_model_config_id_model_configs_id_fk",
+          "tableFrom": "model_config_user_credentials",
+          "tableTo": "model_configs",
+          "columnsFrom": [
+            "model_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "model_config_user_credentials_user_id_user_id_fk": {
+          "name": "model_config_user_credentials_user_id_user_id_fk",
+          "tableFrom": "model_config_user_credentials",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "model_config_user_credentials_model_config_id_user_id_pk": {
+          "columns": [
+            "model_config_id",
+            "user_id"
+          ],
+          "name": "model_config_user_credentials_model_config_id_user_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "model_configs": {
       "name": "model_configs",
       "columns": {
@@ -1802,6 +1899,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "credential_scope": {
+          "name": "credential_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'shared'"
         },
         "sort_order": {
           "name": "sort_order",
@@ -1997,14 +2102,6 @@
         },
         "previews": {
           "name": "previews",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "sign_ins": {
-          "name": "sign_ins",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -2232,143 +2329,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "sign_in_approvals": {
-      "name": "sign_in_approvals",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "challenge": {
-          "name": "challenge",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "number": {
-          "name": "number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "choices": {
-          "name": "choices",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "device": {
-          "name": "device",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "ip_address": {
-          "name": "ip_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'pending'"
-        },
-        "decided_by_session_id": {
-          "name": "decided_by_session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "sign_in_approvals_challenge_unique": {
-          "name": "sign_in_approvals_challenge_unique",
-          "columns": [
-            "challenge"
-          ],
-          "isUnique": true
-        },
-        "sign_in_approvals_user_idx": {
-          "name": "sign_in_approvals_user_idx",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "sign_in_approvals_user_id_user_id_fk": {
-          "name": "sign_in_approvals_user_id_user_id_fk",
-          "tableFrom": "sign_in_approvals",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "sign_in_approvals_decided_by_session_id_session_id_fk": {
-          "name": "sign_in_approvals_decided_by_session_id_session_id_fk",
-          "tableFrom": "sign_in_approvals",
-          "tableTo": "session",
-          "columnsFrom": [
-            "decided_by_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
