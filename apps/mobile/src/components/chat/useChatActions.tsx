@@ -1,8 +1,8 @@
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useCallback, useRef, useState } from "react";
 import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
+import { RenameSheet } from "@/components/ui/RenameSheet";
 import { MoveToProjectSheet } from "@/components/drawer/MoveToProjectSheet";
-import { RenameChatSheet } from "@/components/drawer/RenameChatSheet";
 import { useChatSession } from "@/lib/chat/session";
 import {
   useDeleteChat,
@@ -121,10 +121,12 @@ export function useChatActions({
 
   const sheets = (
     <>
-      <RenameChatSheet
+      <RenameSheet
         ref={renameSheetRef}
-        chatId={renameTarget?.id ?? null}
+        targetId={renameTarget?.id ?? null}
         initialTitle={renameTarget?.title ?? null}
+        heading="Rename chat"
+        placeholder="Chat title"
         onSubmit={submitRename}
       />
       <ConfirmSheet

@@ -30,8 +30,6 @@ export function viewedTarget(
   activeChatId: string,
 ): string | null {
   if (pathname === "/chat") return `chat:${activeChatId}`;
-  const agent = /^\/agents\/([^/]+)$/.exec(pathname);
-  if (agent && agent[1] !== "new" && agent[1] !== "workspace")
-    return `agent:${agent[1]}`;
-  return null;
+  const agent = /^\/agent\/([^/]+)$/.exec(pathname);
+  return agent ? `agent:${agent[1]}` : null;
 }

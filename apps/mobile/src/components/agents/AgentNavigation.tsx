@@ -100,7 +100,7 @@ export function AgentSessionRow({
         onPress ??
         (() =>
           router.push({
-            pathname: "/agents/[id]",
+            pathname: "/agent/[id]",
             params: {
               id: session.id,
               workspace: workspaceId,

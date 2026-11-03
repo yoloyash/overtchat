@@ -24,7 +24,6 @@ export default function AgentsLayout() {
         name="index"
         options={{ title: "Agents", ...drawerOptions }}
       />
-      <Stack.Screen name="[id]" />
       <Stack.Screen name="new" options={{ title: "New agent chat" }} />
       <Stack.Screen name="workspace" />
     </Stack>

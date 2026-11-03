@@ -86,7 +86,7 @@ export function useNotifications(chat: ChatSession) {
         router.push("/(authed)/(drawer)/chat");
       } else {
         router.push({
-          pathname: "/agents/[id]",
+          pathname: "/agent/[id]",
           params: { id: target.targetId },
         });
       }

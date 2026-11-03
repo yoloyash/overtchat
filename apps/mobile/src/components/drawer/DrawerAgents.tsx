@@ -79,12 +79,12 @@ export function DrawerAgents({ onNavigate }: { onNavigate: () => void }) {
               contextLabel={`${group.name} · ${group.host.name}`}
               compact
               selected={
-                pathname === `/agents/${encodeURIComponent(item.session.id)}`
+                pathname === `/agent/${encodeURIComponent(item.session.id)}`
               }
               onPress={() => {
                 onNavigate();
                 router.navigate({
-                  pathname: "/agents/[id]",
+                  pathname: "/agent/[id]",
                   params: {
                     id: item.session.id,
                     workspace: item.workspaceId,

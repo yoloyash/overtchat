@@ -30,6 +30,7 @@ import type {
 import { getApiBase } from "@/lib/api";
 import { agentFetch, agentJson } from "@/lib/agents/api";
 import { AgentSessionStream, type StreamStatus } from "@/lib/agents/stream";
+import { findAgentSession, groupWorkspaces } from "@/lib/agents/workspaces";
 import { queryKeys } from "./keys";
 
 export function useAgentForeground() {
@@ -65,6 +66,34 @@ export function useMarkAgentSessionSeen(
   }, [id, active, status]);
 }
 
+async function fetchAgentConnections({ signal }: { signal: AbortSignal }) {
+  return (
+    await agentJson<{ connections: AgentConnectionListItem[] }>(
+      "/api/agent-connections",
+      undefined,
+      signal,
+    )
+  ).connections;
+}
+
+/**
+ * One session's folder and list entry, read from the shared connection list
+ * without polling it. Fetches once when nothing is cached yet, such as after
+ * opening a notification.
+ */
+export function useAgentSessionListing(id: string) {
+  const foreground = useAgentForeground();
+  const query = useQuery({
+    queryKey: queryKeys.agentConnections(getApiBase()),
+    queryFn: fetchAgentConnections,
+    enabled: foreground,
+    staleTime: Infinity,
+    retry: false,
+    select: (connections) => findAgentSession(groupWorkspaces(connections), id),
+  });
+  return query.data ?? null;
+}
+
 export function useAgentConnections({
   enabled = true,
 }: { enabled?: boolean } = {}) {
@@ -74,14 +103,7 @@ export function useAgentConnections({
   const active = foreground && enabled;
   const query = useQuery({
     queryKey: queryKeys.agentConnections(getApiBase()),
-    queryFn: async ({ signal }) =>
-      (
-        await agentJson<{ connections: AgentConnectionListItem[] }>(
-          "/api/agent-connections",
-          undefined,
-          signal,
-        )
-      ).connections,
+    queryFn: fetchAgentConnections,
     enabled: active,
     refetchInterval: active ? 5000 : false,
     retry: false,

@@ -18,9 +18,18 @@ export default function DrawerLayout() {
         headerTintColor: colors.foreground,
         headerShadowVisible: false,
       }}
+      // Android Back returns to the screen the user came from, so leaving an
+      // agent conversation lands on the list or chat that opened it.
+      backBehavior="history"
       drawerContent={(props) => <AppDrawer {...props} />}
     >
       <Drawer.Screen name="chat" />
+      {/* A conversation is a destination like a chat: the menu button opens
+          the drawer, and the Agents list below stays a browse stack. */}
+      <Drawer.Screen
+        name="agent/[id]"
+        options={{ title: "", headerTitleAlign: "left" }}
+      />
       <Drawer.Screen
         name="agents"
         options={({ route }) => ({

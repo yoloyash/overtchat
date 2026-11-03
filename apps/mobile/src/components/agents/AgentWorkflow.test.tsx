@@ -2,7 +2,7 @@ import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { toastError } from "@/lib/toast";
+import { toastError, toastSuccess } from "@/lib/toast";
 import type {
   AgentConnectionListItem,
   AgentProviderSnapshot,
@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   push: vi.fn(),
   navigate: vi.fn(),
+  back: vi.fn(),
   pathname: "/chat",
   canGoBack: false,
   toggleDrawer: vi.fn(),
@@ -268,7 +269,7 @@ vi.mock("@gorhom/bottom-sheet", async () => {
           footerComponent,
         }: {
           children: ReactNode;
-          onDismiss: () => void;
+          onDismiss?: () => void;
           footerComponent?: (props: object) => ReactNode;
         },
         ref,
@@ -282,7 +283,7 @@ vi.mock("@gorhom/bottom-sheet", async () => {
           dismiss: () => {
             if (open) {
               setOpen(false);
-              onDismiss();
+              onDismiss?.();
             } else {
               // Gorhom 5.2: dismissing INITIAL blocks subsequent portal renders.
               stuckDismissing.current = true;
@@ -315,7 +316,13 @@ vi.mock("expo-router", async () => ({
   useFocusEffect: (await import("react")).useEffect,
   useLocalSearchParams: () => mocks.params,
   usePathname: () => mocks.pathname,
-  router: { replace: mocks.replace, push: mocks.push, navigate: mocks.navigate },
+  router: {
+    replace: mocks.replace,
+    push: mocks.push,
+    navigate: mocks.navigate,
+    back: mocks.back,
+    canGoBack: () => mocks.canGoBack,
+  },
   Stack: {
     Screen: ({
       options,
@@ -331,6 +338,25 @@ vi.mock("expo-router", async () => ({
         <div data-header-left>{options?.headerLeft?.({ canGoBack: mocks.canGoBack })}</div>
         {options?.headerTitle?.()}
         <div data-header-right>{options?.headerRight?.({ canGoBack: mocks.canGoBack })}</div>
+      </header>
+    ),
+  },
+}));
+// The conversation screen sits in the drawer, whose header always carries
+// the drawer button on the left.
+vi.mock("expo-router/drawer", () => ({
+  Drawer: {
+    Screen: ({
+      options,
+    }: {
+      options?: { headerTitle?: () => ReactNode; headerRight?: () => ReactNode };
+    }) => (
+      <header>
+        <div data-header-left>
+          <button aria-label="Show navigation menu" onClick={mocks.toggleDrawer} />
+        </div>
+        {options?.headerTitle?.()}
+        <div data-header-right>{options?.headerRight?.()}</div>
       </header>
     ),
   },
@@ -460,7 +486,13 @@ vi.mock("react-native-reanimated", async () => {
     withSequence: (...values: number[]) => values[0],
   };
 });
-vi.mock("@/lib/queries/agents", () => ({
+vi.mock("@/lib/queries/agents", async () => {
+  const { findAgentSession, groupWorkspaces } = await import(
+    "@/lib/agents/workspaces"
+  );
+  return {
+  useAgentSessionListing: (id: string) =>
+    findAgentSession(groupWorkspaces(mocks.connections), id),
   useAgentSession: () => ({
     snapshot: mocks.snapshot,
     status: mocks.status,
@@ -484,7 +516,8 @@ vi.mock("@/lib/queries/agents", () => ({
     isSuccess: true,
     isError: false,
   }),
-}));
+  };
+});
 vi.mock("@/lib/agents/api", () => ({ agentJson: mocks.api }));
 vi.mock("@/lib/agents/drafts", async () => {
   const { useState } = await import("react");
@@ -503,7 +536,7 @@ vi.mock("@/lib/agents/drafts", async () => {
   };
 });
 
-import AgentSessionScreen from "@/app/(authed)/(drawer)/agents/[id]";
+import AgentSessionScreen from "@/app/(authed)/(drawer)/agent/[id]";
 import AgentsScreen from "@/app/(authed)/(drawer)/agents/index";
 import AgentWorkspaceScreen from "@/app/(authed)/(drawer)/agents/workspace";
 import { DrawerAgents } from "@/components/drawer/DrawerAgents";
@@ -620,17 +653,168 @@ async function input(value: string) {
   });
 }
 
-it.each([false, true])("keeps the drawer and context controls accessible with canGoBack=%s", async (canGoBack) => {
-  mocks.canGoBack = canGoBack;
+it("keeps the drawer button on the left, the session menu on the right, and the context control reachable", async () => {
   await render();
-  expect(container.querySelector("header")?.getAttribute("data-back-visible")).toBe("true");
-  const menu = container.querySelector('button[aria-label="Show navigation menu"]');
   expect(container.querySelectorAll('button[aria-label="Show navigation menu"]')).toHaveLength(1);
-  expect(menu?.parentElement?.closest(canGoBack ? "[data-header-right]" : "[data-header-left]")).not.toBeNull();
+  expect(
+    container.querySelector('button[aria-label="Show navigation menu"]')?.closest("[data-header-left]"),
+  ).not.toBeNull();
+  expect(
+    container.querySelector('button[aria-label="Session actions"]')?.closest("[data-header-right]"),
+  ).not.toBeNull();
   await click("Show navigation menu");
   expect(mocks.toggleDrawer).toHaveBeenCalledTimes(1);
   await click("Context usage unavailable. Show details");
   expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+});
+
+describe("agent session menu", () => {
+  function listSession() {
+    mocks.connections = [
+      {
+        id: "codex",
+        provider: "codex",
+        executable: "codex",
+        detectedVersion: null,
+        lastValidatedAt: null,
+        host: { id: "host", connectorId: "connector", name: "My computer", transport: "local", sshAlias: null },
+        workspaces: [
+          {
+            id: "workspace",
+            path: "/Users/me/project",
+            name: "Project",
+            sessions: [
+              {
+                id: "session",
+                providerSessionId: "native-session",
+                name: null,
+                firstMessage: "Hello",
+                messageCount: 1,
+                createdAt: 1,
+                modifiedAt: 1,
+                runtimeStatus: "idle",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+  const rows = () =>
+    [...container.querySelectorAll('[role="menu"] button')].map((row) => [
+      row.getAttribute("aria-label"),
+      (row as HTMLButtonElement).disabled,
+    ]);
+
+  it("lists the session's actions under its title and renames it through a sheet", async () => {
+    listSession();
+    mocks.snapshot!.state.sessionName = "Polish navigation";
+    await render();
+    await click("Session actions");
+    expect(container.querySelector('[role="menu"]')!.textContent).toContain("Polish navigation");
+    expect(rows()).toEqual([
+      ["Rename", false],
+      ["Compact context", false],
+      ["Account usage", false],
+      ["Open workspace", false],
+      ["Copy session ID", false],
+      ["Copy workspace path", false],
+    ]);
+    await click("Rename");
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+    const field = container.querySelector('input[aria-label="Session name"]') as HTMLInputElement;
+    expect(field.value).toBe("Polish navigation");
+    await act(async () => {
+      field.value = "Ship navigation";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click("Save");
+    expect(mocks.send).toHaveBeenCalledWith({ type: "set_session_name", name: "Ship navigation" });
+    expect(toastSuccess).toHaveBeenCalledWith("Renamed");
+  });
+
+  it("confirms compaction, shows account usage, and copies identifiers", async () => {
+    listSession();
+    await render();
+    await click("Session actions");
+    await click("Compact context");
+    expect(mocks.alert).toHaveBeenCalledWith(
+      "Compact context?",
+      expect.stringContaining("can't be undone"),
+      expect.any(Array),
+    );
+    const buttons = mocks.alert.mock.lastCall![2] as { text: string; onPress?: () => void }[];
+    expect(mocks.send).not.toHaveBeenCalled();
+    await act(async () => buttons.find((button) => button.text === "Compact")!.onPress!());
+    expect(mocks.send).toHaveBeenCalledWith({ type: "compact" });
+    mocks.send.mockResolvedValueOnce({
+      usage: { planType: "Pro", windows: [{ id: "5h", label: "5 hours", usedPercent: 40, resetsAt: null }] },
+    });
+    await click("Session actions");
+    await click("Account usage");
+    expect(mocks.send).toHaveBeenCalledWith({ type: "show_usage" });
+    expect(container.textContent).toContain("5 hours · 40% used");
+    await click("Session actions");
+    await click("Copy session ID");
+    expect(mocks.copy).toHaveBeenCalledWith("native-session");
+    expect(toastSuccess).toHaveBeenCalledWith("Session ID copied");
+    await click("Session actions");
+    await click("Copy workspace path");
+    expect(mocks.copy).toHaveBeenCalledWith("/Users/me/project");
+    await click("Session actions");
+    await click("Open workspace");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/workspace",
+      params: { workspace: "workspace", name: "Project" },
+    });
+  });
+
+  it("greys session commands while disconnected, hides renaming where unsupported, and waits for the session to load", async () => {
+    listSession();
+    mocks.status = "reconnecting";
+    await render();
+    await click("Session actions");
+    expect(rows()).toEqual([
+      ["Rename", true],
+      ["Compact context", true],
+      ["Account usage", true],
+      ["Open workspace", false],
+      ["Copy session ID", false],
+      ["Copy workspace path", false],
+    ]);
+    await click("Copy session ID");
+    mocks.status = "connected";
+    mocks.snapshot!.provider = "hermes";
+    mocks.snapshot!.capabilities.usage = false;
+    await render();
+    await click("Session actions");
+    expect(rows().map(([label]) => label)).toEqual([
+      "Compact context",
+      "Open workspace",
+      "Copy session ID",
+      "Copy workspace path",
+    ]);
+    await click("Copy session ID");
+    mocks.snapshot = undefined;
+    mocks.connections = [];
+    await render();
+    expect(
+      (container.querySelector('button[aria-label="Session actions"]') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("fills the folder in from the connection list when a notification opens a session by id alone", async () => {
+    listSession();
+    mocks.params = { id: "session" };
+    await render();
+    expect(container.querySelector("header")!.textContent).toContain("Project");
+    await click("Session actions");
+    await click("Open workspace");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/workspace",
+      params: { workspace: "workspace", name: "Project" },
+    });
+  });
 });
 
 describe("agent context usage", () => {
@@ -1065,10 +1249,12 @@ describe("native agent screen workflows", () => {
       },
       expect.any(AbortSignal),
     );
-    expect(mocks.replace).toHaveBeenCalledWith({
-      pathname: "/agents/[id]",
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      pathname: "/agent/[id]",
       params: { id: "created", workspace: "workspace", name: "Project" },
     });
+    // Nothing to pop from the Agents stack in this harness.
+    expect(mocks.back).not.toHaveBeenCalled();
     const submitted = mocks.saveDraftToSession.mock.calls[0][1];
     const clear = mocks.saveDraftToSession.mock.lastCall![1];
     expect(clear(submitted)).toEqual({ message: "", images: [] });
@@ -1152,7 +1338,7 @@ describe("native agent screen workflows", () => {
         },
       },
     });
-    expect(mocks.replace.mock.lastCall?.[0].params.id).toBe("created");
+    expect(mocks.navigate.mock.lastCall?.[0].params.id).toBe("created");
   });
   it("preserves attached fork history and retry identity when its first send fails", async () => {
     mocks.draft.forkContext = { text: "Previous history", launchConfig: { model: model.id } };
@@ -1174,7 +1360,7 @@ describe("native agent screen workflows", () => {
     await input("Keep this draft");
     await click("Send message");
     expect(mocks.api).toHaveBeenCalledTimes(1);
-    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.draft.message).toBe("Keep this draft");
     expect(container.textContent).toContain("Provider unavailable");
   });
@@ -1491,7 +1677,7 @@ describe("workspace navigation at scale", () => {
   }
   it("opens the five most recent agent chats directly from the drawer and marks the current one", async () => {
     setupWorkspaces();
-    mocks.pathname = "/agents/claude-chat";
+    mocks.pathname = "/agent/claude-chat";
     const closeDrawer = vi.fn();
     await render(<DrawerAgents onNavigate={closeDrawer} />);
     await click("Expand agents");
@@ -1508,7 +1694,7 @@ describe("workspace navigation at scale", () => {
     await click("Claude chat, Claude Code, Project · My computer");
     expect(closeDrawer).toHaveBeenCalledTimes(1);
     expect(mocks.navigate).toHaveBeenLastCalledWith({
-      pathname: "/agents/[id]",
+      pathname: "/agent/[id]",
       params: { id: "claude-chat", workspace: "claude-workspace", name: "Project" },
     });
     await click("View all agents");
@@ -1533,7 +1719,7 @@ describe("workspace navigation at scale", () => {
     expect(container.textContent).toContain("Claude chat");
     await click("Collapse agents");
     expect(mocks.storage.get("overtchat.drawer.agentsExpanded")).toBe("0");
-    mocks.pathname = "/agents/claude-chat";
+    mocks.pathname = "/agent/claude-chat";
     await render(drawer("agent-chat"));
     expect(container.querySelector('button[aria-label="Expand agents"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Claude chat");
@@ -1592,7 +1778,7 @@ describe("workspace navigation at scale", () => {
     ).toHaveLength(1);
     await click("Other chat, Codex, Other project · My computer");
     expect(mocks.push).toHaveBeenLastCalledWith({
-      pathname: "/agents/[id]",
+      pathname: "/agent/[id]",
       params: { id: "other-chat", workspace: "other", name: "Other project" },
     });
     await click("Expand Project");
@@ -2207,7 +2393,7 @@ it("dismisses the top sheet on Android Back and releases its handler", async () 
   expect(container.querySelector('[role="dialog"]')).toBeNull();
   expect(mocks.backHandlers.size).toBe(0);
   expect(mocks.push).not.toHaveBeenCalled();
-  expect(mocks.replace).not.toHaveBeenCalled();
+  expect(mocks.navigate).not.toHaveBeenCalled();
 });
 
 it("keeps questions inline, paginates choices, and submits every answer together", async () => {
