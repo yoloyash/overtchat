@@ -9,7 +9,7 @@ import {
   normalizeAgentSessionCommand,
 } from "@overtchat/agent-bridge";
 import { startOmp } from "@overtchat/agent-runtime/omp/client";
-import { probeOmpSessionLease } from "@overtchat/agent-runtime/omp/lease";
+import { ompSupportsSessionLease, probeOmpSessionLease } from "@overtchat/agent-runtime/omp/lease";
 import { OMP_MODES } from "@overtchat/agent-runtime/omp/config";
 import { parseOmpCommands } from "@overtchat/agent-runtime/omp/protocol";
 import { probeOmpTarget } from "@overtchat/agent-runtime/omp/probe";
@@ -201,6 +201,9 @@ export const ompProviderAdapter: AgentProviderAdapter = {
       hasVisibleQueuedInput(state);
   },
   async checkResume(target, launch) {
+    // Without the lease command the resume falls back to the process itself,
+    // whose persistence notice explains a move; see sessionIdentity.
+    if (!ompSupportsSessionLease(launch.detectedVersion)) return;
     const lease = await probeOmpSessionLease(
       target,
       launch.executable,

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ probeOmpSessionLease: vi.fn() }));
 
-vi.mock("@overtchat/agent-runtime/omp/lease", () => ({
+vi.mock("@overtchat/agent-runtime/omp/lease", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./../omp/lease")>()),
   probeOmpSessionLease: mocks.probeOmpSessionLease,
 }));
 
@@ -11,6 +12,7 @@ import { ompProviderAdapter } from "./omp";
 const launch = {
   executable: "omp",
   cwd: "/workspace",
+  detectedVersion: "18.16.0",
   resume: { providerSessionId: "abc", providerSessionPath: "/sessions/abc.jsonl" },
 };
 const target = { transport: "local" } as const;
@@ -24,6 +26,14 @@ describe("OMP resume checks", () => {
       "This session is still open in another Oh My Pi process, such as its terminal UI. Close it there, then open it here.",
     );
     expect(mocks.probeOmpSessionLease).toHaveBeenCalledWith(target, "omp", "/workspace", "abc");
+  });
+
+  it.each(["18.13.3", "0.147.0", null, undefined])("skips the probe when the detected version (%s) predates the lease command", async (detectedVersion) => {
+    mocks.probeOmpSessionLease.mockResolvedValueOnce("held");
+    await expect(
+      ompProviderAdapter.checkResume!(target, { ...launch, detectedVersion }),
+    ).resolves.toBeUndefined();
+    expect(mocks.probeOmpSessionLease).not.toHaveBeenCalled();
   });
 
   it.each(["free", "unknown"] as const)("lets a %s lease resume", async (lease) => {

@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { configureLocalTestProcessSpawner } from "../runtime/local-process.test-helper";
-import { probeOmpSessionLease } from "./lease";
+import { ompSupportsSessionLease, probeOmpSessionLease } from "./lease";
 
 const target = { transport: "local" } as const;
 let root: string;
@@ -22,6 +22,24 @@ beforeAll(() => {
 
 afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe("OMP session lease support", () => {
+  it.each([
+    ["18.14.1", true],
+    ["18.14.2", true],
+    ["18.16.0", true],
+    ["19.0.0", true],
+    ["18.16.0-beta.1", true],
+    ["18.14.0", false],
+    ["18.13.3", false],
+    ["17.99.9", false],
+    ["omp/18.16.0", false],
+    [null, false],
+    [undefined, false],
+  ])("%s → %s", (version, expected) => {
+    expect(ompSupportsSessionLease(version)).toBe(expected);
+  });
 });
 
 describe("OMP session lease probe", () => {

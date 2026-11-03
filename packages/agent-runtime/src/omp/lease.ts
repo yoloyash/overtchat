@@ -11,6 +11,24 @@ const reportSchema = z.object({
 
 export type OmpSessionLease = "held" | "free" | "unknown";
 
+/** First OMP release with `omp session lease` and RPC `get_session_lease`. */
+const LEASE_COMMAND_SINCE = [18, 14, 1] as const;
+
+/**
+ * Whether the detected OMP answers `omp session lease`. Earlier builds either
+ * reject the action or, before the `session` command existed, would read the
+ * arguments as a prompt, so the probe only runs on a version known to have it.
+ */
+export function ompSupportsSessionLease(detectedVersion: string | null | undefined): boolean {
+  const match = detectedVersion?.match(/^(\d+)\.(\d+)\.(\d+)/u);
+  if (!match) return false;
+  const version = [Number(match[1]), Number(match[2]), Number(match[3])];
+  for (let index = 0; index < LEASE_COMMAND_SINCE.length; index += 1) {
+    if (version[index] !== LEASE_COMMAND_SINCE[index]) return version[index] > LEASE_COMMAND_SINCE[index];
+  }
+  return true;
+}
+
 /**
  * Ask the installed OMP which process owns a session without taking the
  * lease ourselves. OMP keeps one writer per session: a second process that
