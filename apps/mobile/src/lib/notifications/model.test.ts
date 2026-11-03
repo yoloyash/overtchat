@@ -29,12 +29,13 @@ describe("notification routing", () => {
   });
   it("identifies only the chat or agent actually on screen", () => {
     expect(viewedTarget("/chat", "chat-id")).toBe("chat:chat-id");
-    expect(viewedTarget("/agents/agent-id", "chat-id")).toBe("agent:agent-id");
+    expect(viewedTarget("/agent/agent-id", "chat-id")).toBe("agent:agent-id");
     for (const route of [
       "/settings",
       "/agents",
       "/agents/new",
       "/agents/workspace",
+      "/agents/agent-id",
     ]) {
       expect(viewedTarget(route, "chat-id")).toBeNull();
     }

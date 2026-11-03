@@ -1,9 +1,10 @@
 import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Keyboard, View } from "react-native";
-import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Drawer } from "expo-router/drawer";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { DrawerToggleButton } from "expo-router/build/react-navigation/drawer";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import {
   KeyboardAvoidingView,
   useKeyboardState,
@@ -11,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Crypto from "expo-crypto";
 import {
+  agentProviderMetadata,
   type AgentSessionCommand,
   type AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
@@ -21,6 +23,8 @@ import {
   AgentText,
 } from "@/components/agents/AgentPrimitives";
 import { AgentSessionHeaderTitle } from "@/components/agents/AgentSessionHeader";
+import { AgentSessionHeaderMenu } from "@/components/agents/AgentSessionHeaderMenu";
+import { RenameSheet } from "@/components/ui/RenameSheet";
 import { AgentContextSheet } from "@/components/agents/AgentContextUsage";
 import { AgentComposer } from "@/components/agents/AgentComposer";
 import { AgentConnectionFeedback } from "@/components/agents/AgentConnectionFeedback";
@@ -44,33 +48,40 @@ import {
 import {
   useAgentCommand,
   useAgentSession,
+  useAgentSessionListing,
   useMarkAgentSessionSeen,
 } from "@/lib/queries/agents";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { useTheme } from "@/lib/theme";
+import { toastSuccess } from "@/lib/toast";
 import { useSpeech } from "@/lib/useSpeech";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import { getAuthClient } from "@/lib/auth/client";
 
 export default function AgentSessionScreen() {
-  const {
-    id,
-    workspace = "",
-    name = "Agent chat",
-  } = useLocalSearchParams<{ id: string; workspace?: string; name?: string }>();
+  const { id, workspace, name } = useLocalSearchParams<{
+    id: string;
+    workspace?: string;
+    name?: string;
+  }>();
   return <AgentSession key={id} id={id} workspace={workspace} name={name} />;
 }
 
 function AgentSession({
   id,
-  workspace,
-  name,
+  workspace: workspaceParam,
+  name: nameParam,
 }: {
   id: string;
-  workspace: string;
-  name: string;
+  workspace?: string;
+  name?: string;
 }) {
   const { colors } = useTheme();
+  // A notification opens a session by id alone; the connection list fills in
+  // its folder, and knows the provider's own session id for copying.
+  const listing = useAgentSessionListing(id);
+  const workspace = workspaceParam || listing?.item.workspaceId || "";
+  const name = nameParam ?? listing?.group.name ?? "Agent chat";
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const keyboard = useKeyboardState((state) => state.isVisible);
@@ -182,7 +193,7 @@ function AgentSession({
       if (result.notice) setNotice(result.notice.message);
       if (result.sessionId && result.sessionId !== id) {
         router.replace({
-          pathname: "/agents/[id]",
+          pathname: "/agent/[id]",
           params: { id: result.sessionId, workspace, name },
         });
         return true;
@@ -248,7 +259,19 @@ function AgentSession({
     [id, ready, mutation.mutateAsync],
   );
 
-  const title = text(snapshot?.state.sessionName).trim() || name;
+  const renameRef = useRef<BottomSheetModal>(null);
+  const sessionName = text(snapshot?.state.sessionName).trim();
+  const title = sessionName || name;
+  function confirmCompact() {
+    Alert.alert(
+      "Compact context?",
+      "The agent summarizes the conversation so far to free up context. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Compact", onPress: () => void execute({ type: "compact" }) },
+      ],
+    );
+  }
   const pendingResponse =
     snapshot?.pendingInteraction &&
     !isAgentQuestion(snapshot.pendingInteraction) &&
@@ -265,16 +288,8 @@ function AgentSession({
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
-      <Stack.Screen
+      <Drawer.Screen
         options={{
-          title,
-          headerTitleAlign: "left",
-          headerBackButtonDisplayMode: "minimal",
-          headerBackVisible: true,
-          headerLeft: ({ canGoBack }) =>
-            canGoBack ? null : <DrawerToggleButton tintColor={colors.foreground} />,
-          headerRight: ({ canGoBack }) =>
-            canGoBack ? <DrawerToggleButton tintColor={colors.foreground} /> : null,
           headerTitle: () => (
             <AgentSessionHeaderTitle
               title={title}
@@ -282,6 +297,32 @@ function AgentSession({
               provider={snapshot?.provider}
               workspace={workspace}
               workspaceName={name}
+            />
+          ),
+          headerRight: () => (
+            <AgentSessionHeaderMenu
+              title={title}
+              disabled={!snapshot && !listing}
+              renameSupported={
+                !snapshot ||
+                agentProviderMetadata(snapshot.provider).capabilities
+                  .renameSession !== false
+              }
+              ready={ready}
+              busy={busy || mutation.isPending}
+              usageSupported={snapshot?.capabilities.usage === true}
+              workspaceKnown={!!workspace}
+              providerSessionId={listing?.item.session.providerSessionId ?? null}
+              workspacePath={listing?.group.path ?? null}
+              onRename={() => renameRef.current?.present()}
+              onCompact={confirmCompact}
+              onUsage={() => void execute({ type: "show_usage" })}
+              onOpenWorkspace={() =>
+                router.push({
+                  pathname: "/agents/workspace",
+                  params: { workspace, name },
+                })
+              }
             />
           ),
         }}
@@ -351,6 +392,21 @@ function AgentSession({
         </View>
       )}
       <MiniSpeechPlayer speech={speech} />
+      <RenameSheet
+        ref={renameRef}
+        targetId={id}
+        initialTitle={sessionName || null}
+        heading="Rename session"
+        placeholder="Session name"
+        maxLength={120}
+        onSubmit={(_, next) =>
+          void execute({ type: "set_session_name", name: next }).then(
+            (sent) => {
+              if (sent) toastSuccess("Renamed");
+            },
+          )
+        }
+      />
       <View
         style={{
           paddingHorizontal: 12,

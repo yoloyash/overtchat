@@ -13,6 +13,8 @@ export type AgentMenuItem = {
   label: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   destructive?: boolean;
+  /** Shown greyed out; the row stays so the menu does not reflow. */
+  disabled?: boolean;
   onSelect: () => void;
 };
 
@@ -29,11 +31,14 @@ export type AgentMenuSection = {
 export function AgentMenu({
   from,
   visible,
+  title,
   sections,
   onClose,
 }: {
   from: Rect | null;
   visible: boolean;
+  /** Heading above the first section, such as the conversation's name. */
+  title?: string;
   sections: AgentMenuSection[];
   onClose: () => void;
 }) {
@@ -62,6 +67,18 @@ export function AgentMenu({
       backgroundStyle={{ backgroundColor: "rgba(0,0,0,0.15)" }}
     >
       <View accessibilityRole="menu" style={styles.menu}>
+        {!!title && (
+          <Text
+            numberOfLines={1}
+            accessibilityRole="header"
+            style={[
+              styles.title,
+              { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+            ]}
+          >
+            {title}
+          </Text>
+        )}
         {sections
           .filter((section) => section.items.length > 0)
           .map((section, index) => (
@@ -95,6 +112,8 @@ export function AgentMenu({
                     key={item.key}
                     accessibilityRole="menuitem"
                     accessibilityLabel={item.label}
+                    accessibilityState={{ disabled: !!item.disabled }}
+                    disabled={item.disabled}
                     onPress={() => {
                       Haptics.selectionAsync().catch(() => {});
                       selected.current = item.onSelect;
@@ -102,7 +121,10 @@ export function AgentMenu({
                     }}
                     style={({ pressed }) => [
                       styles.row,
-                      { backgroundColor: pressed ? colors.accent : "transparent" },
+                      {
+                        backgroundColor: pressed ? colors.accent : "transparent",
+                        opacity: item.disabled ? 0.4 : 1,
+                      },
                     ]}
                   >
                     <Text
@@ -128,6 +150,12 @@ export function AgentMenu({
 
 const styles = StyleSheet.create({
   menu: { minWidth: 220, maxWidth: 300 },
+  title: {
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 4,
+    fontSize: 12,
+  },
   section: {
     marginTop: 4,
     paddingTop: 4,

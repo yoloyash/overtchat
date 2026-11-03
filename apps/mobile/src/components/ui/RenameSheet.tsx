@@ -11,16 +11,24 @@ import { useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 
-export type RenameChatSheetRef = BottomSheetModal;
+export type RenameSheetRef = BottomSheetModal;
 
-export const RenameChatSheet = forwardRef<
-  RenameChatSheetRef,
+/** Bottom sheet with one text field, for renaming a chat or an agent session. */
+export const RenameSheet = forwardRef<
+  RenameSheetRef,
   {
-    chatId: string | null;
+    /** The record being renamed; the sheet does nothing without one. */
+    targetId: string | null;
     initialTitle: string | null;
+    heading: string;
+    placeholder: string;
+    maxLength?: number;
     onSubmit: (id: string, title: string) => void;
   }
->(function RenameChatSheet({ chatId, initialTitle, onSubmit }, ref) {
+>(function RenameSheet(
+  { targetId, initialTitle, heading, placeholder, maxLength = 200, onSubmit },
+  ref,
+) {
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardState((s) => (s.isVisible ? s.height : 0));
@@ -28,7 +36,7 @@ export const RenameChatSheet = forwardRef<
 
   useEffect(() => {
     setDraft(initialTitle ?? "");
-  }, [initialTitle, chatId]);
+  }, [initialTitle, targetId]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -51,8 +59,8 @@ export const RenameChatSheet = forwardRef<
   }
 
   function save() {
-    if (!canSave || !chatId) return;
-    onSubmit(chatId, trimmed);
+    if (!canSave || !targetId) return;
+    onSubmit(targetId, trimmed);
     dismiss();
   }
 
@@ -78,15 +86,16 @@ export const RenameChatSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          Rename chat
+          {heading}
         </Text>
 
         <BottomSheetTextInput
+          accessibilityLabel={placeholder}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Chat title"
+          placeholder={placeholder}
           placeholderTextColor={colors.mutedForeground}
-          maxLength={200}
+          maxLength={maxLength}
           autoFocus
           returnKeyType="done"
           onSubmitEditing={save}

@@ -124,6 +124,14 @@ export function matchingSessions(group: WorkspaceGroup, search: string) {
       .includes(query),
   );
 }
+/** The folder and list entry for a session id, when the list knows it. */
+export function findAgentSession(groups: WorkspaceGroup[], id: string) {
+  for (const group of groups) {
+    const item = group.sessions.find(({ session }) => session.id === id);
+    if (item) return { group, item };
+  }
+  return null;
+}
 export function sessionTitle(session: AgentSessionListItem) {
   return session.name || session.firstMessage || "Untitled chat";
 }

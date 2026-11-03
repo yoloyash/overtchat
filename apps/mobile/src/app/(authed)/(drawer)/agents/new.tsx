@@ -221,11 +221,15 @@ function NewAgent({
             current === draft ? { message: "", images: [] } : current,
           true,
         );
-        if (mounted.current)
-          router.replace({
-            pathname: "/agents/[id]",
+        if (mounted.current) {
+          // The conversation lives beside the chat screen, outside this
+          // stack, so a replace would leave this screen behind: pop it first.
+          if (router.canGoBack()) router.back();
+          router.navigate({
+            pathname: "/agent/[id]",
             params: { id: sessionId, workspace: targetWorkspace, name },
           });
+        }
       }
       lock.current = false;
       if (mounted.current) setPending(false);
