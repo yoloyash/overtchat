@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { groupAgentsByWorkspace } from "./helpers/agent-attention";
 import { _electron, expect, test, type ElectronApplication, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
@@ -54,6 +55,7 @@ const textModel: AgentRuntimeSnapshot["models"][number] = {
 };
 
 test.beforeEach(resetE2eDatabase);
+test.beforeEach(({ page }) => groupAgentsByWorkspace(page));
 
 async function expectHorizontalMessageActions(actions: Locator) {
   const buttons = actions.getByRole("button");
@@ -294,6 +296,17 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
             ],
             events: ["Checked the runtime suite.", "$ npm test\n476 passed"],
           },
+          {
+            type: "subagent",
+            id: "task",
+            action: "task",
+            prompt: "Read the runtime tests",
+            status: "completed",
+            receivers: [],
+            events: ["Grep runtimeStatus", "The suite covers the runtime."],
+            title: "Survey the runtime tests",
+            agentType: "Explore",
+          },
         ],
         timestamp: 6.5,
       },
@@ -458,11 +471,22 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
 
   await page.goto("/agents/new?workspaceId=workspace&provider=codex");
   const composer = page.getByTestId("agent-composer").getByRole("combobox");
-  await expect(composer).toBeDisabled();
-  releaseCatalog();
+  const send = page.getByRole("button", { name: "Send message" });
+  // Typing starts before the model catalog answers; only sending waits on it.
   await expect(composer).toBeEnabled();
-  await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
+  await expect(composer).toBeFocused();
   await composer.fill("First agent prompt over HTTP");
+  await expect(send).toBeDisabled();
+  await expect(send).toHaveAttribute("title", "Model defaults are still loading");
+  await composer.press("Enter");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Model defaults are still loading" }).first(),
+  ).toBeVisible();
+  expect(createdSessions).toBe(0);
+  await expect(composer).toHaveValue("First agent prompt over HTTP");
+  releaseCatalog();
+  await expect(send).toBeEnabled();
+  await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
   await composer.press("Enter");
   await expect.poll(() => submittedCommands.length).toBe(1);
   await page.waitForURL(`**/agents/${SESSION_ID}`);
@@ -544,9 +568,11 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
     .click();
   await page.waitForURL("**/agents/new?**");
   await expect(page.getByText("Chat history attached")).toBeVisible();
-  await expect(
-    page.getByRole("combobox", { name: "Fork workspace" }),
-  ).toHaveValue("workspace");
+  // "Fork in another workspace" lands on the folder pill; the agent is fixed.
+  const forkWorkspace = page.getByRole("combobox", { name: "Workspace", exact: true });
+  await expect(forkWorkspace).toContainText("Runtime test");
+  await expect(forkWorkspace).toBeFocused();
+  await expect(page.getByRole("combobox", { name: "Agent", exact: true })).toHaveCount(0);
   await expect(composer).toHaveValue("");
   expect(createdSessions).toBe(1);
   expect(submittedCommands.at(-1)).toMatchObject({
@@ -564,6 +590,84 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
     });
   await page.waitForURL(`**/agents/${SESSION_ID}`);
   expect(errors).toEqual([]);
+});
+
+test("keeps unsent agent messages per session and new-session page", async ({
+  page,
+}) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Agent Draft Tester");
+  await page.locator("#email").fill("agent-drafts@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const db = openE2eDatabase();
+  try {
+    db.prepare(`
+      INSERT INTO agent_sessions (
+        id, workspace_id, provider_session_id, provider_session_path,
+        name, first_message, message_count
+      ) VALUES ('second-session', 'workspace', 'native-second',
+        '/tmp/runtime-second.jsonl', 'Second session', 'Second prompt', 1)
+    `).run();
+  } finally {
+    db.close();
+  }
+
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(/\/api\/agent-sessions\/([^/?]+)(?:\?.*)?$/, (route) => {
+    const sessionId = new URL(route.request().url()).pathname.split("/").at(-1);
+    return route.fulfill({ json: { snapshot: { ...snapshot, sessionId } } });
+  });
+  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", (route) =>
+    route.fulfill({ json: { provider: "codex", models: [imageModel], modes: [] } }),
+  );
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
+  const sessionLink = (name: string) =>
+    page
+      .getByRole("list", { name: "Agent workspaces", exact: true })
+      .getByRole("link", { name: new RegExp(`^(\\w+: )?${name} `) })
+      .first();
+
+  await page.goto(`/agents/${SESSION_ID}`);
+  await composer.fill("  Unsent runtime prompt\n\n  with indentation  ");
+  await sessionLink("Second session").click();
+  await page.waitForURL("**/agents/second-session");
+  await expect(composer).toHaveValue("");
+  await composer.fill("Unsent second prompt");
+
+  await sessionLink("Runtime activity").click();
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
+  await expect(composer).toHaveValue(
+    "  Unsent runtime prompt\n\n  with indentation  ",
+  );
+  await page.reload();
+  await expect(composer).toHaveValue(
+    "  Unsent runtime prompt\n\n  with indentation  ",
+  );
+  await sessionLink("Second session").click();
+  await expect(composer).toHaveValue("Unsent second prompt");
+
+  await page.goto("/agents/new?workspaceId=workspace&provider=codex");
+  await expect(composer).toBeEnabled();
+  await expect(composer).toHaveValue("");
+  await composer.fill("Unsent new-session prompt");
+  await sessionLink("Runtime activity").click();
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
+  await page.goto("/agents/new?workspaceId=workspace&provider=codex");
+  await expect(composer).toHaveValue("Unsent new-session prompt");
 });
 
 test("requires inspection before retrying an uncertain queued message", async ({
@@ -672,6 +776,7 @@ test("shows durable turn activity without changing completed tool status", async
   let retryRequested = false;
   let interactionResponse: Record<string, unknown> | null = null;
   let runtimeAvailable = true;
+  let releaseCompact: (() => void) | null = null;
   const submittedCommands: Array<Record<string, unknown>> = [];
   const workspaceDirectoryRequests: string[] = [];
   const workspaceFileRequests: string[] = [];
@@ -771,6 +876,12 @@ test("shows durable turn activity without changing completed tool status", async
           command.type === "steer_queued_message"
         ) {
           await new Promise((resolve) => setTimeout(resolve, 750));
+        }
+        if (command.type === "compact") {
+          // Some providers answer a manual compaction only when it finishes.
+          await new Promise<void>((resolve) => {
+            releaseCompact = resolve;
+          });
         }
         const queueResult =
           command.type === "queue"
@@ -1065,7 +1176,7 @@ test("shows durable turn activity without changing completed tool status", async
 
   const sessionActivity = page
     .getByRole("list", { name: "Agent workspaces", exact: true })
-    .getByRole("status", { name: "Runtime activity is working" });
+    .getByRole("link", { name: /^Working: Runtime activity / });
   await expect(sessionActivity).toBeVisible();
   const agentHeader = page.getByTestId("agent-session-header");
   const agentComposer = page.getByTestId("agent-composer");
@@ -1386,6 +1497,12 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByRole("menuitem", { name: "Copy branch name" }),
   ).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("menuitem", { name: "Copy session ID" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("native-session");
+  await page.getByRole("button", { name: "Session actions" }).click();
   await page.getByRole("menuitem", { name: "Session usage" }).click();
   const sessionUsage = page.getByRole("dialog", { name: "Session usage" });
   await expect(sessionUsage).toContainText("Tool calls");
@@ -1404,7 +1521,7 @@ test("shows durable turn activity without changing completed tool status", async
 
   await page.getByRole("button", { name: "Collapse Runtime test" }).click();
   const workspaceActivity = page.getByRole("status", {
-    name: "1 running chat in Runtime test",
+    name: "Working in Runtime test",
   });
   await expect(workspaceActivity).toBeVisible();
   const [activityBox, newSessionBox] = await Promise.all([
@@ -1432,9 +1549,11 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.locator('[data-activity-sequence="first"]'),
   ).toHaveCount(1);
+  // Each subagent launch is its own activity row: the Codex collab call and
+  // the Claude Code task sit between the first and last tool groups.
   await expect(
     page.locator('[data-activity-sequence="middle"]'),
-  ).toHaveCount(1);
+  ).toHaveCount(2);
   await expect(
     page.locator('[data-activity-sequence="last"]'),
   ).toHaveCount(1);
@@ -1533,10 +1652,18 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByText("Running command", { exact: true }),
   ).not.toBeVisible();
-  const subagentActivity = page.getByTestId("agent-subagent-activity");
+  const subagentActivity = page
+    .getByTestId("agent-subagent-activity")
+    .filter({ hasText: "Started subagent" });
   await expect(subagentActivity).toContainText("Started subagent");
   await subagentActivity.getByRole("button").click();
   await expect(subagentActivity).toContainText("Checked the runtime suite.");
+  const taskActivity = page
+    .getByTestId("agent-subagent-activity")
+    .filter({ hasText: "Ran subagent" });
+  await expect(taskActivity).toContainText("Explore · Survey the runtime tests");
+  await taskActivity.getByRole("button").click();
+  await expect(taskActivity).toContainText("The suite covers the runtime.");
   await expect(
     page.getByText("Turn changes", { exact: true }),
   ).toHaveCount(0);
@@ -1558,6 +1685,41 @@ test("shows durable turn activity without changing completed tool status", async
   });
   await page.getByRole("button", { name: "Done" }).click();
   await expect(composer).toBeEnabled();
+  // Dropping onto the session attaches images the way the picker and paste do.
+  const dragFile = (kind: "dragenter" | "drop", name: string, type: string) =>
+    composer.evaluate(
+      (element, file) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(["drop"], file.name, { type: file.type }));
+        element.dispatchEvent(
+          new DragEvent(file.kind, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: transfer,
+          }),
+        );
+      },
+      { kind, name, type },
+    );
+  await dragFile("dragenter", "dropped.png", "image/png");
+  await expect(page.getByText("Drop images to attach")).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-image-drop-overlay.png"),
+    fullPage: true,
+  });
+  await dragFile("drop", "dropped.png", "image/png");
+  await expect(page.getByText("Drop images to attach")).toHaveCount(0);
+  const droppedChip = page.getByRole("button", { name: /^Remove .+\.png$/ });
+  await expect(droppedChip).toBeVisible();
+  await droppedChip.click();
+  await expect(droppedChip).toHaveCount(0);
+  await dragFile("drop", "notes.pdf", "application/pdf");
+  // Earlier toasts may still fill the visible stack; the live region announces regardless.
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Codex accepts images only" }).first(),
+  ).toBeAttached();
+  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+
   await composer.evaluate(async (element) => {
     const canvas = document.createElement("canvas");
     canvas.width = 96;
@@ -1708,21 +1870,49 @@ test("shows durable turn activity without changing completed tool status", async
     fullPage: true,
   });
 
-  await page.evaluate(() => {
-    const controls = (
-      window as unknown as {
-        __agentRuntimeControls: {
-          emit: (envelope: unknown) => void;
-        };
-      }
-    ).__agentRuntimeControls;
-    controls.emit({
-      epoch: "runtime-test",
-      sequence: 2,
-      type: "runtime_event",
-      data: { type: "compaction_start", reason: "auto" },
-    });
+  // A manual compaction keeps its request open until the provider finishes.
+  // The composer still accepts input meanwhile and queues it behind the
+  // compaction instead of ignoring it.
+  const emitCompaction = (sequence: number, type: string, reason: string) =>
+    page.evaluate(
+      ({ sequence, type, reason }) => {
+        const controls = (
+          window as unknown as {
+            __agentRuntimeControls: {
+              emit: (envelope: unknown) => void;
+            };
+          }
+        ).__agentRuntimeControls;
+        controls.emit({
+          epoch: "runtime-test",
+          sequence,
+          type: "runtime_event",
+          data: { type, reason },
+        });
+      },
+      { sequence, type, reason },
+    );
+  await composer.fill("/compact");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "compact",
   });
+  await emitCompaction(2, "compaction_start", "manual");
+  await expect(genericActivity).toContainText("Compacting");
+  await composer.fill("Continue after compaction");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "queue",
+    message: "Continue after compaction",
+  });
+  await expect(composer).toHaveValue("");
+  await expect(genericActivity).toContainText("Compacting");
+  await expect.poll(() => releaseCompact).not.toBeNull();
+  releaseCompact!();
+  await emitCompaction(3, "compaction_end", "manual");
+  await expect(genericActivity).toHaveCount(0, { timeout: 2_000 });
+
+  await emitCompaction(4, "compaction_start", "auto");
   await expect(genericActivity).toContainText("Compacting");
 
   await page.evaluate(async () => {
@@ -1736,7 +1926,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 3,
+      sequence: 5,
       type: "runtime_event",
       data: { type: "compaction_end", reason: "auto" },
     });
@@ -1818,7 +2008,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 4,
+      sequence: 6,
       type: "runtime_event",
       data: { type: "overtchat_status", status: "idle", startedAt: null },
     });
@@ -1914,7 +2104,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 5,
+      sequence: 7,
       type: "runtime_event",
       data: {
         type: "config_update",
@@ -2264,7 +2454,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       epoch: "runtime-test",
-      sequence: 7,
+      sequence: 8,
       type: "snapshot",
       data: {
         ...initialSnapshot,
@@ -2905,20 +3095,22 @@ test("ends OMP turns when the agent yields to background work and starts a new t
     const prompts = async () => (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8"))
       .split("\n").filter((line) => line === "prompt").length;
     const indicator = page.getByTestId("agent-run-activity");
-    const sidebarWorking = page.getByRole("status", { name: /is working$/ });
+    const sidebarWorking = page
+      .getByRole("complementary")
+      .getByRole("link", { name: /^Working: / });
     const stopButton = page.getByRole("button", { name: "Stop Oh My Pi", exact: true });
     await composer.fill("Start background work");
     await composer.press("Enter");
-    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-message-list").getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
     // The agent handed control back, so its background job does not hold the turn.
     await expect(indicator).toHaveCount(0);
     await expect(stopButton).toHaveCount(0);
     await expect(sidebarWorking).toHaveCount(0);
     await page.reload();
-    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-message-list").getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
     await expect(indicator).toHaveCount(0);
     // Directory activity follows a wake without an open transcript stream.
-    await page.goto("/");
+    await page.goto("/agents");
     await writeFile(control, "wake");
     await expect(sidebarWorking.first()).toBeVisible();
     await writeFile(control, "wait");
@@ -2927,7 +3119,7 @@ test("ends OMP turns when the agent yields to background work and starts a new t
     // A message sends right away while the job keeps running.
     await composer.fill("Next");
     await composer.press("Enter");
-    await expect(page.getByText("Queued message answered.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-message-list").getByText("Queued message answered.", { exact: true })).toBeVisible();
     await expect(indicator).toHaveCount(0);
     expect(await prompts()).toBe(2);
     // Stop ends a woken turn; the native abort leaves the job running.
@@ -2999,6 +3191,266 @@ test("agent context meter stays visible while unknown and renders a 1M reading a
   await expect(unknown).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(unknown).toBeVisible();
+});
+
+test("header branch picker lists, creates, and switches branches with stash and busy outcomes", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Branch Tester");
+  await page.locator("#email").fill("branch@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  let currentBranch = "main";
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-status$"), (route) =>
+    route.fulfill({
+      json: {
+        status: {
+          isGit: true,
+          repositoryRoot: "/tmp/runtime-test",
+          branch: currentBranch,
+          upstream: null,
+          ahead: null,
+          behind: null,
+          dirty: true,
+          changedFiles: 1,
+          additions: 1,
+          deletions: 0,
+          lineStatsComplete: true,
+          files: [],
+        },
+      },
+    }),
+  );
+  const switchRequests: unknown[] = [];
+  const switchResults: unknown[] = [
+    { status: "changes_present", changedFiles: 3 },
+    { status: "switched", branch: "feature/login", stashed: true, restored: false, keptStash: null },
+    { status: "agent_running" },
+    { status: "switched", branch: "topic/new", stashed: false, restored: false, keptStash: null },
+  ];
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-branches$"), async (route) => {
+    if (route.request().method() === "POST") {
+      switchRequests.push(route.request().postDataJSON());
+      const result = switchResults.shift() as { status: string; branch?: string };
+      if (result.status === "switched" && result.branch) currentBranch = result.branch;
+      await route.fulfill({ json: { result } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        branches: {
+          isGit: true,
+          current: currentBranch,
+          truncated: false,
+          branches: [
+            { name: currentBranch, remote: null, current: true, worktreePath: null, committedAt: Date.now() },
+            { name: "feature/login", remote: null, current: false, worktreePath: null, committedAt: Date.now() - 3_600_000 },
+            { name: "elsewhere", remote: null, current: false, worktreePath: "/tmp/elsewhere", committedAt: null },
+            { name: "remote-only", remote: "origin", current: false, worktreePath: null, committedAt: null },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  const picker = page.getByTestId("agent-branch-picker");
+  await expect(picker).toHaveText("main");
+  await picker.click();
+  const menu = page.getByRole("menu", { name: "Switch branch" });
+  await expect(page.getByLabel("Search branches")).toBeFocused();
+  const options = menu.getByTestId("agent-branch-option");
+  await expect(options).toHaveCount(4);
+  await expect(menu.getByRole("group").nth(1)).toContainText("origin/remote-only");
+  await expect(options.filter({ hasText: "Checked out in /tmp/elsewhere" })).toHaveAttribute("aria-disabled", "true");
+  await expect(options.filter({ hasText: /^main/ })).toHaveAttribute("aria-disabled", "true");
+
+  // Uncommitted changes ask before stashing; the menu stays open.
+  await options.filter({ hasText: "feature/login" }).click();
+  await expect(menu.getByText("3 uncommitted changes")).toBeVisible();
+  await expect(menu.getByText("Stash them to switch to feature/login. Switching back to main restores them.")).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Stash changes and switch" }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.getByText("Switched to feature/login")).toBeVisible();
+  await expect(page.getByText("Your uncommitted changes on main were stashed. Switch back to main to restore them.")).toBeVisible();
+  await expect(picker).toHaveText("feature/login");
+  expect(switchRequests).toEqual([
+    { branch: { kind: "local", name: "feature/login" }, stash: false },
+    { branch: { kind: "local", name: "feature/login" }, stash: true },
+  ]);
+
+  // The connector refuses while an agent turn runs in this repository.
+  await picker.click();
+  await options.filter({ hasText: "origin/remote-only" }).click();
+  await expect(page.getByText("An agent is working in this repository").first()).toBeVisible();
+  expect(switchRequests.at(-1)).toEqual({ branch: { kind: "remote", remote: "origin", name: "remote-only" }, stash: false });
+
+  // Searching for a missing name offers to create it.
+  await picker.click();
+  await page.getByLabel("Search branches").fill("topic/new");
+  await expect(options).toHaveCount(0);
+  await menu.getByRole("menuitem", { name: "Create branch topic/new" }).click();
+  await expect(page.getByText("Switched to topic/new")).toBeVisible();
+  expect(switchRequests.at(-1)).toEqual({ branch: { kind: "new", name: "topic/new" }, stash: false });
+
+  // While this session's turn runs, every branch is disabled.
+  snapshot.status = "running";
+  snapshot.activeTurn = { startedAt: Date.now() };
+  await page.reload();
+  await picker.click();
+  await expect(menu.getByText("Switch branches after the agent's turn ends.")).toBeVisible();
+  for (const option of await options.all()) {
+    await expect(option).toHaveAttribute("aria-disabled", "true");
+  }
+});
+
+test("worktrees nest under their workspace and are created and removed from the header and sidebar", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Worktree Tester");
+  await page.locator("#email").fill("worktree@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const db = openE2eDatabase();
+  try {
+    db.prepare(`
+      INSERT INTO agent_workspaces (id, connection_id, path, name, worktree_parent_path)
+      VALUES ('worktree-workspace', 'connection', '/home/me/.overtchat/worktrees/runtime-1/topic', 'topic', '/tmp/runtime-test')
+    `).run();
+  } finally {
+    db.close();
+  }
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.route(new RegExp("/api/agent-workspaces/[^/]+/git-status$"), (route) =>
+    route.fulfill({
+      json: {
+        status: {
+          isGit: true,
+          repositoryRoot: "/tmp/runtime-test",
+          branch: route.request().url().includes("worktree-workspace") ? "topic" : "main",
+          upstream: null,
+          ahead: null,
+          behind: null,
+          dirty: false,
+          changedFiles: 0,
+          additions: 0,
+          deletions: 0,
+          lineStatsComplete: true,
+          files: [],
+        },
+      },
+    }),
+  );
+  await page.route(new RegExp("/api/agent-workspaces/workspace/git-branches$"), (route) =>
+    route.fulfill({
+      json: {
+        branches: {
+          isGit: true,
+          current: "main",
+          truncated: false,
+          branches: [
+            { name: "main", remote: null, current: true, worktreePath: null, committedAt: Date.now() },
+            { name: "topic", remote: null, current: false, worktreePath: "/home/me/.overtchat/worktrees/runtime-1/topic", committedAt: null },
+            { name: "release", remote: "origin", current: false, worktreePath: null, committedAt: null },
+          ],
+        },
+      },
+    }),
+  );
+  const createRequests: unknown[] = [];
+  await page.route(new RegExp("/api/agent-workspaces/workspace/worktrees$"), async (route) => {
+    createRequests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 201,
+      json: {
+        worktree: {
+          path: "/home/me/.overtchat/worktrees/runtime-1/release-fix",
+          worktreePath: "/home/me/.overtchat/worktrees/runtime-1/release-fix",
+          name: "release-fix",
+          branch: "release-fix",
+        },
+        workspaceId: "worktree-workspace",
+      },
+    });
+  });
+  const removalRequests: string[] = [];
+  await page.route(new RegExp("/api/agent-workspaces/worktree-workspace/worktree$"), async (route) => {
+    removalRequests.push(route.request().method());
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        inspection: {
+          exists: true,
+          worktreePath: "/home/me/.overtchat/worktrees/runtime-1/topic",
+          branch: "topic",
+          changedFiles: 2,
+        },
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  // The worktree is listed under the workspace it was created from.
+  const worktrees = page.getByRole("list", { name: "Worktrees of Runtime test" });
+  await expect(worktrees.getByRole("button", { name: "Expand topic" })).toBeVisible();
+
+  // The header branch picker opens the new worktree dialog for this workspace.
+  await page.getByTestId("agent-branch-picker").click();
+  await page.getByRole("menuitem", { name: "New worktree…" }).click();
+  const dialog = page.getByRole("dialog", { name: "New worktree" });
+  const base = dialog.getByRole("combobox", { name: "Start from" });
+  await expect(base).toContainText("main");
+  await base.click();
+  await page.getByRole("option", { name: "origin/release" }).click();
+  await dialog.getByLabel("New branch").fill("release-fix");
+  await dialog.getByRole("button", { name: "Create worktree" }).click();
+  await page.waitForURL(/\/agents\/new\?workspaceId=worktree-workspace&provider=codex$/);
+  await expect(page.getByText("Created worktree release-fix")).toBeVisible();
+  expect(createRequests).toEqual([
+    { base: { kind: "remote", remote: "origin", name: "release" }, branch: "release-fix" },
+  ]);
+
+  // Removing an OvertChat worktree warns about uncommitted changes and deletes it from the host.
+  await page.getByRole("button", { name: "Agent list options" }).click();
+  await page.getByRole("menuitem", { name: "Organize workspaces" }).click();
+  await page.getByRole("button", { name: "Remove topic" }).click();
+  const removal = page.getByRole("alertdialog");
+  await expect(removal.getByRole("heading", { name: "Remove worktree?" })).toBeVisible();
+  await expect(removal.getByText("2 uncommitted changes will be lost.")).toBeVisible();
+  await expect(removal).toContainText("Its commits stay on the topic branch.");
+  await removal.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Worktree removed").first()).toBeVisible();
+  expect(removalRequests).toEqual(["GET", "DELETE"]);
 });
 
 test("workspace terminal streams a real shell, retains state, and reconnects under output load", async ({ page: browserPage }, testInfo) => {
@@ -3078,6 +3530,16 @@ test("workspace terminal streams a real shell, retains state, and reconnects und
     await pane.getByRole("button", { name: "Expand terminal", exact: true }).click();
     await expect.poll(async () => (await pane.boundingBox())!.height).toBeGreaterThan(originalHeight);
     await pane.getByRole("button", { name: "Restore terminal size", exact: true }).click();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBe(originalHeight);
+    // Dragging the edge above the terminal resizes it; a double click restores it.
+    const resizeHandle = page.getByRole("separator", { name: "Resize workspace terminal" });
+    const edge = (await resizeHandle.boundingBox())!;
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 - 80, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => (await pane.boundingBox())!.height).toBeGreaterThan(originalHeight + 60);
+    await resizeHandle.dblclick();
     await expect.poll(async () => (await pane.boundingBox())!.height).toBe(originalHeight);
     await command(windowsAlias
       ? "Write-Output ('polish-'+'needle one'); Write-Output ('polish-'+'needle two'); Write-Output 'https://example.com/overtchat-terminal'"

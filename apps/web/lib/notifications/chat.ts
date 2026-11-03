@@ -20,6 +20,9 @@ export function notifyChatComplete(
     kind: "chat",
     targetId: chatId,
     eventId: streamId,
-    body,
+    title: "Your response is ready",
+    body: "Tap to view your response.",
+    preview: { body },
+    channelId: "chat-responses",
   });
 }

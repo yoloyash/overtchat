@@ -177,8 +177,9 @@ describe("agent connection session directory", () => {
 
     expect(container.textContent).toBe("idle");
     expect(FakeEventSource.instances).toHaveLength(1);
-    expect(FakeEventSource.instances[0]!.url).toBe(
-      "/api/agent-connections/events",
+    // The page's client id lets the server send it alerts.
+    expect(FakeEventSource.instances[0]!.url).toMatch(
+      /^\/api\/agent-connections\/events\?client=[0-9a-f-]{36}$/,
     );
 
     await act(async () => {
@@ -224,7 +225,9 @@ describe("agent connection session directory", () => {
     });
 
     const source = FakeEventSource.instances.at(-1)!;
-    expect(source.url).toBe("/api/agent-connections/events?git=workspace");
+    expect(source.url).toMatch(
+      /^\/api\/agent-connections\/events\?client=[0-9a-f-]{36}&git=workspace$/,
+    );
 
     await act(async () => {
       source.emit("git", JSON.stringify({ workspaceId: "workspace", live: true }));
@@ -251,8 +254,8 @@ describe("agent connection session directory", () => {
       );
     });
     expect(source.close).toHaveBeenCalled();
-    expect(FakeEventSource.instances.at(-1)!.url).toBe(
-      "/api/agent-connections/events",
+    expect(FakeEventSource.instances.at(-1)!.url).toMatch(
+      /^\/api\/agent-connections\/events\?client=[0-9a-f-]{36}$/,
     );
   });
 });

@@ -1,5 +1,10 @@
 import "server-only";
-import type { ModelCapabilities } from "@overtchat/shared";
+import {
+  REASONING_EFFORTS,
+  type ModelCapabilities,
+  type ModelReasoningControls,
+  type ReasoningEffort,
+} from "@overtchat/shared";
 import type { DiscoveredModel } from "@/lib/providers/server/types";
 
 const MODEL_LIST_TIMEOUT_MS = 10_000;
@@ -11,6 +16,7 @@ interface OpenAIModelList {
     owned_by?: unknown;
     max_model_len?: unknown;
     max_context_length?: unknown;
+    context_length?: unknown;
     max_output_tokens?: unknown;
     max_tokens?: unknown;
     input_modalities?: unknown;
@@ -18,6 +24,16 @@ interface OpenAIModelList {
     modalities?: unknown;
     architecture?: unknown;
     capabilities?: unknown;
+    top_provider?: unknown;
+    supported_parameters?: unknown;
+    reasoning?: unknown;
+  }>;
+}
+
+interface OpenRouterImageModelList {
+  data?: Array<{
+    id?: unknown;
+    architecture?: unknown;
   }>;
 }
 
@@ -68,6 +84,33 @@ export async function listOpenAIModels(
   return listOpenAIModelsWithOptions(baseUrl, apiKey, false);
 }
 
+/** OpenRouter's image listing; every entry generates images. */
+export async function listOpenRouterImageModels(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+): Promise<DiscoveredModel[]> {
+  const json = await fetchJson<OpenRouterImageModelList>(
+    appendPath(baseUrl, "images/models"),
+    { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} },
+  );
+  return normalizeDiscoveredModels(
+    json.data?.map((model) => {
+      const architecture = isRecord(model.architecture)
+        ? model.architecture
+        : undefined;
+      return {
+        id: model.id,
+        capabilities: compactCapabilities({
+          inputModalities: readStringArray(architecture?.input_modalities),
+          outputModalities: readStringArray(
+            architecture?.output_modalities,
+          ) ?? ["image"],
+        }),
+      };
+    }),
+  );
+}
+
 export async function listLlamaCppModels(
   baseUrl: string,
   apiKey: string | null | undefined,
@@ -88,7 +131,8 @@ async function listOpenAIModelsWithOptions(
       id: model.id,
       contextWindow:
         readPositiveInteger(model.max_model_len) ??
-        readPositiveInteger(model.max_context_length),
+        readPositiveInteger(model.max_context_length) ??
+        readPositiveInteger(model.context_length),
       capabilities: openAIModelCapabilities(model),
     })),
   );
@@ -279,10 +323,18 @@ function openAIModelCapabilities(
   const capabilities = isRecord(model.capabilities)
     ? model.capabilities
     : undefined;
+  const topProvider = isRecord(model.top_provider)
+    ? model.top_provider
+    : undefined;
+  // Gateways list the request parameters each model accepts.
+  const parameters = readStringArray(model.supported_parameters);
+  const supports = (parameter: string) =>
+    parameters ? parameters.includes(parameter) : undefined;
   return compactCapabilities({
     maxOutputTokens:
       readPositiveInteger(model.max_output_tokens) ??
-      readPositiveInteger(model.max_tokens),
+      readPositiveInteger(model.max_tokens) ??
+      readPositiveInteger(topProvider?.max_completion_tokens),
     inputModalities:
       readStringArray(model.input_modalities) ??
       readStringArray(modalities?.input_modalities) ??
@@ -295,13 +347,43 @@ function openAIModelCapabilities(
     toolCalling:
       readSupportedBoolean(capabilities?.tool_call) ??
       readSupportedBoolean(capabilities?.tool_calling) ??
-      readSupportedBoolean(capabilities?.tools),
-    reasoning: readSupportedBoolean(capabilities?.reasoning),
+      readSupportedBoolean(capabilities?.tools) ??
+      supports("tools"),
+    reasoning:
+      readSupportedBoolean(capabilities?.reasoning) ?? supports("reasoning"),
+    reasoningControls: gatewayReasoningControls(model.reasoning),
     structuredOutput:
       readSupportedBoolean(capabilities?.structured_output) ??
-      readSupportedBoolean(capabilities?.structured_outputs),
+      readSupportedBoolean(capabilities?.structured_outputs) ??
+      supports("structured_outputs"),
     temperature: readSupportedBoolean(capabilities?.temperature),
   });
+}
+
+/**
+ * Per-model reasoning metadata from gateways such as OpenRouter: the efforts a
+ * model accepts, the one applied when reasoning is on, and whether it can be
+ * turned off. Effort names already match the product's levels. Models that
+ * only report a toggle, or whose default is unknown, keep no selector.
+ */
+export function gatewayReasoningControls(
+  value: unknown,
+): ModelReasoningControls | undefined {
+  if (!isRecord(value)) return undefined;
+  const supported = readStringArray(value.supported_efforts);
+  if (!supported) return undefined;
+  const efforts = REASONING_EFFORTS.filter((effort) =>
+    supported.includes(effort),
+  );
+  if (efforts.length === 0) return undefined;
+  const toggle = supported.includes("none") && value.mandatory !== true;
+  const defaultEffort = efforts.find(
+    (effort) => effort === value.default_effort,
+  ) as ReasoningEffort | undefined;
+  const defaultLevel =
+    value.default_enabled === false && toggle ? "off" : defaultEffort;
+  if (!defaultLevel) return undefined;
+  return { toggle, defaultLevel, efforts };
 }
 
 function anthropicModelCapabilities(

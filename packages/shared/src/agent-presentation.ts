@@ -41,6 +41,10 @@ export type AgentSubagentActivity = {
     message: string | null;
   }>;
   events: string[];
+  /** What the launch was asked to do, as Claude Code's Task description. */
+  title: string | null;
+  /** The agent definition used, as Claude Code's subagent_type. */
+  agentType: string | null;
 };
 
 export type AgentActivityEntry =
@@ -978,6 +982,15 @@ export function projectAgentTranscript(
                     (value): value is string => typeof value === "string",
                   )
                 : [],
+              title:
+                typeof partRecord.title === "string" && partRecord.title.trim()
+                  ? partRecord.title
+                  : null,
+              agentType:
+                typeof partRecord.agentType === "string" &&
+                partRecord.agentType.trim()
+                  ? partRecord.agentType
+                  : null,
             },
           });
           return;
@@ -1304,6 +1317,50 @@ function capitalize(value: string): string {
   return value ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
+/** Codex reports inProgress/pendingInit; Claude Code reports running. */
+export function isSubagentRunning(status: string): boolean {
+  return ["inProgress", "pendingInit", "running"].includes(status);
+}
+
+/** The summary line for a subagent launch: the Codex action, or the Claude
+ * Code agent type and task description. */
+export function describeSubagentActivity(
+  activity: AgentSubagentActivity,
+): { label: string; summary: string | null } {
+  const running = isSubagentRunning(activity.status);
+  const count = Math.max(1, activity.receivers.length);
+  const summary = [activity.agentType, activity.title]
+    .filter((value): value is string => Boolean(value))
+    .join(" · ") || null;
+  if (activity.action === "task") {
+    return {
+      label: running
+        ? "Running subagent"
+        : activity.status === "failed"
+          ? "Subagent failed"
+          : activity.status === "stopped"
+            ? "Subagent stopped"
+            : "Ran subagent",
+      summary,
+    };
+  }
+  const label =
+    activity.action === "spawnAgent"
+      ? running
+        ? "Starting subagent"
+        : "Started subagent"
+      : activity.action === "sendInput"
+        ? "Sent subagent input"
+        : activity.action === "wait"
+          ? running
+            ? "Waiting for subagents"
+            : "Waited for subagents"
+          : activity.action === "closeAgent"
+            ? "Closed subagent"
+            : `${count} ${count === 1 ? "subagent" : "subagents"}`;
+  return { label, summary };
+}
+
 export function describeAgentActivity(
   entries: AgentActivityEntry[],
   active: boolean,
@@ -1315,16 +1372,17 @@ export function describeAgentActivity(
     const subagents = entries.filter((entry) => entry.type === "subagent");
     if (subagents.length > 0) {
       const running = subagents.some((entry) =>
-        ["inProgress", "pendingInit", "running"].includes(
-          entry.activity.status,
-        ),
+        isSubagentRunning(entry.activity.status),
+      );
+      const failed = subagents.some(
+        (entry) => entry.activity.status === "failed",
       );
       return {
         label: running
           ? `Running ${plural(subagents.length, "subagent")}`
           : `Used ${plural(subagents.length, "subagent")}`,
         secondary: null,
-        status: running ? "running" : "completed",
+        status: running ? "running" : failed ? "failed" : "completed",
       };
     }
     return {
@@ -1430,8 +1488,13 @@ function formatUnknown(value: unknown): string {
   }
 }
 
+export type AgentRewindCapabilities = Pick<
+  AgentRuntimeCapabilities,
+  "rewindConversation" | "rewindFiles" | "rewindBoth"
+>;
+
 export function agentRewindOptions(
-  capabilities: AgentRuntimeCapabilities,
+  capabilities: AgentRewindCapabilities,
 ): Array<{ mode: AgentRewindMode; label: string }> {
   const options: Array<{
     enabled: boolean | undefined;

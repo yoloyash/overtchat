@@ -1,14 +1,26 @@
 "use client";
 
-import type { OpenUIAction } from "@overtchat/shared";
+import type { OpenUIAction, PanelFile } from "@overtchat/shared";
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, generateId, type FileUIPart, type UIMessage } from "ai";
 import {
+  conversationFiles,
+  documentIdOf,
+  findDocumentPart,
+  followLiveDocuments,
   hasSuccessfulMemoryMutation,
+  isDocumentToolPart,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
   imageOptionsFromMetadata,
@@ -16,7 +28,6 @@ import {
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
-import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useOptionalProject } from "@/lib/queries/projects";
@@ -36,7 +47,6 @@ import {
 } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
-import { motionClasses } from "@/lib/motion";
 import {
   DEFAULT_WEB_SEARCH_ENABLED,
   WEB_SEARCH_ENABLED_STORAGE_KEY,
@@ -64,10 +74,7 @@ import {
   DEFAULT_SESSION_COST_ENABLED,
   SESSION_COST_STORAGE_KEY,
 } from "@/lib/chat/session-cost";
-import {
-  getDataTransferFiles,
-  hasDataTransferFiles,
-} from "@/lib/chat/attachments";
+import { FileDropOverlay, useFileDropZone } from "@/components/chat/FileDropZone";
 import {
   INFERENCE_ACTIVITY_DATA_TYPE,
   isInferenceActivity,
@@ -85,7 +92,12 @@ import {
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
+import { ChatFilesPanel } from "./ChatFiles";
 import { ChatHeader } from "./ChatHeader";
+import { DocumentPanel } from "./DocumentPanel";
+import { DocumentPanelProvider } from "./DocumentPanelContext";
+import { FilePanel } from "./FilePanel";
+import { FilePanelProvider } from "./FilePanelContext";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
@@ -101,6 +113,16 @@ const REASONING_LEVELS_STORAGE_KEY = "overtchat_reasoning_levels";
 function shouldAutofocusComposer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
+
+/** Wide enough to show a document beside the chat without covering it. */
+function documentPanelDocks() {
+  return window.matchMedia("(min-width: 1024px)").matches;
+}
+
+type PanelView =
+  | { kind: "files" }
+  | { kind: "file"; file: PanelFile }
+  | { kind: "document"; toolCallId: string };
 
 interface Props {
   chatId: string;
@@ -213,7 +235,7 @@ export function ChatArea({
           : chatComposerDraftScope(chatId),
   );
   const [chatPersisted, setChatPersisted] = useState(!isNew);
-  const { data: sessionUsage } = useChatUsage(
+  const { data: chatUsage } = useChatUsage(
     chatId,
     sessionCostEnabled && chatPersisted && !temporary,
   );
@@ -234,7 +256,6 @@ export function ChatArea({
   const [contextStatus, setContextStatus] = useState<ContextStatus | null>(
     null,
   );
-  const [dragDepth, setDragDepth] = useState(0);
 
   const isNewRef = useRef(isNew ?? false);
   const composerRef = useRef<ComposerHandle>(null);
@@ -462,6 +483,8 @@ export function ChatArea({
     forceSearch: searchAvailable && forceSearch,
     openuiSupported: true,
     openuiEnabled,
+    documentsSupported: true,
+    codeExecutionSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
@@ -473,6 +496,56 @@ export function ChatArea({
   });
 
   const streaming = status === "streaming" || status === "submitted";
+
+  // What the side panel shows: the chat's files, one of them, or a
+  // document version.
+  const [panel, setPanel] = useState<PanelView | null>(null);
+  const closePanel = useCallback(() => setPanel(null), []);
+  const showFiles = useCallback(() => setPanel({ kind: "files" }), []);
+  const openDocument = useCallback(
+    (toolCallId: string) => setPanel({ kind: "document", toolCallId }),
+    [],
+  );
+  const openFile = useCallback((file: PanelFile) => setPanel({ kind: "file", file }), []);
+  const documentTarget = panel?.kind === "document" ? panel.toolCallId : null;
+  const fileTarget = panel?.kind === "file" ? panel.file : null;
+  const files = useMemo(() => conversationFiles(messages), [messages]);
+  const documentPanel = useMemo(
+    () => ({ activeToolCallId: documentTarget, open: openDocument }),
+    [documentTarget, openDocument],
+  );
+  const filePanel = useMemo(
+    () => ({ activeFileId: fileTarget?.id ?? null, open: openFile }),
+    [fileTarget, openFile],
+  );
+  // Calls already saved when the chat opens never open the panel by themselves.
+  const handledDocumentCalls = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (handledDocumentCalls.current === null) {
+      handledDocumentCalls.current = new Set(
+        messages.flatMap((message) =>
+          message.parts.flatMap((part) =>
+            isDocumentToolPart(part) ? [part.toolCallId] : [],
+          ),
+        ),
+      );
+      return;
+    }
+    if (!streaming) return;
+    const openPart = documentTarget
+      ? findDocumentPart(messages, documentTarget)
+      : undefined;
+    // With the files or a file shown, the panel is open on no document.
+    const { handled, follow } = followLiveDocuments(
+      messages.at(-1),
+      handledDocumentCalls.current,
+      panel ? (openPart ? (documentIdOf(openPart) ?? "") : "") : undefined,
+      documentPanelDocks(),
+    );
+    for (const id of handled) handledDocumentCalls.current.add(id);
+    if (follow) setPanel({ kind: "document", toolCallId: follow });
+  }, [documentTarget, messages, panel, streaming]);
+
   const chatQueue = useChatQueue({
     chatId,
     userId: session?.user.id,
@@ -484,38 +557,11 @@ export function ChatArea({
     },
     generation,
   });
-  const dropActive = dragDepth > 0;
 
-  function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDragDepth((depth) => depth + 1);
-  }
-
-  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "copy";
-  }
-
-  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDragDepth((depth) => Math.max(0, depth - 1));
-  }
-
-  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
-    if (voiceActive) return;
-    if (!hasDataTransferFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDragDepth(0);
-    const files = getDataTransferFiles(e.dataTransfer);
-    if (files.length > 0) composerRef.current?.addFiles(files);
-  }
+  const fileDrop = useFileDropZone({
+    disabled: voiceActive,
+    onFiles: (files) => composerRef.current?.addFiles(files),
+  });
 
   function handleStop() {
     chatQueue.queue.pause();
@@ -784,7 +830,7 @@ export function ChatArea({
       imageConfiguredSize={imageCapability?.configuredSize}
       imageOptions={imageAvailable ? imageOptions : undefined}
       onImageOptions={setImageOptions}
-      dropActive={dropActive}
+      dropActive={fileDrop.active}
       models={models}
       selectedModelId={selectedId}
       reasoningControls={reasoningControls}
@@ -860,16 +906,22 @@ export function ChatArea({
   );
 
   return (
+    <DocumentPanelProvider value={documentPanel}>
+    <FilePanelProvider value={filePanel}>
+    <div className="relative flex min-w-0 flex-1 overflow-hidden">
     <div
-      className="relative flex flex-1 flex-col overflow-hidden"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      data-titlebar-interior={panel ? "" : undefined}
+      className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+      {...fileDrop.handlers}
     >
       <ChatHeader
         shareChatId={chatPersisted && !temporary ? chatId : undefined}
         sharingDisabled={streaming || voiceActive}
+        files={{
+          count: files.outputs.length + files.uploads.length,
+          open: panel !== null,
+          onToggle: () => setPanel((shown) => (shown ? null : { kind: "files" })),
+        }}
         title={headerTitle}
         project={
           project && !(renderEmptyState && showEmptyState)
@@ -877,7 +929,8 @@ export function ChatArea({
             : undefined
         }
         contextUsage={contextUsage}
-        sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
+        sessionUsage={sessionCostEnabled ? chatUsage?.usage : undefined}
+        imageUsage={sessionCostEnabled ? chatUsage?.images : undefined}
         showTempToggle={canToggleTemporary}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}
@@ -885,22 +938,11 @@ export function ChatArea({
 
       <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
 
-      {dropActive && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px] motion-overlay">
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-ring bg-background/90 px-8 py-6 text-center shadow-lg ring-1 ring-ring/20">
-            <div
-              className={`flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ${motionClasses.dropIcon}`}
-            >
-              <FileUp className="size-6" />
-            </div>
-            <div>
-              <div className="text-sm font-medium">Drop files to attach</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Images, PDFs, docs, spreadsheets, and text files
-              </div>
-            </div>
-          </div>
-        </div>
+      {fileDrop.active && (
+        <FileDropOverlay
+          title="Drop files to attach"
+          description="Images, PDFs, docs, spreadsheets, and text files"
+        />
       )}
 
       {showEmptyState && renderEmptyState && !showOnboarding ? (
@@ -986,5 +1028,27 @@ export function ChatArea({
         </>
       )}
     </div>
+    {panel?.kind === "files" && (
+      <ChatFilesPanel
+        files={files}
+        onOpenFile={openFile}
+        onOpenDocument={openDocument}
+        onClose={closePanel}
+      />
+    )}
+    {documentTarget && (
+      <DocumentPanel
+        messages={messages}
+        toolCallId={documentTarget}
+        streaming={streaming}
+        onSelect={openDocument}
+        onBack={showFiles}
+        onClose={closePanel}
+      />
+    )}
+    {fileTarget && <FilePanel file={fileTarget} onBack={showFiles} onClose={closePanel} />}
+    </div>
+    </FilePanelProvider>
+    </DocumentPanelProvider>
   );
 }

@@ -29,6 +29,8 @@ vi.mock("@/lib/db/hostConnectors", () => ({
   listAvailableHostConnectors: mocks.listConnectors,
 }));
 
+import { HOST_CONNECTOR_RELEASE_VERSION } from "@overtchat/agent-bridge";
+
 import { DELETE, GET, POST } from "./route";
 
 function request(method = "GET", query = ""): Request {
@@ -82,10 +84,63 @@ describe("Host Connectors route", () => {
     await expect(response.json()).resolves.toEqual({
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
-      command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.15.1 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
+      command: `curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION} | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'`,
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
+  });
+
+  it("refuses to pair over cleartext HTTP to another machine with a 400, not a crash", async () => {
+    vi.stubEnv("HOST_CONNECTOR_URL", "http://192.168.0.5:4718");
+
+    const response = await POST(request("POST"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "insecure_connector_url",
+      error: expect.stringContaining("HOST_CONNECTOR_ALLOW_INSECURE_HTTP"),
+    });
+    expect(mocks.createPairing).not.toHaveBeenCalled();
+  });
+
+  it("pairs over cleartext HTTP when the operator opts in and tells the connector", async () => {
+    vi.stubEnv("HOST_CONNECTOR_URL", "http://192.168.0.5:4718/");
+    vi.stubEnv("HOST_CONNECTOR_ALLOW_INSECURE_HTTP", "true");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const response = await POST(request("POST"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      command: `curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION} | sh -s -- --server 'http://192.168.0.5:4718' --pair-code 'ocp_pair.secret' --allow-insecure-http`,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("cleartext HTTP"),
+    );
+    warn.mockRestore();
+  });
+
+  it("keeps loopback and HTTPS install commands unchanged when the opt-in is set", async () => {
+    vi.stubEnv("HOST_CONNECTOR_ALLOW_INSECURE_HTTP", "1");
+
+    const local = await (await POST(request("POST"))).json();
+    vi.stubEnv("HOST_CONNECTOR_URL", "https://chat.example.com");
+    const remote = await (await POST(request("POST"))).json();
+
+    expect(local.command).not.toContain("--allow-insecure-http");
+    expect(remote.command).toContain("--server 'https://chat.example.com'");
+    expect(remote.command).not.toContain("--allow-insecure-http");
+  });
+
+  it("reports an unusable connector URL instead of a 500", async () => {
+    vi.stubEnv("HOST_CONNECTOR_URL", "chat.example.com");
+
+    const response = await POST(request("POST"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "invalid_connector_url",
+    });
+    expect(mocks.createPairing).not.toHaveBeenCalled();
   });
 
   it("lists connectors available to the current administrator", async () => {
@@ -157,9 +212,8 @@ describe("Host Connectors route", () => {
           lastSeenAt: 12_000,
           online: true,
           upgrade: {
-            version: "0.15.1",
-            command:
-              "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.15.1 | sh -s -- --upgrade",
+            version: HOST_CONNECTOR_RELEASE_VERSION,
+            command: `curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION} | sh -s -- --upgrade`,
           },
         },
       ],
@@ -172,14 +226,14 @@ describe("Host Connectors route", () => {
         id: "current",
         name: "Current",
         managed: false,
-        version: "0.15.1",
+        version: HOST_CONNECTOR_RELEASE_VERSION,
         lastSeenAt: null,
       },
       {
         id: "newer",
         name: "Newer",
         managed: false,
-        version: "0.15.1",
+        version: "99.0.0",
         lastSeenAt: null,
       },
     ]);

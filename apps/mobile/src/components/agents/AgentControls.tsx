@@ -16,7 +16,7 @@ import {
 
 import { AgentProviderIcon } from "./AgentProviderIcon";
 
-type AgentSettingsPanel = "settings" | "models" | "thinking" | "permissions";
+export type AgentSettingsPanel = "settings" | "models" | "thinking" | "permissions";
 
 export function chooseAgentMode(mode: AgentMode, apply: () => void) {
   if (!mode.dangerous) {
@@ -36,6 +36,7 @@ export function chooseAgentMode(mode: AgentMode, apply: () => void) {
 
 export function AgentControls({
   visible,
+  initialPanel = "settings",
   provider,
   onClose,
   models,
@@ -53,6 +54,8 @@ export function AgentControls({
   notice,
 }: {
   visible: boolean;
+  /** The panel shown when the sheet opens. */
+  initialPanel?: AgentSettingsPanel;
   provider?: AgentProviderId;
   onClose: () => void;
   models: AgentModel[];
@@ -73,10 +76,10 @@ export function AgentControls({
   const [panel, setPanel] = useState<AgentSettingsPanel>("settings");
   useEffect(() => {
     if (visible) {
-      setPanel("settings");
+      setPanel(initialPanel);
       setSearch("");
     }
-  }, [visible]);
+  }, [visible, initialPanel]);
   const model = models.find((item) => item.id === modelId);
   const close = () => {
     setPanel("settings");
@@ -226,6 +229,7 @@ export function AgentControls({
               icon={
                 mode.dangerous ? "shield-outline" : "shield-checkmark-outline"
               }
+              danger={mode.dangerous}
               detail={mode.description}
               selected={modeId === mode.id}
               disabled={disabled}

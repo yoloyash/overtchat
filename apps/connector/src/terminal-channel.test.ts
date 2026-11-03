@@ -4,6 +4,7 @@ import { WebSocket } from "ws";
 import { TerminalRelay } from "../../web/lib/agents/terminal/relay";
 import { TerminalChannel } from "./terminal-channel";
 import { ConnectorTerminalManager } from "./terminal";
+import { waitWhileProgressing } from "./test-support/progress";
 import { TERMINAL_MAX_BUFFER_BYTES, TERMINAL_SOCKET_PATH, TERMINAL_STREAM_PROTOCOL, type AgentDaemonWorkspaceDescriptor, type TerminalViewMessage } from "@overtchat/agent-bridge";
 
 const workspace: AgentDaemonWorkspaceDescriptor = {
@@ -113,21 +114,21 @@ describe("workspace terminal stream", () => {
     await expect.poll(fast.output, { timeout: 5_000 }).toContain("\r\nFLOW_READY\r\n");
     const transport = Reflect.get(slow.socket, "_socket") as { pause(): void; resume(): void };
     const closed = once(slow.socket, "close");
+    const relayViews = () => [...(Reflect.get(relay, "views") as Map<string, { socket: WebSocket }>).values()];
     let maxBufferedBytes = 0;
     const monitor = setInterval(() => {
-      const views = Reflect.get(relay, "views") as Map<string, { socket: WebSocket }>;
-      for (const view of views.values()) maxBufferedBytes = Math.max(maxBufferedBytes, view.socket.bufferedAmount);
+      for (const view of relayViews()) maxBufferedBytes = Math.max(maxBufferedBytes, view.socket.bufferedAmount);
     }, 10);
     transport.pause();
     try {
       fast.socket.send(JSON.stringify({
         type: "input", data: "head -c 25165824 /dev/zero | tr '\\0' '\\121'; printf '\\nFLOW_FINISHED\\n'\r",
       }));
-      await expect.poll(() => {
-        const tail = fast.messages.slice(-10).flatMap((m) => m.type === "output" ? [m.data] : []).join("").slice(-1024);
-        if (fast.socket.readyState !== WebSocket.OPEN) throw new Error(`Healthy viewer disconnected at ${fast.messages.length} messages; tail: ${tail}`);
-        return tail;
-      }, { timeout: 60_000 }).toContain("\r\nFLOW_FINISHED\r\n");
+      const tail = () => fast.messages.slice(-10).flatMap((m) => m.type === "output" ? [m.data] : []).join("").slice(-1024);
+      await waitWhileProgressing(() => {
+        if (fast.socket.readyState !== WebSocket.OPEN) throw new Error(`Healthy viewer disconnected at ${fast.messages.length} messages; tail: ${tail()}`);
+        return tail().includes("\r\nFLOW_FINISHED\r\n");
+      }, () => fast.messages.length, () => `fast messages=${fast.messages.length}`);
       expect(fast.socket.readyState).toBe(WebSocket.OPEN);
       expect(fast.messages.filter((m) => m.type === "snapshot")).toHaveLength(1);
       let revision = 0;
@@ -140,8 +141,12 @@ describe("workspace terminal stream", () => {
       expect(bytes).toBe(25_165_824);
       expect(maxBufferedBytes).toBeGreaterThan(1024 * 1024);
       expect(maxBufferedBytes).toBeLessThanOrEqual(TERMINAL_MAX_BUFFER_BYTES);
+      // The relay has already stopped streaming to the stalled viewer. It then
+      // completes the close handshake, or destroys the socket after the 30s
+      // WebSocket close timeout, however long the client takes to catch up.
+      expect(relayViews().filter((view) => view.socket.readyState === WebSocket.OPEN)).toHaveLength(1);
       transport.resume();
-      await expect.poll(() => slow.socket.readyState, { timeout: 5_000 }).toBe(WebSocket.CLOSED);
+      await expect.poll(() => relayViews().length === 1 && slow.socket.readyState === WebSocket.CLOSED, { timeout: 35_000 }).toBe(true);
       // The stalled receiver may also miss its heartbeat before it can read
       // the close frame. Both paths must leave the healthy view/shell intact.
       expect([1013, 1006]).toContain((await closed)[0]);
@@ -151,10 +156,11 @@ describe("workspace terminal stream", () => {
       await expect.poll(restored.output, { timeout: 5_000 }).toContain("\r\nSTATE:retained\r\n");
     } catch (error) {
       const terminal = (Reflect.get(manager, "terminals") as Map<string, { parseBytes: number; readsPaused: boolean; pendingOutput: string }>).get(workspace.workspaceId);
-      throw new Error(`Stalled-viewer recovery failed: fast=${fast.socket.readyState}, slow=${slow.socket.readyState}, messages=${fast.messages.length}, bytes=${fast.output().length}, queued=${terminal?.parseBytes}, paused=${terminal?.readsPaused}, pending=${terminal?.pendingOutput.length}, tail=${fast.output().slice(-200)}`, { cause: error });
+      const views = relayViews().map((view) => `${view.socket.readyState}/${view.socket.bufferedAmount}`).join(",");
+      throw new Error(`Stalled-viewer recovery failed: relayViews=${views}, slowMessages=${slow.messages.length}, fast=${fast.socket.readyState}, slow=${slow.socket.readyState}, messages=${fast.messages.length}, bytes=${fast.output().length}, queued=${terminal?.parseBytes}, paused=${terminal?.readsPaused}, pending=${terminal?.pendingOutput.length}, tail=${fast.output().slice(-200)}`, { cause: error });
     } finally {
       clearInterval(monitor);
       transport.resume();
     }
-  }, 75_000);
+  }, 150_000);
 });

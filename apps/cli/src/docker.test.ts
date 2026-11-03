@@ -31,6 +31,7 @@ function config(
     voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.1.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    sandboxVersion: "0.1.0",
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
     searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
@@ -54,6 +55,7 @@ function config(
       accelerator: "cpu",
     },
     voice: { installed: false },
+    sandbox: { installed: false, tier: "slim" },
     agents: { installed: false },
     ...overrides,
   };
@@ -231,6 +233,32 @@ describe("managed sidecar reconciliation", () => {
     expect(mocks.runCommand).toHaveBeenCalledWith(
       "docker",
       ["container", "rm", "--force", "overtchat-cloud-tunnel"],
+      {},
+    );
+  });
+
+  it("removes the code sandbox when it is deferred or its tier changes", async () => {
+    mocks.runCommand.mockImplementation(
+      async (_command: string, args: string[]) => {
+        const name = args[1];
+        if (args[0] === "inspect" && (name === "overtchat-sandbox" || name === "overtchat-sandbox-full")) {
+          return { stdout: inspectedContainer(name, name.replace("overtchat-", "")), stderr: "", exitCode: 0 };
+        }
+        if (args[0] === "inspect") return { stdout: "", stderr: "No such container", exitCode: 1 };
+        return { stdout: name ?? "", stderr: "", exitCode: 0 };
+      },
+    );
+    const docker = { command: "docker", prefix: [] };
+
+    const full = await reconcileManagedSidecars(docker, config({ sandbox: { installed: true, tier: "full" } }));
+    expect(full.removed).toContain("Code sandbox");
+    expect(full.removed).not.toContain("Code sandbox (full)");
+
+    const deferred = await reconcileManagedSidecars(docker, config({ sandbox: { installed: false, tier: "full" } }));
+    expect(deferred.removed).toEqual(expect.arrayContaining(["Code sandbox", "Code sandbox (full)"]));
+    expect(mocks.runCommand).toHaveBeenCalledWith(
+      "docker",
+      ["container", "rm", "--force", "overtchat-sandbox-full"],
       {},
     );
   });
@@ -430,6 +458,36 @@ describe("existing TTS accelerator detection", () => {
       ttsGpuUuid: "GPU-5090",
       ttsGpuVariant: "blackwell",
     });
+  });
+
+  it("adopts a running code sandbox with its tier", async () => {
+    mocks.runCommand.mockImplementation(
+      async (_command: string, args: string[]) => {
+        const name = args[1];
+        if (args[0] === "inspect" && name === "overtchat-app") {
+          return {
+            stdout: JSON.stringify([
+              {
+                Name: "/overtchat-app",
+                Config: { Image: "ghcr.io/yoloyash/overtchat-app:0.30.0", Env: [], Labels: {} },
+                Mounts: [{ Destination: "/app/data", Name: "overtchat-data", Type: "volume" }],
+                NetworkSettings: { Ports: { "4717/tcp": [{ HostIp: "0.0.0.0", HostPort: "4718" }] } },
+              },
+            ]),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        if (args[0] === "inspect" && name === "overtchat-sandbox") {
+          return { stdout: inspectedContainer(name, "sandbox"), stderr: "", exitCode: 0 };
+        }
+        return { stdout: "", stderr: "No such container", exitCode: 1 };
+      },
+    );
+
+    await expect(
+      detectExistingInstallation({ command: "docker", prefix: [] }),
+    ).resolves.toMatchObject({ sandboxTier: "slim" });
   });
 });
 

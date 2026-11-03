@@ -257,6 +257,18 @@ describe("Claude parent turns and background work", () => {
     } finally { await runtime.stop(); }
   });
 
+  it("fails the turn with the error of a failed result", async () => {
+    const { query, runtime } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Research" });
+      query.push({ type: "result", subtype: "error_max_turns", is_error: true, errors: ["Reached the maximum number of turns."], usage: {} });
+      await vi.waitFor(() =>
+        expect(runtime.directoryStatus().lastTurn).toMatchObject({ outcome: "failed", error: "Reached the maximum number of turns." }),
+      );
+      expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+    } finally { await runtime.stop(); }
+  });
+
   it("restarts the query when an interrupt does not end the turn", async () => {
     const { client, query, runtime } = await createRuntimeForTest();
     const queries = queryMock.mock.calls.length;
@@ -298,6 +310,84 @@ describe("Claude parent turns and background work", () => {
       await vi.waitFor(() => expect(runtime.snapshot().status).toBe("exited"));
       expect(replica().status).toBe("exited");
       expect(await client.getState()).toMatchObject({ isStreaming: false, hasPendingAsyncWork: false });
+    } finally { await runtime.stop(); }
+  });
+});
+
+describe("Claude compaction divider", () => {
+  const dividers = (messages: unknown[]) =>
+    messages.filter((message) => (message as { role?: string }).role === "compactionSummary");
+
+  it("replaces the /compact command with one divider that settles on the boundary", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "compact" });
+      expect(replica().messages).toEqual([
+        expect.objectContaining({ role: "compactionSummary", status: "running", trigger: "manual" }),
+      ]);
+
+      // Live order from Claude Code 2.1.310: status repeats, success precedes the boundary.
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      query.push({ type: "system", subtype: "status", status: null, compact_result: "success" });
+      await nextTask();
+      expect(dividers(replica().messages)).toEqual([expect.objectContaining({ status: "running" })]);
+
+      query.push({
+        type: "system", subtype: "compact_boundary", uuid: "boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 20_713, post_tokens: 1_999 },
+      });
+      query.push({
+        type: "user", uuid: "summary",
+        message: { role: "user", content: "This session is being continued from a previous conversation." },
+      });
+      query.push({ type: "user", message: { role: "user", content: "<local-command-stdout>Compacted </local-command-stdout>" } });
+      query.push({ ...successfulResult, result: "" });
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(replica().messages).toEqual([{
+        id: expect.stringMatching(/^compaction:/), role: "compactionSummary", timestamp: expect.any(Number),
+        status: "completed", trigger: "manual", tokensBefore: 20_713,
+      }]);
+    } finally { await runtime.stop(); }
+  });
+
+  it("marks automatic compaction inside a turn", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Keep working" });
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      await nextTask();
+      expect(dividers(replica().messages)).toEqual([
+        expect.not.objectContaining({ trigger: expect.anything() }),
+      ]);
+      query.push({ type: "system", subtype: "status", status: null, compact_result: "success" });
+      query.push({
+        type: "system", subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 967_944, post_tokens: 20_949 },
+      });
+      await nextTask();
+      expect(runtime.snapshot().status).toBe("running");
+      expect(dividers(replica().messages)).toEqual([expect.objectContaining({
+        status: "completed", trigger: "auto", tokensBefore: 967_944,
+      })]);
+      expect(dividers(replica().messages)[0]).not.toHaveProperty("tokensAfter");
+    } finally { await runtime.stop(); }
+  });
+
+  it.each([
+    ["fails", { type: "system", subtype: "status", status: null, compact_result: "failed", compact_error: "Not enough messages to compact." }, "failed"],
+    ["stops", { type: "system", subtype: "status", status: null }, "interrupted"],
+  ])("shows a compaction that %s without a boundary", async (_name, status, outcome) => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "compact" });
+      query.push({ type: "system", subtype: "status", status: "compacting" });
+      query.push(status);
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(replica().messages).toEqual([
+        expect.objectContaining({ role: "compactionSummary", status: outcome, trigger: "manual" }),
+      ]);
     } finally { await runtime.stop(); }
   });
 });
@@ -420,7 +510,7 @@ describe("Claude runtime client", () => {
       }
       expect(events).toContainEqual({ type: "turn_end" });
       expect((await client.getState()).isStreaming).toBe(false);
-      if (error) expect(events).toContainEqual({ type: "rpc_error", error: result });
+      if (error) expect(events).toContainEqual({ type: "rpc_error", command: "prompt", error: result });
     } finally {
       await client.stop();
     }
@@ -953,6 +1043,45 @@ it.each(["files", "both"] as const)("restores files on the source session before
 });
 
 
+describe("Claude reported models", () => {
+  it("keeps listed model IDs when Claude Code reports the model an alias resolved to", async () => {
+    let query!: FakeQuery;
+    queryMock.mockImplementation((params) => {
+      query = new FakeQuery(params);
+      const initialized = query.initializationResult();
+      query.initializationResult = async () => {
+        const result = await initialized;
+        return {
+          ...result,
+          models: [
+            ...result.models.map((model) => ({ ...model, resolvedModel: "claude-haiku-test" })),
+            { value: "opus", displayName: "Opus", description: "Capable", supportsAutoMode: true, resolvedModel: "claude-opus-test" },
+          ],
+        };
+      };
+      return query;
+    });
+    const client = new ClaudeRuntimeClient(
+      { transport: "local" },
+      { executable: "claude", cwd: "/workspace", model: "haiku" },
+    );
+    const reported = async (model: string) => {
+      query.push({ type: "system", subtype: "init", session_id: "session", model });
+      await nextTask();
+      return (await client.getState()).model;
+    };
+    try {
+      await client.getState();
+      expect(await reported("claude-haiku-test")).toEqual({ provider: "claude", id: "haiku" });
+      // A native /model switch reports another listed model by its resolved ID.
+      expect(await reported("claude-opus-test")).toEqual({ provider: "claude", id: "opus" });
+      expect(await reported("gateway/unlisted")).toEqual({ provider: "claude", id: "gateway/unlisted" });
+    } finally {
+      await client.stop();
+    }
+  });
+});
+
 describe("Claude context reporting", () => {
   it("reads native capacity on open and streams usage for an unmatched runtime model", async () => {
     let q!: FakeQuery;
@@ -1147,5 +1276,114 @@ describe("Claude context reporting", () => {
       expect((await client.getMessages()).messages.length).toBeGreaterThan(0);
       expect((await client.getSessionStats()).contextUsage).toEqual({ tokens: 42_000, contextWindow: 1_000_000, percent: 4.2 });
     } finally { await client.stop(); await rm(fixture.root, { recursive: true, force: true }); }
+  });
+});
+
+describe("Claude subagents", () => {
+  const role = (message: unknown) => (message as Record<string, unknown>).role;
+  const assistants = (messages: unknown[]) => messages.filter((message) => role(message) === "assistant");
+  const taskLaunch = (id: string, name = "Task") => ({
+    type: "assistant", parent_tool_use_id: null,
+    message: { id: "parent", content: [{ type: "tool_use", id, name, input: {
+      description: "Survey the runtime", prompt: "Read the runtime tests", subagent_type: "Explore",
+    } }] },
+  });
+
+  it("projects a foreground Task as a subagent part fed by its child's frames", async () => {
+    const { query, runtime, replica, events } = await createRuntimeForTest();
+    try {
+      expect(query.options).toMatchObject({ forwardSubagentText: true });
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push({ type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id: "parent", usage: {} } } });
+      query.push({ type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "task-1", name: "Task", input: {} } } });
+      query.push(taskLaunch("task-1"));
+      query.push({ type: "system", subtype: "task_started", task_id: "agent-1", tool_use_id: "task-1", description: "Survey the runtime", subagent_type: "Explore", task_type: "local_agent", is_backgrounded: false });
+      // The child's stream is neither a parent message nor the live one.
+      query.push({ type: "stream_event", parent_tool_use_id: "task-1", event: { type: "message_start", message: { id: "child-stream", usage: {} } } });
+      query.push({ type: "stream_event", parent_tool_use_id: "task-1", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Looking" } } });
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-1", content: [{ type: "tool_use", id: "child-grep", name: "Grep", input: { pattern: "runtimeStatus", path: "apps/web" } }] } });
+      query.push({ type: "user", parent_tool_use_id: "task-1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "child-grep", content: "No such path\nmore", is_error: true }] } });
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-2", content: [{ type: "text", text: "The suite covers the runtime." }] } });
+      await nextTask();
+      expect(assistants(replica().messages)).toEqual([expect.objectContaining({
+        id: "parent",
+        content: [expect.objectContaining({ type: "subagent", id: "task-1", status: "running" })],
+      })]);
+
+      query.push({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "task-1", content: "The suite covers the runtime." }] } });
+      await nextTask();
+      const messages = replica().messages;
+      expect(assistants(messages)).toEqual([expect.objectContaining({
+        id: "parent",
+        content: [{
+          type: "subagent", id: "task-1", action: "task", status: "completed", receivers: [],
+          title: "Survey the runtime", agentType: "Explore", prompt: "Read the runtime tests",
+          events: ["Grep runtimeStatus", "Grep failed: No such path", "The suite covers the runtime."],
+        }],
+      })]);
+      expect(messages.some((message) => role(message) === "toolResult")).toBe(false);
+      expect(events.some((event) => event.type === "tool_execution_end")).toBe(false);
+      expect(replica().messages).toEqual(runtime.snapshot().messages);
+    } finally { await runtime.stop(); }
+  });
+
+  it("keeps a backgrounded Agent running until its notification settles it", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push(taskLaunch("task-1", "Agent"));
+      query.push({ type: "system", subtype: "task_started", task_id: "agent-1", tool_use_id: "task-1", description: "Survey the runtime", task_type: "local_agent", is_backgrounded: true });
+      // A background shell has a part of its own in neither place.
+      query.push({ type: "system", subtype: "task_started", task_id: "shell-1", tool_use_id: "bash-1", description: "npm test", task_type: "local_bash", is_backgrounded: true });
+      query.push({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "task-1", content: "Async agent launched successfully.\nagentId: agent-1" }] } });
+      query.push(backgroundTasks("agent-1", "shell-1"));
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(assistants(replica().messages)[0]).toMatchObject({
+        content: [{ type: "subagent", id: "task-1", status: "running", events: [] }],
+      });
+
+      // The child keeps reporting after the parent turn ended.
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-1", content: [{ type: "text", text: "Finished the survey." }] } });
+      query.push({ type: "system", subtype: "task_notification", task_id: "agent-1", status: "completed", summary: "Agent finished" });
+      await nextTask();
+      expect(assistants(replica().messages)[0]).toMatchObject({
+        content: [{ type: "subagent", id: "task-1", status: "completed", events: ["Finished the survey."] }],
+      });
+      expect(runtime.snapshot().status).toBe("idle");
+      expect(assistants(replica().messages)).toHaveLength(1);
+    } finally { await runtime.stop(); }
+  });
+
+  it("folds nested launches into the top-level part and drops frames of unknown children", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push(taskLaunch("task-1"));
+      query.push({ type: "assistant", parent_tool_use_id: "task-1", message: { id: "child-1", content: [{ type: "tool_use", id: "task-nested", name: "Agent", input: { description: "Check tests", prompt: "Run them" } }] } });
+      query.push({ type: "assistant", parent_tool_use_id: "task-nested", message: { id: "grandchild-1", content: [{ type: "text", text: "Tests pass." }] } });
+      query.push({ type: "assistant", parent_tool_use_id: "ghost", message: { id: "orphan", content: [{ type: "text", text: "Nobody owns me." }] } });
+      query.push({ type: "system", subtype: "task_updated", task_id: "unknown", patch: { status: "failed" } });
+      query.push({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "task-1", content: "[Request interrupted by user for tool use]", is_error: true }] } });
+      await nextTask();
+      expect(assistants(replica().messages)).toEqual([expect.objectContaining({
+        content: [expect.objectContaining({
+          id: "task-1", status: "stopped", events: ["Subagent: Check tests", "Tests pass."],
+        })],
+      })]);
+    } finally { await runtime.stop(); }
+  });
+
+  it("stops running subagents when the CLI goes away", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Survey" });
+      query.push(taskLaunch("task-1"));
+      await nextTask();
+      query.close();
+      await vi.waitFor(() => expect(assistants(replica().messages)[0]).toMatchObject({
+        content: [{ type: "subagent", id: "task-1", status: "stopped" }],
+      }));
+    } finally { await runtime.stop(); }
   });
 });

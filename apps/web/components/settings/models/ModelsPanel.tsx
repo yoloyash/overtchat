@@ -19,7 +19,7 @@ import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AdminModelConfig } from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
-import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
+import { findProvider, modelIconForModel } from "@/lib/providers/catalog";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
@@ -74,14 +74,13 @@ export function ModelsPanel() {
     const q = query.trim().toLowerCase();
     if (!q) return models;
     return models.filter((m) => {
-      const provider = getProvider(m.providerId);
       const host = hostnameOf(m.baseUrl);
       return [
         m.label,
         m.model,
         m.baseUrl,
         host,
-        provider.label,
+        providerLabel(m),
         m.enabled ? "enabled" : "disabled",
         m.taskModel ? "task" : "",
         m.modelType,
@@ -200,9 +199,9 @@ export function ModelsPanel() {
                 {models
                   .filter((model) => model.modelType !== "image")
                   .map((model) => {
-                    const provider = getProvider(model.providerId);
                     const iconId =
-                      modelIconForModel(model.model) ?? provider.iconId;
+                      modelIconForModel(model.model) ??
+                      findProvider(model.providerId)?.iconId;
                     return (
                       <SelectItem key={model.id} value={model.id}>
                         <ModelBrandIcon iconId={iconId} className="size-4" />
@@ -266,9 +265,9 @@ export function ModelsPanel() {
           </p>
           <div className="@container divide-y divide-border/70 border-y">
             {filteredModels.map((m) => {
-              const provider = getProvider(m.providerId);
               const host = hostnameOf(m.baseUrl);
-              const iconId = modelIconForModel(m.model) ?? provider.iconId;
+              const iconId =
+                modelIconForModel(m.model) ?? findProvider(m.providerId)?.iconId;
               return (
                 <div
                   key={m.id}
@@ -304,7 +303,7 @@ export function ModelsPanel() {
                         )}
                       </div>
                       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <span>{provider.label}</span>
+                        <span>{providerLabel(m)}</span>
                         <span
                           aria-hidden="true"
                           className="text-muted-foreground/50"
@@ -457,6 +456,15 @@ export function ModelsPanel() {
         </AlertDialog.Portal>
       </AlertDialog.Root>
     </SettingsPage>
+  );
+}
+
+/** The desktop app can list providers that its bundled catalog predates. */
+function providerLabel(model: AdminModelConfig): string {
+  return (
+    findProvider(model.providerId)?.label ??
+    model.displayProvider ??
+    model.providerId
   );
 }
 

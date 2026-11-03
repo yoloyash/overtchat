@@ -315,6 +315,23 @@ describe("image model configuration", () => {
       ModelConfigSchema.parse({ ...image, modelType: undefined }).modelType,
     ).toBe("chat");
   });
+  it("needs no rates for OpenRouter, which reports each image's charge", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...image,
+        providerId: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "qwen/qwen-image-2.1-turbo",
+        pricing: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+      }),
+    ).toMatchObject({
+      modelType: "image",
+      providerId: "openrouter",
+      apiFormat: "auto",
+      pricing: null,
+      providerOptions: null,
+    });
+  });
   it.each([
     { providerId: "anthropic" },
     { model: "" },
@@ -326,6 +343,18 @@ describe("image model configuration", () => {
       false,
     );
   });
+  it.each(["openai", "google"])(
+    "keeps %s image token rates without cache rates",
+    (providerId) => {
+      expect(
+        ModelConfigSchema.parse({
+          ...image,
+          providerId,
+          pricing: { input: 1.5, output: 30, cacheRead: 0.15, cacheWrite: 2 },
+        }).pricing,
+      ).toEqual({ input: 1.5, output: 30, cacheRead: 0, cacheWrite: 0 });
+    },
+  );
   it.each(["openai", "google"])(
     "lets the admin assign any model ID to %s image generation",
     (providerId) => {
@@ -358,6 +387,15 @@ describe("custom image configuration", () => {
         extraBody: {},
       },
     });
+  });
+  it("keeps token rates without cache rates for backends that report usage", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...custom,
+        pricing: { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 3 },
+      }).pricing,
+    ).toEqual({ input: 1, output: 2, cacheRead: 0, cacheWrite: 0 });
+    expect(ModelConfigSchema.parse(custom).pricing).toBeNull();
   });
   it("preserves backend settings through save and re-save", () => {
     const parsed = ModelConfigSchema.parse({

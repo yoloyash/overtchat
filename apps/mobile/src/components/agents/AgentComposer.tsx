@@ -2,17 +2,19 @@ import { ErrorNotice } from "@/components/ErrorNotice";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { TextInputWrapper } from "expo-paste-input";
+import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { File } from "expo-file-system";
+import { TextInputWrapper } from "expo-paste-input";
+import ImageViewing from "react-native-image-viewing";
 import {
   AGENT_IMAGE_MEDIA_TYPES,
   MAX_AGENT_IMAGES,
@@ -20,19 +22,44 @@ import {
   MAX_AGENT_IMAGE_TOTAL_BYTES,
   agentPromptImageSchema,
   agentSlashCommandQuery,
-  type AgentSlashCommand,
   type AgentProviderId,
   type AgentQueuedMessage,
+  type AgentSessionStats,
+  type AgentSlashCommand,
 } from "@overtchat/agent-bridge";
-import { uploadFile } from "@/lib/api";
-import type { AgentDraft } from "@/lib/agents/drafts";
+import { getApiBase, uploadFile } from "@/lib/api";
+import { useAuthCookie } from "@/lib/auth/useAuthCookie";
+import { agentImageSource } from "@/lib/agents/model";
+import type { AgentDraft, DraftImage } from "@/lib/agents/drafts";
 import { dictationErrorMessage } from "@/lib/chat/message";
 import { useDictation } from "@/lib/useDictation";
 import { useTheme } from "@/lib/theme";
-import { AgentButton, AgentText } from "./AgentPrimitives";
+import { AgentAttachSheet } from "./AgentAttachSheet";
+import { AgentContextButton } from "./AgentContextUsage";
 import { AgentProviderIcon } from "./AgentProviderIcon";
 import { AgentQueuedMessages } from "./AgentQueuedMessages";
-import { AttachmentChip } from "@/components/chat/AttachmentChip";
+
+type PickedImage = { uri: string; name: string; type: string };
+type PendingImage = { key: string; uri: string };
+
+const THUMBNAIL = 64;
+
+function pastedImage(uri: string, index: number): PickedImage {
+  const name = uri.split("/").pop()?.split("?")[0] || `pasted-${index}.png`;
+  const ext = name.split(".").pop()?.toLowerCase();
+  return {
+    uri,
+    name,
+    type:
+      ext === "jpg" || ext === "jpeg"
+        ? "image/jpeg"
+        : ext === "webp"
+          ? "image/webp"
+          : ext === "gif"
+            ? "image/gif"
+            : "image/png",
+  };
+}
 
 export function AgentComposer({
   draft,
@@ -40,13 +67,17 @@ export function AgentComposer({
   commands,
   supportsImages,
   disabled,
+  canStop,
   sending: commandPending,
   running,
   modelLabel,
-  modeLabel,
   thinkingLabel,
+  permission,
   provider,
+  contextUsage,
+  onContext,
   onSettings,
+  onPermissions,
   onSend,
   onStop,
   queuedMessages = [],
@@ -62,13 +93,20 @@ export function AgentComposer({
   commands: AgentSlashCommand[];
   supportsImages: boolean;
   disabled: boolean;
+  /** Stop stays available while the agent waits on a response. Defaults to !disabled. */
+  canStop?: boolean;
   sending: boolean;
   running: boolean;
   modelLabel: string;
-  modeLabel: string;
   thinkingLabel?: string;
+  /** The current permission mode, shown as a shield next to the model. */
+  permission?: { label: string; dangerous: boolean };
   provider?: AgentProviderId;
+  /** Context usage for an existing session; omitted before the session exists. */
+  contextUsage?: AgentSessionStats["contextUsage"] | null;
+  onContext?: () => void;
   onSettings: () => void;
+  onPermissions?: () => void;
   onSend: () => void;
   onStop: () => void;
   queuedMessages?: AgentQueuedMessage[];
@@ -81,12 +119,14 @@ export function AgentComposer({
   onBeforeDictate?: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
-  const [uploading, setUploading] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [attachOpen, setAttachOpen] = useState(false);
   const [error, setError] = useState<string>();
   const uploadLock = useRef(false);
   const editLock = useRef(false);
   const inputRef = useRef<TextInput>(null);
   const [editing, setEditing] = useState(false);
+  const uploading = pendingImages.length > 0;
   const sending = commandPending || editing;
   async function editQueued(message: AgentQueuedMessage) {
     if (
@@ -147,13 +187,14 @@ export function AgentComposer({
             .includes(query),
         );
 
-  async function addImages(
-    files: { uri: string; name: string; type: string }[],
-  ) {
+  async function addImages(files: PickedImage[]) {
     if (uploadLock.current || disabled || sending) return;
     setError(undefined);
     uploadLock.current = true;
-    setUploading(true);
+    const pending = files.map((file, index) => ({
+      key: `${Date.now()}:${index}:${file.uri}`,
+      uri: file.uri,
+    }));
     try {
       if (!supportsImages)
         throw new Error("The selected model does not support images.");
@@ -174,7 +215,9 @@ export function AgentComposer({
         if (total > MAX_AGENT_IMAGE_TOTAL_BYTES)
           throw new Error("Image attachments must total 20 MB or less.");
       }
-      for (const file of files) {
+      // Show the picked images right away; each one settles as it uploads.
+      setPendingImages(pending);
+      for (const [index, file] of files.entries()) {
         const result = await uploadFile(file);
         const image = agentPromptImageSchema.parse({
           uploadId: result.url.split("/").pop(),
@@ -188,6 +231,9 @@ export function AgentComposer({
             { ...image, size: result.size, uri: file.uri },
           ],
         }));
+        setPendingImages((current) =>
+          current.filter((item) => item.key !== pending[index].key),
+        );
       }
     } catch (cause) {
       setError(
@@ -195,7 +241,7 @@ export function AgentComposer({
       );
     } finally {
       uploadLock.current = false;
-      setUploading(false);
+      setPendingImages([]);
     }
   }
 
@@ -232,14 +278,23 @@ export function AgentComposer({
     }
   }
 
+  const empty = !draft.message.trim() && !draft.images.length;
+  const dictating = dictation.status !== "idle";
+  const canSend =
+    !disabled &&
+    !sending &&
+    !uploading &&
+    !dictating &&
+    !empty &&
+    (!draft.images.length || supportsImages);
+  // Dictation stays available for follow-ups and appends to typed text.
+  const showSend = !empty;
+  const settingsLabel = [modelLabel, thinkingLabel, permission?.label]
+    .filter(Boolean)
+    .join(", ");
+
   return (
-    <View
-      style={{
-        gap: 4,
-        padding: 8,
-        backgroundColor: colors.background,
-      }}
-    >
+    <View style={styles.wrapper}>
       <AgentQueuedMessages
         messages={queuedMessages}
         running={running}
@@ -267,88 +322,108 @@ export function AgentComposer({
       )}
       {!!error && <ErrorNotice message={error} onDismiss={() => setError(undefined)} />}
       {matches.length > 0 && (
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          style={{ maxHeight: 190 }}
+        <View
+          style={[
+            styles.commands,
+            {
+              backgroundColor: colors.popover,
+              borderColor: colors.border,
+              borderRadius: radii.xl,
+            },
+          ]}
         >
-          {matches.map((command) => (
-            <AgentButton
-              key={`${command.source}:${command.name}`}
-              icon="code-slash-outline"
-              label={`/${command.name}${command.argumentHint ? ` ${command.argumentHint}` : ""}`}
-              detail={command.description}
-              onPress={() =>
-                setDraft({
-                  ...draft,
-                  message: `/${command.name}${command.argumentHint || command.source !== "builtin" ? " " : ""}`,
-                })
-              }
-            />
-          ))}
-        </ScrollView>
-      )}
-      {!!draft.images.length && (
-        <ScrollView
-          horizontal
-          contentContainerStyle={{ gap: 8 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          {draft.images.map((image) => (
-            <AttachmentChip
-              key={image.uploadId}
-              attachment={{
-                type: "file",
-                url: `/api/uploads/${image.uploadId}`,
-                filename: image.filename,
-                mediaType: image.mediaType,
-              }}
-              onRemove={
-                sending || uploading
-                  ? undefined
-                  : () =>
-                      setDraft((current) => ({
-                        ...current,
-                        images: current.images.filter(
-                          (item) => item.uploadId !== image.uploadId,
-                        ),
-                      }))
-              }
-            />
-          ))}
-        </ScrollView>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220 }}>
+            {matches.map((command) => {
+              const label = `/${command.name}${command.argumentHint ? ` ${command.argumentHint}` : ""}`;
+              return (
+                <Pressable
+                  key={`${command.source}:${command.name}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  onPress={() =>
+                    setDraft({
+                      ...draft,
+                      message: `/${command.name}${command.argumentHint || command.source !== "builtin" ? " " : ""}`,
+                    })
+                  }
+                  style={({ pressed }) => [
+                    styles.command,
+                    { backgroundColor: pressed ? colors.accent : "transparent" },
+                  ]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: colors.popoverForeground,
+                      fontFamily: fonts.mono,
+                      fontSize: 13,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                  {!!command.description && (
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansRegular,
+                        fontSize: 12,
+                        lineHeight: 16,
+                      }}
+                    >
+                      {command.description}
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
       <View
-        style={{
-          backgroundColor: colors.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: radii.xl,
-          padding: 6,
-        }}
+        style={[
+          styles.bar,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderRadius: radii.xxl,
+          },
+        ]}
       >
+        {(draft.images.length > 0 || pendingImages.length > 0) && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.attachments}
+          >
+            {draft.images.map((image) => (
+              <AttachmentThumbnail
+                key={image.uploadId}
+                image={image}
+                onRemove={
+                  sending || uploading
+                    ? undefined
+                    : () =>
+                        setDraft((current) => ({
+                          ...current,
+                          images: current.images.filter(
+                            (item) => item.uploadId !== image.uploadId,
+                          ),
+                        }))
+                }
+              />
+            ))}
+            {pendingImages.map((image) => (
+              <AttachmentThumbnail key={image.key} pendingUri={image.uri} />
+            ))}
+          </ScrollView>
+        )}
         <TextInputWrapper
+          style={styles.inputWrapper}
           onPaste={(payload) => {
             if (payload.type === "images")
-              void addImages(
-                payload.uris.map((uri, index) => {
-                  const name =
-                    uri.split("/").pop()?.split("?")[0] ||
-                    `pasted-${index}.png`;
-                  const ext = name.split(".").pop()?.toLowerCase();
-                  return {
-                    uri,
-                    name,
-                    type:
-                      ext === "jpg" || ext === "jpeg"
-                        ? "image/jpeg"
-                        : ext === "webp"
-                          ? "image/webp"
-                          : ext === "gif"
-                            ? "image/gif"
-                            : "image/png",
-                  };
-                }),
-              );
+              void addImages(payload.uris.map(pastedImage));
           }}
         >
           <TextInput
@@ -359,94 +434,74 @@ export function AgentComposer({
             editable={!sending && dictation.status !== "transcribing"}
             value={draft.message}
             onChangeText={(message) => setDraft({ ...draft, message })}
-            placeholder="Message your agent, or type /"
+            placeholder={running ? "Queue a follow-up…" : "Message your agent, or type /"}
             placeholderTextColor={colors.mutedForeground}
-            style={{
-              minHeight: 48,
-              maxHeight: 150,
-              padding: 10,
-              fontFamily: fonts.sansRegular,
-              fontSize: 16,
-              color: colors.foreground,
-            }}
+            style={[
+              styles.input,
+              { color: colors.foreground, fontFamily: fonts.sansRegular },
+            ]}
           />
         </TextInputWrapper>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={styles.controls}>
+          <ControlButton
+            label="Attach images"
+            icon="add"
+            disabled={disabled || sending || uploading || !supportsImages}
+            onPress={() => setAttachOpen(true)}
+          />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Model, effort, and permissions"
-            accessibilityValue={{
-              text: [modelLabel, thinkingLabel, modeLabel]
-                .filter(Boolean)
-                .join(", "),
-            }}
+            accessibilityValue={{ text: settingsLabel }}
             accessibilityState={{ disabled }}
             disabled={disabled}
             onPress={onSettings}
-            style={({ pressed }) => ({
-              flex: 1,
-              minWidth: 0,
-              minHeight: 48,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              paddingHorizontal: 10,
-              borderRadius: 10,
-              backgroundColor: pressed ? colors.muted : "transparent",
-              opacity: disabled ? 0.45 : 1,
-            })}
+            style={({ pressed }) => [
+              styles.modelTarget,
+              { opacity: disabled ? 0.5 : pressed ? 0.8 : 1 },
+            ]}
           >
-            {provider && <AgentProviderIcon provider={provider} size={22} />}
-            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <View
+              style={[
+                styles.modelPill,
+                { backgroundColor: colors.muted, borderRadius: radii.pill },
+              ]}
+            >
+              {provider && <AgentProviderIcon provider={provider} size={16} />}
               <Text
                 numberOfLines={1}
                 style={{
+                  flexShrink: 1,
+                  minWidth: 0,
                   color: colors.foreground,
-                  fontSize: 12,
                   fontFamily: fonts.sansMedium,
+                  fontSize: 13,
                 }}
               >
                 {modelLabel}
+                {!!thinkingLabel && (
+                  <Text style={{ color: colors.mutedForeground }}>
+                    {`  ${thinkingLabel}`}
+                  </Text>
+                )}
               </Text>
-              {!!(thinkingLabel || modeLabel) && (
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    color: colors.mutedForeground,
-                    fontSize: 11,
-                    fontFamily: fonts.sansRegular,
-                  }}
-                >
-                  {[thinkingLabel, modeLabel].filter(Boolean).join(" · ")}
-                </Text>
-              )}
             </View>
-            <Ionicons
-              name="chevron-down"
-              size={14}
-              color={colors.mutedForeground}
-            />
           </Pressable>
-          {uploading ? (
-            <ActivityIndicator
-              style={{ width: 44 }}
-              color={colors.mutedForeground}
-            />
-          ) : (
-            <IconButton
-              label="Attach images"
-              icon="add"
-              disabled={disabled || sending || !supportsImages}
-              onPress={() =>
-                Alert.alert("Attach images", undefined, [
-                  { text: "Photos", onPress: () => void pick(false) },
-                  { text: "Camera", onPress: () => void pick(true) },
-                  { text: "Cancel", style: "cancel" },
-                ])
-              }
+          {permission && onPermissions && (
+            <ControlButton
+              label={`Permissions: ${permission.label}`}
+              icon={permission.dangerous ? "shield-outline" : "shield-checkmark-outline"}
+              tint={permission.dangerous ? colors.destructive : undefined}
+              bare
+              disabled={disabled}
+              onPress={onPermissions}
             />
           )}
-          <IconButton
+          <View style={styles.spacer} />
+          {contextUsage !== undefined && onContext && (
+            <AgentContextButton usage={contextUsage ?? undefined} onPress={onContext} />
+          )}
+          <ControlButton
             label={
               dictation.status === "recording"
                 ? "Stop dictation"
@@ -465,40 +520,134 @@ export function AgentComposer({
             onPress={toggleMic}
           />
           {running && (
-            <IconButton
+            <ControlButton
               label="Stop agent"
               icon="stop"
-              disabled={disabled || sending}
+              filled
+              disabled={!(canStop ?? !disabled) || sending}
               onPress={onStop}
             />
           )}
-          <IconButton
-            label={running ? "Queue message" : "Send message"}
-            icon="arrow-up"
-            onPress={onSend}
-            disabled={
-              disabled ||
-              sending ||
-              uploading ||
-              dictation.status !== "idle" ||
-              (!draft.message.trim() && !draft.images.length) ||
-              (!!draft.images.length && !supportsImages)
-            }
-            primary
-          />
+          {showSend && (
+            <ControlButton
+              label={running ? "Queue message" : "Send message"}
+              icon="arrow-up"
+              primary
+              loading={sending || uploading}
+              disabled={!canSend}
+              onPress={onSend}
+            />
+          )}
         </View>
       </View>
+      <AgentAttachSheet
+        visible={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        onPick={(camera) => void pick(camera)}
+      />
     </View>
   );
 }
 
-function IconButton({
+function AttachmentThumbnail({
+  image,
+  pendingUri,
+  onRemove,
+}: {
+  image?: DraftImage;
+  pendingUri?: string;
+  onRemove?: () => void;
+}) {
+  const { colors, radii } = useTheme();
+  const cookie = useAuthCookie();
+  const [localFailed, setLocalFailed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const local = pendingUri ?? image?.uri ?? "";
+  const remote = image
+    ? agentImageSource(`/api/uploads/${image.uploadId}`, getApiBase(), cookie ?? "")
+    : null;
+  // Prefer the on-device copy; restored drafts may outlive it.
+  const source =
+    local && !local.startsWith("/") && !localFailed ? { uri: local } : remote;
+  const label = image?.filename ?? "Uploading image";
+  return (
+    <View
+      style={[
+        styles.thumbnail,
+        {
+          borderColor: colors.border,
+          backgroundColor: colors.muted,
+          borderRadius: radii.md,
+        },
+      ]}
+    >
+      <Pressable
+        accessibilityRole="imagebutton"
+        accessibilityLabel={pendingUri ? "Uploading image" : `Preview ${label}`}
+        accessibilityState={{ busy: !!pendingUri }}
+        disabled={!!pendingUri || !source}
+        onPress={() => setOpen(true)}
+        style={StyleSheet.absoluteFill}
+      >
+        {source && (
+          <Image
+            source={source}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={120}
+            onError={() => {
+              if (source !== remote) setLocalFailed(true);
+            }}
+          />
+        )}
+      </Pressable>
+      {!!pendingUri && (
+        <View style={[StyleSheet.absoluteFill, styles.uploading]}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      )}
+      {onRemove && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${label}`}
+          hitSlop={8}
+          onPress={onRemove}
+          style={styles.remove}
+        >
+          <View
+            style={[
+              styles.removeSurface,
+              { backgroundColor: colors.background, borderColor: colors.border },
+            ]}
+          >
+            <Ionicons name="close" size={12} color={colors.foreground} />
+          </View>
+        </Pressable>
+      )}
+      {source && (
+        <ImageViewing
+          images={[source]}
+          imageIndex={0}
+          visible={open}
+          onRequestClose={() => setOpen(false)}
+          swipeToCloseEnabled
+          doubleTapToZoomEnabled
+        />
+      )}
+    </View>
+  );
+}
+
+function ControlButton({
   label,
   icon,
   disabled,
   onPress,
   primary,
+  filled,
   danger,
+  bare,
+  tint,
   loading,
 }: {
   label: string;
@@ -506,10 +655,29 @@ function IconButton({
   disabled?: boolean;
   onPress: () => void;
   primary?: boolean;
+  /** A solid secondary control, such as Stop. */
+  filled?: boolean;
   danger?: boolean;
+  /** Icon only, without a ring. */
+  bare?: boolean;
+  tint?: string;
   loading?: boolean;
 }) {
-  const { colors } = useTheme();
+  const { colors, radii } = useTheme();
+  const background = primary
+    ? colors.primary
+    : danger
+      ? colors.destructive
+      : filled
+        ? colors.secondary
+        : "transparent";
+  const foreground = primary
+    ? colors.primaryForeground
+    : danger
+      ? colors.background
+      : filled
+        ? colors.secondaryForeground
+        : (tint ?? colors.mutedForeground);
   return (
     <Pressable
       accessibilityRole="button"
@@ -517,44 +685,125 @@ function IconButton({
       accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => ({
-        width: 48,
-        height: 48,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: disabled ? 0.35 : pressed ? 0.7 : 1,
-      })}
+      style={({ pressed }) => [
+        styles.controlTarget,
+        { opacity: disabled ? 0.4 : pressed ? 0.75 : 1 },
+      ]}
     >
       <View
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: primary
-            ? colors.primary
-            : danger
-              ? colors.destructive
-              : colors.muted,
-        }}
+        style={[
+          primary || filled || danger ? styles.solidSurface : styles.ringSurface,
+          {
+            backgroundColor: background,
+            borderColor: primary || filled || danger || bare ? "transparent" : colors.border,
+            borderRadius: radii.pill,
+          },
+        ]}
       >
         {loading ? (
-          <ActivityIndicator size="small" color={colors.mutedForeground} />
+          <ActivityIndicator size="small" color={foreground} />
         ) : (
           <Ionicons
             name={icon}
-            size={20}
-            color={
-              primary
-                ? colors.primaryForeground
-                : danger
-                  ? colors.background
-                  : colors.foreground
-            }
+            size={icon === "stop" ? 15 : bare ? 20 : 19}
+            color={foreground}
           />
         )}
       </View>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  wrapper: { gap: 8 },
+  commands: {
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 4,
+    overflow: "hidden",
+  },
+  command: { paddingHorizontal: 14, paddingVertical: 9, gap: 2 },
+  bar: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 4,
+  },
+  attachments: { gap: 8, paddingHorizontal: 6, paddingTop: 4 },
+  thumbnail: {
+    width: THUMBNAIL,
+    height: THUMBNAIL,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  uploading: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  remove: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+  },
+  removeSurface: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inputWrapper: { alignSelf: "stretch" },
+  input: {
+    minHeight: 42,
+    maxHeight: 162,
+    fontSize: 16,
+    lineHeight: 22,
+    paddingHorizontal: 6,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  controls: { flexDirection: "row", alignItems: "center", gap: 2 },
+  controlTarget: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ringSurface: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  solidSurface: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modelTarget: {
+    height: 44,
+    flexShrink: 1,
+    minWidth: 0,
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  modelPill: {
+    height: 34,
+    minWidth: 0,
+    flexShrink: 1,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  spacer: { flex: 1, minWidth: 4 },
+});

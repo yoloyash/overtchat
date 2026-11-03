@@ -1,6 +1,15 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { UIMessage } from "ai";
-import { collectOpenUIStates, type OpenUIFormState } from "@overtchat/shared";
+import {
+  codeExecutionFileIndex,
+  collectOpenUIStates,
+  type OpenUIFormState,
+  type PanelFile,
+} from "@overtchat/shared";
+import { DocumentPanel } from "./DocumentPanel";
+import { DocumentPanelProvider } from "./DocumentPanelContext";
+import { FilePanel } from "./FilePanel";
+import { FilePanelProvider } from "./FilePanelContext";
 import { MessageBubble } from "./MessageBubble";
 import { Button } from "@/components/ui/button";
 
@@ -18,11 +27,38 @@ export function SharedTranscript({
   loadingMore?: boolean;
 }) {
   const [visible, setVisible] = useState(50);
+  const [documentTarget, setDocumentTarget] = useState<string | null>(null);
+  const closeDocument = useCallback(() => setDocumentTarget(null), []);
+  const [fileTarget, setFileTarget] = useState<PanelFile | null>(null);
+  const closeFile = useCallback(() => setFileTarget(null), []);
+  const documentPanel = useMemo(
+    () => ({
+      activeToolCallId: documentTarget,
+      open(toolCallId: string) {
+        setFileTarget(null);
+        setDocumentTarget(toolCallId);
+      },
+    }),
+    [documentTarget],
+  );
+  const filePanel = useMemo(
+    () => ({
+      activeFileId: fileTarget?.id ?? null,
+      open(file: PanelFile) {
+        setDocumentTarget(null);
+        setFileTarget(file);
+      },
+    }),
+    [fileTarget],
+  );
   const openuiStates = useMemo(
     () => new Map([...collectOpenUIStates(messages), ...(formStates ?? [])]),
     [messages, formStates],
   );
+  const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
   return (
+    <DocumentPanelProvider value={documentPanel}>
+    <FilePanelProvider value={filePanel}>
     <div className="space-y-8" data-shared-transcript="">
       {(onLoadMore ? messages : messages.slice(0, visible)).map((message) => (
         <article
@@ -39,6 +75,7 @@ export function SharedTranscript({
             showStats={false}
             stats={null}
             openuiStates={openuiStates}
+            codeFiles={codeFiles}
           />
         </article>
       ))}
@@ -52,5 +89,19 @@ export function SharedTranscript({
         </Button>
       )}
     </div>
+    {documentTarget && (
+      <DocumentPanel
+        messages={messages}
+        toolCallId={documentTarget}
+        streaming={false}
+        variant="overlay"
+        wordExport={false}
+        onSelect={setDocumentTarget}
+        onClose={closeDocument}
+      />
+    )}
+    {fileTarget && <FilePanel file={fileTarget} variant="overlay" onClose={closeFile} />}
+    </FilePanelProvider>
+    </DocumentPanelProvider>
   );
 }

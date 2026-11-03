@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, eq, max } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs } from "@/lib/db/schema";
+import { getProvider } from "@/lib/providers/catalog";
 import {
   catalogPricingFor,
   resolveModelCapabilities,
@@ -22,6 +23,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     modelType: row.modelType,
     label: row.label,
     providerId: row.providerId,
+    displayProvider: getProvider(row.providerId).label,
     apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,

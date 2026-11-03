@@ -8,6 +8,7 @@ import {
   ConnectorTerminalManager,
   runConnectorTerminalSmoke,
 } from "./terminal.js";
+import { waitWhileProgressing } from "./test-support/progress.js";
 
 const descriptor: AgentDaemonWorkspaceDescriptor = {
   connectionId: "connection",
@@ -179,9 +180,14 @@ describe("connector terminal manager", () => {
       monitor = setInterval(() => {
         maxQueuedBytes = Math.max(maxQueuedBytes, terminal.parseBytes);
       }, 5);
-      const bytes = 12 * 1024 * 1024;
+      // Several pause/resume cycles at the 1 MiB pause threshold.
+      const bytes = 4 * 1024 * 1024;
       manager.write(descriptor.workspaceId, `head -c ${bytes} /dev/zero | tr '\\0' Q; printf '\\nFLOW_DONE\\n'\r`);
-      await expect.poll(() => tail, { timeout: 45_000 }).toContain("\r\nFLOW_DONE\r\n");
+      await waitWhileProgressing(
+        () => tail.includes("\r\nFLOW_DONE\r\n"),
+        () => received,
+        () => `received=${received}, queued=${terminal.parseBytes}, exited=${terminal.exited}`,
+      );
       await expect.poll(() => terminal.parseBytes, { timeout: 10_000 }).toBe(0);
       expect(received).toBe(bytes);
       expect(pause).toHaveBeenCalled();
@@ -195,7 +201,7 @@ describe("connector terminal manager", () => {
       manager.stopAll();
       vi.restoreAllMocks();
     }
-  }, 60_000);
+  }, 120_000);
 
   it("rejects terminals without affecting connector startup when disabled", async () => {
     process.env.OVERTCHAT_DISABLE_AGENT_TERMINAL = "true";

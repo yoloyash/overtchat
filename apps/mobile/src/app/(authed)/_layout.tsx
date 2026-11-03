@@ -8,6 +8,8 @@ import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { useSignInRequestPrompt } from "@/lib/queries/signInRequests";
 import { useTheme } from "@/lib/theme";
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 type State = { id: string; isNew: boolean; projectId: string | null };
 
 export default function AuthedLayout() {
@@ -56,7 +58,7 @@ export default function AuthedLayout() {
         }}
       >
         <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-        <Stack.Screen name="settings" />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="personalization" />
         <Stack.Screen name="search" />
         <Stack.Screen name="projects/[id]" />

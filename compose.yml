@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.28.1}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.31.0}
     build: .
     container_name: overtchat-app
     restart: unless-stopped
@@ -18,10 +18,13 @@ services:
       SEARXNG_URL: ${OVERTCHAT_SEARXNG_URL:-http://searxng:8080}
       KOKORO_URL: ${OVERTCHAT_KOKORO_URL:-http://kokoro:8880}
       STT_URL: ${OVERTCHAT_STT_URL:-http://stt:5092}
+      SANDBOX_URL: ${OVERTCHAT_SANDBOX_URL:-}
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
       DATABASE_URL: /app/data/chat.db
       REDIS_URL: redis://redis:6379
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks: [default, sandbox]
     volumes:
       - overtchat-data:/app/data
       - overtchat-npm-cache:/app/npm-cache
@@ -138,6 +141,47 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Code execution sandbox. Off by default; opt in by setting
+  # OVERTCHAT_SANDBOX_URL=http://sandbox:8080 in .env, then:
+  #   docker compose --profile sandbox up -d        (Python data, chart and document libraries)
+  #   docker compose --profile sandbox-full up -d   (adds pandoc, LibreOffice, OCR and ffmpeg)
+  # Runs are stateless and isolated per user; the container needs the
+  # capabilities below to switch each run to a fresh unprivileged user. It has
+  # no volumes, secrets or internet access, and is reachable as
+  # `http://sandbox:8080` only on the internal `sandbox` network.
+  sandbox: &sandbox
+    image: ghcr.io/yoloyash/overtchat-sandbox:${SANDBOX_VERSION:-0.1.0}
+    build:
+      context: ./sandbox
+      target: slim
+    container_name: overtchat-sandbox
+    restart: unless-stopped
+    profiles: [sandbox]
+    init: true
+    read_only: true
+    tmpfs:
+      - /runs:size=2g,mode=0711
+      - /tmp:size=256m
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, KILL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 6g
+    environment:
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
+    networks:
+      sandbox:
+        aliases: [sandbox]
+
+  sandbox-full:
+    <<: *sandbox
+    image: ghcr.io/yoloyash/overtchat-sandbox-full:${SANDBOX_VERSION:-0.1.0}
+    build:
+      context: ./sandbox
+      target: full
+    container_name: overtchat-sandbox-full
+    profiles: [sandbox-full]
+
   # To expose overtchat via Cloudflare Tunnel, uncomment below and paste your
   # tunnel token. Nothing else on this stack is reachable from the internet —
   # searxng and kokoro stay on the internal Docker network.
@@ -152,6 +196,11 @@ services:
   #   depends_on:
   #     app:
   #       condition: service_started
+
+networks:
+  # Shared only by the app and the sandbox, with no route to the internet.
+  sandbox:
+    internal: true
 
 volumes:
   overtchat-data:

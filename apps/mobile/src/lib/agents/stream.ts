@@ -25,28 +25,47 @@ export function createEventParser(
   onEvent: (event: string, data: string) => void,
 ) {
   let buffer = "";
+  // Chunks within one long line, joined once the line ends.
+  let pending: string[] = [];
   let event = "message";
   let data: string[] = [];
+  // Hermes copies strings on slice and concatenation, so walk the buffer with
+  // a cursor and copy it once per line break; copying per line or per chunk
+  // made large bursts and multi-megabyte events quadratic.
+  const lineBreak = /\r\n|[\r\n]/gu;
   return (chunk: string) => {
-    buffer += chunk;
-    let end: number;
-    while ((end = buffer.search(/[\r\n]/u)) >= 0) {
-      if (buffer[end] === "\r" && end === buffer.length - 1) break;
-      const line = buffer.slice(0, end);
-      buffer = buffer.slice(
-        end + (buffer.slice(end, end + 2) === "\r\n" ? 2 : 1),
-      );
-      if (line === "") {
-        if (data.length) onEvent(event, data.join("\n"));
-        event = "message";
-        data = [];
-      } else if (!line.startsWith(":")) {
-        const colon = line.indexOf(":");
-        const field = colon < 0 ? line : line.slice(0, colon);
-        const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /u, "");
-        if (field === "event") event = value;
-        if (field === "data") data.push(value);
+    if (!buffer.endsWith("\r") && !/[\r\n]/u.test(chunk)) {
+      pending.push(chunk);
+      return;
+    }
+    const head = pending.length ? buffer + pending.join("") : buffer;
+    pending = [];
+    // Earlier text has no line break, except a trailing CR awaiting its LF.
+    lineBreak.lastIndex = Math.max(0, head.length - 1);
+    buffer = head + chunk;
+    let start = 0;
+    try {
+      let match: RegExpExecArray | null;
+      while ((match = lineBreak.exec(buffer))) {
+        const end = match.index;
+        if (match[0] === "\r" && end === buffer.length - 1) break;
+        const line = buffer.slice(start, end);
+        start = lineBreak.lastIndex;
+        if (line === "") {
+          if (data.length) onEvent(event, data.join("\n"));
+          event = "message";
+          data = [];
+        } else if (!line.startsWith(":")) {
+          const colon = line.indexOf(":");
+          const field = colon < 0 ? line : line.slice(0, colon);
+          const value =
+            colon < 0 ? "" : line.slice(colon + 1).replace(/^ /u, "");
+          if (field === "event") event = value;
+          if (field === "data") data.push(value);
+        }
       }
+    } finally {
+      if (start > 0) buffer = buffer.slice(start);
     }
   };
 }

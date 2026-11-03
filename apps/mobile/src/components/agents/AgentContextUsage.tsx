@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
 import type { AgentSessionStats } from "@overtchat/agent-bridge";
 import { getContextMeterValues } from "@overtchat/shared/context-meter";
+import { ContextRing } from "@/components/ui/ContextRing";
 import { useTheme } from "@/lib/theme";
 import { AgentSheet, AgentText } from "./AgentPrimitives";
 
@@ -11,65 +11,6 @@ function contextValues(usage: ContextUsage) {
   return usage?.tokens != null && Number.isFinite(usage.tokens)
     ? getContextMeterValues(usage.tokens, usage.contextWindow)
     : undefined;
-}
-
-function ContextRing({
-  usage,
-  size = 24,
-}: {
-  usage: ContextUsage;
-  size?: number;
-}) {
-  const { colors, scheme } = useTheme();
-  const values = contextValues(usage);
-  const circumference = 2 * Math.PI * 9;
-  const tone = values?.critical
-    ? colors.destructive
-    : values?.warning
-      ? // sRGB equivalents of web's --context-warning colors.
-        scheme === "dark"
-        ? "#e1a447"
-        : "#a36500"
-      : colors.mutedForeground;
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
-      <Circle
-        cx={12}
-        cy={12}
-        r={9}
-        fill="none"
-        stroke={colors.border}
-        strokeWidth={2.5}
-      />
-      {values?.percentage !== undefined ? (
-        values.ringPercentage > 0 && (
-          <Circle
-            cx={12}
-            cy={12}
-            r={9}
-            fill="none"
-            stroke={tone}
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            strokeDasharray={`${circumference} ${circumference}`}
-            strokeDashoffset={circumference * (1 - values.ringPercentage / 100)}
-            rotation={-90}
-            origin="12, 12"
-          />
-        )
-      ) : (
-        <Circle
-          cx={12}
-          cy={12}
-          r={9}
-          fill="none"
-          stroke={tone}
-          strokeWidth={2.5}
-          strokeDasharray="2 4"
-        />
-      )}
-    </Svg>
-  );
 }
 
 export function AgentContextButton({
@@ -99,7 +40,7 @@ export function AgentContextButton({
         backgroundColor: pressed ? colors.muted : "transparent",
       })}
     >
-      <ContextRing usage={usage} />
+      <ContextRing values={values} />
     </Pressable>
   );
 }
@@ -142,7 +83,7 @@ export function AgentContextSheet({
           paddingVertical: 12,
         }}
       >
-        <ContextRing usage={usage} size={40} />
+        <ContextRing values={values} size={40} />
         <AgentText title>
           {values?.percentage !== undefined
             ? `${values.percentage}% used`

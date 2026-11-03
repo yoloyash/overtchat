@@ -5,6 +5,9 @@ import {
   Brain,
   ChevronDown,
   CircleAlert,
+  Code2,
+  FileSearch,
+  FileText,
   Globe,
   Loader2,
   Wrench,
@@ -14,10 +17,20 @@ import {
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
+import { CodeBlock } from "streamdown";
 import {
+  codeExecutionFiles,
+  codeRunStatus,
+  type CodeExecutionPart,
   type FetchedImage,
   type FetchUrlPart,
+  isCodeExecutionPart,
+  isReadFilePart,
+  isSearchFilesPart,
   isToolSettled,
+  readFileRangeLabel,
+  type ReadFilePart,
+  type SearchFilesPart,
   webSearchProviderLabel,
   webSearchResults,
   type WebSearchPart,
@@ -25,6 +38,7 @@ import {
 } from "@overtchat/shared";
 import { parseMcpToolName } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
+import { CodeRunFiles } from "./CodeExecutionFiles";
 import { ThinkingContent } from "./ThinkingContent";
 import { serverUrl } from "@/lib/api-url";
 
@@ -32,6 +46,9 @@ type ReasoningPart = { type: "reasoning"; text: string; state?: string };
 export type ActivityPart =
   | WebSearchPart
   | FetchUrlPart
+  | ReadFilePart
+  | SearchFilesPart
+  | CodeExecutionPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -46,6 +63,20 @@ function isReasoning(p: ActivityPart): p is ReasoningPart {
 }
 function isMcpTool(p: ActivityPart): p is DynamicToolUIPart {
   return p.type === "dynamic-tool" && parseMcpToolName(p.toolName) !== null;
+}
+function isFileTool(p: ActivityPart): p is ReadFilePart | SearchFilesPart {
+  return isReadFilePart(p) || isSearchFilesPart(p);
+}
+function isTool(
+  p: ActivityPart,
+): p is Exclude<ActivityPart, ReasoningPart> {
+  return (
+    isWebSearch(p) ||
+    isFetchUrl(p) ||
+    isFileTool(p) ||
+    isCodeExecutionPart(p) ||
+    isMcpTool(p)
+  );
 }
 
 /**
@@ -88,14 +119,7 @@ export function ChainOfThought({
     }
   }, [active]);
 
-  const hasTools = parts.some(
-    (p) => isWebSearch(p) || isFetchUrl(p) || isMcpTool(p),
-  );
-  const lastTool = [...parts]
-    .reverse()
-    .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
-    );
+  const lastTool = [...parts].reverse().find(isTool);
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
 
@@ -103,8 +127,12 @@ export function ChainOfThought({
     ? Loader2
     : lastToolFailed
       ? CircleAlert
-      : hasTools
-        ? Globe
+      : lastTool
+        ? isFileTool(lastTool)
+          ? FileText
+          : isCodeExecutionPart(lastTool)
+            ? Code2
+            : Globe
         : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
@@ -159,16 +187,21 @@ export function ChainOfThought({
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon =
-    (isWebSearch(part) || isFetchUrl(part) || isMcpTool(part)) &&
-    part.state === "output-error"
+    isTool(part) && part.state === "output-error"
       ? CircleAlert
       : isWebSearch(part)
         ? Search
         : isFetchUrl(part)
           ? Globe
-          : isMcpTool(part)
-            ? Wrench
-          : Brain;
+          : isReadFilePart(part)
+            ? FileText
+            : isSearchFilesPart(part)
+              ? FileSearch
+              : isCodeExecutionPart(part)
+                ? Code2
+                : isMcpTool(part)
+                  ? Wrench
+                  : Brain;
 
   return (
     <div className="flex gap-2.5">
@@ -178,6 +211,12 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isReadFilePart(part) ? (
+          <ReadFileStep part={part} />
+        ) : isSearchFilesPart(part) ? (
+          <SearchFilesStep part={part} />
+        ) : isCodeExecutionPart(part) ? (
+          <CodeStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -389,6 +428,125 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   );
 }
 
+function ReadFileStep({ part }: { part: ReadFilePart }) {
+  const output = part.output;
+  const name = output?.file ?? part.input?.file ?? "file";
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {name}
+        </span>
+        <span className="shrink-0 text-muted-foreground">
+          {part.state === "output-error"
+            ? "Failed"
+            : output
+              ? readFileRangeLabel(output)
+              : "Reading…"}
+        </span>
+      </div>
+      {part.state === "output-error" && (
+        <p className="text-destructive">{part.errorText}</p>
+      )}
+    </div>
+  );
+}
+
+function SearchFilesStep({ part }: { part: SearchFilesPart }) {
+  const query = part.input?.query?.trim();
+  const output = part.output;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {query || "Searching files…"}
+        </span>
+        {output && (
+          <span className="shrink-0 text-muted-foreground">
+            {output.totalMatches === 0
+              ? "no matches"
+              : `${output.totalMatches.toLocaleString()} ${output.totalMatches === 1 ? "match" : "matches"}`}
+          </span>
+        )}
+      </div>
+      {part.state === "output-error" ? (
+        <p className="text-destructive">{part.errorText}</p>
+      ) : output && output.matches.length > 0 ? (
+        <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-lg border bg-background/40">
+          {output.matches.map((match, i) => (
+            <li key={i} className="space-y-0.5 px-2.5 py-2">
+              <span className="block truncate font-medium text-foreground">
+                {match.file}
+              </span>
+              <span className="line-clamp-2 text-muted-foreground">
+                {match.snippet}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+// CodeBlock draws its own frame; inside a step, the step's card replaces it.
+const STEP_CODE_BLOCK = [
+  "[&_[data-streamdown=code-block-header]]:hidden",
+  "[&_[data-streamdown=code-block]]:my-0 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:border-0 [&_[data-streamdown=code-block]]:bg-transparent [&_[data-streamdown=code-block]]:p-0",
+  "[&_[data-streamdown=code-block-body]]:border-0 [&_[data-streamdown=code-block-body]]:bg-transparent [&_[data-streamdown=code-block-body]]:p-0 [&_[data-streamdown=code-block-body]]:text-[11px]",
+].join(" ");
+
+function CodeStep({ part }: { part: CodeExecutionPart }) {
+  const output = part.output;
+  const code = part.input?.code ?? "";
+  const files = codeExecutionFiles(part);
+  return (
+    <div className="space-y-1.5" data-code-run="">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-medium text-foreground">Python</span>
+        <span className="shrink-0 text-muted-foreground">{codeRunStatus(part)}</span>
+      </div>
+      {code && (
+        <div className={cn("max-h-64 overflow-auto rounded-lg border bg-background/40 px-2.5 py-2", STEP_CODE_BLOCK)}>
+          <CodeBlock code={code} language="python" isIncomplete={part.state === "input-streaming"} />
+        </div>
+      )}
+      {part.state === "output-error" && (
+        <p className="text-destructive">{part.errorText}</p>
+      )}
+      {output?.stdout && (
+        <RunOutput label="Output" text={output.stdout} truncated={output.stdoutTruncated} />
+      )}
+      {output?.stderr && (
+        <RunOutput label="Errors" text={output.stderr} truncated={output.stderrTruncated} />
+      )}
+      {files.length > 0 && <CodeRunFiles files={files} />}
+    </div>
+  );
+}
+
+function RunOutput({
+  label,
+  text,
+  truncated,
+}: {
+  label: string;
+  text: string;
+  truncated?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-background/40 px-2.5 py-2">
+      <p className="mb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+        {truncated ? " (truncated)" : ""}
+      </p>
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-foreground">
+        {text}
+      </pre>
+    </div>
+  );
+}
+
 function isFetchedImage(value: unknown): value is FetchedImage {
   return (
     Boolean(value && typeof value === "object") &&
@@ -446,6 +604,15 @@ function activeLabel(last: ActivityPart | undefined): string {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
+  if (isReadFilePart(last)) {
+    const file = last.input?.file;
+    return file ? `Reading ${file}` : "Reading file…";
+  }
+  if (isSearchFilesPart(last)) {
+    const query = last.input?.query?.trim();
+    return query ? `Searching files for "${query}"` : "Searching files…";
+  }
+  if (isCodeExecutionPart(last)) return "Running code…";
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -456,11 +623,7 @@ function activeLabel(last: ActivityPart | undefined): string {
 }
 
 function settledLabel(parts: ActivityPart[], duration: number): string {
-  const lastTool = [...parts]
-    .reverse()
-    .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
-    );
+  const lastTool = [...parts].reverse().find(isTool);
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
     if (lastTool.state === "output-available") return "Searched the web";
@@ -472,6 +635,26 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
       return isFetchedImage(lastTool.output) ? "Viewed image" : "Read page";
     }
     return "Page fetch did not complete";
+  }
+  if (lastTool && isReadFilePart(lastTool)) {
+    if (lastTool.state === "output-error") return "File read failed";
+    if (lastTool.state === "output-available") {
+      return `Read ${lastTool.output?.file ?? lastTool.input?.file ?? "file"}`;
+    }
+    return "File read did not complete";
+  }
+  if (lastTool && isSearchFilesPart(lastTool)) {
+    if (lastTool.state === "output-error") return "File search failed";
+    if (lastTool.state === "output-available") return "Searched files";
+    return "File search did not complete";
+  }
+  if (lastTool && isCodeExecutionPart(lastTool)) {
+    if (lastTool.state === "output-error") return "Code run failed";
+    if (lastTool.state !== "output-available") return "Code run did not complete";
+    const label = lastTool.output?.exitCode === 0 ? "Ran code" : "Code ended with an error";
+    // Run files show inside the steps, so the summary says they are there.
+    const files = parts.filter(isCodeExecutionPart).flatMap(codeExecutionFiles).length;
+    return files ? `${label} · ${files} ${files === 1 ? "file" : "files"}` : label;
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

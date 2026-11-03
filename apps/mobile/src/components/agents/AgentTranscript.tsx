@@ -1,50 +1,134 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as Clipboard from "expo-clipboard";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ViewProps,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import {
   projectAgentTranscript,
   foldAgentTranscript,
   agentActiveTurnStart,
   agentResponseActions,
+  agentWorkLabel,
   describeAgentActivity,
-  describeAgentTool,
-  type AgentActivityEntry,
+  type AgentRewindCapabilities,
   type AgentTranscriptItem,
-  type AgentResponseActions,
 } from "@overtchat/shared/agent-presentation";
-import { AgentForkMenu } from "./AgentForkMenu";
-import { AgentRewindMenu } from "./AgentRewindMenu";
 import type {
   AgentRewindMode,
-  AgentRuntimeCapabilities,
   AgentRuntimeSnapshot,
 } from "@overtchat/agent-bridge";
 import { MarkdownBody } from "@/components/chat/MarkdownBody";
 import { record, text } from "@/lib/agents/model";
+import { createTranscriptStabilizer } from "@/lib/agents/transcript";
 import { useTheme } from "@/lib/theme";
-import { toastError } from "@/lib/toast";
 import type { useSpeech } from "@/lib/useSpeech";
-import { AgentToolRow, AgentToolDetails } from "./AgentToolDetails";
-import { AgentButton, AgentText, AgentSheet } from "./AgentPrimitives";
-import { AgentImage } from "./AgentImage";
-import { AgentWorkSummary } from "./AgentWorkSummary";
+import { AgentForkMenu } from "./AgentForkMenu";
+import { AgentCopyButton, AgentSpeakButton } from "./AgentMessageActions";
+import { AgentButton, AgentText } from "./AgentPrimitives";
+import {
+  AgentActivityGroup,
+  AgentCompactionDivider,
+  AgentErrorCard,
+  AgentNotificationRow,
+  AgentPlanCard,
+  AgentTaskListCard,
+  AgentWorkSummary,
+} from "./AgentTranscriptRows";
+import { AgentUserMessage } from "./AgentUserMessage";
+import { AgentRunStatus } from "./AgentWorkingIndicator";
 
-const revealWork = FadeIn.delay(180).duration(140).reduceMotion(ReduceMotion.System);
+type Speech = Pick<ReturnType<typeof useSpeech>, "activeId" | "status" | "play">;
 
-const position = {
-  autoscrollToBottomThreshold: 0.15,
-  startRenderingFromBottom: true,
-  animateAutoScrollToBottom: false,
-};
+const revealWork = FadeIn.duration(160).reduceMotion(ReduceMotion.System);
+
+/** Within this distance of the newest content, the transcript follows it. */
+const FOLLOW_THRESHOLD = 24;
+/** Offer a way back once the newest content is clearly out of view. */
+const JUMP_THRESHOLD = 240;
+/**
+ * The list is inverted, so offset 0 is the newest content and growth there
+ * needs no correction. Native position keeping holds the reader's place when
+ * rows are added below it. The configuration stays constant: iOS keeps its
+ * anchor from the last update made with position keeping enabled.
+ */
+const POSITION = { minIndexForVisible: 0 } as const;
+
+/** Reports where each row sits in the list content. */
+const CellLayoutContext = createContext<
+  ((key: string, y: number, height: number) => void) | null
+>(null);
+
+function TranscriptCell({
+  cellKey,
+  onLayout,
+  ...props
+}: ViewProps & { cellKey: string }) {
+  const report = useContext(CellLayoutContext);
+  return (
+    <View
+      {...props}
+      testID={`agent-transcript-cell:${cellKey}`}
+      onLayout={(event: LayoutChangeEvent) => {
+        const { y, height } = event.nativeEvent.layout;
+        report?.(cellKey, y, height);
+        onLayout?.(event);
+      }}
+    />
+  );
+}
+
+function isUser(item: AgentTranscriptItem | undefined) {
+  return item?.type === "message" && record(item.message).role === "user";
+}
+
+/** Vertical rhythm between a row and the row before it. */
+function rowSpacing(
+  item: AgentTranscriptItem,
+  previous: AgentTranscriptItem | undefined,
+) {
+  if (!previous) return 0;
+  if (item.type === "activity" && previous.type === "activity") return 0;
+  if (item.type === "turn_footer") return 2;
+  if (isUser(item)) return 24;
+  if (
+    item.type === "activity" ||
+    previous.type === "activity" ||
+    previous.type === "work_summary" ||
+    isUser(previous)
+  )
+    return 10;
+  return 18;
+}
 
 export function AgentTranscript({
   speech,
   history,
   snapshot,
   question,
+  error,
+  followSignal = 0,
   onImplementPlan,
   onFork,
   onRewind,
@@ -59,197 +143,378 @@ export function AgentTranscript({
   };
   snapshot: AgentRuntimeSnapshot;
   question?: React.ReactElement;
+  /** A session-level failure, shown after the transcript. */
+  error?: string;
+  /** Changing this value returns the transcript to the newest content. */
+  followSignal?: number;
   onImplementPlan: (plan: string) => void;
   onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
   disabled: boolean;
 }) {
-  const { colors } = useTheme();
-  const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
+  const { colors, fonts } = useTheme();
+  const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const projectedItems = useMemo(
     () => projectAgentTranscript(snapshot.messages),
     [snapshot.messages],
   );
-  const unsettled = snapshot.status !== "idle" || Boolean(
-    snapshot.error || snapshot.pendingInteraction || snapshot.state.isCompacting || question,
-  );
-  const items = useMemo(
-    () => foldAgentTranscript(projectedItems, { unsettled, expanded: expandedTurns }),
+  const unsettled =
+    snapshot.status !== "idle" ||
+    Boolean(
+      snapshot.error ||
+        snapshot.pendingInteraction ||
+        snapshot.state.isCompacting ||
+        question,
+    );
+  const folded = useMemo(
+    () =>
+      foldAgentTranscript(projectedItems, { unsettled, expanded: expandedTurns }),
     [projectedItems, unsettled, expandedTurns],
   );
+  const [stabilize] = useState(createTranscriptStabilizer);
+  const items = useMemo(() => stabilize(folded), [stabilize, folded]);
   const responseActions = useMemo(
     () => agentResponseActions(projectedItems, unsettled),
     [projectedItems, unsettled],
   );
-  const list = useRef<FlashListRef<AgentTranscriptItem>>(null);
-  const [disclosing, setDisclosing] = useState(false);
-  const disclosureTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const disclosureAnchor = useRef<{ key: string; offset: number } | null>(null);
-  const toggleWork = useCallback((key: string) => {
-    const index = items.findIndex((item) => item.key === key);
-    const layout = list.current?.getLayout(index);
-    disclosureAnchor.current = layout && list.current
-      ? { key, offset: layout.y - list.current.getAbsoluteLastScrollOffset() } : null;
-    list.current?.prepareForLayoutAnimationRender();
-    setDisclosing(true);
-    clearTimeout(disclosureTimer.current);
-    disclosureTimer.current = setTimeout(() => {
-      disclosureAnchor.current = null;
-      setDisclosing(false);
-    }, 360);
-    setExpandedTurns((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, [items]);
-  const restoreDisclosurePosition = useCallback(() => {
-    const anchor = disclosureAnchor.current;
-    if (!anchor || !list.current) return;
-    const index = items.findIndex((item) => item.key === anchor.key);
-    const layout = list.current.getLayout(index);
-    if (layout) {
-      const offset = Math.max(0, layout.y - anchor.offset);
-      if (Math.abs(list.current.getAbsoluteLastScrollOffset() - offset) > 1) {
-        list.current.scrollToOffset({ offset, animated: false });
-      }
-    }
-  }, [items]);
+  const active = snapshot.status === "running";
+  const activeTurnStart = agentActiveTurnStart(items, active);
+  // The list is inverted: the newest row is first and sits at the bottom.
+  const rows = useMemo(() => [...items].reverse(), [items]);
+
+  // Rows receive stable callbacks; the latest handlers are read when invoked.
+  const handlers = useRef({ onImplementPlan, onFork, onRewind, play: speech.play });
+  useLayoutEffect(() => {
+    handlers.current = { onImplementPlan, onFork, onRewind, play: speech.play };
+  });
+  const implementPlan = useCallback(
+    (plan: string) => handlers.current.onImplementPlan(plan),
+    [],
+  );
+  const fork = useCallback(
+    async (messageId: string, chooseWorkspace: boolean) =>
+      handlers.current.onFork?.(messageId, chooseWorkspace),
+    [],
+  );
+  const rewind = useCallback(
+    async (messageId: string, mode: AgentRewindMode) =>
+      handlers.current.onRewind?.(messageId, mode),
+    [],
+  );
+  const play = useCallback(
+    (id: string, value: string) => handlers.current.play(id, value),
+    [],
+  );
+  const rowSpeech = useMemo<Speech>(
+    () => ({ activeId: speech.activeId, status: speech.status, play }),
+    [speech.activeId, speech.status, play],
+  );
+  // Rows only read the rewind capabilities; keep them referentially stable.
+  const { rewindConversation, rewindFiles, rewindBoth } = snapshot.capabilities;
+  const capabilities = useMemo<AgentRewindCapabilities>(
+    () => ({ rewindConversation, rewindFiles, rewindBoth }),
+    [rewindConversation, rewindFiles, rewindBoth],
+  );
+  const canFork = !!onFork;
+  const canRewind = !!onRewind;
+
+  const list = useRef<FlatList<AgentTranscriptItem>>(null);
+  const offset = useRef(0);
+  // Whether the reader is at the newest content. Only the reader's own
+  // scrolling changes this; position keeping and jumps move the list for them.
+  const following = useRef(true);
+  const userScrolling = useRef(false);
+  // Screen readers scroll without drag events, so every scroll is the reader's.
+  const screenReader = useRef(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isScreenReaderEnabled()
+      .then((enabled) => {
+        if (mounted) screenReader.current = enabled;
+      })
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener(
+      "screenReaderChanged",
+      (enabled) => {
+        screenReader.current = enabled;
+      },
+    );
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+  const dragEnd = useRef<number | null>(null);
+  const jumpingUntil = useRef(0);
   const [away, setAway] = useState(false);
-  const userScrolled = useRef(false);
-  const measureFrame = useRef<number | null>(null);
-  const jumpToLatest = useCallback((animated = true) => {
-    // FlashList can suppress native scroll callbacks during its own position
-    // correction. Clear the button explicitly for both initial load and jumps.
-    userScrolled.current = false;
-    setAway(false);
-    list.current?.scrollToEnd({ animated });
-  }, []);
-  const measurePosition = useCallback(() => {
-    if (measureFrame.current !== null)
-      cancelAnimationFrame(measureFrame.current);
-    measureFrame.current = requestAnimationFrame(() => {
-      measureFrame.current = null;
-      if (!userScrolled.current || !list.current) return;
-      const viewport = list.current.getWindowSize().height;
-      const height = list.current.getChildContainerDimensions().height;
-      const offset = list.current.getAbsoluteLastScrollOffset();
-      if (viewport > 0) setAway(height - viewport - offset > 140);
-    });
-  }, []);
+  const [disclosing, setDisclosing] = useState(false);
+  // Each row's visual top, as a distance from the newest content.
+  const cellTops = useRef(new Map<string, number>());
+  const disclosure = useRef<{ key: string; top: number; offset: number } | null>(
+    null,
+  );
+  const disclosureTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   useEffect(
     () => () => {
       clearTimeout(disclosureTimer.current);
-      if (measureFrame.current !== null)
-        cancelAnimationFrame(measureFrame.current);
+      if (dragEnd.current !== null) cancelAnimationFrame(dragEnd.current);
     },
     [],
   );
-  const active = snapshot.status === "running";
-  const activeTurnStart = agentActiveTurnStart(items, active);
+
+  // A row that expands or reveals steps keeps its top edge where it was, so
+  // new content opens below it. In an inverted list the edge moves when rows
+  // below it change or the row itself grows. Following it with an absolute
+  // offset also holds when native position keeping already moved the list,
+  // and ignores rows measured elsewhere.
+  const holdRow = useCallback((key: string) => {
+    const top = cellTops.current.get(key);
+    disclosure.current =
+      top === undefined ? null : { key, top, offset: Math.max(0, offset.current) };
+    setDisclosing(true);
+    clearTimeout(disclosureTimer.current);
+    disclosureTimer.current = setTimeout(() => {
+      disclosure.current = null;
+      setDisclosing(false);
+    }, 600);
+  }, []);
+  const toggleWork = useCallback(
+    (key: string) => {
+      holdRow(key);
+      setExpandedTurns((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    },
+    [holdRow],
+  );
+
+  const jumpToLatest = useCallback((animated = true) => {
+    disclosure.current = null;
+    following.current = true;
+    jumpingUntil.current = animated ? Date.now() + 600 : 0;
+    list.current?.scrollToOffset({ offset: 0, animated });
+  }, []);
+  useEffect(() => {
+    if (followSignal) jumpToLatest();
+  }, [followSignal, jumpToLatest]);
+
+  const onScroll = useCallback(
+    ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = nativeEvent.contentOffset.y;
+      offset.current = y;
+      setAway(y > JUMP_THRESHOLD);
+      if (userScrolling.current || screenReader.current) {
+        following.current = y <= FOLLOW_THRESHOLD;
+        return;
+      }
+      // Position keeping moved the list for rows added below the reader. When
+      // the reader was following the newest content, stay with it.
+      if (
+        following.current &&
+        y > 1 &&
+        !disclosure.current &&
+        Date.now() > jumpingUntil.current
+      )
+        list.current?.scrollToOffset({ offset: 0, animated: false });
+    },
+    [],
+  );
+  const beginUserScroll = useCallback(() => {
+    if (dragEnd.current !== null) cancelAnimationFrame(dragEnd.current);
+    dragEnd.current = null;
+    userScrolling.current = true;
+    disclosure.current = null;
+  }, []);
+  const endUserScroll = useCallback(() => {
+    userScrolling.current = false;
+    following.current = offset.current <= FOLLOW_THRESHOLD;
+  }, []);
+  const onCellLayout = useCallback((key: string, y: number, height: number) => {
+    cellTops.current.set(key, y + height);
+    const pending = disclosure.current;
+    if (pending?.key !== key) return;
+    const target = Math.max(0, pending.offset + y + height - pending.top);
+    following.current = target <= FOLLOW_THRESHOLD;
+    if (Math.abs(target - offset.current) > 1)
+      list.current?.scrollToOffset({ offset: target, animated: false });
+  }, []);
+  const loadOlder = useCallback(() => {
+    if (history?.hasOlder && !history.loading && !history.error) history.load();
+  }, [history]);
+
+  const trailing = items.at(-1);
+  const runningActivity =
+    trailing?.type === "activity" &&
+    describeAgentActivity(trailing.entries, true).status === "running";
+  const runLabel = snapshot.state.isCompacting
+    ? "Compacting context"
+    : active && !runningActivity
+      ? "Working"
+      : null;
+  const header = (
+    <View style={styles.tail}>
+      {question}
+      {!question && runLabel && (
+        <AgentRunStatus
+          label={runLabel}
+          startedAt={snapshot.activeTurn?.startedAt ?? null}
+        />
+      )}
+      {!!error && <AgentErrorCard error={{ summary: error, details: null }} />}
+    </View>
+  );
+  const footer =
+    history && (history.loading || history.error) ? (
+      <View style={styles.history}>
+        {history.loading ? (
+          <ActivityIndicator
+            accessibilityLabel="Loading older messages"
+            color={colors.mutedForeground}
+          />
+        ) : (
+          <>
+            <AgentText muted>{history.error}</AgentText>
+            <AgentButton label="Retry" icon="refresh" onPress={history.load} />
+          </>
+        )}
+      </View>
+    ) : null;
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: AgentTranscriptItem; index: number }) => {
+      const position = items.length - 1 - index;
+      const actions = responseActions.get(item.key);
+      return (
+        <Animated.View
+          entering={disclosing && item.type === "activity" ? revealWork : undefined}
+          style={{ paddingTop: rowSpacing(item, items[position - 1]) }}
+        >
+          <TranscriptItem
+            item={item}
+            active={active && index === 0}
+            turnActive={position >= activeTurnStart}
+            actionText={actions?.text}
+            actionMessageId={actions?.messageId ?? null}
+            speech={rowSpeech}
+            disabled={disabled}
+            capabilities={capabilities}
+            onToggleWork={toggleWork}
+            onHold={holdRow}
+            onImplementPlan={implementPlan}
+            onFork={canFork ? fork : undefined}
+            onRewind={canRewind ? rewind : undefined}
+          />
+        </Animated.View>
+      );
+    },
+    [
+      items,
+      responseActions,
+      disclosing,
+      active,
+      activeTurnStart,
+      rowSpeech,
+      disabled,
+      capabilities,
+      toggleWork,
+      holdRow,
+      implementPlan,
+      canFork,
+      fork,
+      canRewind,
+      rewind,
+    ],
+  );
+
+  if (!items.length && !question && !error && !history?.hasOlder && !runLabel)
+    return (
+      <View style={styles.empty}>
+        <Ionicons name="terminal-outline" size={26} color={colors.mutedForeground} />
+        <Text
+          style={{
+            color: colors.foreground,
+            fontFamily: fonts.sansSemiBold,
+            fontSize: 17,
+            textAlign: "center",
+          }}
+        >
+          What would you like to work on?
+        </Text>
+        <Text
+          style={{
+            color: colors.mutedForeground,
+            fontFamily: fonts.sansRegular,
+            fontSize: 14,
+            lineHeight: 20,
+            textAlign: "center",
+          }}
+        >
+          Messages run in this workspace on your connected machine.
+        </Text>
+      </View>
+    );
+
   return (
     <View style={{ flex: 1 }}>
-      <FlashList
-        ref={list}
-        ListHeaderComponent={
-          history?.hasOlder ? (
-            <View style={{ paddingBottom: 16 }}>
-              <AgentButton
-                label={history.loading ? "Loading…" : "Load older messages"}
-                disabled={history.loading}
-                onPress={history.load}
-              />
-              {history.error && <AgentText danger>{history.error}</AgentText>}
-            </View>
-          ) : undefined
-        }
-        style={{ flex: 1 }}
-        data={items}
-        extraData={{ activeId: speech.activeId, status: speech.status, active }}
-        keyExtractor={(item) => item.key}
-        getItemType={(item) => item.type}
-        maintainVisibleContentPosition={disclosing ? { startRenderingFromBottom: true } : position}
-        onCommitLayoutEffect={restoreDisclosurePosition}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
-        onLoad={() => jumpToLatest(false)}
-        onScrollBeginDrag={() => {
-          disclosureAnchor.current = null;
-          userScrolled.current = true;
-        }}
-        onLayout={measurePosition}
-        onContentSizeChange={measurePosition}
-        onMomentumScrollEnd={measurePosition}
-        onEndReached={() => setAway(false)}
-        onEndReachedThreshold={0.1}
-        onScroll={({ nativeEvent }) => {
-          if (
-            !userScrolled.current ||
-            nativeEvent.layoutMeasurement.height <= 0
-          )
-            return;
-          setAway(
-            nativeEvent.contentSize.height -
-              nativeEvent.contentOffset.y -
-              nativeEvent.layoutMeasurement.height >
-              140,
-          );
-        }}
-        scrollEventThrottle={16}
-        ListEmptyComponent={
-          question ? null : (
-            <View style={{ paddingVertical: 36, gap: 8 }}>
-              <AgentText title>What would you like to work on?</AgentText>
-              <AgentText muted>
-                Messages run in this workspace on your connected machine.
-              </AgentText>
-            </View>
-          )
-        }
-        renderItem={({ item, index }) => (
-          <Animated.View key={item.key} entering={disclosing ? revealWork : undefined}>
-            <TranscriptItem
-              speech={speech}
-              turnActive={index >= activeTurnStart}
-              item={item}
-              responseActions={responseActions.get(item.key)}
-              onToggleWork={toggleWork}
-              active={active}
-              disabled={disabled}
-              onImplementPlan={onImplementPlan}
-              onFork={onFork}
-              onRewind={onRewind}
-              capabilities={snapshot.capabilities}
-            />
-          </Animated.View>
-        )}
-        ListFooterComponent={
-          question ?? (active ? (
-            <AgentText muted>Working…</AgentText>
-          ) : null)
-        }
-      />
+      <CellLayoutContext.Provider value={onCellLayout}>
+        <FlatList
+          ref={list}
+          inverted
+          CellRendererComponent={TranscriptCell}
+          data={rows}
+          extraData={renderItem}
+          keyExtractor={(item) => item.key}
+          renderItem={renderItem}
+          ListHeaderComponent={header}
+          ListFooterComponent={footer}
+          onEndReached={loadOlder}
+          onEndReachedThreshold={0.5}
+          maintainVisibleContentPosition={POSITION}
+          onScroll={onScroll}
+          onScrollBeginDrag={beginUserScroll}
+          onScrollEndDrag={() => {
+            // Momentum may continue the gesture; decide once it has had a frame to start.
+            dragEnd.current = requestAnimationFrame(() => {
+              dragEnd.current = null;
+              endUserScroll();
+            });
+          }}
+          onMomentumScrollBegin={beginUserScroll}
+          onMomentumScrollEnd={() => {
+            if (userScrolling.current) endUserScroll();
+          }}
+          scrollEventThrottle={16}
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.content}
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          style={{ flex: 1 }}
+        />
+      </CellLayoutContext.Provider>
       {away && (
-        <View
-          pointerEvents="box-none"
-          style={{ position: "absolute", bottom: 8, alignSelf: "center" }}
-        >
+        <View pointerEvents="box-none" style={styles.jumpContainer}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Jump to latest"
+            hitSlop={8}
             onPress={() => jumpToLatest()}
-            style={({ pressed }) => ({
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: pressed ? colors.muted : colors.card,
-              alignItems: "center",
-              justifyContent: "center",
-            })}
+            style={({ pressed }) => [
+              styles.jump,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                opacity: pressed ? 0.75 : 1,
+              },
+            ]}
           >
             <Ionicons name="arrow-down" size={20} color={colors.foreground} />
           </Pressable>
@@ -260,425 +525,273 @@ export function AgentTranscript({
 }
 
 const TranscriptItem = memo(function TranscriptItem({
-  speech,
-  turnActive,
   item,
-  responseActions,
-  onToggleWork,
   active,
+  turnActive,
+  actionText,
+  actionMessageId,
+  speech,
   disabled,
+  capabilities,
+  onToggleWork,
+  onHold,
   onImplementPlan,
   onFork,
   onRewind,
-  capabilities,
 }: {
-  speech: ReturnType<typeof useSpeech>;
-  turnActive: boolean;
   item: AgentTranscriptItem;
-  responseActions: AgentResponseActions | undefined;
-  onToggleWork: (key: string) => void;
+  /** Only the newest row is live; earlier work in the same turn has settled. */
   active: boolean;
-  capabilities: AgentRuntimeCapabilities;
+  turnActive: boolean;
+  actionText: string | undefined;
+  actionMessageId: string | null;
+  speech: Speech;
   disabled: boolean;
+  capabilities: AgentRewindCapabilities;
+  onToggleWork: (key: string) => void;
+  /** Keeps this row's top edge in place while it expands. */
+  onHold: (key: string) => void;
   onImplementPlan: (plan: string) => void;
   onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
-  const { colors, radii } = useTheme();
-  let content;
+  const actions =
+    actionText === undefined ? null : (
+      <ResponseActions
+        id={item.key}
+        text={actionText}
+        messageId={actionMessageId}
+        speech={speech}
+        disabled={disabled}
+        onFork={onFork}
+      />
+    );
   switch (item.type) {
-    case "compaction": {
-      content = (
-        <View accessibilityLabel={item.label} testID="agent-compaction"
-          style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 }}>
-          <View style={{ height: 1, flex: 1, backgroundColor: colors.border }} />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 }}>
-            {item.active ? <ActivityIndicator size="small" color={colors.mutedForeground} />
-              : <Ionicons name="contract-outline" size={14} color={colors.mutedForeground} />}
-            <View style={{ flexShrink: 1, alignItems: "center" }}>
-              <AgentText muted={!item.failed} danger={item.failed}>{item.label}</AgentText>
-              {item.detail && <AgentText muted>{item.detail}</AgentText>}
-            </View>
-          </View>
-          <View style={{ height: 1, flex: 1, backgroundColor: colors.border }} />
-        </View>
-      );
-      break;
-    }
-    case "work_summary": {
-      content = (
+    case "compaction":
+      return <AgentCompactionDivider item={item} />;
+    case "work_summary":
+      return (
         <AgentWorkSummary
+          label={agentWorkLabel(item.durationMs)}
           expanded={item.expanded}
-          durationMs={item.durationMs}
           onPress={() => onToggleWork(item.key)}
         />
       );
-      break;
-    }
     case "assistant_text":
-      content = (
+      return (
         <View>
-          <MarkdownBody text={item.text} />
-          {responseActions && (
-            <ResponseActions
-              id={item.key}
-              actions={responseActions}
-              speech={speech}
-              disabled={disabled}
-              onFork={onFork}
-            />
-          )}
+          <MarkdownBody text={item.text} fuzzyLinks={false} />
+          {actions}
         </View>
       );
-      break;
     case "assistant_error":
-      content = (
-        <AgentText danger>
-          {item.error.summary}
-          {item.error.details ? `\n${item.error.details}` : ""}
-        </AgentText>
+      return (
+        <AgentErrorCard error={item.error} onToggle={() => onHold(item.key)} />
       );
-      break;
     case "notification":
-      content = (
-        <AgentText
-          muted={item.notification.level === "info"}
-          danger={item.notification.level === "error"}
-        >
-          {item.notification.message}
-        </AgentText>
-      );
-      break;
+      return <AgentNotificationRow notification={item.notification} />;
     case "turn_footer":
-      content = (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          {responseActions && (
-            <ResponseActions
-              id={item.key}
-              actions={responseActions}
-              speech={speech}
-              disabled={disabled}
-              onFork={onFork}
-            />
-          )}
-          <TurnFooter item={item} />
-        </View>
+      return (
+        <ResponseFooter
+          actions={actions}
+          durationMs={item.durationMs}
+        />
       );
-      break;
     case "activity":
-      content = (
-        <Activity key={item.key} entries={item.entries} active={active} />
+      return (
+        <AgentActivityGroup
+          entries={item.entries}
+          active={active}
+          onToggle={() => onHold(item.key)}
+        />
       );
-      break;
     case "plan":
-      content = (
-        <View style={{ gap: 8 }}>
-          <AgentText title>Plan</AgentText>
-          <MarkdownBody text={item.text} />
-          {item.steps.map((step, i) => (
-            <AgentText key={i}>
-              {step.status === "completed" ? "✓" : "○"} {step.step}
-            </AgentText>
-          ))}
-          {!turnActive && (
-            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
-          )}
-          {item.actionable && (
-            <AgentButton
-              label="Implement plan"
-              disabled={disabled || active}
-              onPress={() => onImplementPlan(item.text)}
-            />
-          )}
-        </View>
+      return (
+        <AgentPlanCard
+          item={item}
+          footer={
+            !turnActive || item.actionable ? (
+              <View style={styles.planFooter}>
+                {!turnActive && (
+                  <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+                )}
+                <View style={{ flex: 1 }} />
+                {item.actionable && (
+                  <ImplementPlanButton
+                    disabled={disabled || turnActive}
+                    onPress={() => onImplementPlan(item.text)}
+                  />
+                )}
+              </View>
+            ) : undefined
+          }
+        />
       );
-      break;
     case "task_list":
-      content = (
-        <View style={{ gap: 4 }}>
-          {item.snapshot.tasks.map((task, i) => (
-            <AgentText key={i}>
-              {task.status === "completed"
-                ? "✓"
-                : task.status === "in_progress"
-                  ? "●"
-                  : "○"}{" "}
-              {task.step}
-            </AgentText>
-          ))}
-        </View>
-      );
-      break;
+      return <AgentTaskListCard snapshot={item.snapshot} />;
     case "message": {
       const message = record(item.message);
-      const parts = Array.isArray(message.content)
-        ? message.content.map(record)
-        : [];
+      if (message.role === "user")
+        return (
+          <AgentUserMessage
+            message={item.message}
+            timestamp={item.timestamp}
+            capabilities={capabilities}
+            disabled={disabled}
+            onRewind={onRewind}
+          />
+        );
       const body =
         typeof message.content === "string"
           ? message.content
-          : parts
-              .filter((part) => part.type === "text")
-              .map((part) => text(part.text))
-              .join("\n");
-      content = (
-        <View
-          style={{
-            gap: 8,
-            backgroundColor:
-              message.role === "user" ? colors.muted : "transparent",
-            borderRadius: radii.lg,
-            padding: message.role === "user" ? 12 : 0,
-          }}
-        >
-          {!!body && <MarkdownBody text={body} />}
-          {message.role === "user" &&
-            message.overtchatRewindable !== false &&
-            typeof message.id === "string" &&
-            !message.id.startsWith("submission:") &&
-            onRewind && (
-              <AgentRewindMenu
-                capabilities={capabilities}
-                disabled={disabled}
-                onRewind={(mode) => onRewind(message.id as string, mode)}
-              />
-            )}
-          {parts
-            .filter((part) => part.type === "image")
-            .map((part, i) => (
-              <AgentImage
-                key={i}
-                label={text(part.filename) || "Attached image"}
-                url={
-                  text(part.url) ||
-                  (part.data
-                    ? `data:${text(part.mimeType)};base64,${text(part.data)}`
-                    : "")
-                }
-              />
-            ))}
-        </View>
-      );
-      break;
+          : Array.isArray(message.content)
+            ? message.content
+                .map(record)
+                .filter((part) => part.type === "text")
+                .map((part) => text(part.text))
+                .join("\n")
+            : "";
+      return body ? <MarkdownBody text={body} fuzzyLinks={false} /> : null;
     }
   }
-  return <View style={{ paddingBottom: 14 }}>{content}</View>;
 });
 
 function ResponseActions({
   id,
-  actions,
+  text: value,
+  messageId,
   speech,
   disabled,
   onFork,
 }: {
   id: string;
-  actions: AgentResponseActions;
-  speech: ReturnType<typeof useSpeech>;
+  text: string;
+  messageId: string | null;
+  speech: Speech;
   disabled: boolean;
   onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
 }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center" }}>
-      {!!actions.text && (
-        <CopyResponseButton key={actions.text} text={actions.text} />
-      )}
-      <AgentSpeakButton id={id} text={actions.text} speech={speech} />
-      {actions.messageId && onFork && (
+    <View style={styles.actions}>
+      {!!value && <AgentCopyButton key={value} text={value} />}
+      <AgentSpeakButton id={id} text={value} speech={speech} />
+      {messageId && onFork && (
         <AgentForkMenu
           disabled={disabled}
-          onFork={(chooseWorkspace) => onFork(actions.messageId!, chooseWorkspace)}
+          onFork={(chooseWorkspace) => onFork(messageId, chooseWorkspace)}
         />
       )}
     </View>
   );
 }
 
-function AgentSpeakButton({
-  id,
-  text,
-  speech,
+function ResponseFooter({
+  actions,
+  durationMs,
 }: {
-  id: string;
-  text: string;
-  speech: ReturnType<typeof useSpeech>;
+  actions: React.ReactNode;
+  durationMs: number | null;
 }) {
-  const { colors } = useTheme();
-  const spokenText = text.trim();
-  if (!spokenText) return null;
-  const active = speech.activeId === id;
-  const loading = active && speech.status === "loading";
-  const tooLong = spokenText.length > 5_000;
-  const disabled = !active && tooLong;
-  const label = active
-    ? loading ? "Cancel loading speech" : "Stop reading"
-    : tooLong ? "Read aloud supports up to 5,000 characters" : "Read aloud";
+  const { colors, fonts } = useTheme();
+  if (!actions && durationMs === null) return null;
+  return (
+    <View style={styles.footer}>
+      {actions}
+      {durationMs !== null && (
+        <Text
+          style={{
+            color: colors.mutedForeground,
+            fontFamily: fonts.sansRegular,
+            fontSize: 13,
+            fontVariant: ["tabular-nums"],
+            paddingHorizontal: 4,
+          }}
+        >
+          {agentWorkLabel(durationMs)}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function ImplementPlanButton({
+  disabled,
+  onPress,
+}: {
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { colors, fonts, radii } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel="Implement plan"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPress={() => void speech.play(id, spokenText)}
+      onPress={onPress}
       style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 10,
+        minHeight: 36,
+        flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
-        opacity: disabled ? 0.5 : 1,
-        backgroundColor: pressed ? colors.muted : "transparent",
+        gap: 6,
+        paddingHorizontal: 14,
+        borderRadius: radii.pill,
+        backgroundColor: colors.primary,
+        opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
       })}
     >
-      {loading ? (
-        <ActivityIndicator size="small" color={colors.mutedForeground} />
-      ) : (
-        <Ionicons
-          name={active ? "stop-outline" : "volume-medium-outline"}
-          size={18}
-          color={colors.mutedForeground}
-        />
-      )}
-    </Pressable>
-  );
-}
-
-function TurnFooter({
-  item,
-}: {
-  item: Extract<AgentTranscriptItem, { type: "turn_footer" }>;
-}) {
-  if (item.durationMs === null) return null;
-  const seconds =
-    item.durationMs === null ? null : Math.round(item.durationMs / 1000);
-  const duration =
-    seconds === null
-      ? null
-      : seconds < 60
-        ? `${seconds}s`
-        : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      {duration !== null && <AgentText muted>Worked for {duration}</AgentText>}
-    </View>
-  );
-}
-
-function CopyResponseButton({ text }: { text: string }) {
-  const { colors } = useTheme();
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      clearTimeout(timer.current);
-    };
-  }, []);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={copied ? "Copied response" : "Copy response"}
-      onPress={() => {
-        void Clipboard.setStringAsync(text)
-          .then(() => {
-            if (!mounted.current) return;
-            setCopied(true);
-            clearTimeout(timer.current);
-            timer.current = setTimeout(() => setCopied(false), 1200);
-          })
-          .catch((error) => toastError("Couldn't copy response", error));
-      }}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 10,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: pressed ? colors.muted : "transparent",
-      })}
-    >
-      <Ionicons
-        name={copied ? "checkmark" : "copy-outline"}
-        size={18}
-        color={colors.mutedForeground}
-      />
-    </Pressable>
-  );
-}
-
-function Activity({
-  entries,
-  active,
-}: {
-  entries: AgentActivityEntry[];
-  active: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const summary = describeAgentActivity(entries, active);
-  const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
-  const selected = entries.find(
-    (entry) => entry.type === "tool" && entry.id === selectedToolId,
-  );
-  const selectedTool = selected?.type === "tool" ? selected.tool : undefined;
-  return (
-    <View>
-      <AgentButton
-        label={summary.label}
-        icon={expanded ? "chevron-down" : "chevron-forward"}
-        detail={summary.secondary ?? undefined}
-        onPress={() => setExpanded(!expanded)}
-      />
-      {expanded && (
-        <View style={{ paddingHorizontal: 12, gap: 12 }}>
-          {entries.map((entry) => {
-            if (entry.type === "thinking")
-              return (
-                <MarkdownBody
-                  key={entry.id}
-                  text={entry.content}
-                  variant="thinking"
-                />
-              );
-            if (entry.type === "subagent")
-              return (
-                <View key={entry.id}>
-                  <AgentText>
-                    {entry.activity.action} · {entry.activity.status}
-                  </AgentText>
-                  {entry.activity.prompt && (
-                    <AgentText muted>{entry.activity.prompt}</AgentText>
-                  )}
-                  <AgentText muted>
-                    {entry.activity.events.join("\n")}
-                  </AgentText>
-                </View>
-              );
-            return (
-              <AgentToolRow
-                key={entry.id}
-                tool={entry.tool}
-                active={active}
-                onPress={() => setSelectedToolId(entry.id)}
-              />
-            );
-          })}
-        </View>
-      )}
-      <AgentSheet
-        title={
-          selectedTool ? describeAgentTool(selectedTool).label : "Tool details"
-        }
-        visible={!!selectedTool}
-        onClose={() => setSelectedToolId(null)}
-        closeLabel="Close tool details"
-        snapPoints={["60%", "90%"]}
+      <Ionicons name="play" size={14} color={colors.primaryForeground} />
+      <Text
+        style={{
+          color: colors.primaryForeground,
+          fontFamily: fonts.sansMedium,
+          fontSize: 14,
+        }}
       >
-        {selectedTool && (
-          <AgentToolDetails tool={selectedTool} active={active} />
-        )}
-      </AgentSheet>
-    </View>
+        Implement plan
+      </Text>
+    </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  content: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 },
+  tail: { gap: 12, paddingTop: 12 },
+  history: { alignItems: "center", gap: 6, paddingBottom: 16 },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginLeft: -6,
+    marginTop: 2,
+  },
+  footer: { flexDirection: "row", alignItems: "center", minHeight: 32 },
+  planFooter: { flexDirection: "row", alignItems: "center", marginLeft: -6 },
+  empty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 32,
+  },
+  jumpContainer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 12,
+    alignItems: "center",
+  },
+  jump: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+});

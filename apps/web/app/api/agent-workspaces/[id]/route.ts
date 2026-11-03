@@ -4,6 +4,7 @@ import {
   storedConnectionAccessError,
 } from "@/lib/agents/access";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import { withConnectorSessionState } from "@/lib/agents/connector/directory";
 import {
   daemonWorkspace,
   parseProviderSessionMetadata,
@@ -13,6 +14,7 @@ import {
   deleteAgentWorkspace,
   getOwnedAgentWorkspace,
   syncAgentWorkspaceSessions,
+  toSessionListItem,
 } from "@/lib/db/agentConnections";
 
 export const maxDuration = 60;
@@ -46,16 +48,9 @@ export async function POST(
       sessions.map(parseProviderSessionMetadata),
     );
     return Response.json({
-      sessions: rows.map((row) => ({
-        id: row.id,
-        providerSessionId: row.providerSessionId,
-        name: row.name,
-        firstMessage: row.firstMessage,
-        messageCount: row.messageCount,
-        createdAt: row.providerCreatedAt?.getTime() ?? null,
-        modifiedAt: row.providerModifiedAt?.getTime() ?? null,
-        runtimeStatus: hostConnectorBroker.runtimeStatusForSession(row.id),
-      })),
+      sessions: rows.map((row) =>
+        withConnectorSessionState(toSessionListItem(row)),
+      ),
     });
   } catch (error) {
     return Response.json(

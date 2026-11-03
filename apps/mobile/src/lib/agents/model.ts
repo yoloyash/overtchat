@@ -2,6 +2,7 @@ import {
   buildAgentPromptCommand,
   normalizeAgentSessionCommand,
   type AgentMode,
+  type AgentModel,
   type AgentPromptImage,
   type AgentRuntimeSnapshot,
   type AgentSessionCommand,
@@ -33,6 +34,25 @@ export function sessionModes(snapshot: AgentRuntimeSnapshot): AgentMode[] {
           : [];
       })
     : [];
+}
+
+/** The session's current model: its ID and catalog entry, when listed. */
+export function sessionModel(snapshot: AgentRuntimeSnapshot): {
+  id: string;
+  model: AgentModel | undefined;
+} {
+  const id = text(record(snapshot.state.model).id);
+  return { id, model: snapshot.models.find((item) => item.id === id) };
+}
+
+export function thinkingLabel(
+  model: AgentModel | undefined,
+  level: string,
+): string | undefined {
+  if (!model?.thinkingOptions?.length) return undefined;
+  const option = model.thinkingOptions.find((item) => item.id === level);
+  if (option) return option.label;
+  return level ? level[0].toUpperCase() + level.slice(1) : undefined;
 }
 
 export function submitCommand(

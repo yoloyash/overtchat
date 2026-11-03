@@ -1,0 +1,1 @@
+ALTER TABLE `agent_workspaces` ADD `worktree_parent_path` text;

@@ -4,7 +4,9 @@ export const MAX_BYTES_IMAGE = 20 * 1024 * 1024;
 export const MAX_BYTES_DOC = 15 * 1024 * 1024;
 export const MAX_BYTES_TEXT = 5 * 1024 * 1024;
 
-const MAX_EXTRACTED_CHARS = 400_000;
+// Conversations include a model-sized prefix and read the rest on demand, so
+// keep the text of any accepted text file whole.
+const MAX_EXTRACTED_CHARS = 5_000_000;
 
 export type UploadCategory = "image" | "document" | "text" | "spreadsheet";
 

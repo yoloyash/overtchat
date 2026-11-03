@@ -3,9 +3,11 @@ import { snapshot } from "./test-fixtures";
 import {
   agentImageSource,
   prepareSubmission,
+  sessionModel,
   sessionModes,
   sessionStatus,
   submitCommand,
+  thinkingLabel,
 } from "./model";
 import {
   interactionFormComplete,
@@ -198,5 +200,45 @@ describe("agent question forms", () => {
       "https://auth.example/approve",
     );
     expect(safeExternalUrl("javascript:alert(1)")).toBeNull();
+  });
+});
+
+describe("session model labels", () => {
+  const listed = (id: string, label: string, input: ("text" | "image")[] = ["text", "image"]) => ({
+    id,
+    label,
+    provider: "claude" as const,
+    api: "claude",
+    baseUrl: "",
+    reasoning: true,
+    input,
+    contextWindow: null,
+    maxTokens: null,
+    thinkingOptions: [
+      { id: "low", label: "Low" },
+      { id: "high", label: "High" },
+    ],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  });
+  const models = [
+    listed("default", "Default (recommended)"),
+    listed("opus", "Opus 5.5"),
+    listed("claude-opus-5", "Opus 5"),
+    listed("haiku", "Haiku 5.5"),
+  ];
+
+  it("uses the exact catalog entry and keeps an unlisted ID as reported", () => {
+    const result = sessionModel({ ...snapshot(), models, state: { model: { id: "opus" } } });
+    expect(result.model?.label).toBe("Opus 5.5");
+    expect(
+      sessionModel({ ...snapshot(), models, state: { model: { id: "claude-opus-5-5" } } }),
+    ).toEqual({ id: "claude-opus-5-5", model: undefined });
+  });
+
+  it("names the effort from the model's options", () => {
+    expect(thinkingLabel(models[1], "high")).toBe("High");
+    expect(thinkingLabel(models[1], "max")).toBe("Max");
+    expect(thinkingLabel({ ...models[1], thinkingOptions: [] }, "high")).toBeUndefined();
+    expect(thinkingLabel(undefined, "high")).toBeUndefined();
   });
 });

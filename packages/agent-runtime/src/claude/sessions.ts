@@ -96,16 +96,113 @@ function entryCwd(entries) {
   return entries.find((entry) => typeof entry.cwd === "string")?.cwd || null;
 }
 
-function normalized(entries) {
+const tokenCount = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+
+// Mirrors subagents.ts: a Task/Agent launch projects as a subagent part whose
+// events summarize the child's transcript, so reload matches the live view.
+const SUBAGENT_TOOLS = new Set(["task", "agent"]);
+const MAX_SUBAGENT_EVENTS = 200;
+const PRIMARY_ARGUMENTS = ["command", "file_path", "notebook_path", "pattern", "query", "url", "path", "description", "prompt", "skill"];
+const stringField = (input, key) => input && typeof input[key] === "string" && input[key].trim() ? input[key] : null;
+const clipEvent = (value, limit = 4000) => clip(value, limit);
+function summarizeChildToolUse(name, input) {
+  if (name.toLowerCase() === "bash" && stringField(input, "command")) return clipEvent("$ " + stringField(input, "command"), 400);
+  if (SUBAGENT_TOOLS.has(name.toLowerCase())) {
+    const title = stringField(input, "description");
+    return clipEvent(title ? "Subagent: " + title : "Subagent", 400);
+  }
+  for (const key of PRIMARY_ARGUMENTS) {
+    const value = stringField(input, key);
+    if (value) return clipEvent(name + " " + value.split("\n")[0], 400);
+  }
+  return name;
+}
+
+// Claude Code writes each child to <session>/subagents/agent-<id>.jsonl next
+// to a meta.json naming the Task tool_use that launched it.
+async function readSubagentLaunches(file) {
+  const launches = new Map();
+  const directory = path.join(path.dirname(file), path.basename(file, ".jsonl"), "subagents");
+  let names;
+  try { names = await fsp.readdir(directory); } catch { return launches; }
+  for (const name of names) {
+    if (!name.endsWith(".meta.json")) continue;
+    try {
+      const meta = JSON.parse(await fsp.readFile(path.join(directory, name), "utf8"));
+      if (typeof meta.toolUseId !== "string") continue;
+      const events = [];
+      const toolNames = new Map();
+      for (const entry of await readEntries(path.join(directory, name.replace(/\.meta\.json$/, ".jsonl")))) {
+        const content = Array.isArray(entry.message?.content) ? entry.message.content : [];
+        if (entry.type === "assistant") {
+          for (const part of content) {
+            if (part?.type === "text" && typeof part.text === "string" && part.text.trim()) events.push(clipEvent(part.text.trim()));
+            else if (part?.type === "tool_use" && typeof part.id === "string") {
+              toolNames.set(part.id, String(part.name || "tool"));
+              events.push(summarizeChildToolUse(String(part.name || "tool"), part.input));
+            }
+          }
+        } else if (entry.type === "user") {
+          for (const part of content) {
+            if (part?.type !== "tool_result" || part.is_error !== true) continue;
+            const first = (typeof part.content === "string" ? part.content : text(part.content)).split("\n")[0] || "";
+            events.push(clipEvent((toolNames.get(part.tool_use_id) || "tool") + " failed" + (first ? ": " + first : ""), 400));
+          }
+        }
+      }
+      launches.set(meta.toolUseId, {
+        agentType: typeof meta.agentType === "string" ? meta.agentType : null,
+        title: typeof meta.description === "string" ? meta.description : null,
+        finished: meta.finished === true,
+        events: events.slice(-MAX_SUBAGENT_EVENTS),
+      });
+    } catch {}
+  }
+  return launches;
+}
+
+function normalized(entries, launches = new Map()) {
   const messages = [];
+  const subagentParts = new Map();
+  // Claude journals /compact as a command echo followed by its output.
+  let compactCommandOutput = false;
   for (const entry of entries) {
-    if (entry.isSidechain || !entry.message || !["user", "assistant"].includes(entry.type)) continue;
-    const message = entry.message;
+    if (entry.isSidechain) continue;
     const timestamp = Number.isFinite(Date.parse(entry.timestamp)) ? Date.parse(entry.timestamp) : Date.now();
+    if (entry.type === "system" && entry.subtype === "compact_boundary") {
+      const metadata = entry.compactMetadata || entry.compact_metadata || {};
+      const trigger = metadata.trigger === "manual" || metadata.trigger === "auto" ? metadata.trigger : undefined;
+      // postTokens omits the system prompt and tools that preTokens includes.
+      const tokensBefore = tokenCount(metadata.preTokens ?? metadata.pre_tokens);
+      messages.push({
+        id: "compaction:" + (entry.uuid || messages.length), role: "compactionSummary", timestamp, status: "completed",
+        ...(trigger ? { trigger } : {}),
+        ...(tokensBefore === undefined ? {} : { tokensBefore }),
+      });
+      continue;
+    }
+    if (!entry.message || !["user", "assistant"].includes(entry.type)) continue;
+    const message = entry.message;
     if (entry.type === "assistant") {
       const content = Array.isArray(message.content) ? message.content.flatMap((part) => {
         if (part?.type === "text" && typeof part.text === "string") return [{ type: "text", text: clip(part.text) }];
         if (part?.type === "thinking" && typeof part.thinking === "string") return [{ type: "thinking", thinking: clip(part.thinking) }];
+        if (part?.type === "tool_use" && typeof part.id === "string" && SUBAGENT_TOOLS.has(String(part.name || "").toLowerCase())) {
+          const launch = launches.get(part.id);
+          const input = part.input && typeof part.input === "object" ? part.input : null;
+          const subagent = {
+            type: "subagent", id: part.id, action: "task",
+            prompt: stringField(input, "prompt"),
+            // A child whose transcript never finished died with its CLI.
+            status: !launch || launch.finished ? "completed" : "stopped",
+            receivers: [],
+            events: launch ? launch.events : [],
+            title: stringField(input, "description") ?? launch?.title ?? null,
+            agentType: stringField(input, "subagent_type") ?? launch?.agentType ?? null,
+          };
+          subagentParts.set(part.id, subagent);
+          return [subagent];
+        }
         if (part?.type === "tool_use" && typeof part.id === "string") return [{ type: "toolCall", id: part.id, name: String(part.name || "tool"), arguments: boundedInput(part.input) }];
         return [];
       }) : [];
@@ -117,6 +214,12 @@ function normalized(entries) {
       for (const part of blocks) {
         if (part?.type !== "tool_result" || typeof part.tool_use_id !== "string") continue;
         const resultText = typeof part.content === "string" ? part.content : text(part.content) || JSON.stringify(part.content ?? "");
+        const subagent = subagentParts.get(part.tool_use_id);
+        if (subagent) {
+          // The result repeats the child's last reply; only its outcome matters.
+          if (part.is_error === true) subagent.status = /interrupted/i.test(resultText.slice(0, 200)) ? "stopped" : "failed";
+          continue;
+        }
         messages.push({
           role: "toolResult",
           toolCallId: part.tool_use_id,
@@ -128,7 +231,20 @@ function normalized(entries) {
       }
     }
     const body = text(message.content);
-    if (body && !entry.isSynthetic) messages.push({ role: "user", id: entry.uuid, content: [{ type: "text", text: body }], timestamp });
+    // Claude Code never shows meta entries or the compaction summary as user turns.
+    if (!body || entry.isSynthetic || entry.isMeta || entry.isCompactSummary) continue;
+    // Claude Code wakes itself with a task notification; it is not a user turn.
+    if (body.startsWith("<task-notification>")) continue;
+    if (body.startsWith("<command-name>/compact</command-name>")) {
+      compactCommandOutput = true;
+      continue;
+    }
+    if (compactCommandOutput && body.startsWith("<local-command-stdout>")) {
+      compactCommandOutput = false;
+      continue;
+    }
+    compactCommandOutput = false;
+    messages.push({ role: "user", id: entry.uuid, content: [{ type: "text", text: body }], timestamp });
   }
   return messages.slice(-1500);
 }
@@ -190,7 +306,7 @@ async function metadata(file, requestedCwd) {
     if (entries.some((entry) => entry.type === "user" || entry.type === "assistant")) {
       await fsp.rm(file + ".overtchat-empty", { force: true });
     }
-    const messages = boundedHistory(normalized(entries));
+    const messages = boundedHistory(normalized(entries, await readSubagentLaunches(file)));
     const empty = entries.some((entry) => entry.type === "overtchat-empty-session")
       && !entries.some((entry) => entry.type === "user" || entry.type === "assistant");
     process.stdout.write(JSON.stringify(mode === "resume" ? { messages, empty } : messages));

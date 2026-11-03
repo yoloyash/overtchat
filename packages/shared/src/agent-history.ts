@@ -67,7 +67,12 @@ export function buildAgentForkContext(
         if (entry.type === "thinking" || seenActivities.has(entry.id)) continue;
         seenActivities.add(entry.id);
         if (entry.type === "subagent") {
-          lines.push(activityLine("Task", entry.activity.prompt));
+          lines.push(
+            activityLine(
+              entry.activity.agentType ?? "Task",
+              entry.activity.title ?? entry.activity.prompt,
+            ),
+          );
           const log = [
             ...entry.activity.events,
             ...entry.activity.receivers.flatMap((receiver) =>

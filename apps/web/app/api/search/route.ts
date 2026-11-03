@@ -7,6 +7,15 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? "";
-  const hits = await searchChats(session.user.id, q);
-  return Response.json({ hits });
+  try {
+    const hits = await searchChats(session.user.id, q);
+    return Response.json({ hits });
+  } catch (error) {
+    console.error("[search] query failed", {
+      userId: session.user.id,
+      queryLength: q.length,
+      error,
+    });
+    return Response.json({ error: "Search failed" }, { status: 500 });
+  }
 }

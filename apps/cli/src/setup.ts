@@ -522,6 +522,7 @@ export async function setup(
     `Text-to-speech: ${config.tts.provider}`,
     `Speech-to-text: ${config.stt.provider}`,
     `Realtime voice: ${config.voice.installed ? "installed" : "set up later"}`,
+    `Code execution: ${config.sandbox.installed ? (config.sandbox.tier === "full" ? "full" : "standard") : "set up later"}`,
     `Agent Connections: ${config.agents.installed ? "installed" : "set up later"}`,
     `Data: ${config.dataMountType} ${config.dataVolume}`,
   ].join("\n"), "Selected configuration");

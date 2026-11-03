@@ -25,10 +25,14 @@ const mocks = vi.hoisted(() => ({
   command: vi.fn(),
   normalizeCommand: vi.fn(),
   snapshot: vi.fn(),
+  directoryStatus: vi.fn(),
   observe: vi.fn(),
   acquireLease: vi.fn(),
   listWorkspaceDirectory: vi.fn(),
   readWorkspaceFile: vi.fn(),
+  switchGitBranch: vi.fn(),
+  createGitWorktree: vi.fn(),
+  removeGitWorktree: vi.fn(),
   registryOptions: null as {
     runtimeExited?: (sessionId: string, runtime: unknown) => void | Promise<void>;
     saveQueuedMessages?: (
@@ -45,6 +49,9 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
   return {
     ...original,
     configureProcessSpawner: mocks.configureProcessSpawner,
+    switchAgentWorkspaceGitBranch: mocks.switchGitBranch,
+    createAgentWorkspaceGitWorktree: mocks.createGitWorktree,
+    removeAgentWorkspaceGitWorktree: mocks.removeGitWorktree,
     workspaceFilesService: {
       listDirectory: mocks.listWorkspaceDirectory,
       readFile: mocks.readWorkspaceFile,
@@ -93,12 +100,19 @@ const workspace = {
   cwd: session.cwd,
 };
 
-function runtime() {
+function runtime(snapshot: () => { status: string; activeTurn?: { startedAt: number } | null } = mocks.snapshot) {
   return {
     dbSessionId: "session",
     normalizeCommand: mocks.normalizeCommand,
     command: mocks.command,
-    snapshot: mocks.snapshot,
+    snapshot,
+    directoryStatus: () => ({
+      runtimeStatus: snapshot().status,
+      turnStartedAt: snapshot().activeTurn?.startedAt ?? null,
+      attention: null,
+      lastTurn: null,
+      ...mocks.directoryStatus(),
+    }),
     observe: mocks.observe,
     acquireLease: mocks.acquireLease,
   };
@@ -153,6 +167,7 @@ async function openJournal(): Promise<{
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.directoryStatus.mockReturnValue({});
   mocks.normalizeCommand.mockImplementation((value) => value);
   mocks.command.mockResolvedValue({ queued: true, id: "message-1" });
   mocks.snapshot.mockReturnValue({
@@ -384,6 +399,120 @@ describe("connector daemon command identity", () => {
         requestId: "read-file",
         success: true,
       }),
+    ]);
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
+  it("blocks branch switches with the agents busy on the same host", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const sessions = {
+      running: { ...session, sessionId: "running", cwd: "/repo/app" },
+      queued: { ...session, sessionId: "queued", cwd: "/repo" },
+      idle: { ...session, sessionId: "idle", cwd: "/idle" },
+      remote: {
+        ...session,
+        sessionId: "remote",
+        target: { transport: "ssh" as const, alias: "workstation" },
+        cwd: "/remote",
+      },
+    };
+    for (const descriptor of Object.values(sessions)) {
+      await journal.recordSession(descriptor);
+    }
+    const base = mocks.snapshot();
+    const snapshots: Record<string, unknown> = {
+      running: { ...base, status: "running", queuedMessages: [] },
+      queued: { ...base, status: "idle", state: {}, queuedMessages: base.queuedMessages },
+      idle: { ...base, status: "idle", state: {}, queuedMessages: [] },
+      remote: { ...base, status: "running", queuedMessages: [] },
+    };
+    mocks.get.mockImplementation((sessionId: string) =>
+      runtime(() => snapshots[sessionId] as { status: string }),
+    );
+    mocks.switchGitBranch.mockResolvedValue({ status: "agent_running" });
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    await daemon.handle({
+      type: "request",
+      requestId: "switch",
+      request: {
+        type: "switch_git_branch",
+        target: { transport: "local", shellMode: "interactive" },
+        path: "/repo",
+        branch: { kind: "local", name: "feature" },
+        stash: true,
+      },
+    });
+
+    expect(mocks.switchGitBranch).toHaveBeenCalledWith(
+      { transport: "local", shellMode: "interactive" },
+      "/repo",
+      {
+        branch: { kind: "local", name: "feature" },
+        stash: true,
+        busyPaths: ["/repo/app", "/repo"],
+      },
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "response",
+        requestId: "switch",
+        success: true,
+        data: { status: "agent_running" },
+      }),
+    ]);
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
+  it("creates and removes worktrees on the requested host", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const worktree = { path: "/wt/topic", worktreePath: "/wt/topic", name: "topic", branch: "topic" };
+    mocks.createGitWorktree.mockResolvedValue(worktree);
+    mocks.removeGitWorktree.mockResolvedValue({ removed: true });
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    const target = { transport: "ssh" as const, alias: "workstation", shellMode: "login" as const };
+
+    await daemon.handle({
+      type: "request",
+      requestId: "create",
+      request: {
+        type: "create_git_worktree",
+        target,
+        path: "/repo",
+        base: { kind: "remote", remote: "origin", name: "main" },
+        branch: "topic",
+      },
+    });
+    await daemon.handle({
+      type: "request",
+      requestId: "remove",
+      request: { type: "remove_git_worktree", target, path: "/wt/topic" },
+    });
+
+    expect(mocks.createGitWorktree).toHaveBeenCalledWith(target, "/repo", {
+      base: { kind: "remote", remote: "origin", name: "main" },
+      branch: "topic",
+    });
+    expect(mocks.removeGitWorktree).toHaveBeenCalledWith(target, "/wt/topic");
+    expect(events).toEqual([
+      expect.objectContaining({ requestId: "create", success: true, data: worktree }),
+      expect.objectContaining({ requestId: "remove", success: true, data: { removed: true } }),
     ]);
     await daemon.stop();
     await timelines.close();
@@ -827,40 +956,44 @@ describe("connector daemon command identity", () => {
       request: { type: "open_session", session },
     });
 
-    expect(emitted).toContainEqual({
+    const entry = (overrides: Record<string, unknown>) => ({
       type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "running" },
+      session: {
+        sessionId: "session",
+        runtimeStatus: "running",
+        turnStartedAt: 42,
+        attention: null,
+        lastTurn: null,
+        ...overrides,
+      },
     });
+    const event = (sequence: number) =>
+      observer?.({
+        epoch: "runtime-ephemeral",
+        sequence,
+        type: "runtime_event",
+        data: { type: "message_update" },
+      });
+    expect(emitted).toContainEqual(entry({}));
     emitted.length = 0;
-    observer?.({
-      epoch: "runtime-ephemeral",
-      sequence: 1,
-      type: "runtime_event",
-      data: { type: "overtchat_status", status: "idle" },
-    });
+    const lastTurn = { outcome: "completed", startedAt: 42, endedAt: 90, preview: "Done." };
+    mocks.directoryStatus.mockReturnValue({ runtimeStatus: "idle", turnStartedAt: null, lastTurn });
+    event(1);
     await timelines.flush("session");
-    await vi.waitFor(() => expect(emitted).toContainEqual({
-      type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "idle" },
-    }));
-    observer?.({
-      epoch: "runtime-ephemeral",
-      sequence: 2,
-      type: "runtime_event",
-      data: { type: "agent_start" },
-    });
-    // A repeated status does not republish the directory entry.
-    observer?.({
-      epoch: "runtime-ephemeral",
-      sequence: 3,
-      type: "runtime_event",
-      data: { type: "overtchat_status", status: "running" },
-    });
+    await vi.waitFor(() =>
+      expect(emitted).toContainEqual(entry({ runtimeStatus: "idle", turnStartedAt: null, lastTurn })),
+    );
+    // Envelopes that leave the summary unchanged do not republish it.
+    event(2);
+    event(3);
+    const attention = { kind: "approval", id: "request", requestedAt: 95, title: "Allow Bash", detail: "npm ci" };
+    mocks.directoryStatus.mockReturnValue({ turnStartedAt: 92, attention, lastTurn });
+    event(4);
+    event(5);
     await timelines.flush("session");
-    await vi.waitFor(() => expect(emitted).toContainEqual({
-      type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "running" },
-    }));
+    await vi.waitFor(() =>
+      expect(emitted).toContainEqual(entry({ turnStartedAt: 92, attention, lastTurn })),
+    );
     expect(emitted.filter((event) => event.type === "session_update")).toHaveLength(2);
     expect(emitted).not.toContainEqual(
       expect.objectContaining({ type: "session_event" }),

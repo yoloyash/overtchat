@@ -61,6 +61,7 @@ raw.exec(`
     connection_id TEXT NOT NULL,
     path TEXT NOT NULL,
     name TEXT NOT NULL,
+    worktree_parent_path TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     FOREIGN KEY (connection_id) REFERENCES agent_connections(id) ON DELETE CASCADE,
@@ -79,6 +80,8 @@ raw.exec(`
     message_count INTEGER NOT NULL DEFAULT 0,
     provider_created_at INTEGER,
     provider_modified_at INTEGER,
+    last_turn TEXT,
+    read_turn_ended_at INTEGER,
     last_synced_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
@@ -299,6 +302,60 @@ describe("agent connection persistence", () => {
           }),
         ],
       }),
+    ]);
+  });
+
+  it("records worktree origins, inherited by agents added to the folder later", async () => {
+    const install = (
+      provider: "pi" | "codex",
+      host: { transport: "local" } | { transport: "ssh"; sshAlias: string },
+      worktreeParentPath?: string,
+    ) =>
+      repository.saveAgentWorkspaceInstallation({
+        userId: "alice",
+        host: {
+          name: host.transport === "local" ? "This server" : host.sshAlias,
+          connectorId: "alice-connector",
+          ...host,
+        },
+        connection: {
+          provider,
+          executable: provider,
+          shellMode: "interactive",
+          detectedVersion: "1.0.0",
+        },
+        workspace: { path: "/wt/topic", name: "topic", worktreeParentPath },
+        sessions: [],
+      });
+    install("pi", { transport: "local" }, "/work/project");
+    install("codex", { transport: "local" });
+    // The same path on another host is a different folder.
+    install("codex", { transport: "ssh", sshAlias: "devbox" });
+
+    const connections = await repository.listAgentConnections("alice");
+    const parents = Object.fromEntries(
+      connections.map((connection) => [
+        `${connection.host.transport}:${connection.provider}`,
+        connection.workspaces[0]?.worktreeParentPath,
+      ]),
+    );
+    expect(parents).toEqual({
+      "local:pi": "/work/project",
+      "local:codex": "/work/project",
+      "ssh:codex": null,
+    });
+    const local = connections.find(
+      (connection) =>
+        connection.host.transport === "local" && connection.provider === "pi",
+    )!;
+    const owned = await repository.getOwnedAgentWorkspace(
+      local.workspaces[0]!.id,
+      "alice",
+    );
+    const rows = await repository.listOwnedAgentWorkspaceFolderRows(owned!, "alice");
+    expect(rows.map((row) => row.connection.provider).sort()).toEqual([
+      "codex",
+      "pi",
     ]);
   });
 
@@ -653,6 +710,60 @@ describe("agent connection persistence", () => {
     await expect(
       repository.getOwnedAgentWorkspace(other!.id, "alice"),
     ).resolves.not.toBeNull();
+  });
+
+  it("keeps the newest turn and a read watermark on the connector's clock", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/overtchat", name: "overtchat" },
+    );
+    const agentSession = await repository.upsertAgentSession(workspace!.id, {
+      providerSessionId: "session",
+      providerSessionPath: "/remote/session.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: null,
+    });
+    const listed = async () =>
+      (await repository.listAgentConnections("alice"))[0]!.workspaces[0]!
+        .sessions[0]!;
+
+    expect(repository.markAgentSessionUnread(agentSession.id)).toBe(false);
+    repository.markAgentSessionRead(agentSession.id);
+    await expect(listed()).resolves.toMatchObject({
+      lastTurn: null,
+      readTurnEndedAt: null,
+    });
+
+    const first = { outcome: "completed", startedAt: 100, endedAt: 200, preview: "Done." } as const;
+    const second = { outcome: "failed", startedAt: 300, endedAt: 400, error: "Boom" } as const;
+    repository.recordAgentSessionLastTurn(agentSession.id, first);
+    repository.recordAgentSessionLastTurn(agentSession.id, second);
+    // A replayed older result does not replace a newer one.
+    repository.recordAgentSessionLastTurn(agentSession.id, first);
+    await expect(listed()).resolves.toMatchObject({
+      lastTurn: second,
+      readTurnEndedAt: null,
+    });
+
+    repository.markAgentSessionRead(agentSession.id);
+    await expect(listed()).resolves.toMatchObject({ readTurnEndedAt: 400 });
+    expect(repository.markAgentSessionUnread(agentSession.id)).toBe(true);
+    await expect(listed()).resolves.toMatchObject({ readTurnEndedAt: 399 });
+    repository.markAgentSessionRead(agentSession.id);
+    repository.recordAgentSessionLastTurn(agentSession.id, {
+      ...first,
+      startedAt: 500,
+      endedAt: 600,
+    });
+    await expect(listed()).resolves.toMatchObject({
+      lastTurn: { endedAt: 600 },
+      readTurnEndedAt: 400,
+    });
   });
 
   it("reconciles only sessions still authorized for a connector", async () => {

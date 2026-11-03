@@ -13,9 +13,10 @@ curl -fsSL https://overtchat.com/install | sh
 
 On Windows, use the PowerShell command in [Windows](#windows) instead.
 
-Choose where to access OvertChat, local search, speech, and voice services,
-and whether to check for updates. The wizard generates the configuration and
-secrets; no `.env` file editing is needed. On Linux, it installs Docker if needed.
+Choose where to access OvertChat, local search, speech, voice and
+[code execution](#code-execution), and whether to check for updates. The wizard
+generates the configuration and secrets; no `.env` file editing is needed. On
+Linux, it installs Docker if needed.
 Open the printed private setup link, create the administrator account,
 and add your model endpoint in the web app. The link prefills a one-time setup
 code that proves you operate this server. If you open the regular server address,
@@ -182,11 +183,55 @@ To reach a model server on the host, use `host.containers.internal` with Podman;
 with Docker, add `extra_hosts: ["host.docker.internal:host-gateway"]` to `app`.
 
 Coding agents do not need to run on this server. Install the Host Connector on
-the computer with your agents and projects: open **Settings → Connections**
-and run the displayed command there. The connector only makes outbound HTTPS and
-WebSocket connections to `HOST_CONNECTOR_URL`. The app container needs no
-access to SSH keys, the Docker or Podman socket, or host directories. Standalone
-connectors support Linux and macOS.
+the computer with your agents and projects: open **Settings → Connections**,
+choose **Pair a connector**, and run the displayed command there. The connector
+only makes outbound HTTP(S) and WebSocket connections to `HOST_CONNECTOR_URL`.
+The app container needs no access to SSH keys, the Docker or Podman socket, or
+host directories. Standalone connectors support Linux and macOS.
+
+#### Connector address and transport
+
+The connector carries a token that lets this server run processes on the
+connector's computer, so the pairing command refuses cleartext HTTP to any
+address other than the server itself:
+
+| `HOST_CONNECTOR_URL` | Result |
+| --- | --- |
+| `http://127.0.0.1:4718` or `http://localhost:4718` | Works. Only a connector on the server itself can use it. |
+| `https://…` | Works. The connector host must trust the certificate. |
+| `http://192.168.0.5:4718`, `http://nas.lan:4718`, any other `http://` | Refused with "uses plain HTTP to an address other than this machine" unless `HOST_CONNECTOR_ALLOW_INSECURE_HTTP=true` is set on the app. |
+
+For a server you only open over plain HTTP on a trusted private network,
+set `HOST_CONNECTOR_ALLOW_INSECURE_HTTP: "true"` in the app's environment.
+The pairing command then includes `--allow-insecure-http`, the connector
+records that choice, and both sides log a warning. Anyone who can read traffic
+on that network path can read the connector token and act as the server, which
+is the same exposure as the plain-HTTP browser session to the same address.
+
+To keep HTTPS on a LAN instead:
+
+- Tailscale Serve gives a trusted certificate with no configuration on the
+  connector host; see [Tailscale](#tailscale).
+- With your own CA (for example `mkcert`), the connector runs under Node,
+  which does not read the operating system trust store. Add
+  `Environment=NODE_EXTRA_CA_CERTS=/path/to/rootCA.pem` with
+  `systemctl --user edit overtchat-connector.service` on Linux, or an
+  `EnvironmentVariables` entry in
+  `~/Library/LaunchAgents/com.overtchat.connector.plist` on macOS, then
+  restart the service.
+
+For a quick test from another computer without certificates, forward the
+server's port over SSH and pair against loopback. This passes the HTTPS
+check because the connector only ever talks to `127.0.0.1`:
+
+```sh
+ssh -N -L 14718:127.0.0.1:4718 user@server
+# In another terminal, run the pairing command with
+# --server http://127.0.0.1:14718
+```
+
+The tunnel must stay open for as long as the connector runs, so it suits a
+test session rather than a permanent install.
 
 For password recovery, see
 [manual installations without the management CLI](#manual-installations-without-the-management-cli).
@@ -775,6 +820,31 @@ request without thinking fields. It cannot see fields the server applies
 outside the template. Custom levels survive model re-detection; select
 **Automatic** to return to catalog or saved levels.
 
+## Code execution
+
+Code execution lets tool-calling models run Python on a chat's files: analyze
+spreadsheets, make charts, edit images, and create documents such as Word or
+PDF files. Each run happens in a separate sandbox container without internet
+access and returns the files it writes as downloads. Choose one image:
+
+- Standard (`sandbox`): Python data, chart, image and document libraries (about 500 MB).
+- Full (`sandbox-full`): also pandoc, LibreOffice, OCR and ffmpeg (about 2 GB).
+
+Guided installations choose this in `overtchat setup`, which also generates the
+token the app and sandbox share; `overtchat update` keeps the sandbox current.
+For a manually managed checkout, set `OVERTCHAT_SANDBOX_URL=http://sandbox:8080`
+in `.env`, optionally a random `SANDBOX_TOKEN`, then start the profile and
+recreate the app:
+
+```sh
+docker compose --profile sandbox up -d
+```
+
+The sandbox needs the capabilities listed in `compose.yml` to switch each run to
+a fresh unprivileged user. Without them it refuses runs, and models are not
+offered code execution. Web, desktop and mobile clients show each run's code,
+output and returned files.
+
 ## Share with your family
 
 Add accounts under **Settings → Users → Add user**, then share their login
@@ -785,8 +855,8 @@ administrators create subsequent accounts.
 
 ## Shared chat links
 
-Use **Share chat** in a saved conversation to preview it and create a public
-link. Anyone who can reach your server and has the link can read the snapshot
+Use **Share chat** in a saved conversation (on mobile, **Share** in the chat
+header's actions menu) to preview it and create a public link. Anyone who can reach your server and has the link can read the snapshot
 without an account, including its attachments, generated images, reasoning,
 tool results, and artifacts. System instructions, provider metadata, and account
 settings are excluded. Recipients cannot edit the chat or run its tools.
@@ -1023,8 +1093,8 @@ overtchat logs speech --follow       # native Apple speech
 overtchat logs install --tail 100     # setup/update phases and failure diagnostics
 ```
 
-Service names are `app`, `redis`, `search`, `tts`, `stt`, `voice`, `connector`,
-`speech`, and `install`. Container and speech logs require a saved installation;
+Service names are `app`, `redis`, `search`, `tts`, `stt`, `voice`, `sandbox`,
+`connector`, `speech`, and `install`. Container and speech logs require a saved installation;
 connector and installation logs are available even if setup failed before saving
 its configuration. Log output may contain application data; review it before
 sharing.

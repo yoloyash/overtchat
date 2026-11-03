@@ -97,6 +97,24 @@ validate them through the catalog scripts; commit both artifacts.
 Web search and URL retrieval go through `@yoloyash/web-basics`, which owns
 redirect, extraction, size, and SSRF policy.
 
+`inlineUploads()` includes each message's documents up to a budget derived
+only from the model, so saved messages render identically across turns.
+`lib/chat/file-tools.ts` reads the rest. Its results store character ranges into
+immutable uploads, never document text, and are rehydrated during replay. See
+[attachment reading](../../docs/development.md#chat-attachment-reading-validation).
+
+Model-created documents are the saved results of their tool calls in
+`lib/documents/tools.ts`: each result is a complete version. Keep them in
+message parts rather than a separate table so history operations stay
+consistent. See [documents](../../docs/development.md#model-created-documents-validation).
+
+`lib/sandbox` calls the optional code sandbox over HTTP; the app never runs
+model code itself. Files a run returns become the user's uploads, and run
+results keep only their `/api/uploads` references, which replay, sharing, the
+library and the orphan sweep resolve like other uploads. Only owner upload URLs
+reach models; share URLs are for public rendering. See
+[code execution](../../docs/development.md#code-execution-validation).
+
 MCP input is validated in `lib/mcp/schema.ts`. STDIO configuration remains
 structured as command, arguments, environment, passthrough, and working
 directory. `lib/mcp/manager.ts` scopes runtimes by user and chat; release

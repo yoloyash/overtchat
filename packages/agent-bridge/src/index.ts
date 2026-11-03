@@ -6,10 +6,19 @@ import type {
   AgentRuntimeCursor,
   AgentRuntimeEnvelope,
   AgentRuntimeStatus,
+  AgentSessionAttention,
   AgentSessionSync,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
+  AgentSessionListItem,
+  AgentTurnSummary,
+  AgentWorkspaceGitBaseRef,
+  AgentWorkspaceGitBranches,
   AgentWorkspaceGitStatus,
+  AgentWorkspaceGitSwitchResult,
+  AgentWorkspaceGitSwitchTarget,
+  AgentWorkspaceGitWorktree,
+  AgentWorkspaceGitWorktreeInspection,
   ConnectorShellMode,
 } from "./agents";
 import {
@@ -19,13 +28,15 @@ import {
   agentUsageUpdateSchema,
   agentDiscoveryTargetSchema,
   agentSessionCommandSchema,
+  agentSessionAttentionSchema,
   agentSessionLaunchConfigSchema,
+  agentTurnSummarySchema,
 } from "./agents";
 
 /** Increment only for a breaking web-to-connector wire contract change. */
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 6;
 /** Published connector artifact version; independent of wire compatibility. */
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.15.1";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.18.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 /** Headroom below Next.js's default 10 MiB proxy buffer. */
 export const HOST_CONNECTOR_EVENT_BATCH_BYTES = 8 * 1024 * 1024;
@@ -38,6 +49,8 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "workspace-files-v1",
   "workspace-terminal-v1",
   "workspace-git-watch-v1",
+  "workspace-git-branch-v1",
+  "workspace-git-worktree-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -92,6 +105,12 @@ export type AgentDaemonSessionDescriptor = AgentDaemonWorkspaceDescriptor & {
 export type AgentSessionDirectoryEntry = {
   sessionId: string;
   runtimeStatus: AgentRuntimeStatus;
+  /** Start of the active turn; older connectors omit it. */
+  turnStartedAt?: number | null;
+  /** What the agent is waiting on the user for; older connectors omit it. */
+  attention?: AgentSessionAttention | null;
+  /** How the latest turn ended; null until this runtime finishes a turn. */
+  lastTurn?: AgentTurnSummary | null;
 };
 
 export type AgentDaemonRequest =
@@ -121,6 +140,30 @@ export type AgentDaemonRequest =
       path: string;
     }
   | { type: "unwatch_git_status"; watchId: string }
+  | { type: "list_git_branches"; target: AgentDaemonTarget; path: string }
+  /** Responds with an `AgentWorkspaceGitSwitchResult`. */
+  | {
+      type: "switch_git_branch";
+      target: AgentDaemonTarget;
+      path: string;
+      branch: AgentWorkspaceGitSwitchTarget;
+      /** Stash uncommitted changes instead of reporting them. */
+      stash: boolean;
+    }
+  /** Responds with an `AgentWorkspaceGitWorktree`. */
+  | {
+      type: "create_git_worktree";
+      target: AgentDaemonTarget;
+      /** Workspace the worktree is created from. */
+      path: string;
+      base: AgentWorkspaceGitBaseRef;
+      /** New branch checked out in the worktree. */
+      branch: string;
+    }
+  /** Responds with an `AgentWorkspaceGitWorktreeInspection`. */
+  | { type: "inspect_git_worktree"; target: AgentDaemonTarget; path: string }
+  /** Deletes a worktree OvertChat created; the branch is kept. */
+  | { type: "remove_git_worktree"; target: AgentDaemonTarget; path: string }
   | {
       type: "list_workspace_directory";
       target: AgentDaemonTarget;
@@ -281,13 +324,72 @@ function isLoopbackHostname(hostname: string): boolean {
   );
 }
 
-export function normalizeHostConnectorServerUrl(value: string): string {
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("OvertChat URL must use HTTP or HTTPS.");
+export type HostConnectorServerUrlErrorCode =
+  | "invalid_connector_url"
+  | "unsupported_connector_url_protocol"
+  | "insecure_connector_url";
+
+export class HostConnectorServerUrlError extends Error {
+  readonly code: HostConnectorServerUrlErrorCode;
+
+  constructor(code: HostConnectorServerUrlErrorCode, message: string) {
+    super(message);
+    this.name = "HostConnectorServerUrlError";
+    this.code = code;
   }
-  if (url.protocol === "http:" && !isLoopbackHostname(url.hostname)) {
-    throw new Error("Non-local OvertChat URLs must use HTTPS.");
+}
+
+/**
+ * Connector CLI flag that pairs over cleartext HTTP to a non-loopback server.
+ * The server appends it to the install command only when the operator opted
+ * in, so the connector host sees the same decision the server made.
+ */
+export const HOST_CONNECTOR_INSECURE_HTTP_FLAG = "--allow-insecure-http";
+
+export type HostConnectorServerUrlOptions = {
+  /** Accept `http://` to a non-loopback host. Off unless the operator opted in. */
+  allowInsecureHttp?: boolean;
+};
+
+function parseHostConnectorServerUrl(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new HostConnectorServerUrlError(
+      "invalid_connector_url",
+      "OvertChat URL is not a valid URL.",
+    );
+  }
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new HostConnectorServerUrlError(
+      "unsupported_connector_url_protocol",
+      "OvertChat URL must use HTTP or HTTPS.",
+    );
+  }
+  return url;
+}
+
+/** True for cleartext HTTP to anything other than this machine. */
+export function isInsecureHostConnectorServerUrl(value: string): boolean {
+  const url = parseHostConnectorServerUrl(value);
+  return url.protocol === "http:" && !isLoopbackHostname(url.hostname);
+}
+
+export function normalizeHostConnectorServerUrl(
+  value: string,
+  options: HostConnectorServerUrlOptions = {},
+): string {
+  const url = parseHostConnectorServerUrl(value);
+  if (
+    url.protocol === "http:" &&
+    !isLoopbackHostname(url.hostname) &&
+    !options.allowInsecureHttp
+  ) {
+    throw new HostConnectorServerUrlError(
+      "insecure_connector_url",
+      "Non-local OvertChat URLs must use HTTPS.",
+    );
   }
   url.username = "";
   url.password = "";
@@ -391,6 +493,25 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
       );
     case "unwatch_git_status":
       return isNonEmptyString(value.watchId);
+    case "list_git_branches":
+      return isAgentDaemonTarget(value.target) && isNonEmptyString(value.path);
+    case "switch_git_branch":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        isNonEmptyString(value.path) &&
+        isAgentWorkspaceGitSwitchTarget(value.branch) &&
+        typeof value.stash === "boolean"
+      );
+    case "create_git_worktree":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        isNonEmptyString(value.path) &&
+        isAgentWorkspaceGitBaseRef(value.base) &&
+        isAgentWorkspaceGitRefName(value.branch)
+      );
+    case "inspect_git_worktree":
+    case "remove_git_worktree":
+      return isAgentDaemonTarget(value.target) && isNonEmptyString(value.path);
     case "list_workspace_directory":
     case "read_workspace_file":
       return (
@@ -503,13 +624,60 @@ export function isAgentRuntimeEnvelope(
         agentUsageUpdateSchema.safeParse(Reflect.get(value.data, "usage")).success);
 }
 
+/**
+ * Overlays live directory state on a list item. A runtime reports `lastTurn`
+ * only for turns it finished, so an older stored result survives restarts.
+ */
+export function applyAgentSessionDirectoryEntry(
+  session: AgentSessionListItem,
+  entry: AgentSessionDirectoryEntry,
+): AgentSessionListItem {
+  const lastTurn =
+    entry.lastTurn &&
+    entry.lastTurn.endedAt > (session.lastTurn?.endedAt ?? -Infinity)
+      ? entry.lastTurn
+      : (session.lastTurn ?? null);
+  return {
+    ...session,
+    runtimeStatus: entry.runtimeStatus,
+    turnStartedAt: entry.turnStartedAt ?? null,
+    attention: entry.attention ?? null,
+    lastTurn,
+  };
+}
+
+/** Whether two entries differ only in ways no session list or notification shows. */
+export function sameAgentSessionDirectoryEntry(
+  a: AgentSessionDirectoryEntry | undefined,
+  b: AgentSessionDirectoryEntry,
+): boolean {
+  return (
+    !!a &&
+    a.sessionId === b.sessionId &&
+    a.runtimeStatus === b.runtimeStatus &&
+    (a.turnStartedAt ?? null) === (b.turnStartedAt ?? null) &&
+    (a.attention?.id ?? null) === (b.attention?.id ?? null) &&
+    (a.lastTurn?.endedAt ?? null) === (b.lastTurn?.endedAt ?? null)
+  );
+}
+
 export function isAgentSessionDirectoryEntry(
   value: unknown,
 ): value is AgentSessionDirectoryEntry {
   return (
     isRecord(value) &&
     isNonEmptyString(value.sessionId) &&
-    ["idle", "running", "exited"].includes(String(value.runtimeStatus))
+    ["idle", "running", "exited"].includes(String(value.runtimeStatus)) &&
+    (value.turnStartedAt === undefined ||
+      value.turnStartedAt === null ||
+      (typeof value.turnStartedAt === "number" &&
+        Number.isFinite(value.turnStartedAt))) &&
+    (value.attention === undefined ||
+      value.attention === null ||
+      agentSessionAttentionSchema.safeParse(value.attention).success) &&
+    (value.lastTurn === undefined ||
+      value.lastTurn === null ||
+      agentTurnSummarySchema.safeParse(value.lastTurn).success)
   );
 }
 
@@ -675,6 +843,112 @@ export function isAgentWorkspaceGitStatus(
             isNullableGitString(file.indexStatus) &&
             isNullableGitString(file.worktreeStatus),
         )))
+  );
+}
+
+const MAX_GIT_REF_NAME_LENGTH = 255;
+
+/** Shape check only; the workspace host validates names with Git itself. */
+export function isAgentWorkspaceGitRefName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_GIT_REF_NAME_LENGTH &&
+    !value.startsWith("-") &&
+    !/[\u0000-\u001f\u007f]/u.test(value)
+  );
+}
+
+export function isAgentWorkspaceGitSwitchTarget(
+  value: unknown,
+): value is AgentWorkspaceGitSwitchTarget {
+  if (!isRecord(value) || !isAgentWorkspaceGitRefName(value.name)) return false;
+  switch (value.kind) {
+    case "local":
+    case "new":
+      return Object.keys(value).length === 2;
+    case "remote":
+      return (
+        isAgentWorkspaceGitRefName(value.remote) &&
+        Object.keys(value).length === 3
+      );
+    default:
+      return false;
+  }
+}
+
+export function isAgentWorkspaceGitBaseRef(
+  value: unknown,
+): value is AgentWorkspaceGitBaseRef {
+  return (
+    isAgentWorkspaceGitSwitchTarget(value) &&
+    (value.kind === "local" || value.kind === "remote")
+  );
+}
+
+export function isAgentWorkspaceGitBranches(
+  value: unknown,
+): value is AgentWorkspaceGitBranches {
+  return (
+    isRecord(value) &&
+    typeof value.isGit === "boolean" &&
+    isNullableGitString(value.current) &&
+    typeof value.truncated === "boolean" &&
+    Array.isArray(value.branches) &&
+    value.branches.every(
+      (branch) =>
+        isRecord(branch) &&
+        isNonEmptyString(branch.name) &&
+        isNullableGitString(branch.remote) &&
+        typeof branch.current === "boolean" &&
+        isNullableGitString(branch.worktreePath) &&
+        (branch.committedAt === null || isGitCount(branch.committedAt)),
+    )
+  );
+}
+
+export function isAgentWorkspaceGitSwitchResult(
+  value: unknown,
+): value is AgentWorkspaceGitSwitchResult {
+  if (!isRecord(value)) return false;
+  switch (value.status) {
+    case "switched":
+      return (
+        isNonEmptyString(value.branch) &&
+        typeof value.stashed === "boolean" &&
+        typeof value.restored === "boolean" &&
+        isNullableGitString(value.keptStash)
+      );
+    case "changes_present":
+      return isGitCount(value.changedFiles);
+    case "agent_running":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function isAgentWorkspaceGitWorktree(
+  value: unknown,
+): value is AgentWorkspaceGitWorktree {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.path) &&
+    isNonEmptyString(value.worktreePath) &&
+    isNonEmptyString(value.name) &&
+    isNonEmptyString(value.branch)
+  );
+}
+
+export function isAgentWorkspaceGitWorktreeInspection(
+  value: unknown,
+): value is AgentWorkspaceGitWorktreeInspection {
+  return (
+    isRecord(value) &&
+    typeof value.exists === "boolean" &&
+    isNullableGitString(value.worktreePath) &&
+    isNullableGitString(value.branch) &&
+    isGitCount(value.changedFiles)
   );
 }
 

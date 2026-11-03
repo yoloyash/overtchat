@@ -3,6 +3,7 @@ import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 import {
   agentConnectionMatchesTarget,
   groupAgentWorkspaces,
+  nestAgentWorkspaceGroups,
   projectAgentWorkspaceProviders,
 } from "./workspaces";
 
@@ -14,6 +15,8 @@ function connection(
     transport?: "local" | "ssh";
     sshAlias?: string;
     modifiedAt?: number;
+    name?: string;
+    worktreeParentPath?: string;
   } = {},
 ): AgentConnectionListItem {
   const transport = options.transport ?? "local";
@@ -34,7 +37,8 @@ function connection(
       {
         id: `workspace-${id}`,
         path: options.path ?? "/srv/overtchat",
-        name: "overtchat",
+        name: options.name ?? "overtchat",
+        worktreeParentPath: options.worktreeParentPath ?? null,
         sessions: [
           {
             id: `session-${id}`,
@@ -112,6 +116,44 @@ describe("agent workspace projection", () => {
         "omp",
       ),
     ).toBe(false);
+  });
+
+  it("nests worktrees under the workspace they were created from on the same host", () => {
+    const groups = groupAgentWorkspaces([
+      connection("repo", "codex"),
+      connection("beta", "codex", {
+        path: "/wt/beta",
+        name: "beta",
+        worktreeParentPath: "/srv/overtchat",
+      }),
+      // Another agent's record for the same worktree folder.
+      connection("beta-omp", "omp", { path: "/wt/beta", name: "beta" }),
+      connection("alpha", "codex", {
+        path: "/wt/alpha",
+        name: "alpha",
+        worktreeParentPath: "/srv/overtchat",
+      }),
+      connection("orphan", "codex", {
+        path: "/wt/orphan",
+        name: "orphan",
+        worktreeParentPath: "/srv/removed",
+      }),
+      connection("remote", "codex", {
+        transport: "ssh",
+        sshAlias: "devbox",
+        path: "/wt/remote",
+        name: "remote",
+        worktreeParentPath: "/srv/overtchat",
+      }),
+    ]);
+    const { roots, worktrees } = nestAgentWorkspaceGroups(groups);
+
+    expect(roots.map((group) => group.name)).toEqual(["overtchat", "orphan", "remote"]);
+    expect(worktrees.get(roots[0]!.key)?.map((group) => group.name)).toEqual([
+      "alpha",
+      "beta",
+    ]);
+    expect(worktrees.get(roots[0]!.key)?.[1]?.targets).toHaveLength(2);
   });
 
   it("projects a newly detected provider onto an existing workspace", () => {

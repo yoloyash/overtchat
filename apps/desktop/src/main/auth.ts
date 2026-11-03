@@ -1,4 +1,5 @@
-import { session } from "electron";
+import { CLIENT_HEADER } from "@overtchat/shared";
+import { app, session } from "electron";
 import { getServerOrigin, getSessionToken, setSessionToken } from "./settings";
 import { needsTwoFactorCookie, pendingTwoFactorCookie } from "./two-factor-cookie";
 
@@ -31,6 +32,9 @@ function header(headers: Record<string, string | string[]> | undefined, name: st
  * the session token in `set-auth-token`; main keeps it and sends it as
  * `Authorization` on every request to the server. A sign-in waiting for its
  * two-factor code is the one exception that needs a cookie.
+ *
+ * Main also identifies the app with {@link CLIENT_HEADER}. Headers added here
+ * do not trigger CORS preflights, so servers older than the header accept them.
  */
 export function configureServerAuth(): void {
   const { webRequest } = session.defaultSession;
@@ -42,6 +46,7 @@ export function configureServerAuth(): void {
     if (token && url && !header(headers, "authorization")) {
       headers.Authorization = `Bearer ${token}`;
     }
+    if (url) headers[CLIENT_HEADER] = `desktop/${app.getVersion()}`;
     if (pendingTwoFactor && url && needsTwoFactorCookie(url.pathname)) {
       const key = Object.keys(headers).find((name) => name.toLowerCase() === "cookie") ?? "Cookie";
       headers[key] = headers[key] ? `${headers[key]}; ${pendingTwoFactor}` : pendingTwoFactor;

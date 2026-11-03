@@ -2,13 +2,21 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { normalizeHostConnectorServerUrl } from "@overtchat/agent-bridge";
+import {
+  normalizeHostConnectorServerUrl,
+  type HostConnectorServerUrlOptions,
+} from "@overtchat/agent-bridge";
 import { protectWindowsDirectory } from "./windows-security.js";
 
 export type ConnectorConfig = {
   serverUrl: string;
   connectorId: string;
   token: string;
+  /**
+   * Set when the operator paired with --allow-insecure-http to a cleartext
+   * address other than loopback. Absent for loopback and HTTPS servers.
+   */
+  allowInsecureHttp?: true;
 };
 
 export function connectorConfigPath(): string {
@@ -60,14 +68,26 @@ export async function readConnectorConfig(): Promise<ConnectorConfig> {
       "OvertChat Connector is not configured. Run overtchat setup.",
     );
   }
+  const allowInsecureHttp = Reflect.get(parsed ?? {}, "allowInsecureHttp");
   if (
     !parsed ||
     typeof parsed !== "object" ||
     typeof Reflect.get(parsed, "serverUrl") !== "string" ||
     typeof Reflect.get(parsed, "connectorId") !== "string" ||
-    typeof Reflect.get(parsed, "token") !== "string"
+    typeof Reflect.get(parsed, "token") !== "string" ||
+    (allowInsecureHttp !== undefined && allowInsecureHttp !== true)
   ) {
     throw new Error(`Invalid connector configuration at ${file}.`);
+  }
+  // A hand-edited cleartext LAN address needs the same opt-in pairing did.
+  try {
+    normalizeServerUrl(Reflect.get(parsed, "serverUrl") as string, {
+      allowInsecureHttp: allowInsecureHttp === true,
+    });
+  } catch (error) {
+    throw new Error(
+      `Invalid connector configuration at ${file}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   return parsed as ConnectorConfig;
 }
@@ -106,6 +126,9 @@ export async function renameWithRetry(source: string, destination: string): Prom
   }
 }
 
-export function normalizeServerUrl(value: string): string {
-  return normalizeHostConnectorServerUrl(value);
+export function normalizeServerUrl(
+  value: string,
+  options?: HostConnectorServerUrlOptions,
+): string {
+  return normalizeHostConnectorServerUrl(value, options);
 }

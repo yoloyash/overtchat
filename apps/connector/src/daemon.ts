@@ -7,7 +7,6 @@ import type {
   AgentDaemonWorkspaceDescriptor,
   AgentPromptImage,
   AgentRuntimeEnvelope,
-  AgentRuntimeStatus,
   AgentSessionDirectoryEntry,
   HostConnectorCommand,
   HostConnectorEventPayload,
@@ -15,6 +14,7 @@ import type {
 import {
   isAgentProviderNotice,
   parseHostConnectorCapabilities,
+  sameAgentSessionDirectoryEntry,
 } from "@overtchat/agent-bridge";
 import {
   AgentRuntimeRegistry,
@@ -26,7 +26,12 @@ import {
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
   listAgentDirectories,
+  createAgentWorkspaceGitWorktree,
+  inspectAgentWorkspaceGitWorktree,
+  listAgentWorkspaceGitBranches,
+  removeAgentWorkspaceGitWorktree,
   probeAgentWorkspace,
+  switchAgentWorkspaceGitBranch,
   workspaceFilesService,
   type AgentSessionRuntime,
   type HostTarget,
@@ -113,6 +118,12 @@ function hostTarget(target: AgentDaemonTarget): HostTarget {
         alias: target.alias,
         shellMode: target.shellMode,
       };
+}
+
+function sameHost(left: AgentDaemonTarget, right: AgentDaemonTarget): boolean {
+  return left.transport === "local"
+    ? right.transport === "local"
+    : right.transport === "ssh" && left.alias === right.alias;
 }
 
 function workspaceDescriptor(
@@ -418,6 +429,37 @@ export class ConnectorDaemon {
       case "unwatch_git_status":
         this.gitWatches.unwatch(request.watchId);
         return { watching: false };
+      case "list_git_branches":
+        return listAgentWorkspaceGitBranches(
+          hostTarget(request.target),
+          request.path,
+        );
+      case "switch_git_branch":
+        return switchAgentWorkspaceGitBranch(
+          hostTarget(request.target),
+          request.path,
+          {
+            branch: request.branch,
+            stash: request.stash,
+            busyPaths: this.busySessionPaths(request.target),
+          },
+        );
+      case "create_git_worktree":
+        return createAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
+          { base: request.base, branch: request.branch },
+        );
+      case "inspect_git_worktree":
+        return inspectAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
+        );
+      case "remove_git_worktree":
+        return removeAgentWorkspaceGitWorktree(
+          hostTarget(request.target),
+          request.path,
+        );
       case "list_workspace_directory":
         return workspaceFilesService.listDirectory(
           hostTarget(request.target),
@@ -580,6 +622,28 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
     }
+  }
+
+  /** Working directories on `target` where an agent turn is in progress or about to start. */
+  private busySessionPaths(target: AgentDaemonTarget): string[] {
+    const paths = new Set<string>();
+    for (const sessionId of this.journal.sessionIds()) {
+      const snapshot = this.registry.get(sessionId)?.snapshot();
+      if (
+        !snapshot ||
+        (snapshot.status !== "running" &&
+          snapshot.state.isCompacting !== true &&
+          !snapshot.pendingInteraction &&
+          !snapshot.queuedMessages.length)
+      ) {
+        continue;
+      }
+      const descriptor = this.journal.sessionDescriptor(sessionId);
+      if (descriptor && sameHost(descriptor.target, target)) {
+        paths.add(descriptor.cwd);
+      }
+    }
+    return [...paths];
   }
 
   private async open(
@@ -861,8 +925,7 @@ export class ConnectorDaemon {
       await capture.ready;
       this.assertAccepting();
       capture.initialized = true;
-      const snapshot = runtime.snapshot();
-      this.publishSessionStatus(sessionId, snapshot.status);
+      this.publishSessionStatus(sessionId, runtime);
       for (const envelope of capture.buffered.splice(0)) {
         this.commitCapturedEnvelope(sessionId, capture, envelope);
       }
@@ -900,7 +963,7 @@ export class ConnectorDaemon {
     try {
       operation = this.timelines.commit(sessionId, envelope).then((committed) => {
         if (committed) {
-          this.publishEnvelopeStatus(sessionId, committed);
+          this.publishSessionStatus(sessionId, capture.runtime);
         }
         return committed;
       });
@@ -917,35 +980,15 @@ export class ConnectorDaemon {
       .finally(() => capture.pending.delete(operation));
   }
 
-  private publishEnvelopeStatus(
-    sessionId: string,
-    envelope: AgentRuntimeEnvelope,
-  ): void {
-    if (envelope.type === "snapshot") {
-      this.publishSessionStatus(sessionId, envelope.data.status);
-      return;
-    }
-    if (envelope.data.type === "agent_start" || envelope.data.type === "turn_start") {
-      this.publishSessionStatus(sessionId, "running");
-      return;
-    }
-    if (
-      envelope.data.type === "overtchat_status" &&
-      ["idle", "running", "exited"].includes(String(envelope.data.status))
-    ) {
-      this.publishSessionStatus(
-        sessionId,
-        envelope.data.status as AgentRuntimeStatus,
-      );
-    }
-  }
-
+  /** Publishes list-visible status changes, deduplicated across envelopes. */
   private publishSessionStatus(
     sessionId: string,
-    status: AgentRuntimeStatus,
+    runtime: AgentSessionRuntime,
   ): void {
-    if (this.publishedSessions.get(sessionId)?.runtimeStatus === status) return;
-    const session = { sessionId, runtimeStatus: status };
+    const session = { sessionId, ...runtime.directoryStatus() };
+    if (sameAgentSessionDirectoryEntry(this.publishedSessions.get(sessionId), session)) {
+      return;
+    }
     this.publishedSessions.set(sessionId, session);
     this.emit({
       type: "session_update",
@@ -954,10 +997,14 @@ export class ConnectorDaemon {
   }
 
   private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
-    const sessions = [...sessionIds].map((sessionId) => ({
-      sessionId,
-      runtimeStatus: this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
-    }));
+    const sessions: AgentSessionDirectoryEntry[] = [...sessionIds].map(
+      (sessionId) => {
+        const runtime = this.captures.get(sessionId)?.runtime;
+        return runtime
+          ? { sessionId, ...runtime.directoryStatus() }
+          : { sessionId, runtimeStatus: "idle" };
+      },
+    );
     this.publishedSessions.clear();
     for (const session of sessions) {
       this.publishedSessions.set(session.sessionId, session);

@@ -1,4 +1,5 @@
 import {
+  codeExecutionFileIndex,
   collectOpenUIStates,
   isOpenUIToolPart,
   openUIStateKey,
@@ -95,6 +96,7 @@ export function MessageList({
   readOnly?: boolean;
 }) {
   const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
+  const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
   const liveOpenUI = useMemo(() => recentOpenUICards(messages), [messages]);
   const { colors, fonts } = useTheme();
   const latestMessage = messages.at(-1);
@@ -237,6 +239,7 @@ export function MessageList({
                   onImageReference={onImageReference}
                   onOpenUIAction={onOpenUIAction}
                   openuiStates={openuiStates}
+                  codeFiles={codeFiles}
                   liveOpenUI={liveOpenUI}
                   readOnly={readOnly}
                 />

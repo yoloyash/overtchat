@@ -1,0 +1,9 @@
+# Scientific computing, OCR and image processing on top of the slim set.
+-r requirements-slim.txt
+opencv-python-headless==5.0.0.93
+pdf2image==1.17.0
+pytesseract==0.3.13
+scikit-learn==1.9.1
+scipy==1.18.1
+seaborn==0.13.2
+statsmodels==0.15.0

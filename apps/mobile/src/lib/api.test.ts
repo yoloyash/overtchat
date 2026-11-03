@@ -13,6 +13,9 @@ vi.mock("@/lib/auth/client", () => {
 });
 vi.mock("@/lib/server-url", () => ({ getServerUrl: () => mocks.server }));
 vi.mock("expo/fetch", () => ({ fetch: mocks.fetch }));
+vi.mock("expo-constants", () => ({
+  default: { expoConfig: { version: "1.2.3" } },
+}));
 vi.mock("expo-file-system", () => ({
   File: class extends Blob {
     constructor() {
@@ -45,6 +48,13 @@ it("waits for SecureStore before sending an authenticated request", async () => 
   expect(init.credentials).toBe("omit");
   expect((init.headers as Headers).get("Cookie")).toBe("session=test-cookie");
   expect((init.headers as Headers).get("Accept")).toBe("application/json");
+});
+
+it("identifies the app so newer servers can send values it does not know", async () => {
+  mocks.cookie.mockResolvedValue("session=test-cookie");
+  await authFetch("https://chat.example/api/model-configs?admin=1");
+  const headers = mocks.fetch.mock.calls[0][1]!.headers as Headers;
+  expect(headers.get("X-OvertChat-Client")).toBe("mobile/1.2.3");
 });
 
 it("keeps an explicitly scoped notification cookie without reading another login", async () => {
@@ -92,7 +102,10 @@ it("awaits the cookie for multipart uploads and keeps native cookie handling dis
     expect.objectContaining({
       method: "POST",
       credentials: "omit",
-      headers: { Cookie: "session=upload-cookie" },
+      headers: {
+        Cookie: "session=upload-cookie",
+        "X-OvertChat-Client": "mobile/1.2.3",
+      },
     }),
   );
 });

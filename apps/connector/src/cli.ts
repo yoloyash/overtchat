@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import os from "node:os";
 import {
+  HOST_CONNECTOR_INSECURE_HTTP_FLAG,
+  isInsecureHostConnectorServerUrl,
+} from "@overtchat/agent-bridge";
+import {
   normalizeServerUrl,
   connectorLockPath,
   connectorStatePath,
@@ -89,6 +93,10 @@ function parseArgs(argv: string[]): ParsedArgs {
   for (let index = 0; index < rest.length; index++) {
     const key = rest[index];
     if (!key?.startsWith("--")) throw new Error(`Unexpected argument: ${key}`);
+    if (key === HOST_CONNECTOR_INSECURE_HTTP_FLAG) {
+      values.set(key.slice(2), "true");
+      continue;
+    }
     const value = rest[++index];
     if (!value || value.startsWith("--")) {
       throw new Error(`Missing value for ${key}.`);
@@ -98,12 +106,19 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { command, values };
 }
 
+function insecureHttpWarning(serverUrl: string): string {
+  return `${serverUrl} is reached over cleartext HTTP (${HOST_CONNECTOR_INSECURE_HTTP_FLAG}). Anyone on that network path can read the connector token and run processes on this computer.`;
+}
+
 async function pair(values: Map<string, string>): Promise<void> {
   const pairCode = values.get("pair-code");
   if (!pairCode) throw new Error("--pair-code is required.");
   const server = values.get("server");
   if (!server) throw new Error("--server is required.");
-  const serverUrl = normalizeServerUrl(server);
+  const allowInsecureHttp = values.has(HOST_CONNECTOR_INSECURE_HTTP_FLAG.slice(2));
+  const serverUrl = normalizeServerUrl(server, { allowInsecureHttp });
+  const insecure = isInsecureHostConnectorServerUrl(serverUrl);
+  if (insecure) console.warn(insecureHttpWarning(serverUrl));
   const response = await fetch(`${serverUrl}/api/host-connectors/pair`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -124,6 +139,7 @@ async function pair(values: Map<string, string>): Promise<void> {
     serverUrl,
     connectorId: data.connectorId,
     token: data.token,
+    ...(insecure ? { allowInsecureHttp: true as const } : {}),
   });
   console.log(`Paired with ${serverUrl}`);
 }
@@ -141,6 +157,7 @@ async function run(service = false): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   console.log(`Connecting to ${config.serverUrl}`);
+  if (config.allowInsecureHttp) console.warn(insecureHttpWarning(config.serverUrl));
   try {
     cleanupService = service ? await watchWindowsServiceStop(() => client.stop()) : undefined;
     await client.run();

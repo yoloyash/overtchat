@@ -1,4 +1,4 @@
-import { type ComponentProps, useCallback, useState } from "react";
+import { type ComponentProps, useCallback, useEffect, useState } from "react";
 import {
   createRoute,
   redirect,
@@ -15,10 +15,12 @@ import { appRoute } from "@/spa/routes/root";
 import { optionalString } from "@/spa/search";
 
 /**
- * Drafts that were just saved and moved from `/` to `/chat/$id`. Their chat
- * is already on screen, so the chat route skips fetching its history once.
+ * The chat the mounted chat surface is showing. Its history is already on
+ * screen, including a just-saved draft that moved from `/` to `/chat/$id`, so
+ * the chat route does not fetch it. The router can rerun a loader for the
+ * same location, so this stays set while the chat is shown.
  */
-const persistedDrafts = new Set<string>();
+let shownChatId: string | null = null;
 
 // Both chat routes render the same component under this remount key, so
 // moving a new chat from `/` to its own URL keeps the live ChatArea.
@@ -63,7 +65,7 @@ export const chatRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/chat/$id",
   loader: async ({ params }) => {
-    if (persistedDrafts.delete(params.id)) return { page: null };
+    if (params.id === shownChatId) return { page: null };
     const page = await fetchChatMessagesPage(params.id);
     if (!page) throw redirect({ to: "/" });
     return { page };
@@ -98,8 +100,13 @@ function ChatSurface() {
   if (routeProps.chatId !== props.chatId) setProps(routeProps);
 
   const { chatId } = props;
+  useEffect(() => {
+    shownChatId = chatId;
+    return () => {
+      if (shownChatId === chatId) shownChatId = null;
+    };
+  }, [chatId]);
   const onPersisted = useCallback(() => {
-    persistedDrafts.add(chatId);
     void navigate({
       to: "/chat/$id",
       params: { id: chatId },

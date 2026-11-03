@@ -32,6 +32,27 @@ describe("provider registry", () => {
       max_tokens: 32, continue_final_message: true, add_generation_prompt: false,
     } });
   });
+  it("lists OpenRouter image models apart from its chat models", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(Response.json({ data: [{ id: "a-model" }] })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const connection = {
+      providerId: "openrouter" as const,
+      apiFormat: "auto" as const,
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "router-key",
+    };
+    const adapter = getProviderAdapter("openrouter");
+    await adapter.listModels(connection, { modelType: "image" });
+    await adapter.listModels(connection, { modelType: "chat" });
+    await adapter.listModels(connection);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://openrouter.ai/api/v1/images/models",
+      "https://openrouter.ai/api/v1/models",
+      "https://openrouter.ai/api/v1/models",
+    ]);
+  });
   it("maps every catalog provider to its matching adapter", () => {
     for (const providerId of PROVIDER_IDS) {
       expect(getProviderAdapter(providerId).id).toBe(providerId);
@@ -494,6 +515,79 @@ describe("provider registry", () => {
 
     expect(configured.providerOptionsKey).toBe("deepseek");
     expect(configured.promptCacheStrategy).toBeUndefined();
+  });
+
+  it("sends OpenRouter's configured thinking request with saved options", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json(
+          { error: { message: "intentional test response" } },
+          { status: 400 },
+        );
+      }),
+    );
+    const configured = createConfiguredLanguageModel({
+      ...baseConfig,
+      providerId: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "vendor/model",
+      providerOptions: { provider: { sort: "price" } },
+      reasoningLevel: "high",
+      reasoningRequest: { reasoning: { effort: "high" } },
+    });
+
+    expect(configured.providerOptionsKey).toBe("openrouter");
+    expect(configured.promptCacheStrategy).toBeUndefined();
+    await expect(
+      generateText({
+        model: configured.model,
+        prompt: "Hello",
+        providerOptions: configured.providerOptions,
+      }),
+    ).rejects.toThrow("intentional test response");
+
+    expect(requestBody).toMatchObject({
+      model: "vendor/model",
+      provider: { sort: "price" },
+      reasoning: { effort: "high" },
+    });
+  });
+
+  it("sends OpenRouter's unified reasoning parameter for detected levels", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json(
+          { error: { message: "intentional test response" } },
+          { status: 400 },
+        );
+      }),
+    );
+    for (const reasoningLevel of ["high", "off", "default"] as const) {
+      const configured = createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "vendor/model",
+        reasoningLevel,
+      });
+      await expect(
+        generateText({ model: configured.model, prompt: "Hello" }),
+      ).rejects.toThrow("intentional test response");
+    }
+
+    expect(bodies[0]).toMatchObject({ reasoning: { effort: "high" } });
+    expect(bodies[1]).toMatchObject({ reasoning: { effort: "none" } });
+    expect(bodies[2]).not.toHaveProperty("reasoning");
+    for (const body of bodies) {
+      expect(body).not.toHaveProperty("reasoning_effort");
+      expect(body).not.toHaveProperty("chat_template_kwargs");
+    }
   });
 
   it("rejects malformed endpoints and missing registered-provider credentials", () => {

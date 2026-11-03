@@ -37,6 +37,12 @@ describe("OMP provider adapter", () => {
 
   beforeEach(() => vi.clearAllMocks());
 
+  it("treats compaction as a turn so prompts queue behind it", () => {
+    const classifier = ompProviderAdapter.createEventClassifier();
+    expect(classifier.classify({ type: "compaction_start", reason: "manual" })).toMatchObject({ started: true, terminal: false });
+    expect(classifier.classify({ type: "compaction_end" })).toMatchObject({ started: false, terminal: true });
+  });
+
   it("launches rpc-ui with an explicit approval mode", () => {
     const client = {};
     mocks.startOmp.mockReturnValue(client);

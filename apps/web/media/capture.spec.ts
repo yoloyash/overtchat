@@ -27,6 +27,21 @@ async function installFixtures(context: BrowserContext) {
     });
   });
   await context.route(/\/api\/agent-sessions\/demo-agent(?:\?.*)?$/, (route) => route.fulfill({ json: { snapshot: agentSnapshot } }));
+  // The voice session subscribes to its history stream before opening the microphone and
+  // treats a closed stream as a lost connection, so hold a fetch response open for it.
+  await context.addInitScript(() => {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes("/api/voice/events")) return nativeFetch(input, init);
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          init?.signal?.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")));
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
+    };
+  });
   // A fulfilled SSE response closes immediately. Keep the fixture transport open,
   // as a healthy connector does, using the same approach as agent-runtime e2e tests.
   await context.addInitScript(() => {
@@ -135,16 +150,25 @@ test("capture the real app with reproducible editorial fixtures", async ({ brows
       if (location.protocol === "http:" || location.protocol === "https:") {
         localStorage.setItem("theme", theme);
         localStorage.setItem("overtchat_web_search_enabled", "true");
+        // The demo account has already seen the two-factor reminder.
+        localStorage.setItem("overtchat_two_factor_prompted", new Date().toISOString());
       }
     }, { theme });
     await installFixtures(context);
     const page = await context.newPage();
     await page.clock.setFixedTime(NOW);
-    await page.goto("/chat/local-ai");
-    await expect(page.getByText("Keep It Simple", { exact: true })).toBeVisible();
+    // The interactive answer is taller than a prose reply; give the hero room for all of it.
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto("/chat/savings");
+    // The interactive card loads its renderer chunk, then draws the chart.
+    await expect(page.getByText("After 30 years", { exact: true })).toBeVisible();
+    await expect(page.locator("[data-openui-card] svg path").first()).toBeVisible();
+    await expect(page.getByText("What if I start with $5,000 already saved?", { exact: true })).toBeVisible();
     await expect(page.getByPlaceholder("Message… or / for commands")).toBeVisible();
+    await page.waitForTimeout(1_500);
     await saveFrame(page, "chat");
 
+    await page.setViewportSize({ width: 1280, height: 820 });
     await page.goto("/chat/search");
     await expect(page.getByText("Three building blocks for your setup:", { exact: false })).toBeVisible();
     await page.getByRole("button", { name: "3 Sources" }).click();

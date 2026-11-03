@@ -143,11 +143,20 @@ E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
 
 ## CI browser and desktop smoke diagnostics
 
-Web E2E and Linux desktop dependency installation have a five-minute step
-deadline, separate from test execution. `.github/apt-ci.conf` limits APT
-connection and stalled-download waits to 30 seconds, disables download retries,
-and makes incomplete package-index updates fail. These settings apply only to
-the disposable CI runners; they do not change operator installations.
+Web E2E runs inside the official Playwright image
+(`mcr.microsoft.com/playwright:v<version>-noble`), which includes Chromium and
+its system libraries. The job runs as the image's root user and installs only
+`vim-tiny`, for the workspace terminal test, under a two-minute step deadline.
+Inside the job, Redis is reached at `redis:6379`. The image tag must match the
+Playwright version in `package-lock.json`. Update both together; the job's
+browser check fails with the expected tag when they differ.
+
+Linux desktop dependency installation has a five-minute step deadline,
+separate from test execution. Both jobs use `.github/apt-ci.conf`, which
+limits APT connection and stalled-download waits to 30 seconds, disables
+download retries, and makes incomplete package-index updates fail. These
+settings apply only to the disposable CI runners; they do not change operator
+installations.
 
 When a check fails, inspect the failed step first. A dependency-installation
 failure means the tests did not run. Diagnose the package source or runner
@@ -284,6 +293,26 @@ Image models can use **Custom (OpenAI-compatible)** with an optional API key,
 base URL ending at the API root (for example, `http://host:8731/v1`), and a model
 ID. The server appends `/images/generations`. A configured size such as
 `512x512` overrides chat and model suggestions; blank uses the backend default.
+**Usage cost** rates apply to the token usage the backend reports with each
+image (`input_tokens` or `prompt_tokens`, and `output_tokens` or
+`completion_tokens`); a backend that reports none leaves images unpriced.
+
+## OpenRouter image model validation
+
+Image models can use **OpenRouter**. Discovery reads `/images/models`, which
+lists dedicated image models that the chat listing omits. Generation and
+editing post to `/images`: chat sizes map to `aspect_ratio` (`1:1`, `3:2`,
+`2:3`), quality is forwarded, and reference images travel inline as data URLs.
+Each response reports token usage and the charge in USD, which chat usage
+records with cost source `provider`, so the editor offers no rates for
+OpenRouter image models. `e2e/image-generation.spec.ts` covers the flow against
+a stub. To exercise the real endpoint, export `OPENROUTER_LIVE_API_KEY`
+(optionally `OPENROUTER_LIVE_IMAGE_MODEL`; the default
+`qwen/qwen-image-2.1-turbo` costs about two cents per image) and run:
+
+```bash
+npm run test -w apps/web -- lib/images/openrouter-images.live.test.ts
+```
 Extra request parameters are a JSON object for settings such as `seed` or
 `quality`. They cannot replace the model, prompt, size, response format, image
 count, streaming mode, or reference images. Custom providers expose editing
@@ -370,6 +399,168 @@ level's fields in the request body; Off must produce no reasoning and On must
 produce some. `THINKING_LIVE_REPORT` writes a small JSON report without
 credentials or transcripts. The test does not modify saved models or chats,
 and ordinary unit runs skip it.
+
+## Chat attachment reading validation
+
+Uploads keep up to 5,000,000 extracted characters. Each message includes 30% of
+the model's input budget for its documents (1,000 to 100,000 tokens; 16,000 when
+the window is unknown), split so documents below an equal share stay whole. A
+longer document is cut at a line break, followed by a note with the offset where
+reading resumes. The share depends only on the model, so a saved message renders
+identically on every turn and stays in provider prompt caches.
+
+When an attached document is cut, or was attached before a compaction
+checkpoint, tool-calling models also get `read_file` and `search_files`.
+`read_file` returns about 15% of the input budget per call (1,000 to 50,000
+tokens) and the next offset. `search_files` matches the whole query, then
+passages containing most of its words. Results store character ranges, not
+text; replay reads the same range from the immutable upload.
+
+```sh
+npm run test -w apps/web -- lib/chat/chat-files.test.ts lib/chat/document-text.test.ts lib/chat/file-tools.test.ts lib/db/uploads-inline.test.ts app/api/chat/route.test.ts
+npm run test -w apps/mobile -- src/components/chat/ChainOfThought.test.tsx
+E2E_PORT=4791 npm run test:e2e -w apps/web -- attachment-reading.spec.ts
+```
+
+The browser test uses a scripted provider to check the budgeted prefix and
+resume note, search then read then answer, the activity timeline, reload, small
+message rows, and an unchanged attachment prompt with replayed reads on the next
+turn. To include a live tool-calling model, which must find a fact beyond the
+included prefix, set `ATTACHMENT_READING_LIVE_URL` to its `/v1` endpoint:
+
+```sh
+ATTACHMENT_READING_LIVE_URL=http://127.0.0.1:8000/v1 E2E_PORT=4791 npm run test:e2e -w apps/web -- attachment-reading.spec.ts
+```
+
+On Android and iOS, expand a message's activity and check the file read and
+search steps.
+
+## Model-created documents validation
+
+Tool-calling models can create documents (Markdown, code, HTML, SVG, Mermaid)
+with `create_document` and revise them with `update_document`, using exact
+`find`/`replace` edits or a full rewrite. `from_file` starts a document from an
+attached text file. Each call's saved result is one version with its full
+content. Versions therefore follow edit, regenerate, sharing and import like any
+message part, and no separate storage exists. The model sees only short
+confirmations; failed edits change nothing and return the current text.
+
+Clients advertise a renderer with `documentsSupported`; others, and voice
+answers, are not offered the tools. Web and desktop show a card per version in
+the message and the document beside the chat (full screen below 1024px), with
+version navigation, source view, copy and download. A new document opens by
+itself while it is written on wide screens, and the open document follows its
+revisions. HTML previews run scripts only inside a sandboxed frame without
+same-origin access. Shared chats show documents read-only.
+
+Markdown documents also download as Word files. `POST /api/documents/export`
+converts the Markdown the client sends (signed-in users only; nothing is
+stored) to native Word headings, lists, tables, links and character
+formatting. Images appear as their alt text, and public share readers get the
+Markdown file.
+
+Mobile opens a card's version full screen, with version navigation, source
+view, copy, the share sheet, and saving to a chosen folder as Markdown or Word. Markdown and code
+render natively. HTML and SVG render in a WebView without cookies, file
+access, a native bridge or navigation; links open in the system browser.
+Mermaid documents show their source on mobile.
+
+```sh
+npm run test -w apps/web -- lib/documents app/api/documents lib/chat/request.test.ts lib/search/extract.test.ts lib/sharing.test.ts app/api/chat/route.test.ts
+npm run test -w apps/mobile -- src/components/chat/DocumentViewer.test.tsx
+E2E_PORT=4791 npm run test:e2e -w apps/web -- documents.spec.ts
+```
+
+The browser tests use a scripted provider that streams tool arguments. They
+cover automatic opening, a revision followed in place, version navigation,
+source view, download names and content, reload, Escape, a narrow viewport, a
+public share, sandboxed HTML, Mermaid, SVG and code, and clients that do not
+advertise documents. To include a live tool-calling model, set
+`DOCUMENTS_LIVE_URL` to its `/v1` endpoint. On Android and iOS, open each
+document type, step through versions, and check the share sheet, saving, and
+links in an HTML document.
+
+## Code sandbox validation
+
+`sandbox/` builds the optional code execution image in two tiers: `slim`
+(Python data, chart, image and document libraries, and poppler) and `full`
+(adds pandoc, LibreOffice, Tesseract, ffmpeg and scientific libraries).
+`POST /run` takes Python code and input files and returns output and the files
+written to `outputs/`. Each run is a fresh user from a pool, with resource
+limits and a seccomp filter that denies network sockets and new namespaces;
+see `sandbox/AGENTS.md` for the isolation invariants.
+
+Build a tier and run its tests with the production container settings:
+
+```sh
+docker build --target slim --tag overtchat-sandbox-test sandbox
+docker run --rm --init --read-only --tmpfs /runs:size=512m,mode=0711 --tmpfs /tmp:size=64m \
+  --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN \
+  --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add KILL \
+  --security-opt no-new-privileges:true --pids-limit 512 \
+  -v "$PWD/sandbox:/tests:ro" overtchat-sandbox-test \
+  python -B -W error::ResourceWarning -m unittest discover -s /tests -p 'test_*.py'
+```
+
+Repeat with `--target full`, which also runs the conversion and OCR test. The
+tests cover output and file handling, charts from `plt.show()`, blocked network
+sockets, the dropped privileges, isolation and cleanup between runs, timeouts,
+memory and output limits, request validation, and the HTTP API. Without the
+listed capabilities the server fails closed: `/healthz` returns 503 with the
+reason.
+
+To try the Compose service, run `docker compose --profile sandbox up -d --build
+sandbox`, then call it from a container on the internal `sandbox` network, for
+example `curl http://sandbox:8080/healthz`.
+
+## Code execution validation
+
+Tool-calling models get `run_python` when the client advertises
+`codeExecutionSupported`, the answer is not spoken, and `SANDBOX_URL` points at
+a healthy sandbox. Chat requests reuse a health result for up to 60 seconds (10
+when unavailable); `/api/capabilities` probes afresh and refreshes it. Each run
+sends the conversation's files, newest first within the sandbox input limit, as
+`/mnt/data/uploads/<name>`, under the same names the file tools use. Files a
+run writes to `/mnt/data/outputs/` become the user's uploads, named uniquely
+within the conversation so later runs read them by name. Saved results keep
+those upload references; replay rebuilds the model's view from them, including
+up to four returned images for models with image input.
+
+Each user message lists its files' sandbox paths, and spreadsheets include a
+2,000-token preview with a note to analyze the whole file in code. Web and
+desktop show each run in the activity timeline with its code and output,
+returned images inline, and other files as download cards; shares serve them
+from the snapshot. Android and iOS show the same timeline step, preview
+returned images, and save any returned file to a chosen folder.
+
+```sh
+npm run test -w apps/web -- lib/sandbox lib/chat/chat-files.test.ts lib/db/uploads-inline.test.ts lib/chat/parts.test.ts lib/chat/request.test.ts lib/sharing.test.ts lib/db/library.test.ts app/api/capabilities app/api/chat/route.test.ts
+npm run test -w apps/mobile -- src/components/chat/ChainOfThought.test.tsx src/components/chat/CodeExecutionFiles.test.tsx
+E2E_PORT=4791 npm run test:e2e -w apps/web -- code-execution.spec.ts
+```
+
+The browser tests start a scripted provider and a stand-in sandbox on port
+`E2E_PORT` + 2000. They cover the tool offer and attachment paths, the run
+request and token, the model's view of output and images, inline charts,
+downloads, a later run reading earlier outputs, a failed run, reload, the
+library, a public share, and clients or sandboxes that rule code execution out.
+To use a real sandbox instead, publish one and point the test server at it. Set
+`CODE_EXECUTION_LIVE_URL` to also have a live tool-calling model total a CSV
+column with a chart, blur half of an image, and write a Word file:
+
+```sh
+docker run -d --name overtchat-sandbox-e2e --init --read-only \
+  --tmpfs /runs:size=2g,mode=0711 --tmpfs /tmp:size=256m \
+  --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN \
+  --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add KILL \
+  --security-opt no-new-privileges:true --pids-limit 512 \
+  -e SANDBOX_TOKEN=e2e-sandbox-token -p 127.0.0.1:4794:8080 overtchat-sandbox-test
+SANDBOX_URL=http://127.0.0.1:4794 CODE_EXECUTION_LIVE_URL=http://127.0.0.1:8000/v1 \
+  E2E_PORT=4791 npm run test:e2e -w apps/web -- code-execution.spec.ts
+```
+
+On Android and iOS, ask for a chart and a spreadsheet, then expand the run,
+open the chart, and save both files.
 
 ## Chat compaction validation
 
@@ -545,6 +736,13 @@ clients do not reproduce all native splash properties.
 
 ## Mobile validation
 
+For settings changes, run the mobile typecheck and focused tests. Shared settings
+contracts also require the affected shared and web checks. Use a short native
+smoke test for navigation, keyboard clearance, and the changed device-specific
+flows; cover API validation and permissions with automated tests. Use disposable
+records for mutation checks and restore any changed preferences. File workflow
+changes need a small import/export fixture, including picker cancellation.
+
 For Agent Connections changes:
 
 ```sh
@@ -572,7 +770,10 @@ build validation.
 On Android and iOS, check session creation/resume, web/mobile switching,
 background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
-gestures. Use an existing development client unless native modules change.
+gestures. While an agent streams, check that the transcript follows new output
+at the bottom, holds still once you scroll up, and loads older history at the
+top, and that expanding work keeps the tapped row in place. Use an existing
+development client unless native modules change.
 For navigation changes, check the shared drawer from regular and agent chats,
 the remembered Agents section expansion, recent agent selection, workspace
 chat creation, and opening both chat types from push notifications. Check native
@@ -1052,7 +1253,9 @@ The opt-in test uses the host's configured model credentials for a small
 conversation, creates a disposable workspace, and checks discovery, streaming,
 cancel-and-restart steering during a harmless sleep tool, process cleanup and
 persisted history after restart. It selects Don't Ask only in its disposable
-session. It deletes only its own test session and workspace. Unit tests use the
+session. A second case keeps the default mode, checks the finished-turn
+summary, and denies a file-write approval while checking its session-list
+summary. Each case deletes only its own test session and workspace. Unit tests use the
 actual ACP SDK with an in-memory stdio agent to cover approvals, cancellation,
 history, tool projection and
 replacement-turn approval, image steering and cancellation ordering. Runtime
@@ -1102,6 +1305,14 @@ work before installation state exists and that diagnostics exclude credentials.
 Verify CLI self-update preserves terminal stdin. Connector recovery tests must show
 that offline SSH hosts do not delay the channel, new launches await target recovery,
 and shutdown cancels probes before releasing the journal's instance lock.
+
+For code execution, choose Standard or Full in setup, then check that `status`
+lists the sandbox and its version, `logs sandbox` follows the selected tier, and
+choosing Set up later removes the container. In the generated stack, the app
+reaches `http://sandbox:8080` with the shared token while the sandbox has no route
+to the internet. Before a sandbox version is published, tag a locally built image
+as `ghcr.io/yoloyash/overtchat-sandbox:<version>` (or `overtchat-sandbox-full`) and
+run setup in development mode, which ignores pull failures.
 
 Installer binary and terminal checks are documented in [Release process](release.md).
 
@@ -1367,6 +1578,118 @@ survives the interrupt. Cleanup releases the test job and closes its query.
 Set `CLAUDE_COMMAND` or `CLAUDE_BACKGROUND_MODEL` to override the executable or
 model; existing sessions and settings are not changed. Validated with Claude
 Code 2.1.304.
+
+### Claude subagents
+
+A Claude Code `Task`/`Agent` tool call projects as the `subagent` transcript
+part Codex collab calls already use, with `action: "task"`, the task
+description as `title`, the `subagent_type` as `agentType`, and a bounded log
+of the child's activity in `events` (its text, one line per tool call, and
+failed tool results). The query sets `forwardSubagentText`; without it the SDK
+forwards only a child's tool blocks. Frames carrying `parent_tool_use_id` feed
+the owning part and never enter the parent transcript, child stream events are
+ignored so they cannot hijack the parent's live message, and a nested launch
+folds into the top-level part. Unknown parents are dropped.
+
+Status comes from the tool result for a foreground launch and from
+`task_started`/`task_updated`/`task_notification` for a backgrounded one; the
+launch notice tool result keeps the part running. A query restart or exit marks
+running parts stopped. The Task tool result itself is not replayed as a tool
+result: it repeats the child's last reply.
+
+Reload reads `<session>/subagents/*.meta.json`, whose `toolUseId` names the
+launch, and summarizes `agent-<id>.jsonl` the same way, so a reopened session
+shows the parts the live stream produced. Background shells (`local_bash`
+tasks) have no transcript representation.
+
+```sh
+npm run test -w packages/agent-runtime -- src/claude/client.test.ts src/claude/sessions.test.ts
+npm run test -w apps/web -- lib/agents/presentation.test.ts
+```
+
+### Agent attention state
+
+Each runtime summarizes what session lists and notifications show: a pending
+approval or question, the active turn's start, and how the latest turn ended
+(completed, failed or stopped, with a reply preview or error). The connector
+publishes the summary with session-directory updates when it changes, and the
+web app stores the latest turn and a per-session read watermark on the
+connector's clock. The fields are optional, so older connectors and journals
+remain compatible.
+
+For administrators the sidebar switches between Chat and Agents. The mode
+follows the URL (`/agents…` is Agents; settings keep the current mode), and
+each mode returns to the page last open in it. Agents mode groups sessions by
+status by default: needs input (an approval or a question), failed, ready to
+review (an unseen result), working, then done, by recent activity. Only Done is
+shortened, and each group folds from its header. Its list options switch to
+grouping by workspace, kept per device, and mark every finished session read.
+While in Chat mode, the Agents toggle counts sessions that need input or failed,
+or shows a dot when finished results wait.
+Opening a session while the page is visible marks its latest turn read.
+`/agents` opens a new session with the most recently used agent and workspace;
+pickers above the composer switch the machine (shown only when there is more
+than one), a folder on it, then an agent that has that folder. A new machine
+opens with what was last used on it; a new folder keeps the agent when the
+folder has it. Forking into another workspace uses the same pickers with the
+agent fixed. `/agents/history` searches every session by title, first message,
+last reply, workspace, path, host and agent; its filters narrow in the same order
+(machine, folder, agent) and are kept in the URL.
+`apps/web/e2e/agent-attention.spec.ts` scripts these states through stubbed
+session-list and event-stream responses.
+
+#### Agent alerts
+
+The server turns live status updates into one alert per request or finished
+turn (`apps/web/lib/notifications/agentAttention.ts`): an approval or question
+at once, a failed turn at once, a completed turn after five quiet seconds, and
+nothing for a turn the owner stopped. Directory snapshots only set a baseline,
+so reconnects never alert twice. Each alert is titled like a sidebar row
+("Needs approval: Upgrade the parser") with the request, reply or error as its
+body.
+
+Who is told follows presence. Web and desktop clients post
+`/api/agent-presence` every half minute while visible, at once when that or
+the open session changes, and the desktop app also while the computer is in
+use with the window in the background. Nobody is told while a present client
+shows the session; otherwise the server sends the alert over the event stream
+of the client used most recently that wants alerts; phones get a push only
+when no such client is present. Push text names the session and what it needs
+when the device allows previews, and says only "An agent needs approval" or
+"An agent finished" otherwise. Every agent alert keeps the Android channel
+`agent-idle`, now named "Agent activity", so phones that predate this still
+show it. Notifications never carry an approval action.
+
+Settings → General → Agent alerts is per device and off by default: a chime
+(rising for a request, falling for a finished turn) and system notifications,
+which need notification permission. In front, an alert is a toast with an
+Open button; in the background, a system notification whose click reveals the
+window. The favicon and the desktop dock or taskbar icon count sessions that
+need input, failed, or finished unseen, whatever the device wants. The
+desktop bridge gained optional `setBadge`, `revealWindow` and
+`getSystemIdleSeconds`; the UI treats them as absent on older apps. Mobile
+marks a session read when it is open in the foreground and whenever a turn
+ends while it is open. `apps/web/e2e/agent-notifications.spec.ts` streams a
+scripted alert and checks the heartbeat, the badge, both settings and both
+presentations.
+
+```sh
+npm run test -w apps/web -- lib/notifications app/api/agent-presence
+```
+
+```sh
+npm run test -w packages/agent-runtime -- src/runtime/attention.test.ts src/runtime/registry.test.ts
+RUN_ATTENTION_INTEGRATION=claude,codex,omp npm run test -w packages/agent-runtime -- src/runtime/attention.integration.test.ts
+```
+
+The opt-in test makes real model requests with each listed provider's installed
+CLI and credentials, in a new session and temporary workspace per case. It
+checks a completed turn's preview, denies a command approval (Codex is asked to
+write outside its sandbox so that it requests escalation), and stops a running
+`sleep`. Set `ATTENTION_INTEGRATION_LOG` to a file path to record each status
+change, and `<PROVIDER>_COMMAND` to override an executable. Hermes is covered by
+the Hermes ACP validation above. Validated with Claude Code 2.1.310, Codex
+0.162.1, Oh My Pi 18.12.6 and Hermes 0.22.4.
 
 ### Claude context meter
 

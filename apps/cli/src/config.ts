@@ -24,6 +24,8 @@ export type InstallationSecrets = {
   managementSecret: string;
   searxngSecret: string;
   voiceSharedSecret: string;
+  // Shared by the app and the code sandbox.
+  sandboxToken: string;
   // Issued by OvertChat Cloud when this server is linked; empty otherwise.
   cloudCredential: string;
 };
@@ -64,6 +66,7 @@ export function defaultInstallationConfig(
     voiceImage: `${VOICE_IMAGE}:${manifest.voiceVersion}`,
     connectorVersion: manifest.connectorVersion,
     sttVersion: manifest.sttVersion,
+    sandboxVersion: manifest.sandboxVersion,
     redisImage: manifest.redisImage,
     searxngImage: manifest.searxngImage,
     kokoroImage: manifest.kokoroImage,
@@ -125,6 +128,9 @@ export function defaultInstallationConfig(
             }
           : { provider: "disabled", bundledInstalled: false },
     voice: { installed: existing?.bundledServices.voice ?? false },
+    sandbox: existing?.sandboxTier
+      ? { installed: true, tier: existing.sandboxTier }
+      : { installed: false, tier: "slim" },
     agents: { installed: false },
     ...(existing?.composeWorkingDir
       ? { adoptedFrom: existing.composeWorkingDir }
@@ -165,6 +171,10 @@ export async function readInstallationConfig(
         config.voiceImage ??
         `${VOICE_IMAGE}:${config.voiceVersion ?? "0.0.0"}`,
       voice: config.voice ?? { installed: false },
+      // State from before code execution; the next manifest selects a
+      // published sandbox when it is installed.
+      sandboxVersion: config.sandboxVersion ?? "0.0.0",
+      sandbox: config.sandbox ?? { installed: false, tier: "slim" },
     };
     return withoutProviderKeys(normalizeInstallationConfig(migrated));
   } catch (error) {
@@ -227,6 +237,10 @@ export function normalizeInstallationConfig(
         tts.provider !== "disabled" &&
         stt.provider !== "disabled",
     },
+    sandbox: {
+      installed: config.sandbox.installed,
+      tier: config.sandbox.tier === "full" ? "full" : "slim",
+    },
   };
 }
 
@@ -270,6 +284,7 @@ export function initialSecrets(
       existing?.environment.get("SEARXNG_SECRET") ||
       generatedSecret(),
     voiceSharedSecret: previous.voiceSharedSecret || generatedSecret(),
+    sandboxToken: previous.sandboxToken || generatedSecret(),
     cloudCredential: previous.cloudCredential ?? "",
   };
 }
@@ -302,6 +317,7 @@ export async function readInstallationSecrets(
       managementSecret: values.get("OVERTCHAT_MANAGEMENT_SECRET"),
       searxngSecret: values.get("SEARXNG_SECRET"),
       voiceSharedSecret: values.get("VOICE_SHARED_SECRET"),
+      sandboxToken: values.get("SANDBOX_TOKEN"),
       cloudCredential: values.get("OVERTCHAT_CLOUD_CREDENTIAL"),
     };
   } catch (error) {

@@ -12,7 +12,8 @@ export function getImageCapability(): ImageCapability {
   return {
     available: Boolean(config),
     model: config?.model ?? null,
-    supportsQuality: config?.providerId === "openai",
+    supportsQuality:
+      config?.providerId === "openai" || config?.providerId === "openrouter",
     ...(custom
       ? {
           configuredSize: custom.size,

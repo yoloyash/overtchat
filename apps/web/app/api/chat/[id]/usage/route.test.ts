@@ -73,7 +73,12 @@ describe("chat usage API", () => {
     expect(mocks.getChatUsageTotals).not.toHaveBeenCalled();
   });
 
-  it("returns session totals for the owning user", async () => {
+  it("returns response and image totals for the owning user", async () => {
+    const images = { ...totals, generations: 1, totalCostNanoUsd: 77_405_000 };
+    mocks.getChatUsageTotals.mockImplementation(
+      async (_chatId: string, _userId: string, usageContext = "chat") =>
+        usageContext === "image" ? images : totals,
+    );
     const response = await GET(
       new Request("http://server.test/api/chat/chat/usage"),
       context(),
@@ -81,6 +86,11 @@ describe("chat usage API", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.getChatUsageTotals).toHaveBeenCalledWith("chat", "owner");
-    await expect(response.json()).resolves.toEqual({ usage: totals });
+    expect(mocks.getChatUsageTotals).toHaveBeenCalledWith(
+      "chat",
+      "owner",
+      "image",
+    );
+    await expect(response.json()).resolves.toEqual({ usage: totals, images });
   });
 });

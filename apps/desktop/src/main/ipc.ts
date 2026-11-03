@@ -1,4 +1,5 @@
-import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { ipcMain, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import type { DesktopBadge } from "@overtchat/shared/desktop";
 import {
   IPC,
   type BootState,
@@ -14,7 +15,8 @@ import {
   setColorScheme,
   setServer,
 } from "./settings";
-import { applyColorScheme, getMainWindow, getShellWindowState, isAppSender, restartUi } from "./window";
+import { applyBadge } from "./badge";
+import { applyColorScheme, getMainWindow, getShellWindowState, isAppSender, restartUi, revealWindow } from "./window";
 import { checkDesktopUpdates, desktopUpdates, downloadDesktopUpdate, installDesktopUpdate, setUpdateOrigin } from "./updates";
 
 function fromApp(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
@@ -106,6 +108,12 @@ export function registerIpc(): void {
     else win?.maximize();
   });
   handle(IPC.close, () => getMainWindow()?.close());
+  handle(IPC.setBadge, (badge: DesktopBadge) => {
+    if (!badge || typeof badge !== "object") return;
+    applyBadge(badge);
+  });
+  handle(IPC.revealWindow, revealWindow);
+  handle(IPC.systemIdle, () => powerMonitor.getSystemIdleTime());
   ipcMain.on(IPC.theme, (event, scheme: ColorScheme) => {
     if (!fromApp(event) || (scheme !== "light" && scheme !== "dark")) return;
     setColorScheme(scheme);

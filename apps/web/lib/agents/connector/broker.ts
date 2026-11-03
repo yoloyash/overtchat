@@ -1,5 +1,5 @@
-import { AgentIdleNotifications } from "@/lib/notifications/agentIdle";
-import { notifyAgentIdle } from "@/lib/notifications/sender";
+import { AgentAttentionNotifications } from "@/lib/notifications/agentAttention";
+import { notifyAgentAttention } from "@/lib/notifications/sender";
 import "server-only";
 import {
   HOST_CONNECTOR_CAPABILITIES,
@@ -7,6 +7,7 @@ import {
   isAgentSessionSync,
   isAgentWorkspaceGitStatus,
   isConnectorSshHost,
+  sameAgentSessionDirectoryEntry,
   type AgentDaemonRequest,
   type AgentDaemonSessionDescriptor,
   type AgentDaemonTarget,
@@ -21,7 +22,10 @@ import {
   type HostConnectorEventAck,
   type HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
-import { updateAgentSessionMetadata } from "@/lib/db/agentConnections";
+import {
+  recordAgentSessionLastTurn,
+  updateAgentSessionMetadata,
+} from "@/lib/db/agentConnections";
 
 const REQUEST_TIMEOUT_MS = 180_000;
 const CONNECTOR_DISCONNECT_GRACE_MS = 5_000;
@@ -116,11 +120,13 @@ export class HostConnectorBroker {
     string,
     Map<string, number>
   >();
-  private readonly idleNotifications = new AgentIdleNotifications((id) => {
-    void notifyAgentIdle(id).catch(() =>
-      console.error("[push] Could not send agent notification."),
-    );
-  });
+  private readonly attentionNotifications = new AgentAttentionNotifications(
+    (event) => {
+      void notifyAgentAttention(event).catch(() =>
+        console.error("[push] Could not send agent notification."),
+      );
+    },
+  );
   private readonly sessionDirectory = new Map<
     string,
     { connectorId: string; session: AgentSessionDirectoryEntry }
@@ -149,8 +155,15 @@ export class HostConnectorBroker {
   runtimeStatusForSession(
     sessionId: string,
   ): AgentSessionDirectoryEntry["runtimeStatus"] {
+    return this.sessionDirectoryEntry(sessionId).runtimeStatus;
+  }
+
+  sessionDirectoryEntry(sessionId: string): AgentSessionDirectoryEntry {
     return (
-      this.sessionDirectory.get(sessionId)?.session.runtimeStatus ?? "idle"
+      this.sessionDirectory.get(sessionId)?.session ?? {
+        sessionId,
+        runtimeStatus: "idle",
+      }
     );
   }
 
@@ -165,10 +178,9 @@ export class HostConnectorBroker {
     this.directorySubscriptions.add(subscription);
     subscriber({
       type: "snapshot",
-      sessions: [...subscription.sessionIds].map((sessionId) => ({
-        sessionId,
-        runtimeStatus: this.runtimeStatusForSession(sessionId),
-      })),
+      sessions: [...subscription.sessionIds].map((sessionId) =>
+        this.sessionDirectoryEntry(sessionId),
+      ),
     });
     return () => {
       this.directorySubscriptions.delete(subscription);
@@ -330,7 +342,7 @@ export class HostConnectorBroker {
       connectorCapabilities.filter((capability) => supported.has(capability)),
     );
     const sessionIds = new Set(activeSessionIds);
-    for (const id of sessionIds) this.idleNotifications.reset(id);
+    for (const id of sessionIds) this.attentionNotifications.reset(id);
     const channel = { send, capabilities, sessionIds };
     this.channels.set(connectorId, channel);
     for (const sessionId of sessionIds) {
@@ -363,7 +375,7 @@ export class HostConnectorBroker {
     return () => {
       if (this.channels.get(connectorId) !== channel) return;
       this.channels.delete(connectorId);
-      for (const id of channel.sessionIds) this.idleNotifications.reset(id);
+      for (const id of channel.sessionIds) this.attentionNotifications.reset(id);
       for (const watch of this.gitWatches.values()) {
         if (watch.connectorId !== connectorId) continue;
         watch.generation += 1;
@@ -386,19 +398,19 @@ export class HostConnectorBroker {
     const requestId = crypto.randomUUID();
     const sessionId = sessionIdForRequest(request);
     if (sessionId) channel.sessionIds.add(sessionId);
-    if (
-      request.type === "session_command" &&
-      request.command.type === "abort"
-    ) {
-      this.idleNotifications.suppress(request.session.sessionId);
-    }
-    if (request.type === "stop_session")
-      this.idleNotifications.suppress(request.sessionId);
+    // The owner's own Stop makes the turn's end no news, unless it is refused.
+    const stopping =
+      request.type === "session_command" && request.command.type === "abort"
+        ? request.session.sessionId
+        : request.type === "stop_session"
+          ? request.sessionId
+          : null;
+    if (stopping) this.attentionNotifications.suppress(stopping);
 
     const replaySafe =
       isLedgerProtectedCommand(request) &&
       channel.capabilities.has("command-wal-v1");
-    return new Promise<T>((resolve, reject) => {
+    const result = new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId);
         reject(
@@ -426,6 +438,10 @@ export class HostConnectorBroker {
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
+    if (stopping) {
+      result.catch(() => this.attentionNotifications.resume(stopping));
+    }
+    return result;
   }
 
   private reconcilePendingRequests(
@@ -616,9 +632,9 @@ export class HostConnectorBroker {
         freshNotification &&
         channel?.sessionIds.has(event.session.sessionId)
       ) {
-        this.idleNotifications.update(
+        this.attentionNotifications.update(
           event.session.sessionId,
-          event.session.runtimeStatus,
+          event.session,
         );
       }
       this.acceptSessionDirectory(connectorId, [event.session], false);
@@ -778,7 +794,14 @@ export class HostConnectorBroker {
     for (const session of sessions) {
       if (!channel.sessionIds.has(session.sessionId)) continue;
       if (baseline)
-        this.idleNotifications.reset(session.sessionId, session.runtimeStatus);
+        this.attentionNotifications.reset(session.sessionId, session);
+      if (session.lastTurn) {
+        try {
+          recordAgentSessionLastTurn(session.sessionId, session.lastTurn);
+        } catch {
+          console.error("[agents] Could not record the latest turn.");
+        }
+      }
       this.upsertSessionDirectory(connectorId, session);
     }
   }
@@ -790,7 +813,7 @@ export class HostConnectorBroker {
     const current = this.sessionDirectory.get(session.sessionId);
     if (
       current?.connectorId === connectorId &&
-      current.session.runtimeStatus === session.runtimeStatus
+      sameAgentSessionDirectoryEntry(current.session, session)
     ) {
       return;
     }
@@ -893,8 +916,10 @@ export class HostConnectorBroker {
       for (const entry of this.sessionDirectory.values()) {
         if (entry.connectorId !== connectorId) continue;
         this.upsertSessionDirectory(connectorId, {
-          sessionId: entry.session.sessionId,
+          ...entry.session,
           runtimeStatus: "exited",
+          turnStartedAt: null,
+          attention: null,
         });
       }
     }, this.disconnectGraceMs);

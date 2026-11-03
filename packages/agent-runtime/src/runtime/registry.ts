@@ -10,6 +10,8 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentRuntimeStatus,
+  AgentSessionAttention,
+  AgentSessionDirectoryEntry,
   AgentSlashCommand,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
@@ -39,6 +41,7 @@ import type {
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
 import { AgentUsagePoller } from "./usage-poller";
+import { AgentTurnTracker, sessionAttention } from "./attention";
 
 const MAX_REPLAY_EVENTS = 500;
 const MODEL_DISCOVERY_TIMEOUT_MS = 120_000;
@@ -298,12 +301,16 @@ export class AgentSessionRuntime {
   private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
+  private readonly compactionStartWaiters = new Set<() => void>();
   private terminalDuringAbort = false;
   private readonly eventClassifier: AgentRuntimeEventClassifier;
   private pendingInteraction:
     | NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>
     | undefined;
   private pendingInteractionTimer: NodeJS.Timeout | undefined;
+  private pendingInteractionAt = 0;
+  private attention: AgentSessionAttention | undefined;
+  private readonly turns: AgentTurnTracker;
   private error: string | undefined;
   private readonly usagePoller?: AgentUsagePoller;
   private usageRevisions = { tokens: 0, cost: 0, contextUsage: 0 };
@@ -361,6 +368,7 @@ export class AgentSessionRuntime {
     this.queuedMessages = restoredQueue.messages;
     this.activeTurnStartedAt =
       this.status === "running" ? Date.now() : null;
+    this.turns = new AgentTurnTracker(this.status, this.activeTurnStartedAt);
     this.scheduleIdleStop();
     if (
       restoredQueue.changed ||
@@ -400,6 +408,10 @@ export class AgentSessionRuntime {
       };
       if (event.type === "usage_update") {
         this.receiveUsage(event);
+      }
+      if (event.type === "compaction_start") {
+        for (const waiter of this.compactionStartWaiters) waiter();
+        this.compactionStartWaiters.clear();
       }
       if (event.type === "compaction_start" && this.usagePoller) {
         this.usagePoller.stop();
@@ -479,6 +491,7 @@ export class AgentSessionRuntime {
         this.pendingInteraction = event as NonNullable<
           AgentRuntimeSnapshot["pendingInteraction"]
         >;
+        this.pendingInteractionAt = Date.now();
         if (
           typeof event.timeout === "number" &&
           Number.isFinite(event.timeout) &&
@@ -513,6 +526,7 @@ export class AgentSessionRuntime {
             this.pendingSubmissions.delete(submission.id);
           } else {
             this.error = event.error;
+            this.turns.observeError(event.error);
             if (submission?.published) {
               this.rejectSubmission(submission.id);
             }
@@ -524,8 +538,15 @@ export class AgentSessionRuntime {
           this.promptSubmissionId = undefined;
         } else {
           this.error = event.error;
+          // Only the prompt's own failure fails the turn; a refused steer,
+          // compaction or state refresh leaves it to end on its own.
+          if (event.command === "prompt") this.turns.observeError(event.error);
         }
       }
+      if (event.type === "turn_end" && event.status === "failed") {
+        this.turns.markFailed();
+      }
+      if (event.type === "message_end") this.turns.observeReply(event.message);
       this.publish({ type: "runtime_event", data: event });
       if (settleRejectedPrompt) {
         void this.settleAfterProviderTerminal();
@@ -598,6 +619,20 @@ export class AgentSessionRuntime {
 
   get provider(): AgentProviderId {
     return this.adapter.provider;
+  }
+
+  /** Status summary for session lists and notifications. */
+  directoryStatus(): Omit<AgentSessionDirectoryEntry, "sessionId"> {
+    const request = this.pendingInteraction;
+    if (request && this.attention?.id !== request.id) {
+      this.attention = sessionAttention(request, this.pendingInteractionAt);
+    }
+    return {
+      runtimeStatus: this.status,
+      turnStartedAt: this.activeTurnStartedAt,
+      attention: request ? (this.attention ?? null) : null,
+      lastTurn: this.turns.lastTurn ?? null,
+    };
   }
 
   snapshot(): AgentRuntimeSnapshot {
@@ -868,7 +903,7 @@ export class AgentSessionRuntime {
             ),
           );
       case "compact":
-        return this.client.compact(command.customInstructions);
+        return this.startCompaction(command.customInstructions);
       case "set_auto_compaction":
         return this.client
           .setAutoCompaction(command.enabled)
@@ -1154,6 +1189,7 @@ export class AgentSessionRuntime {
 
   async stop(): Promise<void> {
     if (this.stopped) return;
+    this.turns.requestStop();
     this.stopped = true;
     this.activityRevision += 1;
     this.usagePoller?.stop();
@@ -1449,6 +1485,7 @@ export class AgentSessionRuntime {
     if (this.status !== "running") {
       return Promise.resolve();
     }
+    this.turns.requestStop();
     const operation = this.client.abort().then(async (result) => {
       // Abort is foreground-only: background work keeps running and a later
       // wake starts a new turn.
@@ -1469,6 +1506,7 @@ export class AgentSessionRuntime {
     });
     const settled = operation
       .catch((error) => {
+        this.turns.cancelStop();
         this.error = errorMessage(error);
         this.publish({
           type: "runtime_event",
@@ -1648,6 +1686,44 @@ export class AgentSessionRuntime {
         status: this.status,
         startedAt: this.activeTurnStartedAt,
       },
+    });
+  }
+
+  /**
+   * Acknowledge a manual compaction once the provider starts it. Providers
+   * that only answer when compaction ends would otherwise hold the command,
+   * and every later command for the session, for the whole compaction.
+   */
+  private startCompaction(customInstructions?: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      let acknowledged = false;
+      const onStart = () => {
+        acknowledged = true;
+        resolve(undefined);
+      };
+      this.compactionStartWaiters.add(onStart);
+      Promise.resolve()
+        .then(() => this.client.compact(customInstructions))
+        .then(
+        (result) => {
+          this.compactionStartWaiters.delete(onStart);
+          if (!acknowledged) resolve(result);
+        },
+        (error) => {
+          this.compactionStartWaiters.delete(onStart);
+          if (!acknowledged) {
+            reject(error);
+            return;
+          }
+          if (this.stopped || this.status === "exited") return;
+          this.error = errorMessage(error);
+          this.publish({
+            type: "runtime_event",
+            data: { type: "rpc_error", command: "compact", error: this.error },
+          });
+          this.publishStatus();
+        },
+      );
     });
   }
 
@@ -1963,6 +2039,14 @@ export class AgentSessionRuntime {
       envelope.type === "snapshot"
         ? this.envelope("snapshot", envelope.data)
         : this.envelope("runtime_event", envelope.data);
+    this.turns.observe(
+      {
+        status: this.status,
+        startedAt: this.activeTurnStartedAt,
+        error: this.error,
+      },
+      () => this.messages,
+    );
     this.replay.push(sequenced);
     if (this.replay.length > MAX_REPLAY_EVENTS) this.replay.shift();
     for (const subscriber of this.subscribers) subscriber(sequenced);

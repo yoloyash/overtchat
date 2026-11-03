@@ -19,6 +19,8 @@ import type {
   AgentSessionDirectoryEntry,
   AgentSessionLaunchConfig,
   AgentSshHostCandidate,
+  AgentWorkspaceGitBaseRef,
+  AgentWorkspaceGitWorktree,
   DetectedAgentInstallation,
   HostConnectorListItem,
   HostConnectorPairing,
@@ -40,6 +42,11 @@ import {
 } from "@/lib/agents/sidebar";
 import { apiUrl } from "@/lib/api-url";
 import type { AgentWorkspaceGroup } from "@/lib/agents/workspaces";
+import { isAgentNotification } from "@/lib/notifications/agentNotification";
+import {
+  agentClientId,
+  emitAgentStream,
+} from "@/lib/notifications/agentStream";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -91,11 +98,12 @@ export function useAgentConnectionSessionDirectory(
   );
   useEffect(() => {
     if (!sessionFingerprint && !gitWorkspaces) return;
+    // The client id lets the server send this page its alerts.
     const source = new EventSource(
       apiUrl(
-        gitWorkspaces
-          ? `/api/agent-connections/events?git=${encodeURIComponent(gitWorkspaces)}`
-          : "/api/agent-connections/events",
+        `/api/agent-connections/events?client=${encodeURIComponent(agentClientId())}${
+          gitWorkspaces ? `&git=${encodeURIComponent(gitWorkspaces)}` : ""
+        }`,
       ),
     );
     const parseEvent = (event: Event): unknown => {
@@ -141,16 +149,27 @@ export function useAgentConnectionSessionDirectory(
         queryClient.setQueryData(agentWorkspaceKeys.gitStatus(workspaceId), status);
       }
     };
+    const receiveNotification = (event: Event) => {
+      const value = parseEvent(event);
+      if (isAgentNotification(value)) {
+        emitAgentStream({ type: "notification", notification: value });
+      }
+    };
+    const opened = () => emitAgentStream({ type: "open" });
     // Pushes may be missed until the reconnected stream confirms them again.
     const interrupted = () => clearAgentWorkspaceGitLive();
     source.addEventListener("snapshot", receiveSnapshot);
     source.addEventListener("update", receiveUpdate);
     source.addEventListener("git", receiveGit);
+    source.addEventListener("notification", receiveNotification);
+    source.addEventListener("open", opened);
     source.addEventListener("error", interrupted);
     return () => {
       source.removeEventListener("snapshot", receiveSnapshot);
       source.removeEventListener("update", receiveUpdate);
       source.removeEventListener("git", receiveGit);
+      source.removeEventListener("notification", receiveNotification);
+      source.removeEventListener("open", opened);
       source.removeEventListener("error", interrupted);
       source.close();
       clearAgentWorkspaceGitLive();
@@ -413,6 +432,23 @@ export function useDeleteAgentWorkspaceGroup() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (group: AgentWorkspaceGroup) => {
+      // Removing an OvertChat worktree deletes it from the host and removes
+      // the folder for every agent at once.
+      const worktree = group.targets.find(
+        ({ workspace }) => workspace.worktreeParentPath,
+      );
+      if (worktree) {
+        const response = await fetch(
+          apiUrl(
+            `/api/agent-workspaces/${encodeURIComponent(worktree.workspace.id)}/worktree`,
+          ),
+          { method: "DELETE" },
+        );
+        if (!response.ok && response.status !== 404) {
+          throw await responseError(response);
+        }
+        return;
+      }
       for (const { workspace } of group.targets) {
         const response = await fetch(
           apiUrl(`/api/agent-workspaces/${workspace.id}`),
@@ -427,6 +463,34 @@ export function useDeleteAgentWorkspaceGroup() {
       }
     },
     // Refresh even when only some provider records were removed.
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
+  });
+}
+
+export function useCreateAgentWorktree(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      base: AgentWorkspaceGitBaseRef;
+      branch: string;
+    }): Promise<{ worktree: AgentWorkspaceGitWorktree; workspaceId: string }> => {
+      const response = await fetch(
+        apiUrl(
+          `/api/agent-workspaces/${encodeURIComponent(workspaceId)}/worktrees`,
+        ),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        },
+      );
+      if (!response.ok) throw await responseError(response);
+      return (await response.json()) as {
+        worktree: AgentWorkspaceGitWorktree;
+        workspaceId: string;
+      };
+    },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
   });

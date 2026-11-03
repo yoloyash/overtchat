@@ -16,8 +16,16 @@ import {
   AgentSessionRow,
 } from "@/components/agents/AgentNavigation";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
-import { useAgentConnections } from "@/lib/queries/agents";
-import { groupWorkspaces, matchingSessions } from "@/lib/agents/workspaces";
+import {
+  useAgentConnections,
+  useAgentProviderSnapshot,
+} from "@/lib/queries/agents";
+import {
+  groupWorkspaces,
+  matchingSessions,
+  workspaceAgents,
+  workspaceTarget,
+} from "@/lib/agents/workspaces";
 import { useTheme } from "@/lib/theme";
 
 export default function AgentWorkspaceScreen() {
@@ -45,19 +53,26 @@ export default function AgentWorkspaceScreen() {
     () => (group ? matchingSessions(group, search) : []),
     [group, search],
   );
+  // Which agents the machine has decides the choice, not which have chats here.
+  const snapshot = useAgentProviderSnapshot(group ? workspaceTarget(group) : null);
+  const agents = useMemo(
+    () => (group ? workspaceAgents(group, snapshot.data) : []),
+    [group, snapshot.data],
+  );
+  const agentsKnown = snapshot.isSuccess || snapshot.isError;
   useEffect(() => {
-    if (!creating || group?.targets.length !== 1) return;
+    if (!creating || !group || !agentsKnown || agents.length !== 1) return;
     setCreating(false);
-    const target = group.targets[0];
+    const agent = agents[0];
     router.push({
       pathname: "/agents/new",
       params: {
-        workspace: target.workspace.id,
-        provider: target.provider,
+        workspace: agent.workspaceId,
+        provider: agent.provider,
         name: group.name,
       },
     });
-  }, [creating, group]);
+  }, [creating, group, agents, agentsKnown]);
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack.Screen
@@ -167,32 +182,33 @@ export default function AgentWorkspaceScreen() {
         )}
       />
       <AgentSheet
-        visible={creating && !!group && group.targets.length > 1}
-        snapPoints={[`${Math.min(70, 20 + (group?.targets.length ?? 0) * 9)}%`]}
+        visible={creating && !!group && agents.length > 1}
+        snapPoints={[`${Math.min(70, 20 + agents.length * 9)}%`]}
         closeLabel="Close agent picker"
         title="Choose an agent"
         onClose={() => setCreating(false)}
       >
         <AgentText muted>{group?.name}</AgentText>
-        {group?.targets.map((target) => (
-          <AgentButton
-            key={target.workspace.id}
-            label={agentProviderMetadata(target.provider).label}
-            leading={<AgentProviderIcon provider={target.provider} size={26} />}
-            chevron
-            onPress={() => {
-              setCreating(false);
-              router.push({
-                pathname: "/agents/new",
-                params: {
-                  workspace: target.workspace.id,
-                  provider: target.provider,
-                  name: group.name,
-                },
-              });
-            }}
-          />
-        ))}
+        {group &&
+          agents.map((agent) => (
+            <AgentButton
+              key={agent.provider}
+              label={agentProviderMetadata(agent.provider).label}
+              leading={<AgentProviderIcon provider={agent.provider} size={26} />}
+              chevron
+              onPress={() => {
+                setCreating(false);
+                router.push({
+                  pathname: "/agents/new",
+                  params: {
+                    workspace: agent.workspaceId,
+                    provider: agent.provider,
+                    name: group.name,
+                  },
+                });
+              }}
+            />
+          ))}
       </AgentSheet>
     </View>
   );

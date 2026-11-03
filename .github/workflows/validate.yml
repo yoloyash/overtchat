@@ -64,8 +64,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Running every workspace suite at once oversubscribes the 4-vCPU runner:
+      # files ran 3-10x slower than with two at a time, for no gain in wall
+      # time, and tests near their timeouts flaked.
       - name: Test
-        run: npm run test
+        run: npm run test -- --concurrency=2
 
       - name: Qualify incident-scale connector journal recovery
         run: npm run test:journal-scale -w apps/connector
@@ -122,6 +125,32 @@ jobs:
             test ! -e /app/apps/web/data
             test ! -e /app/apps/web/scripts
           '
+
+  sandbox:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [slim, full]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Build the ${{ matrix.tier }} sandbox
+        run: docker build --target "${{ matrix.tier }}" --tag overtchat-sandbox-test sandbox
+      - name: Test isolation with the production container settings
+        run: >-
+          docker run --rm --init --read-only
+          --tmpfs /runs:size=512m,mode=0711 --tmpfs /tmp:size=64m
+          --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN
+          --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add KILL
+          --security-opt no-new-privileges:true --pids-limit 512
+          -v "$GITHUB_WORKSPACE/sandbox:/tests:ro"
+          overtchat-sandbox-test
+          python -B -W error::ResourceWarning -m unittest discover -s /tests -p 'test_*.py' -v
 
   voice:
     permissions:

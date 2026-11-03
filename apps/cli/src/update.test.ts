@@ -132,6 +132,7 @@ function config(
     voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.1.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    sandboxVersion: "0.1.0",
     ...releaseImages,
     appPort: 4718,
     bindAddress: "127.0.0.1",
@@ -149,6 +150,7 @@ function config(
     },
     stt: { provider: "disabled", bundledInstalled: false },
     voice: { installed: false },
+    sandbox: { installed: false, tier: "slim" },
     agents: { installed: false },
     ...overrides,
   };
@@ -159,6 +161,7 @@ const secrets: InstallationSecrets = {
   managementSecret: "management-secret",
   searxngSecret: "searxng-secret",
   voiceSharedSecret: "voice-secret",
+  sandboxToken: "sandbox-token",
   cloudCredential: "",
 };
 
@@ -172,6 +175,7 @@ beforeEach(() => {
     (_existing: null, previous: Partial<InstallationSecrets>) => ({
       ...previous,
       voiceSharedSecret: previous.voiceSharedSecret ?? "generated-voice-secret",
+      sandboxToken: previous.sandboxToken ?? "generated-sandbox-token",
     }),
   );
   mocks.latestReleaseManifest.mockResolvedValue({
@@ -181,6 +185,7 @@ beforeEach(() => {
     voiceVersion: "0.1.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    sandboxVersion: "0.1.0",
     ...releaseImages,
   });
   mocks.updateCliIfNeeded.mockResolvedValue(null);
@@ -246,7 +251,7 @@ describe("managed updates", () => {
     expect(mocks.requireDocker).not.toHaveBeenCalled();
   });
 
-  it("adds the voice secret when upgrading an older managed installation", async () => {
+  it("adds the voice secret and sandbox token when upgrading an older managed installation", async () => {
     const legacySecrets = {
       betterAuthSecret: secrets.betterAuthSecret,
       managementSecret: secrets.managementSecret,
@@ -259,7 +264,11 @@ describe("managed updates", () => {
     expect(mocks.initialSecrets).toHaveBeenCalledWith(null, legacySecrets);
     expect(mocks.renderStackEnvironment).toHaveBeenCalledWith(
       expect.anything(),
-      { ...legacySecrets, voiceSharedSecret: "generated-voice-secret" },
+      {
+        ...legacySecrets,
+        voiceSharedSecret: "generated-voice-secret",
+        sandboxToken: "generated-sandbox-token",
+      },
       paths,
     );
   });
@@ -374,6 +383,7 @@ describe("managed updates", () => {
       voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.3.0",
       connectorVersion: "0.5.0",
       sttVersion: "0.0.9",
+      sandboxVersion: "0.1.0",
       agents: { installed: true },
     });
     mocks.readInstallationConfig.mockResolvedValue(current);
@@ -384,6 +394,7 @@ describe("managed updates", () => {
       voiceVersion: "0.2.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     });
 
@@ -397,6 +408,7 @@ describe("managed updates", () => {
       voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.3.0",
       connectorVersion: "0.5.0",
       sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     };
     expect(mocks.prepareFiles).toHaveBeenCalledWith(expected, undefined);
@@ -447,6 +459,7 @@ describe("managed updates", () => {
       voiceVersion: "0.1.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      sandboxVersion: "0.1.0",
       ...releaseImages,
     });
     mocks.requireDocker.mockRejectedValueOnce(new Error("pull failed"));
@@ -483,7 +496,7 @@ it("commits native speech and the updated app when the optional connector fails"
   mocks.readInstallationConfig.mockResolvedValue(previous);
   mocks.latestReleaseManifest.mockResolvedValue({
     format: 1, cliVersion: "0.1.1", appVersion: "0.15.0", voiceVersion: "0.1.0",
-    connectorVersion: "0.4.0", sttVersion: "0.1.0", ...releaseImages,
+    connectorVersion: "0.4.0", sttVersion: "0.1.0", sandboxVersion: "0.1.0", ...releaseImages,
   });
   const rollback = vi.fn(async () => {});
   const commit = vi.fn();

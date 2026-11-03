@@ -3,7 +3,7 @@ param([switch]$NoSetup)
 & {
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue'
-  $cliVersion = '0.5.0'
+  $cliVersion = '0.6.0'
   $asset = 'overtchat-windows-amd64.exe'
   $releaseUrl = "https://github.com/yoloyash/overtchat/releases/download/cli-v$cliVersion"
   $architecture = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }

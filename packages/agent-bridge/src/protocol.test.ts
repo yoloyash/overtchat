@@ -7,6 +7,10 @@ import {
   isAgentSessionSync,
   isAgentSessionDirectoryEntry,
   isHostConnectorEvent,
+  isAgentWorkspaceGitBranches,
+  isAgentWorkspaceGitSwitchResult,
+  isAgentWorkspaceGitWorktree,
+  isAgentWorkspaceGitWorktreeInspection,
   parseHostConnectorCapabilities,
 } from "./index";
 import { agentProviderCatalogSchema } from "./agents";
@@ -77,6 +81,113 @@ describe("Host Connector protocol compatibility", () => {
     }
   });
 
+  it("validates Git branch requests and results", () => {
+    const request = (value: Record<string, unknown>) =>
+      isHostConnectorCommand({ type: "request", requestId: "request", request: value });
+    const target = { transport: "ssh", alias: "workstation" };
+    expect(request({ type: "list_git_branches", target, path: "/srv/project" })).toBe(true);
+    expect(request({ type: "list_git_branches", target, path: "" })).toBe(false);
+    for (const branch of [
+      { kind: "local", name: "feature/one" },
+      { kind: "new", name: "topic" },
+      { kind: "remote", remote: "origin", name: "main" },
+    ]) {
+      expect(
+        request({ type: "switch_git_branch", target, path: "/srv/project", branch, stash: false }),
+      ).toBe(true);
+    }
+    for (const branch of [
+      { kind: "local", name: "--orphan" },
+      { kind: "local", name: "bad\nname" },
+      { kind: "local", name: "" },
+      { kind: "remote", name: "main" },
+      { kind: "local", name: "main", remote: "origin" },
+      { kind: "tag", name: "v1" },
+    ]) {
+      expect(
+        request({ type: "switch_git_branch", target, path: "/srv/project", branch, stash: false }),
+      ).toBe(false);
+    }
+    expect(
+      request({
+        type: "switch_git_branch",
+        target,
+        path: "/srv/project",
+        branch: { kind: "local", name: "main" },
+      }),
+    ).toBe(false);
+
+    expect(
+      isAgentWorkspaceGitBranches({
+        isGit: true,
+        current: "main",
+        truncated: false,
+        branches: [
+          { name: "main", remote: null, current: true, worktreePath: null, committedAt: 1 },
+          { name: "next", remote: "origin", current: false, worktreePath: null, committedAt: null },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      isAgentWorkspaceGitBranches({ isGit: true, current: null, truncated: false, branches: [{ name: "" }] }),
+    ).toBe(false);
+    expect(
+      isAgentWorkspaceGitSwitchResult({
+        status: "switched",
+        branch: "main",
+        stashed: true,
+        restored: false,
+        keptStash: "stash@{0}",
+      }),
+    ).toBe(true);
+    expect(isAgentWorkspaceGitSwitchResult({ status: "changes_present", changedFiles: 3 })).toBe(true);
+    expect(isAgentWorkspaceGitSwitchResult({ status: "agent_running" })).toBe(true);
+    expect(isAgentWorkspaceGitSwitchResult({ status: "switched", branch: "main" })).toBe(false);
+  });
+
+  it("validates Git worktree requests and results", () => {
+    const request = (value: Record<string, unknown>) =>
+      isHostConnectorCommand({ type: "request", requestId: "request", request: value });
+    const target = { transport: "local" };
+    const create = (base: unknown, branch: unknown = "topic") =>
+      request({ type: "create_git_worktree", target, path: "/srv/project", base, branch });
+    expect(create({ kind: "local", name: "main" })).toBe(true);
+    expect(create({ kind: "remote", remote: "origin", name: "main" })).toBe(true);
+    expect(create({ kind: "new", name: "main" })).toBe(false);
+    expect(create({ kind: "local", name: "main" }, "-b")).toBe(false);
+    expect(create({ kind: "local", name: "main" }, "")).toBe(false);
+    for (const type of ["inspect_git_worktree", "remove_git_worktree"]) {
+      expect(request({ type, target, path: "/wt/topic" })).toBe(true);
+      expect(request({ type, target, path: "" })).toBe(false);
+    }
+
+    expect(
+      isAgentWorkspaceGitWorktree({
+        path: "/wt/topic/app",
+        worktreePath: "/wt/topic",
+        name: "topic",
+        branch: "topic",
+      }),
+    ).toBe(true);
+    expect(isAgentWorkspaceGitWorktree({ path: "/wt/topic", name: "topic" })).toBe(false);
+    expect(
+      isAgentWorkspaceGitWorktreeInspection({
+        exists: true,
+        worktreePath: "/wt/topic",
+        branch: null,
+        changedFiles: 2,
+      }),
+    ).toBe(true);
+    expect(
+      isAgentWorkspaceGitWorktreeInspection({
+        exists: false,
+        worktreePath: null,
+        branch: null,
+        changedFiles: -1,
+      }),
+    ).toBe(false);
+  });
+
   it("accepts a session-directory snapshot and provider-independent upserts", () => {
     expect(
       isHostConnectorEvent({
@@ -110,6 +221,65 @@ describe("Host Connector protocol compatibility", () => {
         },
       }),
     ).toBe(false);
+  });
+
+  it("accepts attention fields as optional additions to directory entries", () => {
+    const attention = {
+      kind: "approval",
+      id: "request",
+      requestedAt: 1_000,
+      title: "Run command",
+      detail: "npm ci",
+    };
+    const lastTurn = {
+      outcome: "failed",
+      startedAt: 500,
+      endedAt: 900,
+      preview: "Partial reply",
+      error: "Rate limited",
+    };
+    expect(
+      isAgentSessionDirectoryEntry({
+        sessionId: "session",
+        runtimeStatus: "running",
+        turnStartedAt: 500,
+        attention,
+        lastTurn,
+      }),
+    ).toBe(true);
+    expect(
+      isAgentSessionDirectoryEntry({
+        sessionId: "session",
+        runtimeStatus: "idle",
+        turnStartedAt: null,
+        attention: null,
+        lastTurn: null,
+      }),
+    ).toBe(true);
+    // Future summary fields stay additive.
+    expect(
+      isAgentSessionDirectoryEntry({
+        sessionId: "session",
+        runtimeStatus: "idle",
+        lastTurn: { ...lastTurn, tokens: 12 },
+      }),
+    ).toBe(true);
+    for (const invalid of [
+      { turnStartedAt: "soon" },
+      { attention: { ...attention, kind: "nudge" } },
+      { attention: { ...attention, id: "" } },
+      { attention: { ...attention, title: "x".repeat(281) } },
+      { lastTurn: { ...lastTurn, outcome: "paused" } },
+      { lastTurn: { ...lastTurn, endedAt: undefined } },
+    ]) {
+      expect(
+        isAgentSessionDirectoryEntry({
+          sessionId: "session",
+          runtimeStatus: "idle",
+          ...invalid,
+        }),
+      ).toBe(false);
+    }
   });
 
   it("validates provider catalogs at the connector boundary", () => {

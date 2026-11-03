@@ -41,6 +41,11 @@ export interface DiscoveredModel {
   capabilities?: ModelCapabilities;
 }
 
+export interface ModelDiscoveryOptions {
+  /** Providers with a separate image listing use it for image models. */
+  modelType?: "chat" | "image";
+}
+
 export type AnthropicCacheControl = NonNullable<
   AnthropicProviderOptions["cacheControl"]
 >;
@@ -56,5 +61,8 @@ export interface ProviderAdapter {
   validateConnection?(connection: ProviderConnection): void;
   validateModelConfig?(config: ProviderModelConfig): void;
   createLanguageModel(config: ProviderModelConfig): ResolvedLanguageModel;
-  listModels(connection: ProviderConnection): Promise<DiscoveredModel[]>;
+  listModels(
+    connection: ProviderConnection,
+    options?: ModelDiscoveryOptions,
+  ): Promise<DiscoveredModel[]>;
 }

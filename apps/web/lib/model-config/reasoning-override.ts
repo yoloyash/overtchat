@@ -4,6 +4,10 @@ import {
   type ModelReasoningControls,
   type ModelReasoningLevel,
 } from "@overtchat/shared";
+import type {
+  ReasoningOverride,
+  ReasoningRequestFields,
+} from "@overtchat/shared/admin-settings";
 
 export const MODEL_REASONING_LEVELS = [
   "on",
@@ -11,18 +15,10 @@ export const MODEL_REASONING_LEVELS = [
   ...REASONING_EFFORTS,
 ] as const satisfies readonly ModelReasoningLevel[];
 
-export type ReasoningRequestFields = Record<string, unknown>;
-
-/**
- * Administrator-declared thinking levels for an OpenAI-compatible local model.
- * Each level's fields are merged into the Chat Completions body as a JSON Merge
- * Patch (RFC 7396). An empty `requests` object hides the thinking selector.
- */
-export interface ReasoningOverride {
-  /** Level the server applies when no thinking field is sent. */
-  defaultLevel?: ModelReasoningLevel;
-  requests: Partial<Record<ModelReasoningLevel, ReasoningRequestFields>>;
-}
+export type {
+  ReasoningOverride,
+  ReasoningRequestFields,
+} from "@overtchat/shared/admin-settings";
 
 const RequestFieldsSchema = z.record(z.string(), z.unknown());
 

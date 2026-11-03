@@ -141,8 +141,10 @@ async function permitted(request: boolean) {
       name: "Chat responses",
       importance: Notifications.AndroidImportance.HIGH,
     });
+    // The channel id predates alerts for requests and failures; its name says
+    // what it carries now.
     await Notifications.setNotificationChannelAsync("agent-idle", {
-      name: "Agent idle",
+      name: "Agent activity",
       importance: Notifications.AndroidImportance.HIGH,
     });
     await Notifications.setNotificationChannelAsync("sign-in-requests", {
@@ -217,7 +219,7 @@ export function showNotificationIntro(scope: NotificationScope) {
   if (settings.chats || settings.agents || settings.signIns) return;
   Alert.alert(
     "Know when it’s ready",
-    "Get notified when your response is ready, your agent becomes idle, or someone signs in to your account.",
+    "Get notified when your response is ready, when an agent needs you or finishes, or when someone signs in to your account.",
     [
       { text: "Not now", style: "cancel" },
       {

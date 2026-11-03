@@ -55,6 +55,8 @@ import {
   SettingsPageHeader,
   SettingsSection,
 } from "../SettingsRows";
+import { AgentWorktreeRemovalDetails } from "@/components/agents/AgentWorktreeRemovalDetails";
+import { useAgentWorktreeInspection } from "@/lib/queries/agentWorkspaces";
 import { AddAgentWorkspaceDialog } from "./AddAgentWorkspaceDialog";
 
 type PendingDetach =
@@ -80,6 +82,7 @@ export function ConnectionsPanel({
   const deleteConnectorMutation = useDeleteHostConnector();
   const [addOpen, setAddOpen] = useState(initialAddOpen);
   const [pairing, setPairing] = useState<HostConnectorPairing | null>(null);
+  const [pairingError, setPairingError] = useState("");
   const [commandCopied, setCommandCopied] = useState(false);
   const [upgradeCopied, setUpgradeCopied] = useState(false);
   const [pendingDetach, setPendingDetach] = useState<PendingDetach | null>(null);
@@ -138,15 +141,16 @@ export function ConnectionsPanel({
     deleteConnectorMutation.isPending;
 
   async function createPairing() {
+    setPairingError("");
     try {
       setPairing(await pairingMutation.mutateAsync());
       setCommandCopied(false);
     } catch (cause) {
-      toast.error({
-        title: "Pairing failed",
-        description:
-          cause instanceof Error ? cause.message : "Could not create a pairing code.",
-      });
+      // The usual cause is a server-side HOST_CONNECTOR_URL problem, which
+      // the operator needs to read in full rather than catch in a toast.
+      setPairingError(
+        cause instanceof Error ? cause.message : "Could not create a pairing code.",
+      );
     }
   }
 
@@ -161,6 +165,15 @@ export function ConnectionsPanel({
     await navigator.clipboard.writeText(connector.upgrade.command);
     setUpgradeCopied(true);
   }
+
+  const pendingWorktree =
+    pendingDetach?.type === "workspace-group"
+      ? (pendingDetach.group.targets.find(
+          ({ workspace }) => workspace.worktreeParentPath,
+        )?.workspace ?? null)
+      : null;
+  // Removal waits until the dialog can say what would be lost.
+  const worktreeInspection = useAgentWorktreeInspection(pendingWorktree?.id ?? "");
 
   function setAddDialogOpen(open: boolean) {
     setAddOpen(open);
@@ -283,8 +296,8 @@ export function ConnectionsPanel({
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-3 px-4 py-4">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
                 <Server className="size-4" />
               </span>
@@ -293,11 +306,29 @@ export function ConnectionsPanel({
                   OvertChat host
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  Not installed on this server. Run: overtchat setup
+                  Not installed. Run overtchat setup on this server, or pair a connector on another computer.
                 </span>
               </span>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pairingMutation.isPending}
+              onClick={() => void createPairing()}
+            >
+              {pairingMutation.isPending ? (
+                <Loader2 className="animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Link2 />
+              )}
+              Pair a connector
+            </Button>
           </div>
+        )}
+        {pairingError && (
+          <SettingsNotice tone="error" className="border-t px-4 py-3 text-xs">
+            {pairingError}
+          </SettingsNotice>
         )}
         {connector?.upgrade && (
           <div className="border-t px-4 py-4">
@@ -445,7 +476,9 @@ export function ConnectionsPanel({
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               {pendingDetach?.type === "workspace-group"
-                ? "Remove workspace?"
+                ? pendingWorktree
+                  ? "Remove worktree?"
+                  : "Remove workspace?"
                 : "Remove Host Connector?"}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
@@ -457,6 +490,11 @@ export function ConnectionsPanel({
                   and every agent that uses it will be removed from OvertChat.
                   Files and native agent sessions remain on their machines.
                 </>
+              ) : pendingWorktree && pendingDetach?.type === "workspace-group" ? (
+                <AgentWorktreeRemovalDetails
+                  workspaceId={pendingWorktree.id}
+                  name={pendingDetach.group.name}
+                />
               ) : pendingDetach?.type === "workspace-group" ? (
                 <>
                   <span className="font-medium text-foreground">
@@ -483,7 +521,7 @@ export function ConnectionsPanel({
               <Button
                 variant="destructive"
                 size="sm"
-                disabled={detaching}
+                disabled={detaching || worktreeInspection.isLoading}
                 onClick={() => void confirmDetach()}
               >
                 {detaching && (

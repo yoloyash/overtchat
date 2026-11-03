@@ -5,6 +5,7 @@ import {
   toAdminModelConfig,
   type ModelConfigRow,
 } from "@/lib/db/modelConfigs";
+import { adminModelConfigForClient } from "@/lib/model-config/legacy-clients";
 import {
   ModelConfigSchema,
   type PublicModelConfig,
@@ -57,7 +58,11 @@ export async function GET(req: Request) {
     if (session.user.role !== "admin") {
       return new Response("Forbidden", { status: 403 });
     }
-    return Response.json({ modelConfigs: rows.map(toAdminModelConfig) });
+    return Response.json({
+      modelConfigs: rows.map((row) =>
+        adminModelConfigForClient(req, toAdminModelConfig(row)),
+      ),
+    });
   }
   return Response.json({
     modelConfigs: rows.filter((r) => r.enabled && r.modelType !== "image").map(toPublic),
@@ -93,7 +98,7 @@ export async function POST(req: Request) {
   }
   const row = await createModelConfig(parsed.data);
   return Response.json(
-    { modelConfig: toAdminModelConfig(row) },
+    { modelConfig: adminModelConfigForClient(req, toAdminModelConfig(row)) },
     { status: 201 },
   );
 }

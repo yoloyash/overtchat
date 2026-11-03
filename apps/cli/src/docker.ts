@@ -2,6 +2,7 @@ import type {
   ExistingInstallation,
   Gpu,
   InstallationConfig,
+  SandboxTier,
 } from "./types.js";
 import { APP_IMAGE } from "./constants.js";
 import { commandExists, requireSuccessful, runCommand } from "./process.js";
@@ -372,6 +373,18 @@ export async function reconcileManagedSidecars(
           config.stt.accelerator === "gpu"),
       service: "stt-gpu",
     },
+    {
+      containerName: "overtchat-sandbox",
+      label: "Code sandbox",
+      selected: config.sandbox.installed && config.sandbox.tier === "slim",
+      service: "sandbox",
+    },
+    {
+      containerName: "overtchat-sandbox-full",
+      label: "Code sandbox (full)",
+      selected: config.sandbox.installed && config.sandbox.tier === "full",
+      service: "sandbox-full",
+    },
     // Removing the tunnel is what takes the cloud address offline.
     {
       containerName: "overtchat-cloud-tunnel",
@@ -508,6 +521,7 @@ async function stoppedComposeInstallation(
   const sttCpu = sttGpu
     ? null
     : await inspectContainer(docker, "overtchat-stt-cpu");
+  const sandboxTier = await installedSandboxTier(docker);
   const labels = redis?.Config?.Labels ?? searxng?.Config?.Labels ?? {};
   return {
     containerName: "overtchat-app",
@@ -533,7 +547,16 @@ async function stoppedComposeInstallation(
     ttsGpuVariant: kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    sandboxTier,
   };
+}
+
+async function installedSandboxTier(
+  docker: DockerCommand,
+): Promise<SandboxTier | undefined> {
+  if (await inspectContainer(docker, "overtchat-sandbox-full")) return "full";
+  if (await inspectContainer(docker, "overtchat-sandbox")) return "slim";
+  return undefined;
 }
 
 export async function detectExistingInstallation(
@@ -576,6 +599,7 @@ export async function detectExistingInstallation(
   const sttCpu = sttGpu
     ? null
     : await inspectContainer(docker, "overtchat-stt-cpu");
+  const sandboxTier = await installedSandboxTier(docker);
 
   return {
     containerName: (app.Name ?? "/overtchat-app").replace(/^\//u, ""),
@@ -605,6 +629,7 @@ export async function detectExistingInstallation(
         : kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    sandboxTier,
   };
 }
 

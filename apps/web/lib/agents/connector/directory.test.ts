@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
-  runtimeStatusForSession: vi.fn(),
+  sessionDirectoryEntry: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: {
-    runtimeStatusForSession: mocks.runtimeStatusForSession,
+    sessionDirectoryEntry: mocks.sessionDirectoryEntry,
   },
 }));
 
@@ -43,6 +43,13 @@ const connections: AgentConnectionListItem[] = [
             createdAt: null,
             modifiedAt: null,
             runtimeStatus: "idle",
+            lastTurn: {
+              outcome: "completed",
+              startedAt: 10,
+              endedAt: 20,
+              preview: "Stored reply",
+            },
+            readTurnEndedAt: 15,
           },
         ],
       },
@@ -53,17 +60,49 @@ const connections: AgentConnectionListItem[] = [
 describe("connector session directory", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.runtimeStatusForSession.mockReturnValue("running");
+    mocks.sessionDirectoryEntry.mockReturnValue({
+      sessionId: "session",
+      runtimeStatus: "running",
+      turnStartedAt: 30,
+      attention: {
+        kind: "question",
+        id: "request",
+        requestedAt: 40,
+        title: "Route",
+      },
+      // A restarted runtime has not finished a turn yet.
+      lastTurn: null,
+    });
   });
 
   it("overlays connector-projected status without mutating database data", () => {
     const result = withConnectorSessionDirectory(connections);
-    expect(result[0]!.workspaces[0]!.sessions[0]!.runtimeStatus).toBe(
-      "running",
-    );
+    expect(result[0]!.workspaces[0]!.sessions[0]).toMatchObject({
+      runtimeStatus: "running",
+      turnStartedAt: 30,
+      attention: { id: "request" },
+      lastTurn: { endedAt: 20, preview: "Stored reply" },
+      readTurnEndedAt: 15,
+    });
     expect(connections[0]!.workspaces[0]!.sessions[0]!.runtimeStatus).toBe(
       "idle",
     );
-    expect(mocks.runtimeStatusForSession).toHaveBeenCalledWith("session");
+    expect(mocks.sessionDirectoryEntry).toHaveBeenCalledWith("session");
+  });
+
+  it("prefers a newer live turn over the stored one", () => {
+    const live = { outcome: "failed", startedAt: 30, endedAt: 50, error: "Boom" } as const;
+    mocks.sessionDirectoryEntry.mockReturnValue({
+      sessionId: "session",
+      runtimeStatus: "idle",
+      lastTurn: live,
+    });
+    const [session] = withConnectorSessionDirectory(connections)[0]!.workspaces[0]!.sessions;
+    expect(session).toMatchObject({
+      runtimeStatus: "idle",
+      turnStartedAt: null,
+      attention: null,
+      lastTurn: live,
+    });
   });
 });

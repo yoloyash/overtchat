@@ -64,17 +64,7 @@ export async function runCustomImageProvider(
       throw new Error("The image provider returned invalid JSON.");
     throw error;
   }
-  if (
-    !payload ||
-    typeof payload !== "object" ||
-    !("data" in payload) ||
-    !Array.isArray(payload.data) ||
-    payload.data.length !== 1
-  )
-    throw new Error("The image provider must return exactly one image.");
-  const item: unknown = payload.data[0];
-  if (!item || typeof item !== "object")
-    throw new Error("The image provider did not return an image.");
+  const item = readSingleImageItem(payload);
   let encoded: string;
   let declaredMediaType: string | undefined;
   if ("b64_json" in item && typeof item.b64_json === "string") {
@@ -90,6 +80,31 @@ export async function runCustomImageProvider(
       );
     [, declaredMediaType, encoded] = match;
   } else throw new Error("The image provider did not return image data.");
+  return {
+    ...decodeImageData(encoded, declaredMediaType),
+    usage: readImageUsage(payload as object),
+    reportedCost: undefined,
+  };
+}
+
+/** The one `data` item of an Images-style response; never more than one. */
+export function readSingleImageItem(payload: unknown): object {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("data" in payload) ||
+    !Array.isArray(payload.data) ||
+    payload.data.length !== 1
+  )
+    throw new Error("The image provider must return exactly one image.");
+  const item: unknown = payload.data[0];
+  if (!item || typeof item !== "object")
+    throw new Error("The image provider did not return an image.");
+  return item;
+}
+
+/** Decodes base64 image bytes, bounding size and checking the raster signature. */
+export function decodeImageData(encoded: string, declaredMediaType?: string) {
   if (
     !encoded ||
     encoded.length % 4 !== 0 ||
@@ -104,10 +119,51 @@ export async function runCustomImageProvider(
   const mediaType = imageMediaType(data);
   if (declaredMediaType && mediaType !== declaredMediaType)
     throw new Error("The image provider returned mismatched image content.");
-  return { data, mediaType, usage: undefined };
+  return { data, mediaType };
 }
 
-function imageMediaType(data: Uint8Array): string {
+/**
+ * Token usage from an OpenAI Images response. Gateways that proxy image
+ * models through chat billing report the chat field names instead.
+ */
+export function readImageUsage(payload: object) {
+  const usage =
+    "usage" in payload &&
+    payload.usage &&
+    typeof payload.usage === "object" &&
+    !Array.isArray(payload.usage)
+      ? (payload.usage as Record<string, unknown>)
+      : undefined;
+  if (!usage) return undefined;
+  const count = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = usage[key];
+      if (
+        typeof value === "number" &&
+        Number.isSafeInteger(value) &&
+        value >= 0
+      )
+        return value;
+    }
+    return undefined;
+  };
+  const inputTokens = count("input_tokens", "prompt_tokens");
+  const outputTokens = count("output_tokens", "completion_tokens");
+  const totalTokens =
+    count("total_tokens") ??
+    (inputTokens !== undefined && outputTokens !== undefined
+      ? inputTokens + outputTokens
+      : undefined);
+  if (
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    totalTokens === undefined
+  )
+    return undefined;
+  return { inputTokens, outputTokens, totalTokens };
+}
+
+export function imageMediaType(data: Uint8Array): string {
   for (const type of ["image/png", "image/jpeg", "image/webp", "image/gif"]) {
     try {
       assertFetchedImageContent(data, type);

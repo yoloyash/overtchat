@@ -1,7 +1,11 @@
+import { CLIENT_HEADER } from "@overtchat/shared";
+import Constants from "expo-constants";
 import { File as FsFile } from "expo-file-system";
 import { fetch as expoFetch } from "expo/fetch";
 import { getAuthClient } from "@/lib/auth/client";
 import { getServerUrl } from "@/lib/server-url";
+
+const CLIENT = `mobile/${Constants.expoConfig?.version ?? "unknown"}`;
 
 export function getApiBase(): string {
   const url = getServerUrl();
@@ -26,6 +30,7 @@ export async function authFetch(
   init: Parameters<typeof expoFetch>[1] = {},
 ) {
   const headers = new Headers(init.headers as HeadersInit | undefined);
+  headers.set(CLIENT_HEADER, CLIENT);
   if (!headers.has("Cookie")) {
     const cookie = await getAuthCookie();
     if (cookie) headers.set("Cookie", cookie);
@@ -60,7 +65,7 @@ export async function uploadFile(file: {
     method: "POST",
     body: form,
     credentials: "omit",
-    headers: { Cookie: await getAuthCookie() },
+    headers: { Cookie: await getAuthCookie(), [CLIENT_HEADER]: CLIENT },
   });
 
   const json = (await res.json().catch(() => ({}))) as Partial<UploadResponse> & {

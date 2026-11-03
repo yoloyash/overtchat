@@ -6,6 +6,10 @@ import {
   resetE2eDatabase,
   setupUrl,
 } from "./helpers/database";
+import {
+  expectRandomUuidFallback,
+  removeRandomUuid,
+} from "./helpers/insecure-origin";
 
 const code = `root = Card([CardHeader("Trip planner"), booking])
 booking = Form("trip", Buttons([Button("Plan trip", @ToAssistant("Plan this trip", {ticket: "T-42"}))]), [FormControl("Destination", Input("destination", "City"))])`;
@@ -271,4 +275,67 @@ test("saved chat renders cards, tolerates malformed input and serves readable hi
   );
   expect(await legacy.text()).not.toContain("tool-present_openui");
   expect(await current.text()).toContain("tool-present_openui");
+});
+
+test("web and mobile render source citations on plain-HTTP LAN origins", async ({
+  page,
+}) => {
+  const cited = `root = Card([TextContent("Kyoto is busiest in spring [1].")], [{title: "Kyoto seasons", sourceName: "Travel notes"}])`;
+  resetE2eDatabase();
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Citation Tester");
+  await page.locator("#email").fill("citations@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  const db = openE2eDatabase();
+  try {
+    const user = db.prepare("SELECT id FROM user LIMIT 1").get() as {
+      id: string;
+    };
+    db.prepare(
+      "INSERT INTO chats (id, user_id, title, created_at, updated_at) VALUES ('cited-chat', ?, 'Kyoto', 1, 1)",
+    ).run(user.id);
+    db.prepare(
+      "INSERT INTO messages (id, chat_id, role, parts, created_at) VALUES ('cited-answer', 'cited-chat', 'assistant', ?, 1)",
+    ).run(
+      JSON.stringify([
+        {
+          type: "tool-present_openui",
+          toolCallId: "t",
+          state: "output-available",
+          input: { ui: cited },
+          output: { displayed: true, text: "Kyoto is busiest in spring." },
+        },
+      ]),
+    );
+  } finally {
+    db.close();
+  }
+  await removeRandomUuid(page);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/chat/cited-chat");
+  await expect(page.getByText("Kyoto is busiest in spring")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Citations" })).toBeVisible();
+  await expectRandomUuidFallback(page);
+
+  await page.goto("/openui/index.html");
+  await page.evaluate(
+    (code) =>
+      window.overtchatOpenUI!.render({
+        messageId: "a",
+        toolCallId: "t",
+        code,
+        isStreaming: false,
+        fallbackText: "Kyoto is busiest in spring.",
+        mode: "light",
+        canAct: false,
+      }),
+    cited,
+  );
+  await expect(page.getByRole("button", { name: "Citations" })).toBeVisible();
+  await expectRandomUuidFallback(page);
+  expect(errors).toEqual([]);
 });

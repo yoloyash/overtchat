@@ -55,10 +55,13 @@ these settings are restored on exit. Stop `media:serve` with Ctrl-C afterward.
 - `apps/web/media/presentation.html`: shared frame and wordmark.
 - `apps/mobile/media/capture.yaml`: native navigation and screenshots.
 
-The main conversation is a saved local-model response. Other scenes use sample
-data; browser voice and agent transports are simulated. Edit the fixtures and
-expected text together. Regeneration replays this content rather than making
-new model requests.
+The hero conversation is an interactive answer: a hand-written OpenUI program
+in `fixtures.ts` that the app's own renderer draws, with its figures computed
+from the stated assumptions. The reading-nook conversation, used by the
+Android and narrow-web scenes, is a saved local-model response. Other scenes
+use sample data; browser voice and agent transports are simulated. Edit the
+fixtures and expected text together. Regeneration replays this content rather
+than making new model requests.
 Demo timestamps use the capture date so history labels stay current.
 
 Review image crops, readable text, dark theme, and visible controls before

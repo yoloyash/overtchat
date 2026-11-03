@@ -28,6 +28,7 @@ export type ReleaseManifest = {
   voiceVersion: string;
   connectorVersion: string;
   sttVersion: string;
+  sandboxVersion: string;
   redisImage: string;
   searxngImage: string;
   kokoroImage: string;
@@ -72,6 +73,10 @@ export function applyReleaseManifest(
     compareVersions(manifest.sttVersion, config.sttVersion) > 0
       ? manifest.sttVersion
       : config.sttVersion;
+  const sandboxVersion =
+    compareVersions(manifest.sandboxVersion, config.sandboxVersion) > 0
+      ? manifest.sandboxVersion
+      : config.sandboxVersion;
 
   return {
     ...config,
@@ -87,6 +92,7 @@ export function applyReleaseManifest(
     voiceVersion,
     connectorVersion,
     sttVersion,
+    sandboxVersion,
     redisImage: manifest.redisImage,
     searxngImage: manifest.searxngImage,
     kokoroImage: manifest.kokoroImage,
@@ -127,6 +133,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   const voiceVersion = Reflect.get(value, "voiceVersion");
   const connectorVersion = Reflect.get(value, "connectorVersion");
   const sttVersion = Reflect.get(value, "sttVersion");
+  const sandboxVersion = Reflect.get(value, "sandboxVersion");
   const redisImage = Reflect.get(value, "redisImage");
   const searxngImage = Reflect.get(value, "searxngImage");
   const kokoroImage = Reflect.get(value, "kokoroImage");
@@ -142,6 +149,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   assertVersion(voiceVersion, "voice version");
   assertVersion(connectorVersion, "connector version");
   assertVersion(sttVersion, "STT version");
+  assertVersion(sandboxVersion, "code sandbox version");
   assertDigestImage(redisImage, "Redis image", "docker.io/library/redis");
   assertDigestImage(searxngImage, "SearXNG image", "docker.io/searxng/searxng");
   assertDigestImage(
@@ -168,6 +176,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     voiceVersion,
     connectorVersion,
     sttVersion,
+    sandboxVersion,
     redisImage,
     searxngImage,
     kokoroImage,

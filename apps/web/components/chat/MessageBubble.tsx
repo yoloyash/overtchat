@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
-import { openUIStateKey, type OpenUIAction, type OpenUIFormState } from "@overtchat/shared";
+import {
+  codeExecutionFileIndex,
+  openUIStateKey,
+  type CodeExecutionFile,
+  type OpenUIAction,
+  type OpenUIFormState,
+} from "@overtchat/shared";
 import { Streamdown } from "streamdown";
 import {
   Check,
@@ -28,6 +34,7 @@ import {
 import { speakableText, textOf } from "@/lib/chat/message";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
 import { unicodeCitation } from "@/lib/citations-remark";
+import { CODE_FILE_ALLOWED_TAGS, CODE_FILE_TAG, codeFileLinks } from "@/lib/chat/code-file-links";
 import type { MessageStats } from "@/lib/chat/stats";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -40,6 +47,8 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { CodeFileLink, CodeFilesProvider } from "./CodeExecutionFiles";
+import { DocumentCard } from "./DocumentCard";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { OpenUICard } from "./OpenUICard";
@@ -50,15 +59,28 @@ import {
 } from "./MessageActions";
 import { serverUrl } from "@/lib/api-url";
 
-const CITATION_REMARK_PLUGINS = [
+const REPLY_REMARK_PLUGINS = [
   ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
   unicodeCitation,
+  codeFileLinks,
 ];
-const CITATION_ALLOWED_TAGS = {
+const REPLY_ALLOWED_TAGS = {
   citation: ["turn", "reftype", "index", "citationid"],
   "composite-citation": ["citations", "citationid"],
   "highlighted-text": ["citationid"],
+  ...CODE_FILE_ALLOWED_TAGS,
 };
+
+function CodeFileElement(props: Record<string, unknown>) {
+  return (
+    <CodeFileLink
+      filename={props.filename as string | undefined}
+      embed={props.embed as string | undefined}
+    >
+      {props.children as React.ReactNode}
+    </CodeFileLink>
+  );
+}
 
 export function MessageBubble({
   message,
@@ -70,6 +92,7 @@ export function MessageBubble({
   onImageReference,
   onOpenUIAction,
   openuiStates,
+  codeFiles,
   onEdit,
   speech,
   showStats,
@@ -84,6 +107,8 @@ export function MessageBubble({
   onImageReference?: (file: FileUIPart) => void;
   onOpenUIAction?: (action: OpenUIAction) => void;
   openuiStates?: Map<string, OpenUIFormState>;
+  /** Files the conversation's runs returned, which replies link by name. */
+  codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
   onEdit?: (id: string, text: string, files: FileUIPart[]) => void;
   speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
@@ -153,6 +178,7 @@ export function MessageBubble({
       onImageReference={onImageReference}
       onOpenUIAction={onOpenUIAction}
       openuiStates={openuiStates}
+      codeFiles={codeFiles}
       speech={speech}
       showStats={showStats}
       stats={stats}
@@ -170,6 +196,7 @@ function AssistantBubble({
   onImageReference,
   onOpenUIAction,
   openuiStates,
+  codeFiles,
   speech,
   showStats,
   stats,
@@ -183,12 +210,17 @@ function AssistantBubble({
   onImageReference?: (file: FileUIPart) => void;
   onOpenUIAction?: (action: OpenUIAction) => void;
   openuiStates?: Map<string, OpenUIFormState>;
+  codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
   speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
 }) {
   const text = textOf(message);
   const lookup = useMemo(() => buildSourceLookup(message), [message]);
+  const ownFiles = useMemo(
+    () => (codeFiles ? undefined : codeExecutionFileIndex([message])),
+    [codeFiles, message],
+  );
   const citationComponents = useMemo(
     () => ({
       citation: (props: Record<string, unknown>) => (
@@ -208,11 +240,13 @@ function AssistantBubble({
       "highlighted-text": (props: Record<string, unknown>) => (
         <HighlightedText>{props.children as React.ReactNode}</HighlightedText>
       ),
+      [CODE_FILE_TAG]: CodeFileElement,
     }),
     [lookup],
   );
 
   return (
+    <CodeFilesProvider value={codeFiles ?? ownFiles!}>
     <div className="group flex flex-col items-start gap-2">
       <div className="w-full max-w-full space-y-3 text-sm leading-relaxed">
         {(() => {
@@ -226,8 +260,8 @@ function AssistantBubble({
                   <Streamdown
                     className="font-sans space-y-3 text-[15px] leading-relaxed"
                     plugins={MESSAGE_MARKDOWN_PLUGINS}
-                    remarkPlugins={CITATION_REMARK_PLUGINS}
-                    allowedTags={CITATION_ALLOWED_TAGS}
+                    remarkPlugins={REPLY_REMARK_PLUGINS}
+                    allowedTags={REPLY_ALLOWED_TAGS}
                     components={citationComponents}
                     isAnimating={streaming}
                     caret={showCaret ? "block" : undefined}
@@ -245,6 +279,15 @@ function AssistantBubble({
                   part={seg.part}
                   streaming={streaming}
                   onReference={canAct ? onImageReference : undefined}
+                />
+              );
+            }
+            if (seg.kind === "document") {
+              return (
+                <DocumentCard
+                  key={seg.part.toolCallId}
+                  part={seg.part}
+                  streaming={streaming}
                 />
               );
             }
@@ -308,6 +351,7 @@ function AssistantBubble({
         </MessageActions>
       )}
     </div>
+    </CodeFilesProvider>
   );
 }
 

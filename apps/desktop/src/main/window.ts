@@ -2,6 +2,7 @@ import { app, autoUpdater, BrowserWindow, nativeTheme, screen, shell, type WebCo
 import path from "node:path";
 import type { DesktopCommand } from "@overtchat/shared/desktop";
 import { IPC, type ShellWindowState } from "../shared/ipc";
+import { clearBadge } from "./badge";
 import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, APP_URL, originOf } from "./protocol";
 import {
@@ -239,7 +240,18 @@ export function openMainWindow(): void {
 
 /** Starts the UI over, e.g. after the server changes. */
 export function restartUi(): void {
+  clearBadge();
   getMainWindow()?.loadURL(APP_URL);
+}
+
+/** Brings the window to the front, creating it if needed. */
+export function revealWindow(): void {
+  openMainWindow();
+  const win = getMainWindow();
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
 }
 
 /** Sends a menu command to the UI. */

@@ -36,6 +36,10 @@ import {
   withSummaryOutputBudget,
 } from "@/lib/providers/server/output-budget";
 import {
+  codeExecutionFiles,
+  isCodeExecutionPart,
+  isDocumentOutput,
+  isDocumentToolPart,
   isImageToolPart,
   OPENUI_PRESENT_TOOL_NAME,
   isGeneratedImage,
@@ -101,8 +105,27 @@ import {
   getChatGenerationByRequestId,
   type ChatGenerationRow,
   type CompletedGenerationUsage,
+  type CompletedImageUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
+import {
+  attachmentTokenBudget,
+  isDocumentFile,
+  listChatFiles,
+  readChunkTokens,
+} from "@/lib/chat/chat-files";
+import { createFileTools, FILE_TOOL_ORDER } from "@/lib/chat/file-tools";
+import {
+  createDocumentTools,
+  DOCUMENT_TOOL_ORDER,
+  DOCUMENT_TOOL_PROMPT,
+} from "@/lib/documents/tools";
+import { getSandboxStatus } from "@/lib/sandbox/client";
+import {
+  CODE_EXECUTION_TOOL_ORDER,
+  codeExecutionPrompt,
+  createCodeExecutionTools,
+} from "@/lib/sandbox/tools";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
@@ -340,13 +363,13 @@ export async function runChat(
   }
 
   const chatTools = createWebTools({ userId, supportsImageInput });
-  let imageOperationStarted = false;
+  const imageUsage: CompletedImageUsage[] = [];
   const imageTools = createImageTools({
     userId,
     messages,
     supportsImageInput,
     options: imageGeneration,
-    onGenerate: () => { imageOperationStarted = true; },
+    onUsage: (usage) => { imageUsage.push(usage); },
   });
   const imageToolsEnabled =
     modelConfig.toolCallingEnabled !== false && getImageCapability().available;
@@ -388,18 +411,79 @@ export async function runChat(
   const openuiToolsEnabled = openuiEligible && openuiPromptFits;
   // History decoding is independent of whether this turn offers the tool.
   const openuiTools = createOpenUITools();
+  const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
+  // Names come from the whole conversation, so they stay stable when a
+  // checkpoint hides the message that attached a file.
+  const chatFiles = listChatFiles(messages);
+  const partialUploadIds = new Set<string>();
+  // Clients advertise a renderer for runs and their files; voice answers stay
+  // spoken. The sandbox must also be healthy.
+  const sandboxStatus =
+    parsedRequest.codeExecutionSupported === true &&
+    toolCallingEnabled &&
+    parsedRequest.responseStyle !== "voice"
+      ? await getSandboxStatus()
+      : null;
+  const sandboxInfo =
+    sandboxStatus?.state === "available" ? sandboxStatus.info : undefined;
+  const codeExecutionEnabled = sandboxInfo !== undefined;
   const inlined = await inlineUploads(
     imageToolsEnabled
       ? withImageReferences(restoredContext.messages, supportsImageInput)
       : restoredContext.messages,
     userId,
+    {
+      tokenBudget: attachmentTokenBudget(contextBudget?.inputTokens),
+      fileNames: new Map(chatFiles.map((file) => [file.uploadId, file.name])),
+      readerAvailable: toolCallingEnabled,
+      onPartial: (uploadId) => partialUploadIds.add(uploadId),
+      codeExecution: codeExecutionEnabled,
+    },
   );
+  // Offer file tools only when some attached document is not entirely in the
+  // model's context: cut to its budget, or attached before a checkpoint.
+  const contextUploadIds = new Set(
+    listChatFiles(restoredContext.messages).map((file) => file.uploadId),
+  );
+  const fileToolsEnabled =
+    toolCallingEnabled &&
+    chatFiles.some(
+      (file) =>
+        isDocumentFile(file) &&
+        (partialUploadIds.has(file.uploadId) ||
+          !contextUploadIds.has(file.uploadId)),
+    );
+  const fileTools = createFileTools({
+    userId,
+    files: chatFiles,
+    chunkTokens: readChunkTokens(contextBudget?.inputTokens),
+  });
+  // Clients advertise a document renderer; voice answers stay spoken.
+  const documentsEnabled =
+    parsedRequest.documentsSupported === true &&
+    toolCallingEnabled &&
+    parsedRequest.responseStyle !== "voice";
+  const documentTools = createDocumentTools({ userId, messages });
+  const codeTools = createCodeExecutionTools({
+    userId,
+    files: chatFiles,
+    supportsImageInput,
+    outputTokens: readChunkTokens(contextBudget?.inputTokens),
+    info: sandboxInfo,
+  });
   const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withRecentOpenUIPrograms(withResponseStyle(inlined))).map((message) =>
     message.role === "assistant"
       ? { ...message, parts: joinContinuationTextParts(message.parts) }
       : message,
   ), {
-    tools: { ...chatTools, ...imageTools, ...openuiTools },
+    tools: {
+      ...chatTools,
+      ...imageTools,
+      ...openuiTools,
+      ...fileTools,
+      ...documentTools,
+      ...codeTools,
+    },
     // An intentional stop can persist a tool call before its result arrives.
     // Keep partial text/reasoning, but do not replay an unmatched call.
     ignoreIncompleteToolCalls: true,
@@ -426,7 +510,6 @@ export async function runChat(
     promptCacheStrategy?.kind === "openai"
       ? withOpenAIPromptCacheKey(providerOptions, promptCacheKeyForChat(chatId))
       : providerOptions;
-  const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
   const webSearchAvailable =
     getServerCapability("search").provider !== "disabled";
   const webToolsEnabled =
@@ -441,6 +524,8 @@ export async function runChat(
       : null,
     projectSystemPrompt(project),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+    documentsEnabled ? DOCUMENT_TOOL_PROMPT : null,
+    sandboxInfo ? codeExecutionPrompt(sandboxInfo) : null,
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
@@ -562,6 +647,9 @@ export async function runChat(
     const memoryTools = memoryToolsEnabled ? createMemoryTools(userId) : {};
     const toolSources: ToolSet[] = [
       ...(webToolsEnabled ? [chatTools] : []),
+      ...(fileToolsEnabled ? [fileTools] : []),
+      ...(documentsEnabled ? [documentTools] : []),
+      ...(codeExecutionEnabled ? [codeTools] : []),
       ...(imageToolsEnabled ? [imageTools] : []),
       ...(openuiToolsEnabled ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
@@ -575,11 +663,17 @@ export async function runChat(
     const toolsEnabled = agentToolNames.length > 0;
     const toolOrder = [
       ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
+      ...(fileToolsEnabled ? FILE_TOOL_ORDER : []),
+      ...(documentsEnabled ? DOCUMENT_TOOL_ORDER : []),
+      ...(codeExecutionEnabled ? CODE_EXECUTION_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
       ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
         (name) =>
           !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(FILE_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(DOCUMENT_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(CODE_EXECUTION_TOOL_ORDER as readonly string[]).includes(name) &&
           !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
           !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
@@ -804,8 +898,7 @@ export async function runChat(
       generateMessageId: () => crypto.randomUUID(),
       // This formatter also receives ordinary tool-error parts. Fatal provider
       // errors are recorded by observeChatStream before conversion.
-      onError: (error) =>
-        error instanceof Error ? error.message : "Something went wrong.",
+      onError: streamErrorText,
       messageMetadata: ({ part }) => {
         if (part.type === "start" && manualCompaction)
           return { contextStatus: "manual-compacting" };
@@ -866,8 +959,8 @@ export async function runChat(
               : undefined;
           };
           const estimatedCost =
-            stepCosts.length > 0 || hasUnpricedStep || imageOperationStarted
-              ? hasUnpricedStep || imageOperationStarted
+            stepCosts.length > 0 || hasUnpricedStep
+              ? hasUnpricedStep
                 ? null
                 : sumEstimatedGenerationCosts(stepCosts)
               : estimateGenerationCost({
@@ -926,18 +1019,24 @@ export async function runChat(
       },
       onEnd: async ({ responseMessage, isAborted }) => {
         if (temporary) return;
-        // A completed image is a durable result even if the subsequent language
-        // model step fails. Preserve it while discarding broken text fragments.
+        // Completed images, document versions and files from code runs are
+        // durable results even if the subsequent language model step fails.
+        // Preserve them while discarding broken text fragments.
         const savedParts = streamError
           ? [
               ...(continueMessage?.parts ?? []),
               ...responseMessage.parts
                 .slice(continueMessage?.parts.length ?? 0)
                 .filter((part) =>
-                  isImageToolPart(part) &&
-                  part.state === "output-available" &&
-                  Array.isArray(part.output?.images) &&
-                  part.output.images.some(isGeneratedImage),
+                  (isImageToolPart(part) &&
+                    part.state === "output-available" &&
+                    Array.isArray(part.output?.images) &&
+                    part.output.images.some(isGeneratedImage)) ||
+                  (isDocumentToolPart(part) &&
+                    part.state === "output-available" &&
+                    isDocumentOutput(part.output)) ||
+                  (isCodeExecutionPart(part) &&
+                    codeExecutionFiles(part).length > 0),
                 ),
             ]
           : responseMessage.parts;
@@ -980,6 +1079,7 @@ export async function runChat(
             !(continueMessage && streamError)
               ? { usage: completedGenerationUsage }
               : {}),
+            ...(imageUsage.length > 0 ? { imageUsage } : {}),
           });
           if (
             completed &&
@@ -1200,6 +1300,25 @@ function observeChatStream(
       return reader.cancel(reason);
     },
   });
+}
+
+/**
+ * Text shown for a failed stream. Providers reject requests either with an
+ * exception or with an error chunk inside the stream; both carry a message.
+ */
+export function streamErrorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (isRecord(error)) {
+    if (typeof error.message === "string") return error.message;
+    if (isRecord(error.error) && typeof error.error.message === "string") {
+      return error.error.message;
+    }
+  }
+  return "Something went wrong.";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export function chatErrorResponse(error: unknown): Response {

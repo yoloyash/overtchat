@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { CustomImageOptionsSchema, customImageOptions } from "./image-options";
-import { REASONING_EFFORTS, type ModelCapabilities } from "@overtchat/shared";
-import {
-  ReasoningOverrideSchema,
-  type ReasoningOverride,
-} from "./reasoning-override";
+import { REASONING_EFFORTS } from "@overtchat/shared";
+import { ReasoningOverrideSchema } from "./reasoning-override";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -15,51 +12,11 @@ import {
 
 export type { PublicModelConfig } from "@overtchat/shared";
 
-export interface ModelPricing {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
-
-export interface CatalogModelPricing extends ModelPricing {
-  tiered: boolean;
-}
-
-/** Admin-facing model config DTO. Includes secrets and provider options for editing. */
-export interface AdminModelConfig {
-  modelType: "chat" | "image";
-  id: string;
-  label: string;
-  providerId: ProviderId;
-  apiFormat: ApiFormat;
-  baseUrl: string;
-  apiKey: string | null;
-  /** Last model configuration update, in milliseconds since epoch. */
-  updatedAt: number;
-  model: string;
-  pricing: ModelPricing | null;
-  /** Exact models.dev base rates for admin UI guidance. */
-  catalogPricing: CatalogModelPricing | null;
-  /** Explicit administrator override. */
-  contextWindow: number | null;
-  /** Last limit reported by model discovery. */
-  discoveredContextWindow: number | null;
-  /** Last capabilities explicitly reported by model discovery. */
-  discoveredCapabilities: ModelCapabilities | null;
-  /** Effective override, discovered, or catalog value for admin UI guidance. */
-  resolvedContextWindow?: number;
-  /** Runtime fields with exact-catalog fallback for admin UI guidance. */
-  resolvedCapabilities?: ModelCapabilities;
-  /** Null follows the catalog or saved detection; survives re-detection. */
-  reasoningOverride: ReasoningOverride | null;
-  systemPrompt: string | null;
-  providerOptions: Record<string, unknown> | null;
-  toolCallingEnabled: boolean;
-  enabled: boolean;
-  taskModel: boolean;
-  sortOrder: number;
-}
+export type {
+  AdminModelConfig,
+  ModelPricing,
+  CatalogModelPricing,
+} from "@overtchat/shared/admin-settings";
 
 const EndpointSchema = z
   .string()
@@ -86,6 +43,11 @@ export const ProviderConnectionSchema = ProviderConnectionObject.superRefine(
   validateProviderConnection,
 );
 
+/** Discovery input; image models can live behind a separate listing. */
+export const ModelDiscoverySchema = ProviderConnectionObject.extend({
+  modelType: z.enum(["chat", "image"]).optional(),
+}).superRefine(validateProviderConnection);
+
 const RuntimeModelFields = {
   model: z.string().trim().min(1, "Model is required"),
   providerOptions: z
@@ -103,7 +65,7 @@ export function supportsLocalReasoningConfig(
   apiFormat: string,
 ): boolean {
   return (
-    ["vllm", "llamacpp", "sglang"].includes(providerId) ||
+    ["vllm", "llamacpp", "sglang", "openrouter"].includes(providerId) ||
     (providerId === "custom" && apiFormat === "openai-chat")
   );
 }
@@ -190,12 +152,14 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
       });
     }
     if (value.modelType === "image") {
-      if (!["openai", "google", "custom"].includes(value.providerId)) {
+      if (
+        !["openai", "google", "openrouter", "custom"].includes(value.providerId)
+      ) {
         context.addIssue({
           code: "custom",
           path: ["providerId"],
           message:
-            "Image models support OpenAI, Google Gemini, and custom OpenAI-compatible providers.",
+            "Image models support OpenAI, Google Gemini, OpenRouter, and custom OpenAI-compatible providers.",
         });
       }
       if (value.providerId === "custom") {
@@ -253,7 +217,13 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
           discoveredContextWindow: null,
           discoveredCapabilities: null,
           reasoningOverride: null,
-          pricing: null,
+          // Image usage carries no cache tokens, so only input and output
+          // rates apply. OpenRouter reports each image's charge, so it takes
+          // no rates; custom backends are priced from the usage they report.
+          pricing:
+            value.pricing && value.providerId !== "openrouter"
+              ? { ...value.pricing, cacheRead: 0, cacheWrite: 0 }
+              : null,
         }
       : value,
   );
@@ -265,6 +235,7 @@ export interface ModelDiscoveryInput {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey?: string | null;
+  modelType?: "chat" | "image";
 }
 
 function validateProviderConnection(

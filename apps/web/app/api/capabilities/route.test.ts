@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   listCapabilities: vi.fn(),
   imageModel: vi.fn(),
   getVoiceCapability: vi.fn(),
+  getCodeExecutionCapability: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -17,6 +18,9 @@ vi.mock("@/lib/db/serverCapabilities", () => ({
 vi.mock("@/lib/db/modelConfigs", () => ({ getImageModelConfig: mocks.imageModel }));
 vi.mock("@/lib/voice/capability", () => ({
   getVoiceCapability: mocks.getVoiceCapability,
+}));
+vi.mock("@/lib/sandbox/client", () => ({
+  getCodeExecutionCapability: mocks.getCodeExecutionCapability,
 }));
 
 import { GET } from "./route";
@@ -52,6 +56,20 @@ describe("public capabilities", () => {
     const body = await (await GET(request)).json();
     expect(body.capabilities.images).toEqual({ available: true, model: "image-model", supportsQuality: true });
     expect(JSON.stringify(body)).not.toContain("private");
+  });
+
+  it("reports code execution without describing the sandbox", async () => {
+    mocks.getCodeExecutionCapability.mockResolvedValue({
+      installed: true,
+      available: true,
+      tier: "full",
+      unavailableReason: null,
+    });
+    await expect((await GET(request)).json()).resolves.toMatchObject({
+      capabilities: {
+        codeExecution: { installed: true, available: true, tier: "full", unavailableReason: null },
+      },
+    });
   });
 
   it("advertises chat pinning to bundled clients", async () => {

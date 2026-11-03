@@ -3,6 +3,7 @@ import { listOpenAIModels } from "@/lib/providers/server/http";
 import { createOpenAICompatibleChatModel } from "@/lib/providers/server/transports";
 import type {
   DiscoveredModel,
+  ModelDiscoveryOptions,
   ProviderAdapter,
   ProviderConnection,
 } from "@/lib/providers/server/types";
@@ -10,6 +11,7 @@ import type { ProviderId } from "@/lib/providers/catalog";
 
 type ListModels = (
   connection: ProviderConnection,
+  options?: ModelDiscoveryOptions,
 ) => Promise<DiscoveredModel[]>;
 
 type TransformRequestBody = (

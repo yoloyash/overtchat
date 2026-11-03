@@ -14,8 +14,11 @@ import {
 } from "@tanstack/react-query";
 import type {
   AgentConnectionListItem,
+  AgentDiscoveryTarget,
   AgentProviderCatalog,
   AgentProviderId,
+  AgentProviderSnapshot,
+  AgentRuntimeStatus,
   AgentSessionReplica,
   AgentWorkspaceGitStatus,
 } from "@overtchat/agent-bridge";
@@ -39,6 +42,27 @@ export function useAgentForeground() {
     return () => listener.remove();
   }, []);
   return focused && active;
+}
+
+/**
+ * Tells the server the owner has seen the session: when it opens in the
+ * foreground, and whenever a turn ends while it is open.
+ */
+export function useMarkAgentSessionSeen(
+  id: string,
+  status: AgentRuntimeStatus | undefined,
+) {
+  const active = useAgentForeground();
+  useEffect(() => {
+    if (!active || status === undefined || status === "running") return;
+    void agentFetch(`/api/agent-sessions/${encodeURIComponent(id)}/read`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ read: true }),
+    }).catch(() => {
+      // Servers that predate read state answer 404; nothing to show.
+    });
+  }, [id, active, status]);
 }
 
 export function useAgentConnections({
@@ -214,6 +238,30 @@ export function useAgentCommand(id: string) {
         queryKey: queryKeys.agentConnections(server),
       });
     },
+  });
+}
+
+/**
+ * Which agents the machine has, as the connector last detected them. The
+ * connector keeps the answer until something asks it to look again.
+ */
+export function useAgentProviderSnapshot(target: AgentDiscoveryTarget | null) {
+  return useQuery({
+    queryKey: queryKeys.agentProviderSnapshot(
+      getApiBase(),
+      JSON.stringify(target),
+    ),
+    queryFn: async ({ signal }) =>
+      (
+        await agentJson<{ snapshot: AgentProviderSnapshot }>(
+          "/api/agent-connections/discover?refresh=0",
+          target,
+          signal,
+        )
+      ).snapshot,
+    enabled: target !== null,
+    staleTime: 60_000,
+    retry: false,
   });
 }
 

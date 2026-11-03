@@ -45,6 +45,8 @@ const ChatRequestEnvelopeSchema = z.object({
   openuiEnabled: z.boolean().optional().default(false),
   openuiAction: z.unknown().optional(),
   forceOpenUI: z.boolean().optional(),
+  documentsSupported: z.boolean().optional().default(false),
+  codeExecutionSupported: z.boolean().optional().default(false),
   imageGeneration: z.object({
     size: z.enum(IMAGE_SIZES).default("auto"),
     quality: z.enum(IMAGE_QUALITIES).default("auto"),
@@ -81,6 +83,8 @@ export interface ParsedChatRequest {
   openuiEnabled?: boolean;
   openuiAction?: OpenUIAction;
   forceOpenUI?: boolean;
+  documentsSupported?: boolean;
+  codeExecutionSupported?: boolean;
   imageGeneration?: ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
@@ -110,6 +114,8 @@ export function chatRequestFingerprint({
   openuiEnabled = false,
   openuiAction,
   forceOpenUI = false,
+  documentsSupported = false,
+  codeExecutionSupported = false,
   imageGeneration,
   timeZone,
   projectId,
@@ -130,6 +136,8 @@ export function chatRequestFingerprint({
         openuiEnabled,
         openuiAction,
         forceOpenUI,
+        documentsSupported,
+        codeExecutionSupported,
         imageGeneration,
         timeZone: timeZone ?? null,
         projectId: projectId ?? null,
@@ -215,6 +223,8 @@ export async function parseChatRequest(
     openuiEnabled: envelope.data.openuiSupported && envelope.data.openuiEnabled,
     openuiAction,
     forceOpenUI: envelope.data.openuiSupported && Boolean(envelope.data.forceOpenUI),
+    documentsSupported: envelope.data.documentsSupported,
+    codeExecutionSupported: envelope.data.codeExecutionSupported,
     imageGeneration: envelope.data.imageGeneration,
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,

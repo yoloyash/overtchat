@@ -67,6 +67,7 @@ export default {
   },
   google: {
     "gemini-2.5-flash": { context: 1_048_576 },
+    "gemini-3.1-flash-image": { cost: { input: 0.5, output: 60 } },
     "gemini-3.1-pro-preview": {
       reasoning_controls: {
         toggle: false,

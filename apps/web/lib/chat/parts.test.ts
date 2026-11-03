@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
-import { groupMessageParts, imageOptionsFromMetadata, type MessageSegment } from "@overtchat/shared";
+import {
+  codeExecutionFiles,
+  groupMessageParts,
+  imageOptionsFromMetadata,
+  type CodeExecutionPart,
+  type MessageSegment,
+} from "@overtchat/shared";
 
 type Part = UIMessage["parts"][number];
 
@@ -32,6 +38,33 @@ const memory = (key: string): Part =>
     state: "output-available",
     input: { key, value: "A saved preference." },
     output: { ok: true, key, value: "A saved preference." },
+  }) as unknown as Part;
+
+const runFile = (id: string, url = `/api/uploads/${id}`) => ({
+  id,
+  url,
+  name: `${id}.png`,
+  mediaType: "image/png",
+  size: 10,
+});
+const codeRun = (id: string, files: unknown[], state = "output-available"): Part =>
+  ({
+    type: "tool-run_python",
+    toolCallId: id,
+    state,
+    input: { code: "print(1)" },
+    ...(state === "output-available"
+      ? {
+          output: {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 5,
+            stdout: "1\n",
+            stderr: "",
+            files,
+          },
+        }
+      : {}),
   }) as unknown as Part;
 
 describe("groupMessageParts", () => {
@@ -121,6 +154,28 @@ describe("groupMessageParts", () => {
     expect(
       (segs[0] as Extract<MessageSegment, { kind: "activity" }>).parts,
     ).toHaveLength(2);
+  });
+
+  it("keeps code runs and the files they return in their activity", () => {
+    const shared = "/api/share/00000000-0000-0000-0000-000000000000/files/c";
+    const one = codeRun("one", [runFile("a"), { id: "bad", url: "https://example.com/x", name: "x", mediaType: "image/png", size: 1 }]);
+    const two = codeRun("two", [runFile("b"), runFile("c", shared)]);
+    const segs = groupMessageParts([
+      reasoning("plan"),
+      one,
+      search("context"),
+      two,
+      codeRun("three", [], "input-available"),
+      text("Here is the chart."),
+      codeRun("four", []),
+    ]);
+
+    expect(segs.map((segment) => segment.kind)).toEqual(["activity", "text", "activity"]);
+    expect((segs[0] as Extract<MessageSegment, { kind: "activity" }>).parts).toHaveLength(5);
+    // Only saved uploads, or their copies in a share snapshot, are run files.
+    expect(
+      [one, two].flatMap((part) => codeExecutionFiles(part as CodeExecutionPart)).map((file) => file.url),
+    ).toEqual(["/api/uploads/a", "/api/uploads/b", shared]);
   });
 
   it("renders memory tools as persistent artifacts outside the work timeline", () => {

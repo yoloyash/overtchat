@@ -42,6 +42,7 @@ const { sweepOrphanedUploads, uploadPath } = await import("./uploads");
 const ownerRoute = await import("@/app/api/chat/[id]/share/route");
 const publicRoute = await import("@/app/api/share/[id]/route");
 const fileRoute = await import("@/app/api/share/[id]/files/[fileId]/route");
+const { limitShareRead } = await import("@/lib/share-rate-limit");
 
 afterAll(() => {
   raw.close();
@@ -489,7 +490,11 @@ describe("share HTTP boundaries", () => {
     ]);
     const share = shares.publishChatShare("chat", "owner")!;
     const params = Promise.resolve({ id: share.id });
-    for (let i = 0; i < 120; i++) {
+    // The limiter's counting is covered in share-rate-limit.test.ts. Spend
+    // most of each link budget directly so this test only proves the routes
+    // draw from it, whatever the forwarding headers say.
+    for (let i = 0; i < 117; i++) expect(limitShareRead(share.id, "page")).toBeNull();
+    for (let i = 0; i < 3; i++) {
       expect(
         (
           await publicRoute.GET(
@@ -502,20 +507,34 @@ describe("share HTTP boundaries", () => {
       ).toBe(200);
     }
     expect(
-      (await publicRoute.GET(new Request("http://test"), { params })).status,
+      (
+        await publicRoute.GET(
+          new Request("http://test", {
+            headers: { "x-forwarded-for": "198.51.100.1" },
+          }),
+          { params },
+        )
+      ).status,
     ).toBe(429);
-    for (let i = 0; i < 600; i++) {
-      const response = await fileRoute.GET(new Request("http://test"), {
-        params: Promise.resolve({ id: share.id, fileId: "active" }),
-      });
+    for (let i = 0; i < 597; i++) expect(limitShareRead(share.id, "file")).toBeNull();
+    for (let i = 0; i < 3; i++) {
+      const response = await fileRoute.GET(
+        new Request("http://test", {
+          headers: { "x-forwarded-for": `192.0.2.${i}` },
+        }),
+        { params: Promise.resolve({ id: share.id, fileId: "active" }) },
+      );
       expect(response.status).toBe(200);
       expect(await response.text()).toBe("test");
     }
     expect(
       (
-        await fileRoute.GET(new Request("http://test"), {
-          params: Promise.resolve({ id: share.id, fileId: "active" }),
-        })
+        await fileRoute.GET(
+          new Request("http://test", {
+            headers: { "x-forwarded-for": "198.51.100.1" },
+          }),
+          { params: Promise.resolve({ id: share.id, fileId: "active" }) },
+        )
       ).status,
     ).toBe(429);
   });

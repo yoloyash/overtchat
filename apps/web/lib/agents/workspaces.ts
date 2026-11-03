@@ -6,6 +6,7 @@ import type {
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
+import { agentWorkspaceAgents } from "@overtchat/shared/agent-creation";
 
 export type AgentWorkspaceTarget = {
   connection: AgentConnectionListItem;
@@ -22,6 +23,8 @@ export type AgentWorkspaceGroup = {
   key: string;
   name: string;
   path: string;
+  /** Key of the group this OvertChat worktree was created from, when it is one. */
+  parentKey: string | null;
   host: AgentConnectionListItem["host"];
   targets: AgentWorkspaceTarget[];
   sessions: AgentWorkspaceSession[];
@@ -31,6 +34,13 @@ export type AgentWorkspaceProviderTarget = {
   provider: AgentProviderId;
   workspace: AgentWorkspaceListItem;
 };
+
+/** How a machine is named everywhere: its SSH alias, else its name. */
+export function agentHostLabel(
+  host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
+): string {
+  return host.sshAlias || host.name || "This server";
+}
 
 export function agentTargetKey(target: AgentDiscoveryTarget): string {
   return JSON.stringify([
@@ -80,13 +90,15 @@ export function groupAgentWorkspaces(
 
   for (const connection of connections) {
     for (const workspace of connection.workspaces) {
-      const key = JSON.stringify([
-        agentTargetKey(agentConnectionTarget(connection)),
-        workspace.path,
-      ]);
+      const targetKey = agentTargetKey(agentConnectionTarget(connection));
+      const key = JSON.stringify([targetKey, workspace.path]);
       const existing = groups.get(key);
       const target = { connection, workspace };
+      const parentKey = workspace.worktreeParentPath
+        ? JSON.stringify([targetKey, workspace.worktreeParentPath])
+        : null;
       if (existing) {
+        existing.parentKey ??= parentKey;
         existing.targets.push(target);
         existing.sessions.push(
           ...workspace.sessions.map((session) => ({
@@ -102,6 +114,7 @@ export function groupAgentWorkspaces(
         key,
         name: workspace.name,
         path: workspace.path,
+        parentKey,
         host: connection.host,
         targets: [target],
         sessions: workspace.sessions.map((session) => ({
@@ -128,22 +141,49 @@ export function groupAgentWorkspaces(
   }));
 }
 
+/**
+ * Splits groups into top-level groups and the worktrees nested under each,
+ * keeping the order of `groups` at the top level and sorting worktrees by name.
+ * A worktree whose workspace was removed is shown at the top level.
+ */
+export function nestAgentWorkspaceGroups(groups: AgentWorkspaceGroup[]): {
+  roots: AgentWorkspaceGroup[];
+  worktrees: Map<string, AgentWorkspaceGroup[]>;
+} {
+  const keys = new Set(groups.map((group) => group.key));
+  const roots: AgentWorkspaceGroup[] = [];
+  const worktrees = new Map<string, AgentWorkspaceGroup[]>();
+  for (const group of groups) {
+    if (group.parentKey === null || !keys.has(group.parentKey)) {
+      roots.push(group);
+      continue;
+    }
+    worktrees.set(group.parentKey, [
+      ...(worktrees.get(group.parentKey) ?? []),
+      group,
+    ]);
+  }
+  for (const children of worktrees.values()) {
+    children.sort((left, right) => left.name.localeCompare(right.name));
+  }
+  return { roots, worktrees };
+}
+
+/** The agents the folder's plus button offers: its own and the rest the machine has. */
 export function projectAgentWorkspaceProviders(
   group: AgentWorkspaceGroup,
   snapshot: AgentProviderSnapshot | undefined,
 ): AgentWorkspaceProviderTarget[] {
-  const representativeWorkspace = group.targets[0]!.workspace;
-  const providers = new Set<AgentProviderId>(
-    snapshot?.providers.flatMap((entry) =>
-      entry.status === "ready" ? [entry.provider] : [],
-    ) ?? [],
+  const byId = new Map(
+    group.targets.map(({ workspace }) => [workspace.id, workspace]),
   );
-  for (const { connection } of group.targets) providers.add(connection.provider);
-  return [...providers].map((provider) => ({
-    provider,
-    workspace:
-      group.targets.find(
-        ({ connection }) => connection.provider === provider,
-      )?.workspace ?? representativeWorkspace,
-  }));
+  return agentWorkspaceAgents(
+    group.targets.map(({ connection, workspace }) => ({
+      provider: connection.provider,
+      workspaceId: workspace.id,
+    })),
+    snapshot,
+  ).flatMap(({ provider, workspaceId, detected }) =>
+    detected ? [{ provider, workspace: byId.get(workspaceId)! }] : [],
+  );
 }

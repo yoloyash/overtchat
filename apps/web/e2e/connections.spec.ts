@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
+import { groupAgentsByWorkspace } from "./helpers/agent-attention";
 import { expect, test } from "@playwright/test";
 import {
   openE2eDatabase,
@@ -16,6 +17,7 @@ const execFileAsync = promisify(execFile);
 const connectorProcesses = new Set<ChildProcess>();
 
 test.beforeEach(resetE2eDatabase);
+test.beforeEach(({ page }) => groupAgentsByWorkspace(page));
 test.afterEach(async () => {
   await Promise.all(
     [...connectorProcesses].map(
@@ -59,7 +61,7 @@ async function startHostConnector(
   await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Not installed on this server. Run: overtchat setup",
+      "Not installed. Run overtchat setup on this server, or pair a connector on another computer.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -70,16 +72,20 @@ async function startHostConnector(
     page.getByRole("heading", { name: "Agent workspaces" }),
   ).toHaveCount(0);
 
-  // Managed setup is the only user-facing installation path. Provision an
-  // unmanaged connector through the authenticated API solely as an E2E fixture
-  // so the connector transport and agent flows below remain covered.
-  const { pairCode } = await page.evaluate(async () => {
-    const response = await fetch("/api/host-connectors", { method: "POST" });
-    if (!response.ok) {
-      throw new Error(`Could not create connector fixture: ${response.status}`);
-    }
-    return (await response.json()) as { pairCode: string };
-  });
+  // Pair the way a Compose operator does: the install command shown in the
+  // panel carries the pair code the connector needs.
+  await page.getByRole("button", { name: "Pair a connector" }).click();
+  const command = await page
+    .getByLabel("Host Connector install command")
+    .textContent();
+  const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
+  if (!pairCode) {
+    throw new Error(`Install command has no pair code: ${command}`);
+  }
+  // The Playwright server leaves HOST_CONNECTOR_URL at its loopback default,
+  // so the command names 127.0.0.1 and carries no cleartext opt-in.
+  expect(command).not.toContain("--allow-insecure-http");
+  await expect(page.getByText("Waiting for connection…")).toBeVisible();
 
   const server = new URL(page.url()).origin;
   const configPath = testInfo.outputPath("host-connector.json");
@@ -306,10 +312,14 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/", { timeout: 15_000 });
 
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/agents");
   await expect(
-    page.getByText("Agent workspaces", { exact: true }),
+    page.getByRole("heading", { name: "Workspaces", exact: true }),
   ).toBeVisible();
-  const addWorkspace = page.getByRole("link", { name: "Add workspace", exact: true });
+  const addWorkspace = page
+    .getByRole("complementary")
+    .getByRole("link", { name: "Add workspace", exact: true });
   await expect(addWorkspace).toHaveAttribute("href", "/settings/connections?add=1");
   await addWorkspace.click();
   await page.waitForURL("**/settings/connections?add=1");
@@ -332,13 +342,16 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Not installed on this server. Run: overtchat setup",
+      "Not installed. Run overtchat setup on this server, or pair a connector on another computer.",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Set up" }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Pair a connector" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Agent workspaces" }),
   ).toHaveCount(0);
@@ -618,9 +631,9 @@ test("groups providers by directory, filters chats, refreshes globally, and open
     });
   });
 
-  await page.goto("/");
+  await page.goto("/agents");
   await expect(
-    page.getByRole("button", { name: "Agent workspace options" }),
+    page.getByRole("button", { name: "Agent list options" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Add workspace" }),
@@ -632,11 +645,11 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   await expect(workspaces.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
   await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await page.getByRole("button", { name: "Agent list options" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Add workspace…", exact: true }),
   ).toHaveAttribute("href", "/settings/connections?add=1");
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await expect(
     page.getByRole("menuitemradio", { name: "All agents" }),
   ).toBeVisible();
@@ -650,15 +663,15 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toHaveCount(0);
   await expect(
     page.getByRole("button", {
-      name: "Agent workspace options, filtered by Codex",
+      name: "Agent list options, filtered by Codex",
     }),
   ).toBeVisible();
   await page
     .getByRole("button", {
-      name: "Agent workspace options, filtered by Codex",
+      name: "Agent list options, filtered by Codex",
     })
     .click();
-  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
+  await page.getByRole("menuitem", { name: "Filter by agent" }).hover();
   await page.getByRole("menuitemradio", { name: "All agents" }).click();
   await page.screenshot({
     path: testInfo.outputPath("workspace-leading-provider-logos.png"),
@@ -666,9 +679,9 @@ test("groups providers by directory, filters chats, refreshes globally, and open
     animations: "disabled",
   });
 
-  await page.getByRole("button", { name: "Agent workspace options" }).click();
-  await page.getByRole("menuitem", { name: "Refresh all chats" }).click();
-  await expect(page.getByText("Chats refreshed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Agent list options" }).click();
+  await page.getByRole("menuitem", { name: "Refresh sessions" }).click();
+  await expect(page.getByText("Sessions refreshed", { exact: true })).toBeVisible();
 
   await page
     .getByRole("button", { name: `New session in ${workspaceName}` })
@@ -691,14 +704,15 @@ test("groups providers by directory, filters chats, refreshes globally, and open
       name: "Model defaults are still loading",
     }),
   ).toBeVisible();
-  await expect(composer.getByRole("combobox")).toBeDisabled();
+  // Typing is open while the catalog loads; only sending waits on it.
+  await expect(composer.getByRole("combobox")).toBeEnabled();
+  await composer.getByRole("combobox").fill("Ready when I choose to send");
   await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
   expect(sessionCreateRequests).toBe(0);
 
   releaseCatalog();
-  await expect(composer.getByRole("combobox")).toBeEnabled();
-  await composer.getByRole("combobox").fill("Ready when I choose to send");
   await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  await expect(composer.getByRole("combobox")).toHaveValue("Ready when I choose to send");
   expect(sessionCreateRequests).toBe(0);
   await expect(composer.getByTestId("agent-model-effort-trigger")).toBeVisible();
   await expect(composer.getByTestId("agent-access-mode-trigger")).toBeVisible();
@@ -988,7 +1002,7 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     await page.getByLabel("Open sidebar").click();
     await expect(
       page
-        .getByText("Agent workspaces", { exact: true })
+        .getByRole("heading", { name: "Workspaces", exact: true })
         .filter({ visible: true })
         .first(),
     ).toBeVisible();

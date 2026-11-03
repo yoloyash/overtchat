@@ -149,123 +149,11 @@ export function AdvancedFields({
             />
           </SettingsRow>
 
-          <SettingsRow
-            title="Pricing"
-            description="USD per 1M tokens. Catalog rates apply automatically unless custom rates are enabled."
-            align={pricing || catalogPricing ? "start" : "center"}
-            controlAlign="end"
-          >
-            <div className="w-full">
-              <div className="flex min-h-8 items-center justify-between gap-3">
-                <span className="text-xs text-muted-foreground">
-                  {pricing
-                    ? "Custom rates"
-                    : catalogPricing
-                      ? "models.dev"
-                      : "No catalog pricing"}
-                </span>
-                <div className="flex items-center gap-2">
-                  <label
-                    htmlFor="p-custom-pricing"
-                    className="text-xs text-muted-foreground"
-                  >
-                    Custom pricing
-                  </label>
-                  <Switch
-                    id="p-custom-pricing"
-                    checked={pricing !== null}
-                    onCheckedChange={(enabled) =>
-                      onPricingChange(
-                        enabled
-                          ? catalogPricing
-                            ? pricingDraftFrom(catalogPricing)
-                            : emptyPricingDraft()
-                          : null,
-                      )
-                    }
-                    aria-label="Custom pricing"
-                  />
-                </div>
-              </div>
-              {pricing || catalogPricing ? (
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <PricingInput
-                    id="p-price-input"
-                    label="Input"
-                    value={
-                      pricing?.input ?? String(catalogPricing?.input ?? "")
-                    }
-                    readOnly={!pricing}
-                    onChange={(input) =>
-                      pricing && onPricingChange({ ...pricing, input })
-                    }
-                  />
-                  <PricingInput
-                    id="p-price-output"
-                    label="Output"
-                    value={
-                      pricing?.output ?? String(catalogPricing?.output ?? "")
-                    }
-                    readOnly={!pricing}
-                    onChange={(output) =>
-                      pricing && onPricingChange({ ...pricing, output })
-                    }
-                  />
-                  <PricingInput
-                    id="p-price-cache-read"
-                    label="Cache read"
-                    value={
-                      pricing?.cacheRead ??
-                      String(catalogPricing?.cacheRead ?? "")
-                    }
-                    readOnly={!pricing}
-                    onChange={(cacheRead) =>
-                      pricing && onPricingChange({ ...pricing, cacheRead })
-                    }
-                  />
-                  <PricingInput
-                    id="p-price-cache-write"
-                    label="Cache write"
-                    value={
-                      pricing?.cacheWrite ??
-                      String(catalogPricing?.cacheWrite ?? "")
-                    }
-                    readOnly={!pricing}
-                    onChange={(cacheWrite) =>
-                      pricing &&
-                      onPricingChange({ ...pricing, cacheWrite })
-                    }
-                  />
-                </div>
-              ) : null}
-              <div className="mt-2 flex min-h-6 flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">
-                  {catalogPricing?.tiered
-                    ? pricing
-                      ? "Flat custom rates replace catalog context tiers."
-                      : "Context tiers apply automatically."
-                    : pricing
-                      ? "These rates apply to future generations."
-                      : !catalogPricing
-                        ? "Enable custom pricing to enter rates for this model."
-                        : null}
-                </p>
-                {pricing ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => onPricingChange(null)}
-                  >
-                    <RotateCcw />
-                    {catalogPricing
-                      ? "Use catalog pricing"
-                      : "Remove custom pricing"}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </SettingsRow>
+          <PricingRow
+            pricing={pricing}
+            catalogPricing={catalogPricing}
+            onPricingChange={onPricingChange}
+          />
 
           <SettingsRow
             title="Provider options"
@@ -327,6 +215,138 @@ export function AdvancedFields({
         </>
       ) : undefined}
     </SettingsSection>
+  );
+}
+
+export function PricingRow({
+  pricing,
+  catalogPricing,
+  onPricingChange,
+  cacheRates = true,
+}: {
+  pricing: ModelPricingDraft | null;
+  catalogPricing?: CatalogModelPricing;
+  onPricingChange: (next: ModelPricingDraft | null) => void;
+  /** Image usage has no cache tokens, so image models edit input and output only. */
+  cacheRates?: boolean;
+}) {
+  return (
+    <SettingsRow
+      title="Pricing"
+      description="USD per 1M tokens. Catalog rates apply automatically unless custom rates are enabled."
+      align={pricing || catalogPricing ? "start" : "center"}
+      controlAlign="end"
+    >
+      <div className="w-full">
+        <div className="flex min-h-8 items-center justify-between gap-3">
+          <span className="text-xs text-muted-foreground">
+            {pricing
+              ? "Custom rates"
+              : catalogPricing
+                ? "models.dev"
+                : "No catalog pricing"}
+          </span>
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="p-custom-pricing"
+              className="text-xs text-muted-foreground"
+            >
+              Custom pricing
+            </label>
+            <Switch
+              id="p-custom-pricing"
+              checked={pricing !== null}
+              onCheckedChange={(enabled) => {
+                if (!enabled) return onPricingChange(null);
+                const draft = catalogPricing
+                  ? pricingDraftFrom(catalogPricing)
+                  : emptyPricingDraft();
+                onPricingChange(
+                  cacheRates
+                    ? draft
+                    : { ...draft, cacheRead: "0", cacheWrite: "0" },
+                );
+              }}
+              aria-label="Custom pricing"
+            />
+          </div>
+        </div>
+        {pricing || catalogPricing ? (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <PricingInput
+              id="p-price-input"
+              label="Input"
+              value={pricing?.input ?? String(catalogPricing?.input ?? "")}
+              readOnly={!pricing}
+              onChange={(input) =>
+                pricing && onPricingChange({ ...pricing, input })
+              }
+            />
+            <PricingInput
+              id="p-price-output"
+              label="Output"
+              value={pricing?.output ?? String(catalogPricing?.output ?? "")}
+              readOnly={!pricing}
+              onChange={(output) =>
+                pricing && onPricingChange({ ...pricing, output })
+              }
+            />
+            {cacheRates ? (
+              <>
+                <PricingInput
+                  id="p-price-cache-read"
+                  label="Cache read"
+                  value={
+                    pricing?.cacheRead ??
+                    String(catalogPricing?.cacheRead ?? "")
+                  }
+                  readOnly={!pricing}
+                  onChange={(cacheRead) =>
+                    pricing && onPricingChange({ ...pricing, cacheRead })
+                  }
+                />
+                <PricingInput
+                  id="p-price-cache-write"
+                  label="Cache write"
+                  value={
+                    pricing?.cacheWrite ??
+                    String(catalogPricing?.cacheWrite ?? "")
+                  }
+                  readOnly={!pricing}
+                  onChange={(cacheWrite) =>
+                    pricing && onPricingChange({ ...pricing, cacheWrite })
+                  }
+                />
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="mt-2 flex min-h-6 flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            {catalogPricing?.tiered
+              ? pricing
+                ? "Flat custom rates replace catalog context tiers."
+                : "Context tiers apply automatically."
+              : pricing
+                ? "These rates apply to future generations."
+                : !catalogPricing
+                  ? "Enable custom pricing to enter rates for this model."
+                  : null}
+          </p>
+          {pricing ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => onPricingChange(null)}
+            >
+              <RotateCcw />
+              {catalogPricing ? "Use catalog pricing" : "Remove custom pricing"}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </SettingsRow>
   );
 }
 

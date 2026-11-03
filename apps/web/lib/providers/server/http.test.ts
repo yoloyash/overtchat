@@ -4,10 +4,12 @@ vi.mock("server-only", () => ({}));
 
 import {
   createTemplateRenderer,
+  gatewayReasoningControls,
   listAnthropicModels,
   listGoogleModels,
   listLlamaCppModels,
   listOpenAIModels,
+  listOpenRouterImageModels,
 } from "./http";
 
 afterEach(() => {
@@ -66,6 +68,164 @@ describe("provider model discovery", () => {
         headers: { Authorization: "Bearer secret" },
       }),
     );
+  });
+
+  it("turns gateway reasoning metadata into thinking controls", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          data: [
+            {
+              id: "vendor/optional-thinking",
+              context_length: 1_048_576,
+              supported_parameters: ["reasoning", "reasoning_effort", "tools"],
+              reasoning: {
+                mandatory: false,
+                default_enabled: true,
+                supported_efforts: ["max", "high", "low", "none"],
+                default_effort: "max",
+              },
+            },
+            {
+              id: "vendor/toggle-only",
+              supported_parameters: ["reasoning"],
+              reasoning: { mandatory: false, default_enabled: true },
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      listOpenAIModels("https://gateway.example.test/api/v1", "secret"),
+    ).resolves.toEqual([
+      {
+        id: "vendor/optional-thinking",
+        contextWindow: 1_048_576,
+        capabilities: {
+          toolCalling: true,
+          reasoning: true,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "max",
+            efforts: ["low", "high", "max"],
+          },
+          structuredOutput: false,
+        },
+      },
+      {
+        id: "vendor/toggle-only",
+        capabilities: {
+          toolCalling: false,
+          reasoning: true,
+          structuredOutput: false,
+        },
+      },
+    ]);
+  });
+
+  it("reads gateway context, output limits, and supported parameters", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          data: [
+            {
+              id: "vendor/tool-model",
+              context_length: 200_000,
+              architecture: {
+                input_modalities: ["text", "image"],
+                output_modalities: ["text"],
+              },
+              top_provider: {
+                context_length: 128_000,
+                max_completion_tokens: 32_000,
+              },
+              supported_parameters: [
+                "tools",
+                "tool_choice",
+                "reasoning",
+                "structured_outputs",
+              ],
+            },
+            {
+              id: "vendor/text-model",
+              context_length: 8192,
+              supported_parameters: ["temperature", "max_tokens"],
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      listOpenAIModels("https://gateway.example.test/api/v1", "secret"),
+    ).resolves.toEqual([
+      {
+        id: "vendor/text-model",
+        contextWindow: 8192,
+        capabilities: {
+          toolCalling: false,
+          reasoning: false,
+          structuredOutput: false,
+        },
+      },
+      {
+        id: "vendor/tool-model",
+        contextWindow: 200_000,
+        capabilities: {
+          maxOutputTokens: 32_000,
+          inputModalities: ["text", "image"],
+          outputModalities: ["text"],
+          toolCalling: true,
+          reasoning: true,
+          structuredOutput: true,
+        },
+      },
+    ]);
+  });
+
+  it("lists OpenRouter image models from the images listing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            id: "qwen/qwen-image-2.1-turbo",
+            architecture: {
+              input_modalities: ["text", "image"],
+              output_modalities: ["image"],
+            },
+            supported_parameters: { aspect_ratio: { type: "enum" } },
+          },
+          { id: "bytedance-seed/seedream-4.5" },
+          { id: "" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const models = await listOpenRouterImageModels(
+      "https://openrouter.ai/api/v1/",
+      "router-key",
+    );
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://openrouter.ai/api/v1/images/models");
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer router-key",
+    );
+    expect(models).toEqual([
+      {
+        id: "bytedance-seed/seedream-4.5",
+        capabilities: { outputModalities: ["image"] },
+      },
+      {
+        id: "qwen/qwen-image-2.1-turbo",
+        capabilities: {
+          inputModalities: ["text", "image"],
+          outputModalities: ["image"],
+        },
+      },
+    ]);
   });
 
   it("paginates Anthropic models with native headers", async () => {
@@ -367,5 +527,51 @@ describe("chat template rendering", () => {
       "m",
     );
     await expect(render({})).resolves.toBeUndefined();
+  });
+});
+
+describe("gatewayReasoningControls", () => {
+  it("hides the off level when reasoning is mandatory", () => {
+    expect(
+      gatewayReasoningControls({
+        mandatory: true,
+        supported_efforts: ["xhigh", "high", "medium", "low", "none"],
+        default_effort: "medium",
+      }),
+    ).toEqual({
+      toggle: false,
+      defaultLevel: "medium",
+      efforts: ["low", "medium", "high", "xhigh"],
+    });
+  });
+
+  it("defaults to off when the model starts with reasoning disabled", () => {
+    expect(
+      gatewayReasoningControls({
+        mandatory: false,
+        default_enabled: false,
+        supported_efforts: ["high", "medium", "low", "none"],
+        default_effort: "medium",
+      }),
+    ).toEqual({
+      toggle: true,
+      defaultLevel: "off",
+      efforts: ["low", "medium", "high"],
+    });
+  });
+
+  it("ignores unknown efforts and incomplete metadata", () => {
+    expect(
+      gatewayReasoningControls({
+        supported_efforts: ["ultra", "none"],
+        default_effort: "ultra",
+      }),
+    ).toBeUndefined();
+    expect(
+      gatewayReasoningControls({ supported_efforts: ["high", "low"] }),
+    ).toBeUndefined();
+    expect(gatewayReasoningControls({ mandatory: true })).toBeUndefined();
+    expect(gatewayReasoningControls(null)).toBeUndefined();
+    expect(gatewayReasoningControls("high")).toBeUndefined();
   });
 });

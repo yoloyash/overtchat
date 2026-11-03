@@ -12,6 +12,7 @@ function config(): InstallationConfig {
     voiceImage: "ghcr.io/example/overtchat-voice:0.1.0",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
+    sandboxVersion: "0.1.0",
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
     searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
@@ -47,6 +48,7 @@ function config(): InstallationConfig {
       model: "whisper-1",
     },
     voice: { installed: false },
+    sandbox: { installed: false, tier: "slim" },
     agents: { installed: false },
   };
 }

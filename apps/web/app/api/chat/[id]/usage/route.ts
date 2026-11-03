@@ -15,8 +15,10 @@ export async function GET(
   const chat = await getChat(id, session.user.id);
   if (!chat) return new Response("Not found", { status: 404 });
 
-  const body: ChatUsageResponse = {
-    usage: await getChatUsageTotals(id, session.user.id),
-  };
+  const [usage, images] = await Promise.all([
+    getChatUsageTotals(id, session.user.id),
+    getChatUsageTotals(id, session.user.id, "image"),
+  ]);
+  const body: ChatUsageResponse = { usage, images };
   return Response.json(body);
 }

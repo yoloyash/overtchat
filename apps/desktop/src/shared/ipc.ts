@@ -18,6 +18,9 @@ export const IPC = {
   checkForUpdates: "desktop:check-for-updates",
   downloadUpdate: "desktop:download-update",
   installUpdate: "desktop:install-update",
+  setBadge: "desktop:set-badge",
+  revealWindow: "desktop:reveal-window",
+  systemIdle: "desktop:system-idle",
 } as const;
 
 export type ColorScheme = "light" | "dark";

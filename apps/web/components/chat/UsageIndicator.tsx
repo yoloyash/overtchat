@@ -2,6 +2,7 @@
 
 import { Popover } from "@base-ui/react/popover";
 import { CircleDollarSign } from "lucide-react";
+import { combinePricedUsage } from "@overtchat/shared/usage";
 import {
   getContextMeterValues,
   type ContextMeterValues,
@@ -20,6 +21,7 @@ interface ContextUsage {
 interface UsageIndicatorProps {
   contextUsage?: ContextUsage;
   sessionUsage?: UsageTotals;
+  imageUsage?: UsageTotals;
   compact?: boolean;
   side?: "top" | "bottom";
   className?: string;
@@ -70,9 +72,59 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CostSection({
+  title,
+  summary,
+  usage,
+  className,
+}: {
+  title: string;
+  summary: string;
+  usage: UsageTotals;
+  className?: string;
+}) {
+  const partial = getCostCoverage(usage) === "partial";
+  const cost = formatNanoUsd(usage.totalCostNanoUsd);
+  return (
+    <section aria-label={title} className={className}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-medium text-foreground">{title}</h3>
+          <p className="mt-0.5 text-muted-foreground">{summary}</p>
+        </div>
+        <div className="text-right">
+          <div className="font-mono text-base font-semibold text-foreground">
+            {partial ? `${cost}+` : cost}
+          </div>
+          <div className="mt-0.5 text-muted-foreground">
+            {partial ? "Known cost" : "Cost"}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2">
+        <DetailRow label="Input" value={formatInteger(usage.inputTokens)} />
+        <DetailRow label="Output" value={formatInteger(usage.outputTokens)} />
+        {usage.cacheReadTokens > 0 ? (
+          <DetailRow
+            label="Cache read"
+            value={formatInteger(usage.cacheReadTokens)}
+          />
+        ) : null}
+        {usage.cacheWriteTokens > 0 ? (
+          <DetailRow
+            label="Cache write"
+            value={formatInteger(usage.cacheWriteTokens)}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function UsageIndicator({
   contextUsage,
   sessionUsage,
+  imageUsage,
   compact = false,
   side = "bottom",
   className,
@@ -90,13 +142,14 @@ export function UsageIndicator({
     sessionUsage.pricedGenerations > 0
       ? sessionUsage
       : undefined;
+  const images =
+    imageUsage && imageUsage.pricedGenerations > 0 ? imageUsage : undefined;
+  const total = combinePricedUsage([session, images]);
 
-  if (!context && !session) return null;
+  if (!context && !total) return null;
 
-  const coverage = session ? getCostCoverage(session) : undefined;
-  const cost = session ? formatNanoUsd(session.totalCostNanoUsd) : undefined;
-  const visibleCost =
-    cost && coverage === "partial" ? `${cost}+` : cost;
+  const cost = total ? formatNanoUsd(total.totalCostNanoUsd) : undefined;
+  const visibleCost = cost && total?.partial ? `${cost}+` : cost;
   const contextValue = context
     ? context.percentage === undefined
       ? "?"
@@ -110,8 +163,8 @@ export function UsageIndicator({
           : "context limit unknown"
         : `${context.percentage}% context used`
       : undefined,
-    session && cost
-      ? coverage === "partial"
+    total && cost
+      ? total.partial
         ? `known session cost ${cost}`
         : `session cost ${cost}`
       : undefined,
@@ -140,10 +193,10 @@ export function UsageIndicator({
             {!compact && <span>{contextValue}</span>}
           </span>
         ) : null}
-        {context && session && !compact ? (
+        {context && total && !compact ? (
           <span aria-hidden="true" className="mx-2 h-4 w-px bg-border" />
         ) : null}
-        {session ? (
+        {total ? (
           <span className="inline-flex items-center gap-1.5">
             <CircleDollarSign className="size-4" />
             {!compact && <span>{visibleCost}</span>}
@@ -223,49 +276,21 @@ export function UsageIndicator({
             ) : null}
 
             {session ? (
-              <section
-                aria-label="Session"
+              <CostSection
+                title="Session"
+                summary={`${formatInteger(session.totalTokens)} tokens`}
+                usage={session}
                 className={cn(context && "mt-4 border-t pt-4")}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="font-medium text-foreground">Session</h3>
-                    <p className="mt-0.5 text-muted-foreground">
-                      {formatInteger(session.totalTokens)} tokens
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono text-base font-semibold text-foreground">
-                      {visibleCost}
-                    </div>
-                    <div className="mt-0.5 text-muted-foreground">
-                      {coverage === "partial" ? "Known cost" : "Cost"}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2">
-                  <DetailRow
-                    label="Input"
-                    value={formatInteger(session.inputTokens)}
-                  />
-                  <DetailRow
-                    label="Output"
-                    value={formatInteger(session.outputTokens)}
-                  />
-                  {session.cacheReadTokens > 0 ? (
-                    <DetailRow
-                      label="Cache read"
-                      value={formatInteger(session.cacheReadTokens)}
-                    />
-                  ) : null}
-                  {session.cacheWriteTokens > 0 ? (
-                    <DetailRow
-                      label="Cache write"
-                      value={formatInteger(session.cacheWriteTokens)}
-                    />
-                  ) : null}
-                </div>
-              </section>
+              />
+            ) : null}
+
+            {images ? (
+              <CostSection
+                title="Images"
+                summary={`${formatInteger(images.generations)} ${images.generations === 1 ? "image" : "images"}`}
+                usage={images}
+                className={cn((context || session) && "mt-4 border-t pt-4")}
+              />
             ) : null}
           </Popover.Popup>
         </Popover.Positioner>

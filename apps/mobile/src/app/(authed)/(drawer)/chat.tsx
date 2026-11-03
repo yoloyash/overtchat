@@ -39,12 +39,23 @@ import {
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
+import { ChatUsageButton } from "@/components/chat/ChatUsageButton";
+import {
+  ChatUsageSheet,
+  type ChatUsageSheetRef,
+} from "@/components/chat/ChatUsageSheet";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { VoiceControls } from "@/components/chat/VoiceControls";
 import { useMobileVoice } from "@/lib/voice/useMobileVoice";
 import { Composer } from "@/components/chat/Composer";
-import { ShareChatButton } from "@/components/chat/ShareChatButton";
+import { ChatHeaderMenu } from "@/components/chat/ChatHeaderMenu";
+import { ShareChatModal } from "@/components/chat/ShareChatModal";
+import { useChatActions } from "@/components/chat/useChatActions";
+import type { ChatRowAction } from "@/components/drawer/ChatRowMenu";
+import { useChats } from "@/lib/queries/chats";
 import { MessageList } from "@/components/chat/MessageList";
+import { DocumentViewer } from "@/components/chat/DocumentViewer";
+import { DocumentViewerProvider } from "@/components/chat/DocumentViewerContext";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import {
   ModelPickerSheet,
@@ -55,6 +66,7 @@ import {
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useCapabilities } from "@/lib/queries/capabilities";
+import { useChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
@@ -215,11 +227,29 @@ function ChatSurface({
   const { data: capabilitiesData } = useCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
   const [chatPersisted, setChatPersisted] = useState(!isNew);
+  const pinningSupported = capabilitiesData?.capabilities.chatPinning === true;
+  const { data: chatList } = useChats();
+  // The drawer's list is the source for title, pin state, and project. A chat
+  // that just persisted may not be listed yet; fall back to what we know.
+  const chatItem = useMemo(
+    () =>
+      chatList?.find((c) => c.id === chatId) ?? {
+        id: chatId,
+        title: null,
+        pinned: false,
+        projectId,
+      },
+    [chatList, chatId, projectId],
+  );
+  const chatActions = useChatActions();
+  const { openRename, togglePin, openMove, openDeleteConfirm } = chatActions;
+  const [shareOpen, setShareOpen] = useState(false);
   const webSearchEnabled = useWebSearchEnabled();
   const openuiEnabled = useOpenUIEnabled();
   const reasoningLevels = useReasoningLevels();
   const pickerRef = useRef<ModelPickerSheetRef>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
+  const usageSheetRef = useRef<ChatUsageSheetRef>(null);
 
   const transport = useMemo(
     () =>
@@ -296,6 +326,7 @@ function ChatSurface({
       setChatPersisted(true);
       void qc.invalidateQueries({ queryKey: queryKeys.chats() });
       void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.chatUsage(chatId) });
     },
   });
 
@@ -303,6 +334,7 @@ function ChatSurface({
     setChatPersisted(true);
     void qc.invalidateQueries({ queryKey: queryKeys.chats() });
     void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.chatUsage(chatId) });
   }, [chatId, qc]);
   const voice = useMobileVoice({
     chatId,
@@ -347,10 +379,23 @@ function ChatSurface({
   }, [generation, chatQueue.queue]);
 
   const streaming = status === "streaming" || status === "submitted";
+  // Tool call whose document version the viewer shows.
+  const [documentTarget, setDocumentTarget] = useState<string | null>(null);
+  const closeDocument = useCallback(() => setDocumentTarget(null), []);
+  const documentViewer = useMemo(
+    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
+    [documentTarget],
+  );
   const configured = Boolean(selectedId);
   const modelLoading =
     modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
+  const usage = useChatUsageSummary({
+    chatId,
+    persisted: chatPersisted,
+    messages,
+    contextWindow: selectedModel?.contextWindow,
+  });
   const reasoningControls = selectedModel?.capabilities?.reasoningControls;
   const storedReasoningLevel = selectedId
     ? reasoningLevels[selectedId]
@@ -420,6 +465,18 @@ function ChatSurface({
   const onNewChat = useCallback(() => {
     startNewChat();
   }, [startNewChat]);
+
+  const onHeaderAction = useCallback(
+    (action: ChatRowAction) => {
+      Keyboard.dismiss();
+      if (action === "share") setShareOpen(true);
+      else if (action === "rename") openRename(chatItem);
+      else if (action === "pin" || action === "unpin") togglePin(chatItem);
+      else if (action === "move") openMove(chatItem);
+      else openDeleteConfirm(chatItem);
+    },
+    [openRename, togglePin, openMove, openDeleteConfirm, chatItem],
+  );
 
   const pickFromCamera = useCallback(async () => {
     addSheetRef.current?.dismiss();
@@ -516,21 +573,51 @@ function ChatSurface({
         : "",
       headerRight: () => (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          {chatPersisted && (
-            <ShareChatButton chatId={chatId} disabled={streaming || voice.busy} />
+          {usage && (
+            <ChatUsageButton
+              usage={usage}
+              onPress={() => {
+                Keyboard.dismiss();
+                usageSheetRef.current?.present();
+              }}
+            />
           )}
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="New chat"
             onPress={onNewChat}
             hitSlop={10}
             style={styles.headerRight}
           >
             <Ionicons name="create-outline" size={22} color={colors.foreground} />
           </Pressable>
+          <ChatHeaderMenu
+            title={chatItem.title}
+            pinned={!!chatItem.pinned}
+            pinPending={chatActions.pinPending}
+            pinningSupported={pinningSupported}
+            disabled={!chatPersisted}
+            disabledActions={streaming || voice.busy ? ["share", "delete"] : []}
+            onSelect={onHeaderAction}
+          />
         </View>
       ),
     });
-  }, [navigation, colors, fonts, project, onNewChat, chatId, chatPersisted, streaming, voice.busy]);
+  }, [
+    navigation,
+    colors,
+    fonts,
+    project,
+    onNewChat,
+    onHeaderAction,
+    chatItem,
+    chatActions.pinPending,
+    pinningSupported,
+    chatPersisted,
+    streaming,
+    voice.busy,
+    usage,
+  ]);
 
   function requestBody(
     action: ChatRequestAction,
@@ -547,6 +634,8 @@ function ChatSurface({
       openuiSupported: true,
       openuiEnabled,
       forceOpenUI: requestedOpenUI,
+      documentsSupported: true,
+      codeExecutionSupported: true,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
@@ -685,6 +774,7 @@ function ChatSurface({
   }
 
   return (
+    <DocumentViewerProvider value={documentViewer}>
     <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: colors.background }]}
       behavior="padding"
@@ -722,7 +812,7 @@ function ChatSurface({
                 },
               ]}
             >
-              An admin can add one in Settings → Models on the web.
+              An admin can add one in Settings → Models.
             </Text>
           )}
           {modelsError && (
@@ -932,7 +1022,25 @@ function ChatSurface({
           if (!voice.busy) setOpenuiRequested(next);
         }}
       />
+
+      <ChatUsageSheet ref={usageSheetRef} usage={usage} />
+      {chatActions.sheets}
+      <ShareChatModal
+        chatId={chatId}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </KeyboardAvoidingView>
+    {documentTarget ? (
+      <DocumentViewer
+        messages={messages}
+        toolCallId={documentTarget}
+        streaming={streaming}
+        onSelect={setDocumentTarget}
+        onClose={closeDocument}
+      />
+    ) : null}
+    </DocumentViewerProvider>
   );
 }
 

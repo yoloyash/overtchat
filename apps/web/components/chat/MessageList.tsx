@@ -4,7 +4,7 @@ import { ErrorNotice } from "@/components/ui/error-notice";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
-import { collectOpenUIStates, type OpenUIAction } from "@overtchat/shared";
+import { codeExecutionFileIndex, collectOpenUIStates, type OpenUIAction } from "@overtchat/shared";
 import {
   ChevronDown,
   LoaderCircle,
@@ -78,6 +78,7 @@ export function MessageList({
   onReconnect: () => void;
 }) {
   const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
+  const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScrollCompleteRef = useRef(false);
   const latestMessageIdRef = useRef(messages.at(-1)?.id);
@@ -234,6 +235,7 @@ export function MessageList({
                       onImageReference={onImageReference}
                       onOpenUIAction={onOpenUIAction}
                       openuiStates={openuiStates}
+                      codeFiles={codeFiles}
                       onEdit={onEdit}
                       speech={speech}
                       showStats={showStats}

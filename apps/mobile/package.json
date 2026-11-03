@@ -1,7 +1,7 @@
 {
   "name": "@overtchat/mobile",
   "main": "expo-router/entry",
-  "version": "1.19.0",
+  "version": "1.23.0",
   "private": true,
   "scripts": {
     "dev": "expo start --host=lan",
@@ -88,6 +88,6 @@
     "@types/react": "~19.2.2",
     "linkedom": "^0.18.12",
     "typescript": "~6.0.3",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }

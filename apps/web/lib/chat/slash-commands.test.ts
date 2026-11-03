@@ -5,6 +5,7 @@ import {
   groupSlashCommands,
   isSlashCommandAvailable,
   parseSlashCommandQuery,
+  replaceSlashCommandSpan,
   resolveSlashCommand,
   type SlashCommand,
 } from "@/lib/chat/slash-commands";
@@ -42,14 +43,18 @@ describe("parseSlashCommandQuery", () => {
       name: "",
       argument: "",
       hasArgument: false,
+      start: 0,
+      end: 1,
+      inline: false,
     });
   });
 
   it("parses a partial command name", () => {
-    expect(parseSlashCommandQuery("/sea")).toEqual({
+    expect(parseSlashCommandQuery("/sea")).toMatchObject({
       name: "sea",
       argument: "",
       hasArgument: false,
+      inline: false,
     });
   });
 
@@ -62,6 +67,9 @@ describe("parseSlashCommandQuery", () => {
       name: "model",
       argument: "gpt-5",
       hasArgument: true,
+      start: 0,
+      end: 12,
+      inline: false,
     });
   });
 
@@ -72,7 +80,7 @@ describe("parseSlashCommandQuery", () => {
   });
 
   it("reports a trailing space as an empty argument", () => {
-    expect(parseSlashCommandQuery("/model ")).toEqual({
+    expect(parseSlashCommandQuery("/model ")).toMatchObject({
       name: "model",
       argument: "",
       hasArgument: true,
@@ -80,7 +88,11 @@ describe("parseSlashCommandQuery", () => {
   });
 
   it("tolerates leading whitespace from a paste", () => {
-    expect(parseSlashCommandQuery("  /search")?.name).toBe("search");
+    expect(parseSlashCommandQuery("  /search")).toMatchObject({
+      name: "search",
+      start: 2,
+      end: 9,
+    });
   });
 
   it("returns null for prose that merely contains a slash", () => {
@@ -95,9 +107,117 @@ describe("parseSlashCommandQuery", () => {
     expect(parseSlashCommandQuery("hello")).toBeNull();
   });
 
-  it("returns null for a multi-line draft", () => {
+  it("returns null for a multi-line draft without a caret", () => {
     expect(parseSlashCommandQuery("/search\nsecond line")).toBeNull();
     expect(parseSlashCommandQuery("/search extra\nmore")).toBeNull();
+  });
+
+  describe("inline form", () => {
+    const parse = (value: string, caret = value.length) =>
+      parseSlashCommandQuery(value, { caret, argumentNames: ["model"] });
+
+    it("reads the slash word ending at the caret", () => {
+      expect(parse("find me /sea")).toEqual({
+        name: "sea",
+        argument: "",
+        hasArgument: false,
+        start: 8,
+        end: 12,
+        inline: true,
+      });
+    });
+
+    it("opens on a bare slash after a space", () => {
+      expect(parse("i want you to /")).toMatchObject({
+        name: "",
+        start: 14,
+        end: 15,
+        inline: true,
+      });
+    });
+
+    it("accepts a newline as the word boundary", () => {
+      expect(parse("line one\n/search")).toMatchObject({
+        name: "search",
+        start: 9,
+        inline: true,
+      });
+    });
+
+    it("uses the caret, not the end of the draft", () => {
+      expect(parse("find me /sea please", 12)).toMatchObject({
+        name: "sea",
+        start: 8,
+        end: 12,
+      });
+      expect(parse("find me /sea please")).toBeNull();
+    });
+
+    it("ignores a slash inside a word", () => {
+      expect(parse("check /etc/hosts")).toBeNull();
+      expect(parse("and/or")).toBeNull();
+      expect(parse("ratio 5/3")).toBeNull();
+      expect(parse("see https://example.com")).toBeNull();
+    });
+
+    it("treats an inline token followed by a space as prose", () => {
+      expect(parse("use /new to start")).toBeNull();
+      expect(parse("see /search ")).toBeNull();
+    });
+
+    it("keeps an argument for a submenu command", () => {
+      expect(parse("hi /model gpt 5")).toEqual({
+        name: "model",
+        argument: "gpt 5",
+        hasArgument: true,
+        start: 3,
+        end: 15,
+        inline: true,
+      });
+    });
+
+    it("skips a path after the submenu argument boundary", () => {
+      expect(parse("hi /model gpt/5")?.argument).toBe("gpt/5");
+    });
+
+    it("ends the token at a newline", () => {
+      expect(parse("hi /model\nmore")).toBeNull();
+    });
+
+    it("prefers the whole-draft form when both apply", () => {
+      expect(parse("/search")?.inline).toBe(false);
+      expect(parse("/model gpt", 6)?.inline).toBe(false);
+    });
+
+    it("needs a caret to apply", () => {
+      expect(parseSlashCommandQuery("find me /sea")).toBeNull();
+    });
+  });
+});
+
+describe("replaceSlashCommandSpan", () => {
+  it("splices an inline token out and keeps one surrounding space", () => {
+    expect(
+      replaceSlashCommandSpan("find me /search please", { start: 8, end: 15 }, ""),
+    ).toEqual({ value: "find me please", caret: 8 });
+  });
+
+  it("drops the token at the end of a sentence", () => {
+    expect(
+      replaceSlashCommandSpan("find me /search", { start: 8, end: 15 }, ""),
+    ).toEqual({ value: "find me ", caret: 8 });
+  });
+
+  it("leaves the argument when a whole-draft command runs", () => {
+    expect(
+      replaceSlashCommandSpan("/search what's new", { start: 0, end: 18 }, "what's new"),
+    ).toEqual({ value: "what's new", caret: 10 });
+  });
+
+  it("completes a partial name in place", () => {
+    expect(
+      replaceSlashCommandSpan("find me /sea now", { start: 8, end: 12 }, "/search"),
+    ).toEqual({ value: "find me /search now", caret: 15 });
   });
 });
 
@@ -135,51 +255,31 @@ describe("resolveSlashCommand", () => {
     // "new" is a prefix of nothing here, but the exact-match branch must win
     // over the ambiguity check in general.
     const commands = [command("new"), command("newsletter")];
-    const resolved = resolveSlashCommand(commands, {
-      name: "new",
-      argument: "",
-      hasArgument: false,
-    });
+    const resolved = resolveSlashCommand(commands, { name: "new" });
     expect(resolved?.name).toBe("new");
   });
 
   it("resolves an unambiguous prefix", () => {
     expect(
-      resolveSlashCommand(COMMANDS, {
-        name: "att",
-        argument: "",
-        hasArgument: false,
-      })?.name,
+      resolveSlashCommand(COMMANDS, { name: "att" })?.name,
     ).toBe("attach");
   });
 
   it("returns null for an ambiguous prefix", () => {
     expect(
-      resolveSlashCommand(COMMANDS, {
-        name: "se",
-        argument: "",
-        hasArgument: false,
-      }),
+      resolveSlashCommand(COMMANDS, { name: "se" }),
     ).toBeNull();
   });
 
   it("returns null for an unknown name", () => {
     expect(
-      resolveSlashCommand(COMMANDS, {
-        name: "zzz",
-        argument: "",
-        hasArgument: false,
-      }),
+      resolveSlashCommand(COMMANDS, { name: "zzz" }),
     ).toBeNull();
   });
 
   it("returns null for a bare slash", () => {
     expect(
-      resolveSlashCommand(COMMANDS, {
-        name: "",
-        argument: "",
-        hasArgument: false,
-      }),
+      resolveSlashCommand(COMMANDS, { name: "" }),
     ).toBeNull();
   });
 });

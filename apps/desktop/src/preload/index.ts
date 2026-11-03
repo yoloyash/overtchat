@@ -3,6 +3,7 @@ import {
   DESKTOP_COMMANDS,
   DESKTOP_SHELL_ATTRIBUTE,
   DESKTOP_TITLEBAR_INSET_PROPERTY,
+  type DesktopBadge,
   type DesktopCommand,
   type DesktopUpdateState,
 } from "@overtchat/shared/desktop";
@@ -108,6 +109,9 @@ function exposeBridge(): void {
       ipcRenderer.on(IPC.updateStateChanged, onState);
       return () => { ipcRenderer.removeListener(IPC.updateStateChanged, onState); };
     },
+    setBadge: (badge: DesktopBadge) => ipcRenderer.invoke(IPC.setBadge, badge),
+    revealWindow: () => ipcRenderer.invoke(IPC.revealWindow),
+    getSystemIdleSeconds: () => ipcRenderer.invoke(IPC.systemIdle),
   };
   contextBridge.exposeInMainWorld("overtchatDesktop", bridge);
 }
