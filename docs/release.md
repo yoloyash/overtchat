@@ -615,12 +615,22 @@ avoids React Native 0.85.3's incompatible Gradle 9 fallback JDK downloader.
    with bundletool using the same signing key, and smoke-tests the APK on a clean
    hosted emulator. It uploads short-lived workflow artifacts but
    does not submit to Play or create a GitHub release.
-2. A tagged release performs the same build and emulator gate, submits the
-   verified AAB to Play production with `releaseStatus: completed`, and
-   attaches the APK to the matching GitHub release.
-3. Submission therefore goes live after Google review; there is no Play draft
-   gate. The service account needs the separate **Release to production** app
-   permission.
+2. A tagged release performs the same build and emulator gate, attaches the
+   APK to the matching GitHub release, then submits the verified AAB to Play
+   production with `releaseStatus: completed`. The service account needs the
+   separate **Release to production** app permission.
+3. EAS Submit schedules the submission and relays Google's answer. The job
+   waits at most 20 minutes for that answer and then passes with a warning
+   that names the Expo submission, which keeps running on Expo's side. Google
+   replying that the version code was already uploaded means an earlier
+   attempt delivered the build, so a rerun passes instead of failing. Any
+   other Google rejection fails the job.
+4. Google holds the release until it passes review, and the Play Console then
+   shows it with a **Start full rollout** button. The workflow cannot press
+   it: open the Production release in the console, confirm the version and
+   version code, and start the rollout (or a staged percentage). Expo and
+   the Publisher API report such a held release as completed, so a green job
+   does not mean users have the build yet.
 
 The same workflow owns iOS production builds on GitHub-hosted `macos-15`
 with Xcode 26.3. EAS CLI 24.4.2 runs `build --local`, so compilation uses the
