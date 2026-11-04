@@ -41,13 +41,5 @@
         "credentialsSource": "local"
       }
     }
-  },
-  "submit": {
-    "production": {
-      "android": {
-        "track": "production",
-        "releaseStatus": "completed"
-      }
-    }
   }
 }

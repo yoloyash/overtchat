@@ -226,6 +226,7 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')
     needs: [build-android, smoke-android]
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     permissions:
       contents: write
     defaults:
@@ -249,15 +250,8 @@ jobs:
           name: overtchat-mobile-${{ needs.build-android.outputs.version }}
           path: dist/mobile
 
-      - name: Submit AAB to Play
-        working-directory: apps/mobile
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          npx eas-cli@20 submit --non-interactive \
-            --platform android --profile production \
-            --path "../../dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.aab"
-
+      # The APK is already verified, so attach it before anything that can wait
+      # on Expo or Google; the GitHub draft is never left empty.
       - name: Attach APK to GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -268,6 +262,18 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || \
             gh release create "$TAG" --draft --latest=false --title "$TAG" --notes "Draft - fill in notes before publishing."
           gh release upload "$TAG" "$APK" --clobber
+
+      # Upload to Play ourselves, as the iOS job uploads to Apple itself. Google
+      # answers synchronously; a version code it already has means an earlier
+      # attempt delivered this build, so a rerun passes once the track carries it.
+      - name: Upload AAB to Google Play
+        timeout-minutes: 15
+        env:
+          ANDROID_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.ANDROID_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          node .github/scripts/upload-play-bundle.mjs \
+            "dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.aab" \
+            --app-json apps/mobile/app.json --track production
 
   build-ios:
     if: github.event_name == 'push' || inputs.platform != 'android'
