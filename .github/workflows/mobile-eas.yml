@@ -263,37 +263,17 @@ jobs:
             gh release create "$TAG" --draft --latest=false --title "$TAG" --notes "Draft - fill in notes before publishing."
           gh release upload "$TAG" "$APK" --clobber
 
-      # Expo schedules the submission and relays Google's answer. That answer has
-      # taken 90 seconds and it has taken over 30 minutes, so wait a bounded time:
-      # a scheduled submission keeps going on Expo's side after this step exits.
-      # Google answering "version code already uploaded" means an earlier attempt
-      # delivered this build, so a rerun of this job succeeds instead of failing.
-      - name: Submit AAB to Play
-        working-directory: apps/mobile
+      # Upload to Play ourselves, as the iOS job uploads to Apple itself. Google
+      # answers synchronously; a version code it already has means an earlier
+      # attempt delivered this build, so a rerun passes once the track carries it.
+      - name: Upload AAB to Google Play
+        timeout-minutes: 15
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          AAB: ../../dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.aab
+          ANDROID_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.ANDROID_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          log=$(mktemp)
-          set +e
-          timeout --kill-after=30s 20m npx eas-cli@20 submit --non-interactive \
-            --platform android --profile production --path "$AAB" 2>&1 | tee "$log"
-          status=${PIPESTATUS[0]}
-          set -e
-          submission=$(grep -o 'https://expo.dev/[^[:space:]]*/submissions/[^[:space:]]*' "$log" | head -n 1)
-          if [ "$status" -eq 0 ]; then
-            exit 0
-          fi
-          if [ "$status" -eq 124 ]; then
-            echo "::warning::Expo has not relayed Google's answer after 20 minutes. The submission continues on Expo's side; check it before rerunning: ${submission:-no submission URL printed}"
-            exit 0
-          fi
-          if grep -q 'version code was already uploaded' "$log"; then
-            echo "::notice::Google Play already has this version code, so an earlier submission of this build was delivered. Nothing to resubmit."
-            exit 0
-          fi
-          echo "::error::EAS Submit failed (exit $status). ${submission:+Submission: $submission}"
-          exit "$status"
+          node .github/scripts/upload-play-bundle.mjs \
+            "dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.aab" \
+            --app-json apps/mobile/app.json --track production
 
   build-ios:
     if: github.event_name == 'push' || inputs.platform != 'android'

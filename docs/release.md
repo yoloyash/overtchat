@@ -590,6 +590,11 @@ Expo config:
 - `ANDROID_KEYSTORE_BASE64`: the upload keystore, base64-encoded without line
   wraps.
 - `ANDROID_GOOGLE_SERVICES_JSON`: the complete `google-services.json`.
+- `ANDROID_PLAY_SERVICE_ACCOUNT_JSON`: the JSON key of a Google Cloud service
+  account that the Play Console lists under Users and permissions with the
+  **Release to production, exclude devices, and use Play App Signing** app
+  permission. The key needs no Cloud IAM role; its project must have the
+  Google Play Android Developer API enabled.
 
 Set each through `gh secret set <name>` from standard input. Retrieve a missing
 local copy through EAS credentials rather than committing it.
@@ -616,21 +621,19 @@ avoids React Native 0.85.3's incompatible Gradle 9 fallback JDK downloader.
    hosted emulator. It uploads short-lived workflow artifacts but
    does not submit to Play or create a GitHub release.
 2. A tagged release performs the same build and emulator gate, attaches the
-   APK to the matching GitHub release, then submits the verified AAB to Play
-   production with `releaseStatus: completed`. The service account needs the
-   separate **Release to production** app permission.
-3. EAS Submit schedules the submission and relays Google's answer. The job
-   waits at most 20 minutes for that answer and then passes with a warning
-   that names the Expo submission, which keeps running on Expo's side. Google
-   replying that the version code was already uploaded means an earlier
-   attempt delivered the build, so a rerun passes instead of failing. Any
-   other Google rejection fails the job.
-4. Google holds the release until it passes review, and the Play Console then
+   APK to the matching GitHub release, then uploads the verified AAB to the
+   Play production track with release status completed. The upload is
+   `.github/scripts/upload-play-bundle.mjs` talking to the Play Developer
+   API directly with `ANDROID_PLAY_SERVICE_ACCOUNT_JSON`; Expo's submission
+   queue is not involved, as it is not for iOS. Google answers within the
+   step, and a version code it already has passes once the track carries
+   it, so rerunning the job after a cancelled attempt does not fail.
+3. Google holds the release until it passes review, and the Play Console then
    shows it with a **Start full rollout** button. The workflow cannot press
    it: open the Production release in the console, confirm the version and
-   version code, and start the rollout (or a staged percentage). Expo and
-   the Publisher API report such a held release as completed, so a green job
-   does not mean users have the build yet.
+   version code, and start the rollout (or a staged percentage). The API
+   reports such a held release as completed, so a green job does not mean
+   users have the build yet.
 
 The same workflow owns iOS production builds on GitHub-hosted `macos-15`
 with Xcode 26.3. EAS CLI 24.4.2 runs `build --local`, so compilation uses the
@@ -638,7 +641,7 @@ GitHub runner rather than the EAS hosted-build quota. iOS production signing
 uses the existing EAS-managed distribution certificate and provisioning
 profile. The GitHub `EXPO_TOKEN` secret authenticates the build and signing
 credential download. Uploads go directly to Apple from the same Mac using
-Xcode's `altool`; iOS releases do not use EAS Submit or its queue.
+Xcode's `altool`; neither platform uses EAS Submit or its queue.
 
 Configure these GitHub Actions repository secrets for uploads:
 
