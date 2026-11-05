@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
 import type { InferenceActivity } from "@/lib/chat/inference-activity";
+import type { MessageTimes } from "@/lib/chat/message-times";
 import {
   contextStatusLabel,
   isManualCompactionMessage,
@@ -43,6 +44,7 @@ export function MessageList({
   speech,
   showStats,
   storedStats,
+  messageTimes,
   hasOlderMessages,
   loadingOlderMessages,
   olderMessagesFailed,
@@ -65,6 +67,7 @@ export function MessageList({
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
   storedStats: StoredMessageStats;
+  messageTimes: MessageTimes;
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
   olderMessagesFailed: boolean;
@@ -132,6 +135,15 @@ export function MessageList({
     },
   });
 
+  // The newest reply keeps its actions on screen; a compaction marker after it
+  // renders no bubble, so it does not count as newer.
+  let lastBubbleIndex = messages.length - 1;
+  while (
+    lastBubbleIndex >= 0 &&
+    isManualCompactionMessage(messages[lastBubbleIndex])
+  ) {
+    lastBubbleIndex -= 1;
+  }
   const liveMessage = streaming ? messages.at(-1) : undefined;
   const find = useChatFind({
     messages,
@@ -230,6 +242,8 @@ export function MessageList({
                       message={message}
                       streaming={streaming && isLast}
                       canAct={!streaming && configured}
+                      pinActions={item.index === lastBubbleIndex}
+                      sentAt={messageTimes[message.id] ?? null}
                       onRegenerate={onRegenerate}
                       onContinue={isLast && canContinueMessage(message) ? onContinue : undefined}
                       onImageReference={onImageReference}
