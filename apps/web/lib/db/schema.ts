@@ -973,6 +973,24 @@ export const integrationOauthClients = sqliteTable(
   },
 );
 
+/**
+ * Drafts a user sent from a chat. The chat's saved tool result still says
+ * "draft", so this is what lets its card show that the mail went out.
+ */
+export const gmailSentDrafts = sqliteTable(
+  "gmail_sent_drafts",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    draftId: text("draft_id").notNull(),
+    /** The sent message's thread, for a link to it. */
+    threadId: text("thread_id"),
+    sentAt: integer("sent_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.draftId] })],
+);
+
 /** One user's grant for one integration. Tokens never leave the server. */
 export const integrationConnections = sqliteTable(
   "integration_connections",
@@ -990,6 +1008,9 @@ export const integrationConnections = sqliteTable(
     status: text("status", { enum: INTEGRATION_CONNECTION_STATUSES })
       .default("connected")
       .notNull(),
+    // Offers the integration's tools in every chat. Off, a chat gets them
+    // only once the user turns them on there.
+    alwaysOn: integer("always_on", { mode: "boolean" }).default(false).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

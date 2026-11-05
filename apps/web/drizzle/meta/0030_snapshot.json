@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d637af8a-4c77-43a7-b4bd-b603b24df5ad",
+  "id": "e7fbf24b-453e-43d0-aba7-7600eb4876eb",
   "prevId": "313a4d82-ebb4-479e-97fd-1407026ebc16",
   "tables": {
     "account": {
@@ -1270,6 +1270,66 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "gmail_sent_drafts": {
+      "name": "gmail_sent_drafts",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "draft_id": {
+          "name": "draft_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "gmail_sent_drafts_user_id_user_id_fk": {
+          "name": "gmail_sent_drafts_user_id_user_id_fk",
+          "tableFrom": "gmail_sent_drafts",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "gmail_sent_drafts_user_id_draft_id_pk": {
+          "columns": [
+            "user_id",
+            "draft_id"
+          ],
+          "name": "gmail_sent_drafts_user_id_draft_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "host_connector_pairings": {
       "name": "host_connector_pairings",
       "columns": {
@@ -1579,6 +1639,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'connected'"
+        },
+        "always_on": {
+          "name": "always_on",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
