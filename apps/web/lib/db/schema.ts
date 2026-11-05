@@ -23,6 +23,11 @@ import type { ModelPricing } from "@/lib/model-config/schema";
 import type { ReasoningOverride } from "@/lib/model-config/reasoning-override";
 import { MODEL_CREDENTIAL_SCOPES } from "@overtchat/shared/admin-settings";
 import type { McpServerConfig } from "@/lib/mcp/schema";
+import {
+  INTEGRATION_CONNECTION_STATUSES,
+  INTEGRATION_IDS,
+  INTEGRATION_PROVIDERS,
+} from "@/lib/integrations/schema";
 import type { AgentTurnSummary } from "@overtchat/agent-bridge";
 
 // One durable bootstrap record. A null nonce means setup is permanently closed.
@@ -948,6 +953,67 @@ export const userMcpServerPreferences = sqliteTable(
     primaryKey({ columns: [table.userId, table.serverId] }),
     index("user_mcp_server_preferences_serverId_idx").on(table.serverId),
   ],
+);
+
+// The operator's own OAuth client for a provider. Every user's grant is issued
+// to this client, so replacing it invalidates their refresh tokens.
+export const integrationOauthClients = sqliteTable(
+  "integration_oauth_clients",
+  {
+    provider: text("provider", { enum: INTEGRATION_PROVIDERS }).primaryKey(),
+    clientId: text("client_id").notNull(),
+    clientSecret: text("client_secret").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+);
+
+/** One user's grant for one integration. Tokens never leave the server. */
+export const integrationConnections = sqliteTable(
+  "integration_connections",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    integrationId: text("integration_id", { enum: INTEGRATION_IDS }).notNull(),
+    accountEmail: text("account_email").notNull(),
+    refreshToken: text("refresh_token").notNull(),
+    accessToken: text("access_token"),
+    accessTokenExpiresAt: integer("access_token_expires_at", {
+      mode: "timestamp_ms",
+    }),
+    status: text("status", { enum: INTEGRATION_CONNECTION_STATUSES })
+      .default("connected")
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.integrationId] })],
+);
+
+// A sign-in the user has started but not finished. Starting again replaces it.
+export const integrationAuthorizations = sqliteTable(
+  "integration_authorizations",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    integrationId: text("integration_id", { enum: INTEGRATION_IDS }).notNull(),
+    state: text("state").notNull(),
+    codeVerifier: text("code_verifier").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.integrationId] })],
 );
 
 export const serverCapabilities = sqliteTable("server_capabilities", {

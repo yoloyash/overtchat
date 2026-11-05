@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import path from "node:path";
+import { e2eGoogleOrigin } from "./e2e/helpers/google";
 import { e2eSandboxToken, e2eSandboxUrl } from "./e2e/helpers/sandbox";
 import { promptedOrigins } from "./e2e/helpers/storage";
 
@@ -47,6 +48,7 @@ export default defineConfig({
       OVERTCHAT_MANAGEMENT_SECRET: "e2e-management-secret-1234567890123456",
       SANDBOX_URL: e2eSandboxUrl,
       SANDBOX_TOKEN: e2eSandboxToken,
+      OVERTCHAT_E2E_GOOGLE_ORIGIN: e2eGoogleOrigin,
       ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     },
   },

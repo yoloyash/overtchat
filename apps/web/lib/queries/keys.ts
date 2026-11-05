@@ -114,6 +114,13 @@ export const mcpServerKeys = {
   health: (id: string) => [...mcpServerKeys.all(), "health", id] as const,
 };
 
+export const integrationKeys = {
+  all: () => ["integrations"] as const,
+  list: () => [...integrationKeys.all(), "list"] as const,
+  oauthClient: (provider: string) =>
+    [...integrationKeys.all(), "oauthClient", provider] as const,
+};
+
 export const serverCapabilityKeys = {
   all: () => ["serverCapabilities"] as const,
   list: () => [...serverCapabilityKeys.all(), "list"] as const,

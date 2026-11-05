@@ -15,6 +15,7 @@ import {
   SettingsSection,
 } from "../SettingsRows";
 import { AvailableMcpServersPanel } from "./AvailableMcpServersPanel";
+import { ConnectorsPanel } from "./connectors/ConnectorsPanel";
 import { McpServersPanel } from "./McpServersPanel";
 
 export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
@@ -31,7 +32,7 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
     <SettingsPage>
       <SettingsPageHeader
         title="Tools"
-        description="Control model capabilities and connect external tool servers."
+        description="Control model capabilities, connect your accounts, and add external tool servers."
       />
 
       <SettingsSection
@@ -69,6 +70,8 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
           />
         </SettingsRow>
       </SettingsSection>
+
+      <ConnectorsPanel isAdmin={isAdmin} />
 
       <AvailableMcpServersPanel />
 
