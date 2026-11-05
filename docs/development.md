@@ -575,8 +575,11 @@ names its account; anything less is revoked.
 
 `getIntegrationAccessToken()` returns a usable token, refreshing it once for
 concurrent callers. Only Google's `invalid_grant` marks a connection
-`needs_reconnect`; other failures leave it connected. Tokens and the client
-secret never appear in an API response.
+`needs_reconnect`; other failures leave it connected. Google limits a sign-in
+through an app in testing to seven days and says so in
+`refresh_token_expires_in`; the connection stores that time, and once it
+passes `integrationConnectionStatus()` reports `needs_reconnect` without
+asking Google. Tokens and the client secret never appear in an API response.
 
 A user with a live connection is offered `gmail_search`, `gmail_read_thread`
 and `gmail_create_draft` (`lib/integrations/gmail-tools.ts`) along with a system
@@ -584,7 +587,9 @@ prompt that marks mail as untrusted. There is no send tool. Thread bodies are
 capped per message and per thread, newest kept; attachments are names only. A
 request Gmail answers with 401 discards the access token and repeats once, so a
 dead grant surfaces as `needs_reconnect`. Draft recipients must be bare
-addresses and headers are refused if they contain a line break.
+addresses and headers are refused if they contain a line break. A user whose
+sign-in has ended is offered no tools; `gmailReconnectPrompt()` instead tells
+the model where the user reconnects, so it can say so when asked about mail.
 
 `describeGmailToolPart()` in `@overtchat/shared` projects a step for the web
 and mobile timelines from senders and subjects only. Tool results stay in the
@@ -602,8 +607,10 @@ E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts gmail-tool
 ```
 
 Changes to the sign-in itself also need one pass against Google with a real
-client, following [Gmail](deploy.md#gmail): connect, reload, disconnect, and
-confirm the grant disappears from the Google account's third-party access page.
+client, following [Gmail](deploy.md#gmail): connect, confirm the connector
+names the day the sign-in ends, reload, disconnect, and confirm the grant
+disappears from the Google account's third-party access page. Also confirm
+that an account missing from the test users is stopped on Google's page.
 Changes to the tools need a real mailbox too: search with an operator such as
 `newer_than:7d`, read an HTML-only message, and open a saved reply draft in
 Gmail to check its thread, recipient and encoding.

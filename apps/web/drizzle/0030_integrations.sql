@@ -13,6 +13,7 @@ CREATE TABLE `integration_connections` (
 	`integration_id` text NOT NULL,
 	`account_email` text NOT NULL,
 	`refresh_token` text NOT NULL,
+	`refresh_token_expires_at` integer,
 	`access_token` text,
 	`access_token_expires_at` integer,
 	`status` text DEFAULT 'connected' NOT NULL,

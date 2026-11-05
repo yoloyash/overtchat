@@ -5,7 +5,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
-import type { Integration } from "@/lib/integrations/schema";
+import type {
+  Integration,
+  IntegrationConnection,
+} from "@/lib/integrations/schema";
 import {
   useDisconnectIntegration,
   useIntegrations,
@@ -34,6 +37,17 @@ export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
       )}
     </SettingsSection>
   );
+}
+
+function connectedSummary(connection: IntegrationConnection): string {
+  const summary = `Connected as ${connection.accountEmail}`;
+  if (!connection.expiresAt) return summary;
+  const day = new Date(connection.expiresAt).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return `${summary}. Google will ask you to sign in again on ${day}.`;
 }
 
 function GmailRow({
@@ -83,7 +97,7 @@ function GmailRow({
               : needsReconnect
                 ? `Google ended access for ${connection.accountEmail}. Reconnect to keep using it.`
                 : connection
-                  ? `Connected as ${connection.accountEmail}`
+                  ? connectedSummary(connection)
                   : "Let models search and read your mail and write drafts for you to send."}
           </p>
         </div>

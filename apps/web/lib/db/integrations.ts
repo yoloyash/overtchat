@@ -10,6 +10,7 @@ import {
   INTEGRATION_IDS,
   INTEGRATIONS,
   type Integration,
+  type IntegrationConnectionStatus,
   type IntegrationId,
   type IntegrationOauthClient,
   type IntegrationProvider,
@@ -130,6 +131,23 @@ export function getIntegrationConnection(
   );
 }
 
+/**
+ * A sign-in the provider time-limited is over once that time passes, whether
+ * or not a request has found out yet.
+ */
+export function integrationConnectionStatus(
+  connection: IntegrationConnectionRow,
+  now = Date.now(),
+): IntegrationConnectionStatus {
+  if (
+    connection.refreshTokenExpiresAt &&
+    connection.refreshTokenExpiresAt.getTime() <= now
+  ) {
+    return "needs_reconnect";
+  }
+  return connection.status;
+}
+
 function toIntegration(
   id: IntegrationId,
   configured: boolean,
@@ -141,8 +159,9 @@ function toIntegration(
     connection: connection
       ? {
           accountEmail: connection.accountEmail,
-          status: connection.status,
+          status: integrationConnectionStatus(connection),
           connectedAt: connection.createdAt.toISOString(),
+          expiresAt: connection.refreshTokenExpiresAt?.toISOString() ?? null,
         }
       : null,
   };
@@ -168,6 +187,7 @@ export function saveIntegrationConnection(input: {
   integrationId: IntegrationId;
   accountEmail: string;
   refreshToken: string;
+  refreshTokenExpiresAt: Date | null;
   accessToken: string;
   accessTokenExpiresAt: Date;
 }): void {
@@ -175,6 +195,7 @@ export function saveIntegrationConnection(input: {
   const grant = {
     accountEmail: input.accountEmail,
     refreshToken: input.refreshToken,
+    refreshTokenExpiresAt: input.refreshTokenExpiresAt,
     accessToken: input.accessToken,
     accessTokenExpiresAt: input.accessTokenExpiresAt,
     status: "connected" as const,

@@ -11,6 +11,8 @@ const GMAIL_SCOPES = [
 /** Stands in for Google's token, revocation, and Gmail profile endpoints. */
 let google: Server;
 let grantedScopes = GMAIL_SCOPES;
+/** Seconds Google lets a sign-in last when its app is in testing. */
+let signInLifetime: number | undefined;
 let issued = 0;
 const tokenRequests: Record<string, string>[] = [];
 const revoked: string[] = [];
@@ -36,6 +38,7 @@ test.beforeAll(async () => {
         access_token: `access-${issued}`,
         expires_in: 3600,
         refresh_token: `refresh-${issued}`,
+        refresh_token_expires_in: signInLifetime,
         scope: grantedScopes.join(" "),
         token_type: "Bearer",
       });
@@ -66,6 +69,7 @@ test.afterAll(async () => {
 test.beforeEach(() => {
   resetE2eDatabase();
   grantedScopes = GMAIL_SCOPES;
+  signInLifetime = undefined;
   issued = 0;
   tokenRequests.length = 0;
   revoked.length = 0;
@@ -164,7 +168,11 @@ test("an administrator sets up Google access, then each person connects their ow
     expect(signIn.searchParams.get("redirect_uri")).toBe("http://localhost:1");
     expect(signIn.searchParams.get("scope")).toBe(GMAIL_SCOPES.join(" "));
     expect(signIn.searchParams.get("access_type")).toBe("offline");
+    expect(signIn.searchParams.has("login_hint")).toBe(false);
     const state = signIn.searchParams.get("state")!;
+    await expect(dialog).toContainText(
+      "If it says access is blocked, an administrator needs to add your Google address as a test user first.",
+    );
 
     // An address from some other sign-in is refused without spending this one.
     await dialog
@@ -296,9 +304,12 @@ test("a sign-in that Google does not fully grant leaves nothing connected", asyn
   );
 });
 
-test("a connection Google has ended asks to be reconnected", async ({ page }) => {
+test("a sign-in Google limits to a week says when it ends, then asks to be reconnected", async ({
+  page,
+}) => {
   await signUpAdmin(page);
   await setUpGoogleAccess(page);
+  signInLifetime = 7 * 24 * 60 * 60 - 1;
   const { dialog, signIn } = await startSignIn(page);
   await dialog
     .getByLabel("Address from your browser")
@@ -307,13 +318,28 @@ test("a connection Google has ended asks to be reconnected", async ({ page }) =>
     );
   await dialog.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(connectors(page)).toContainText("Connected as inbox-1@example.test");
+  const { integrations } = (await (
+    await page.request.get("/api/integrations")
+  ).json()) as { integrations: { connection: { expiresAt: string } }[] };
+  const [gmail] = integrations;
+  const remaining = new Date(gmail.connection.expiresAt).getTime() - Date.now();
+  expect(remaining).toBeGreaterThan((signInLifetime - 60) * 1000);
+  expect(remaining).toBeLessThanOrEqual(signInLifetime * 1000);
+  const ends = new Date(gmail.connection.expiresAt).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  await expect(connectors(page)).toContainText(
+    `Connected as inbox-1@example.test. Google will ask you to sign in again on ${ends}.`,
+  );
 
-  // What a refused token refresh records.
+  // A week later.
   const db = openE2eDatabase();
   try {
     db.prepare(
-      "UPDATE integration_connections SET status = 'needs_reconnect', access_token = NULL",
-    ).run();
+      "UPDATE integration_connections SET refresh_token_expires_at = ?",
+    ).run(Date.now() - 1000);
   } finally {
     db.close();
   }
@@ -322,7 +348,11 @@ test("a connection Google has ended asks to be reconnected", async ({ page }) =>
     "Google ended access for inbox-1@example.test. Reconnect to keep using it.",
   );
 
+  // Signing in again preselects the same account.
   const again = await startSignIn(page);
+  expect(again.signIn.searchParams.get("login_hint")).toBe(
+    "inbox-1@example.test",
+  );
   await again.dialog
     .getByLabel("Address from your browser")
     .fill(

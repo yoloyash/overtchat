@@ -12,12 +12,17 @@ beforeAll(async () => {
 beforeEach(() => database.reset());
 afterAll(() => database.close());
 
-function connect(userId: string, refreshToken = `refresh-${userId}`) {
+function connect(
+  userId: string,
+  refreshToken = `refresh-${userId}`,
+  refreshTokenExpiresAt: Date | null = null,
+) {
   repository.saveIntegrationConnection({
     userId,
     integrationId: "gmail",
     accountEmail: `${userId}@example.test`,
     refreshToken,
+    refreshTokenExpiresAt,
     accessToken: `access-${userId}`,
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
   });
@@ -123,11 +128,28 @@ describe("connections", () => {
         accountEmail: "ada@example.test",
         status: "connected",
         connectedAt: expect.any(String),
+        expiresAt: null,
       },
     });
     expect(JSON.stringify(gmail)).not.toContain("refresh-ada");
     expect(JSON.stringify(gmail)).not.toContain("access-ada");
     expect(repository.listIntegrations("grace")[0].connection).toBeNull();
+  });
+
+  it("reports when a time-limited sign-in ends, and that it has ended", () => {
+    const ends = new Date(Date.now() + 7 * 86_400_000);
+    connect("ada", "refresh-ada", ends);
+    expect(repository.getIntegration("ada", "gmail").connection).toMatchObject({
+      status: "connected",
+      expiresAt: ends.toISOString(),
+    });
+
+    const ended = new Date(Date.now() - 1000);
+    connect("ada", "refresh-ada", ended);
+    expect(repository.getIntegration("ada", "gmail").connection).toMatchObject({
+      status: "needs_reconnect",
+      expiresAt: ended.toISOString(),
+    });
   });
 
   it("restores a connection that needed a new sign-in", () => {

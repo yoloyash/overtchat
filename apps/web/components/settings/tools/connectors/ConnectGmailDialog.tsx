@@ -90,7 +90,9 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
             <Step number={1} title="Sign in with Google">
               <p>
                 Allow access and tick every checkbox. If Google says it
-                hasn&apos;t verified this app, choose Advanced, then continue.
+                hasn&apos;t verified this app, continue anyway. If it says
+                access is blocked, an administrator needs to add your Google
+                address as a test user first.
               </p>
               {authorization.isError ? (
                 <SettingsNotice tone="error" className="mt-2">

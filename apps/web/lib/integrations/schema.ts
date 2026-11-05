@@ -42,6 +42,11 @@ export interface IntegrationConnection {
   accountEmail: string;
   status: IntegrationConnectionStatus;
   connectedAt: string;
+  /**
+   * When the provider ends this sign-in whatever happens, if it said so.
+   * Google does for a client whose app is in testing: seven days.
+   */
+  expiresAt: string | null;
 }
 
 /** What one user may know about an integration. Never carries tokens. */

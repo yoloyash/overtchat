@@ -56,6 +56,18 @@ describe("authorization URL", () => {
     });
   });
 
+  it("preselects the account being signed in to again", () => {
+    const url = new URL(
+      googleAuthorizationUrl({
+        clientId: "client-1",
+        scopes: ["scope-a"],
+        ...createAuthorizationSecrets(),
+        loginHint: "ada@example.test",
+      }),
+    );
+    expect(url.searchParams.get("login_hint")).toBe("ada@example.test");
+  });
+
   it("never repeats its secrets", () => {
     const first = createAuthorizationSecrets();
     const second = createAuthorizationSecrets();
@@ -112,11 +124,32 @@ describe("token requests", () => {
     expect(tokens).toMatchObject({
       accessToken: "access",
       refreshToken: "refresh",
+      refreshTokenExpiresAt: null,
       scopes: ["scope-a", "scope-b"],
     });
     expect(tokens.accessTokenExpiresAt.getTime()).toBeGreaterThanOrEqual(
       before + 3_600_000,
     );
+  });
+
+  it("reads how long a time-limited sign-in lasts", async () => {
+    respond(200, {
+      access_token: "access",
+      expires_in: 3600,
+      refresh_token: "refresh",
+      refresh_token_expires_in: 604_799,
+      scope: "scope-a",
+    });
+    const before = Date.now();
+
+    const tokens = await exchangeAuthorizationCode(client, {
+      code: "the-code",
+      codeVerifier: "the-verifier",
+    });
+
+    const ends = tokens.refreshTokenExpiresAt!.getTime();
+    expect(ends).toBeGreaterThanOrEqual(before + 604_799_000);
+    expect(ends).toBeLessThanOrEqual(Date.now() + 604_799_000);
   });
 
   it("refreshes without expecting a new refresh token", async () => {
