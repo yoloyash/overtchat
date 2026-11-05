@@ -269,12 +269,13 @@ export async function getMessagesPage(
   const beforeRowId = options.cursor
     ? decodeMessageCursor(options.cursor)
     : Number.MAX_SAFE_INTEGER;
-  const rows = await db.all<RawMessagePageRow>(sql`
+  const rows = await db.all<RawMessagePageRow & { createdAt: number }>(sql`
     SELECT
       ${messages.id} AS id,
       ${messages.role} AS role,
       ${messages.parts} AS parts,
       ${messages.metadata} AS metadata,
+      ${messages.createdAt} AS createdAt,
       ${messages}.rowid AS rowId
     FROM ${messages}
     WHERE ${messages.chatId} = ${chatId}
@@ -297,6 +298,9 @@ export async function getMessagesPage(
                 row.metadata,
               ),
       }),
+    ),
+    messageTimes: Object.fromEntries(
+      pageRows.map((row) => [row.id, row.createdAt]),
     ),
     nextCursor: hasMore && oldest ? String(oldest.rowId) : null,
   };

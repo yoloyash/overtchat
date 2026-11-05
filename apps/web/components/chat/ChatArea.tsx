@@ -64,6 +64,7 @@ import {
   CHAT_MESSAGE_MAX_PAGE_SIZE,
   messagesForChatRequest,
 } from "@/lib/chat/history";
+import { useMessageTimes } from "@/lib/chat/message-times";
 import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import {
@@ -127,6 +128,8 @@ type PanelView =
 interface Props {
   chatId: string;
   initialMessages?: UIMessage[];
+  /** When the initial messages were saved, as the messages API reports it. */
+  initialMessageTimes?: Record<string, number>;
   initialMessageCursor?: string | null;
   initialModelId?: string | null;
   isNew?: boolean;
@@ -144,6 +147,7 @@ interface Props {
 export function ChatArea({
   chatId,
   initialMessages,
+  initialMessageTimes,
   initialMessageCursor,
   initialModelId,
   isNew,
@@ -404,6 +408,10 @@ export function ChatArea({
     setMessages,
     onSettled: handleGenerationSettled,
   });
+  const { messageTimes, addLoadedMessages } = useMessageTimes(messages, {
+    messages: initialMessages ?? [],
+    messageTimes: initialMessageTimes,
+  });
   const [olderMessageCursor, setOlderMessageCursor] = useState(
     initialMessageCursor ?? null,
   );
@@ -430,6 +438,7 @@ export function ChatArea({
             ? CHAT_MESSAGE_MAX_PAGE_SIZE
             : undefined,
         });
+        addLoadedMessages(page);
         setMessages((current) => {
           const currentIds = new Set(current.map(({ id }) => id));
           return [
@@ -450,7 +459,7 @@ export function ChatArea({
       loadingOlderMessagesRef.current = false;
       loadAllOlderMessagesRef.current = false;
     }
-  }, [loadOlderMessages, olderMessageCursor, setMessages]);
+  }, [addLoadedMessages, loadOlderMessages, olderMessageCursor, setMessages]);
   const handleLoadOlderMessages = useCallback(
     () => loadOlderPages(false),
     [loadOlderPages],
@@ -987,6 +996,7 @@ export function ChatArea({
             speech={speech}
             showStats={messageStatsEnabled}
             storedStats={storedStats}
+            messageTimes={messageTimes}
             hasOlderMessages={olderMessageCursor !== null}
             loadingOlderMessages={loadingOlderMessages}
             olderMessagesFailed={olderMessagesFailed}

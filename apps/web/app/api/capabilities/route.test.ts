@@ -78,6 +78,12 @@ describe("public capabilities", () => {
     });
   });
 
+  it("advertises Markdown chat export to bundled clients", async () => {
+    await expect((await GET(request)).json()).resolves.toMatchObject({
+      capabilities: { chatMarkdownExport: true },
+    });
+  });
+
   it("advertises realtime voice when it is ready", async () => {
     const response = await GET(request);
 
