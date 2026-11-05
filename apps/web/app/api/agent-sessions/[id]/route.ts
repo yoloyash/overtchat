@@ -6,6 +6,7 @@ import {
 import {
   agentSessionCommandSchema,
   isAgentProviderNotice,
+  isAgentSessionHeldElsewhereMessage,
   isAgentSessionSync,
   isAgentHistoryPage,
   type AgentRuntimeSnapshot,
@@ -119,16 +120,17 @@ export async function GET(
       throw new Error("The Host Connector omitted its session sync.");
     return Response.json(sync ? { sync } : { snapshot: result.snapshot });
   } catch (error) {
+    const message = connectionErrorMessage(
+      error,
+      isAgentProviderId(authorized.owned.connection.provider)
+        ? authorized.owned.connection.provider
+        : "pi",
+    );
+    // Another provider process owns the session: retrying only starts more
+    // stray copies, so answer Locked, which the open query does not retry.
     return Response.json(
-      {
-        error: connectionErrorMessage(
-          error,
-          isAgentProviderId(authorized.owned.connection.provider)
-            ? authorized.owned.connection.provider
-            : "pi",
-        ),
-      },
-      { status: 400 },
+      { error: message },
+      { status: isAgentSessionHeldElsewhereMessage(message) ? 423 : 400 },
     );
   }
 }

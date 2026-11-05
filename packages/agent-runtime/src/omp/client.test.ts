@@ -242,6 +242,30 @@ describe("OmpClient", () => {
     await client.stop();
   });
 
+  it("reports a session-persistence notice through state so a resume can refuse the copy", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "negotiate_protocol") fake.reply(command, { protocolVersion: 2 });
+      else fake.reply(command, { sessionId: "sibling", sessionFile: "/sessions/sibling.jsonl" });
+    });
+    const client = new OmpClient(process, "full");
+    announceReady(process);
+    await expect(client.getState()).resolves.not.toHaveProperty("persistenceNotice");
+
+    process.stdout.write(
+      `${JSON.stringify({
+        type: "notice",
+        level: "warning",
+        source: "session-persistence",
+        message: "Session ~/s/a.jsonl is open for writing in another omp process, so this session now saves to ~/s/b.jsonl instead of mixing its entries into that file.",
+      })}\n`,
+    );
+    await expect(client.getState()).resolves.toMatchObject({
+      sessionId: "sibling",
+      persistenceNotice: expect.stringContaining("another omp process"),
+    });
+    await client.stop();
+  });
+
   it("sends typed image attachments with prompts and steering", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "negotiate_protocol") {

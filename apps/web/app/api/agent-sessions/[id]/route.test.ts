@@ -138,6 +138,20 @@ describe("agent session route", () => {
     });
   });
 
+  it("answers Locked when another provider process still owns the session", async () => {
+    mocks.daemonRequest.mockRejectedValueOnce(
+      new Error("This session is still open in another Oh My Pi process, such as its terminal UI. Close it there, then open it here."),
+    );
+    const held = await GET(request(), context);
+    expect(held.status).toBe(423);
+    await expect(held.json()).resolves.toEqual({
+      error: "This session is still open in another Oh My Pi process, such as its terminal UI. Close it there, then open it here.",
+    });
+
+    mocks.daemonRequest.mockRejectedValueOnce(new Error("Oh My Pi opened a different session than requested."));
+    expect((await GET(request(), context)).status).toBe(400);
+  });
+
   it("requests and returns an authoritative sync after the browser cursor", async () => {
     const sync = {
       reset: true,

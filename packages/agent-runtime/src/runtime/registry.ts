@@ -2189,7 +2189,7 @@ export class AgentRuntimeRegistry {
     hydrateHistory = false,
   ): Promise<AgentSessionRuntime> {
     const adapter = this.adapterFor(descriptor.provider);
-    const client = adapter.startSession(descriptor.target, {
+    const launch = {
       executable: descriptor.executable,
       cwd: descriptor.cwd,
       detectedVersion: descriptor.detectedVersion,
@@ -2198,7 +2198,11 @@ export class AgentRuntimeRegistry {
         providerSessionId: descriptor.providerSessionId,
         providerSessionPath: descriptor.providerSessionPath,
       },
-    });
+    };
+    // A provider that still owns the session elsewhere would start a copy
+    // under a new id; refuse before the process (and its stray file) exists.
+    await adapter.checkResume?.(descriptor.target, launch);
+    const client = adapter.startSession(descriptor.target, launch);
     try {
       const transcript = await this.options.loadTranscript?.(descriptor);
       const pendingSubmissions = this.options.loadQueuedMessages?.(descriptor.sessionId)
