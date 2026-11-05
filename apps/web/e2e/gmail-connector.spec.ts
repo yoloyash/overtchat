@@ -3,10 +3,7 @@ import { createServer, type Server } from "node:http";
 import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 import { e2eGoogleOrigin, e2eGooglePort } from "./helpers/google";
 
-const GMAIL_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.compose",
-];
+const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"];
 
 /** Stands in for Google's token, revocation, and Gmail profile endpoints. */
 let google: Server;
@@ -161,7 +158,7 @@ test("an administrator sets up Google access, then each person connects their ow
 
     await setUpGoogleAccess(page);
     await expect(connectors(page)).toContainText(
-      "Let models search and read your mail and write drafts for you to send.",
+      "Let models search, read and organize your mail, and write drafts for you to send.",
     );
 
     // The sign-in asks Google for a lasting grant on the loopback redirect.
@@ -268,8 +265,8 @@ test("a sign-in that Google does not fully grant leaves nothing connected", asyn
   await signUpAdmin(page);
   await setUpGoogleAccess(page);
 
-  // The person left a permission unticked on Google's page.
-  grantedScopes = [GMAIL_SCOPES[0]];
+  // Google granted less than was asked for.
+  grantedScopes = ["https://www.googleapis.com/auth/gmail.readonly"];
   const first = await startSignIn(page);
   await first.dialog
     .getByLabel("Address from your browser")
@@ -278,7 +275,7 @@ test("a sign-in that Google does not fully grant leaves nothing connected", asyn
     );
   await first.dialog.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(first.dialog).toContainText(
-    "Google did not grant every permission. Start again and tick every checkbox on Google's page.",
+    "Google did not grant the access OvertChat asked for. Start again and allow everything on Google's page.",
   );
   expect(revoked).toEqual(["refresh-1"]);
 

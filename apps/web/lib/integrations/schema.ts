@@ -27,10 +27,9 @@ interface IntegrationDefinition {
 export const INTEGRATIONS: Record<IntegrationId, IntegrationDefinition> = {
   gmail: {
     provider: "google",
-    scopes: [
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.compose",
-    ],
+    // One scope covers reading, drafting and labels. It also permits sending
+    // and moving mail to the trash, which no tool does.
+    scopes: ["https://www.googleapis.com/auth/gmail.modify"],
   },
 };
 

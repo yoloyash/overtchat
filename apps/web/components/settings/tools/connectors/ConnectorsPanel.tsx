@@ -113,7 +113,7 @@ function GmailRow({
                 ? `Google ended access for ${connection.accountEmail}. Reconnect to keep using it.`
                 : connection
                   ? connectedSummary(connection)
-                  : "Let models search and read your mail and write drafts for you to send."}
+                  : "Let models search, read and organize your mail, and write drafts for you to send."}
           </p>
         </div>
       </div>
