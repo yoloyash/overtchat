@@ -584,7 +584,7 @@ A user with a live connection is offered `gmail_search`, `gmail_read_thread`,
 `gmail_read_attachment`, `gmail_list_labels`, `gmail_modify_labels` and
 `gmail_create_draft` (`lib/integrations/gmail-tools.ts`) along with a system
 prompt that marks mail and its attachments as untrusted. There is no send
-tool, and nothing deletes mail for good. Thread bodies are capped per message and per thread, newest kept.
+tool, by design, and nothing deletes mail for good. Thread bodies are capped per message and per thread, newest kept.
 An attachment is named by its part's position in the message, because Gmail's
 own attachment IDs change with every request; its text comes from
 `extractFile()`, the same extraction uploads use, in parts of 60,000
@@ -605,6 +605,15 @@ list a model was given does not change partway through. Other chats of a
 connected user get `GMAIL_OFF_PROMPT`, one line telling the model which
 command to pass on. Where Gmail is on but the sign-in has ended,
 `gmailReconnectPrompt()` tells the model where the user reconnects.
+
+A saved draft is not a timeline step: `groupMessageParts()` gives it its own
+segment, and the web and mobile cards show its subject, recipients and body.
+The web card's **Send** posts to `/api/integrations/gmail/drafts/[draftId]/send`,
+the only code that sends mail and one no tool reaches. `sendSavedGmailDraft()`
+sends a draft once however often it is asked and records it in
+`gmail_sent_drafts`. The chat's stored tool result is never changed, so what a
+model reads stays the same; `withSentGmailDrafts()` marks sent drafts in the
+messages a client loads.
 
 `describeGmailToolPart()` in `@overtchat/shared` projects a step for the web
 and mobile timelines from senders and subjects only. Tool results stay in the
@@ -629,6 +638,7 @@ Changes to the tools need a real mailbox too: search with an operator such as
 `newer_than:7d`, read an HTML-only message, and open a saved reply draft in
 Gmail to check its thread, recipient and encoding. Also read a real PDF
 attachment, and archive, label and trash a thread, then confirm each in Gmail.
+Press **Send** on a draft addressed to yourself and confirm it arrives once.
 
 ## Chat compaction validation
 

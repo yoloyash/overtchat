@@ -2,11 +2,12 @@ import React, { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type {
-  CodeExecutionPart,
-  GmailToolPart,
-  ReadFilePart,
-  SearchFilesPart,
+import {
+  groupMessageParts,
+  type CodeExecutionPart,
+  type GmailToolPart,
+  type ReadFilePart,
+  type SearchFilesPart,
 } from "@overtchat/shared";
 
 vi.mock("@expo/vector-icons", () => ({
@@ -83,6 +84,7 @@ vi.mock("react-native", () => {
 });
 
 import { ChainOfThought } from "./ChainOfThought";
+import { GmailDraftCard } from "./GmailDraftCard";
 
 let root: Root;
 let container: HTMLElement;
@@ -324,8 +326,10 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
     type: "tool-gmail_create_draft",
     toolCallId: "gmail-draft",
     state: "output-available",
-    input: { subject: "Re: Quarterly numbers" },
+    input: { subject: "Re: Quarterly numbers", body: "Thanks, the numbers look right." },
     output: {
+      draftId: "r-42",
+      threadId: "t1",
       account: "ada@example.test",
       to: "grace@example.test",
       subject: "Re: Quarterly numbers",
@@ -338,9 +342,9 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
   expect(container.textContent).toContain('Searching Gmail for "from:grace is:unread"');
 
   await act(async () => {
-    root.render(<ChainOfThought parts={[gmailSearch, draft]} active={false} />);
+    root.render(<ChainOfThought parts={[gmailSearch]} active={false} />);
   });
-  expect(container.textContent).toContain("Saved draft in Gmail");
+  expect(container.textContent).toContain("Searched Gmail");
   await act(async () => {
     (container.querySelector("button") as unknown as { click(): void }).click();
   });
@@ -349,12 +353,37 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
   expect(text).toContain("1 result");
   expect(text).toContain("Quarterly numbers");
   expect(text).toContain("Grace Hopper");
-  expect(text).toContain("To grace@example.test");
-  // The draft is a card that opens Gmail's drafts.
-  expect(container.querySelector('[data-icon="open-outline"]')).not.toBeNull();
   expect(text).not.toContain("private words");
-  expect(text).toContain("Draft, not sent");
   expect(container.querySelector('[data-icon="gmail"]')).not.toBeNull();
+
+  // A saved draft is its own card: what it says, who it goes to, and a way
+  // into Gmail, where it is sent.
+  expect(
+    groupMessageParts([gmailSearch, draft] as never).map((segment) => segment.kind),
+  ).toEqual(["activity", "gmail-draft"]);
+  await act(async () => {
+    root.render(<GmailDraftCard part={draft} />);
+  });
+  expect(container.textContent).toContain("Re: Quarterly numbers");
+  expect(container.textContent).toContain("Draft, not sent · To grace@example.test");
+  expect(container.textContent).toContain("Thanks, the numbers look right.");
+  expect(container.querySelector('[data-icon="open-outline"]')).not.toBeNull();
+
+  await act(async () => {
+    root.render(
+      <GmailDraftCard
+        part={{
+          ...draft,
+          output: {
+            ...(draft.output as object),
+            sent: { at: "2026-11-05T12:00:00.000Z", threadId: "t1" },
+          },
+        }}
+      />,
+    );
+  });
+  expect(container.textContent).toContain("Sent · To grace@example.test");
+  expect(container.textContent).not.toContain("Draft, not sent");
 
   await act(async () => {
     root.render(

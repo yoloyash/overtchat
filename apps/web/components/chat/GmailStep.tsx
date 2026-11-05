@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Paperclip } from "lucide-react";
+import { Paperclip } from "lucide-react";
 import {
   describeGmailToolPart,
   type GmailToolPart,
@@ -17,22 +17,12 @@ function shortDate(iso: string | undefined): string {
 }
 
 /**
- * One Gmail tool call in the activity timeline: what was searched, read, or
- * drafted, with senders and subjects but never message bodies.
+ * One Gmail tool call in the activity timeline: what was searched, read or
+ * sorted, with senders and subjects but never message bodies. A saved draft
+ * is not a step; it shows as its own card.
  */
 export function GmailStep({ part }: { part: GmailToolPart }) {
   const display = describeGmailToolPart(part);
-
-  // A saved draft is its card; the timeline's heading already names it.
-  if (display.action === "draft" && display.status === "done") {
-    return (
-      <DraftCard
-        subject={display.detail}
-        recipient={display.recipient}
-        href={display.href}
-      />
-    );
-  }
 
   const running = display.status === "running";
 
@@ -108,37 +98,5 @@ function MessageRow({ row }: { row: GmailToolRow }) {
     </a>
   ) : (
     <div className={className}>{content}</div>
-  );
-}
-
-function DraftCard({
-  subject,
-  recipient,
-  href,
-}: {
-  subject: string | undefined;
-  recipient: string | undefined;
-  href: string | undefined;
-}) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-2.5 rounded-lg border bg-background/40 px-2.5 py-2 motion-colors hover:bg-accent/60"
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-foreground">
-          {subject ?? "(no subject)"}
-        </span>
-        <span className="block truncate text-muted-foreground">
-          Draft, not sent · {recipient ? `To ${recipient}` : "no recipient yet"}
-        </span>
-      </span>
-      <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-        <span className="max-sm:sr-only">Open drafts in Gmail</span>
-        <ExternalLink className="size-3" />
-      </span>
-    </a>
   );
 }

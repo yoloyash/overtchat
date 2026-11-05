@@ -158,6 +158,26 @@ export function useSetIntegrationAlwaysOn(id: IntegrationId) {
   });
 }
 
+/** Sends a draft a model saved in the user's Gmail. */
+export function useSendGmailDraft() {
+  return useMutation({
+    mutationFn: async (
+      draftId: string,
+    ): Promise<{ at: string; threadId: string | null }> => {
+      const response = await fetch(
+        apiUrl(`/api/integrations/gmail/drafts/${encodeURIComponent(draftId)}/send`),
+        { method: "POST" },
+      );
+      if (!response.ok) throw await responseError(response);
+      return (
+        (await response.json()) as {
+          sent: { at: string; threadId: string | null };
+        }
+      ).sent;
+    },
+  });
+}
+
 export function useDisconnectIntegration(id: IntegrationId) {
   const client = useQueryClient();
   return useMutation({

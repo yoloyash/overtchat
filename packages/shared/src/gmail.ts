@@ -105,6 +105,11 @@ export interface GmailDraftOutput {
   account: string;
   to: string;
   subject: string;
+  /**
+   * Added for display once the user has sent the draft from a chat. It is not
+   * part of what the tool returned, and no model sees it.
+   */
+  sent?: { at: string; threadId: string | null };
 }
 
 export type GmailToolPart = {
@@ -122,6 +127,58 @@ const GMAIL_PART_TYPES: ReadonlySet<string> = new Set(
 
 export function isGmailToolPart(part: { type: string }): part is GmailToolPart {
   return GMAIL_PART_TYPES.has(part.type);
+}
+
+/**
+ * A draft a model finished saving. It shows as its own card, outside the
+ * activity timeline, because the user reads it and sends it from there.
+ */
+export function isSavedGmailDraftPart(part: {
+  type: string;
+  state?: unknown;
+  output?: unknown;
+}): part is GmailToolPart {
+  return (
+    part.type === "tool-gmail_create_draft" &&
+    part.state === "output-available" &&
+    typeof (part.output as { draftId?: unknown } | null)?.draftId === "string"
+  );
+}
+
+export interface GmailDraftDisplay {
+  draftId: string;
+  subject: string;
+  /** Everyone the draft is addressed to, as one line. */
+  recipients: string;
+  body: string;
+  /** The draft in Gmail, or the sent message's thread once it is sent. */
+  href: string;
+  /** When the user sent it from a chat. */
+  sentAt?: string;
+}
+
+/** What a saved draft's card shows. */
+export function describeGmailDraft(part: GmailToolPart): GmailDraftDisplay {
+  const input = record(part.input);
+  const output = record(part.output);
+  const sent = record(output?.sent);
+  const account = text(output?.account);
+  const copied = [
+    ...names(input?.cc).map((address) => `Cc ${address}`),
+    ...names(input?.bcc).map((address) => `Bcc ${address}`),
+  ];
+  const to = text(output?.to);
+  return {
+    draftId: text(output?.draftId) ?? "",
+    subject: text(output?.subject) ?? "(no subject)",
+    recipients: [...(to ? [`To ${to}`] : []), ...copied].join(" · "),
+    body: text(input?.body) ?? "",
+    href: sent
+      ? (gmailThreadUrl(account, text(sent.threadId) ?? text(output?.threadId)) ??
+        gmailUrl(account, "sent"))
+      : gmailUrl(account, "drafts"),
+    sentAt: text(sent?.at),
+  };
 }
 
 /** What the user types to turn Gmail on in one chat. */
@@ -175,8 +232,6 @@ export interface GmailToolDisplay {
   detail?: string;
   /** A count or the changes made, shown beside the detail. */
   note?: string;
-  /** Who a draft is addressed to. */
-  recipient?: string;
   rows: GmailToolRow[];
   /** Opens the saved draft's folder in Gmail. */
   href?: string;
@@ -397,10 +452,9 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
     action,
     status,
     title: status === "running" ? "Writing draft" : "Saved draft in Gmail",
+    // Once saved, a draft is described by `describeGmailDraft()` instead.
     detail: text(output?.subject) ?? text(input?.subject),
-    recipient: text(output?.to),
     rows: [],
-    href: output ? gmailUrl(account, "drafts") : undefined,
     error,
   };
 }

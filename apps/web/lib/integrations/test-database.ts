@@ -18,6 +18,7 @@ export function createIntegrationTestDatabase(name: string) {
   for (const file of [
     "0030_integrations.sql",
     "0031_integration_always_on.sql",
+    "0032_gmail_sent_drafts.sql",
   ]) {
     const migration = fs.readFileSync(
       path.resolve(__dirname, "../../drizzle", file),
@@ -31,6 +32,7 @@ export function createIntegrationTestDatabase(name: string) {
     raw,
     reset() {
       raw.exec(`
+        DELETE FROM gmail_sent_drafts;
         DELETE FROM integration_authorizations;
         DELETE FROM integration_connections;
         DELETE FROM integration_oauth_clients;

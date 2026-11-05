@@ -725,3 +725,30 @@ export async function createGmailDraft(
     subject,
   };
 }
+
+/**
+ * Sends a draft as it stands in Gmail now, including any edits the user made
+ * there. Only the user's own action leads here; no tool calls it.
+ */
+export async function sendGmailDraft(
+  userId: string,
+  draftId: string,
+  signal?: AbortSignal,
+): Promise<{ threadId: string | null }> {
+  try {
+    const message = await gmailRequest<{ threadId?: string }>(
+      userId,
+      "/drafts/send",
+      { body: { id: draftId }, signal },
+    );
+    return { threadId: message.threadId ?? null };
+  } catch (error) {
+    if (error instanceof IntegrationError && error.status === 404) {
+      throw new IntegrationError(
+        "This draft is no longer in Gmail. It may already have been sent or deleted there.",
+        404,
+      );
+    }
+    throw error;
+  }
+}

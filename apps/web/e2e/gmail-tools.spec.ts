@@ -47,7 +47,7 @@ const scripts: Record<string, { calls: { name: string; input: object }[]; reply:
         input: { replyToMessageId: "msg1", body: "Thanks Grace, paying it today." },
       },
     ],
-    reply: "The reply is saved as a draft. Send it from Gmail when you are ready.",
+    reply: "The reply is saved as a draft. Press Send on it when you are ready.",
   },
 };
 
@@ -55,6 +55,8 @@ let provider: Server;
 let baseUrl: string;
 let google: Server;
 let grantAlive = true;
+/** Whether the draft the model saved is still in the mailbox. */
+let draftInGmail = true;
 const chatRequests: ChatPayload[] = [];
 const gmailRequests: { method: string; path: string; authorization?: string; body?: string }[] = [];
 
@@ -241,6 +243,11 @@ test.beforeAll(async () => {
     if (path === "/drafts" && req.method === "POST") {
       return json(200, { id: "draft1", message: { id: "msg2", threadId: "thread1" } });
     }
+    if (path === "/drafts/send" && req.method === "POST") {
+      if (!draftInGmail) return json(404, { error: { message: "Not Found" } });
+      draftInGmail = false;
+      return json(200, { id: "msg3", threadId: "thread1", labelIds: ["SENT"] });
+    }
     json(404, { error: { message: "Not found" } });
   });
   await new Promise<void>((resolve) => google.listen(e2eGooglePort, "127.0.0.1", resolve));
@@ -279,6 +286,7 @@ test.beforeEach(async ({ page }) => {
   chatRequests.length = 0;
   gmailRequests.length = 0;
   grantAlive = true;
+  draftInGmail = true;
   await page.goto(await setupUrl());
   await page.locator("#name").fill("Mail Admin");
   await page.locator("#email").fill("mail@overtchat-test.local");
@@ -375,7 +383,7 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
 
   await send(page, "Draft a reply saying I will pay today");
   await expect(
-    page.getByText("The reply is saved as a draft. Send it from Gmail when you are ready.", { exact: true }),
+    page.getByText("The reply is saved as a draft. Press Send on it when you are ready.", { exact: true }),
   ).toBeVisible();
 
   // The draft is a threaded reply to Grace, saved and not sent.
@@ -391,13 +399,27 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
   );
   expect(gmailRequests.some((request) => request.path.includes("/send"))).toBe(false);
 
-  const draft = await expand(page, "Saved draft in Gmail");
+  // The draft is a card of its own: who it goes to, what it says, and Send.
+  const draft = page.getByRole("group", { name: "Gmail draft" });
   await expect(draft).toContainText("Re: Invoice 42");
-  await expect(draft).toContainText("To grace@example.test");
-  await expect(draft).toContainText("Draft, not sent");
+  await expect(draft).toContainText("Draft, not sent · To grace@example.test");
+  await expect(draft).toContainText("Thanks Grace, paying it today.");
   await expect(draft.getByRole("link", { name: "Open drafts in Gmail" })).toHaveAttribute(
     "href",
     "https://mail.google.com/mail/?authuser=ada%40example.test#drafts",
+  );
+
+  // Only the person sends it. No model was ever offered a way to.
+  expect(chatRequests.flatMap(toolNames).filter((name) => /send/i.test(name))).toEqual([]);
+  await draft.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(draft).toContainText("Sent · To grace@example.test");
+  await expect(draft.getByRole("button", { name: "Send", exact: true })).toBeHidden();
+  const sends = gmailRequests.filter((request) => request.path === "/drafts/send");
+  expect(sends).toHaveLength(1);
+  expect(JSON.parse(sends[0].body!)).toEqual({ id: "draft1" });
+  await expect(draft.getByRole("link", { name: "Open in Gmail" })).toHaveAttribute(
+    "href",
+    "https://mail.google.com/mail/?authuser=ada%40example.test#all/thread1",
   );
 
   // Sorting changes labels on the thread, and nothing is deleted for good.
@@ -421,7 +443,9 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
   await page.reload();
   await expect(page.getByRole("button", { name: "Read attachment" })).toBeVisible();
   await expect(page.getByRole("button", { name: "1 conversation updated" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Saved draft in Gmail" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Gmail draft" })).toContainText(
+    "Sent · To grace@example.test",
+  );
 
   // A shared link carries the answers but nothing the Gmail tools read or wrote.
   const chatId = new URL(page.url()).pathname.split("/").at(-1)!;
@@ -434,6 +458,26 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
   } finally {
     await anonymous.close();
   }
+});
+
+test("a draft that is gone from Gmail says so and stays a draft", async ({ page }) => {
+  connectGmail();
+  await page.goto("/");
+  await send(page, "Draft a reply saying I will pay today");
+  const draft = page.getByRole("group", { name: "Gmail draft" });
+  await expect(draft).toContainText("Draft, not sent");
+
+  // Sent or deleted in Gmail itself, behind the chat's back.
+  draftInGmail = false;
+  await draft.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(draft).toContainText(
+    "This draft is no longer in Gmail. It may already have been sent or deleted there.",
+  );
+  await expect(draft).toContainText("Draft, not sent");
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Gmail draft" })).toContainText(
+    "Draft, not sent",
+  );
 });
 
 test("the tools are offered only while the mailbox is connected", async ({ page }) => {
@@ -482,7 +526,7 @@ test("Gmail stays out of a chat until the user turns it on there, then stays", a
   chatRequests.length = 0;
   await send(page, "Draft a reply saying I will pay today");
   await expect(
-    page.getByText("The reply is saved as a draft. Send it from Gmail when you are ready.", {
+    page.getByText("The reply is saved as a draft. Press Send on it when you are ready.", {
       exact: true,
     }),
   ).toBeVisible();

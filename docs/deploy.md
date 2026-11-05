@@ -889,8 +889,10 @@ desktop and mobile:
   the person's own labels, move to the trash, or report spam.
 - Save a draft, including a reply in its thread.
 
-Nothing is sent and nothing is deleted for good: a draft waits in Gmail for
-the person to send, and mail moved to the trash stays there for 30 days. Mail
+A model cannot send mail. A draft it saves shows in the chat with its text and
+a **Send** button, and goes out only when the person presses that or sends it
+from Gmail. Nothing is deleted for good either: mail moved to the trash stays
+there for 30 days. Mail
 a model reads is saved with that chat like any other tool result; shared chat
 links leave it out.
 

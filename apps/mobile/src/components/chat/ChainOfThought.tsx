@@ -808,7 +808,10 @@ function gmailShortDate(iso: string | undefined): string {
     : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** A Gmail tool call: senders and subjects, never message bodies. */
+/**
+ * A Gmail tool call: senders and subjects, never message bodies. A saved
+ * draft is not a step; it shows as its own card.
+ */
 function GmailStep({ part }: { part: GmailToolPart }) {
   const { colors, fonts } = useTheme();
   const [showAll, setShowAll] = useLayoutState(false);
@@ -817,46 +820,8 @@ function GmailStep({ part }: { part: GmailToolPart }) {
     ? display.rows
     : display.rows.slice(0, RESULTS_PREVIEW);
   const hidden = display.rows.length - visible.length;
-  const href = display.href;
   const muted = { color: colors.mutedForeground, fontFamily: fonts.sansRegular };
   const running = display.status === "running";
-
-  // A saved draft is its card; the timeline's heading already names it.
-  if (display.action === "draft" && display.status === "done" && href) {
-    return (
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel="Open drafts in Gmail"
-        onPress={() => Linking.openURL(href).catch(() => {})}
-        style={({ pressed }) => [
-          styles.fetchRow,
-          {
-            borderColor: colors.border,
-            backgroundColor: colors.muted,
-            opacity: pressed ? 0.7 : 1,
-          },
-        ]}
-      >
-        <View style={styles.fetchedImageText}>
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.stepTitle,
-              { color: colors.foreground, fontFamily: fonts.sansMedium },
-            ]}
-          >
-            {display.detail ?? "(no subject)"}
-          </Text>
-          <Text numberOfLines={1} style={[styles.metaText, muted]}>
-            {`Draft, not sent · ${
-              display.recipient ? `To ${display.recipient}` : "no recipient yet"
-            }`}
-          </Text>
-        </View>
-        <Ionicons name="open-outline" size={14} color={colors.mutedForeground} />
-      </Pressable>
-    );
-  }
 
   return (
     <View style={styles.searchStep}>
