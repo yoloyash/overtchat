@@ -56,6 +56,7 @@ import { StatsPopover } from "./StatsPopover";
 import {
   MessageActions,
   MessageActionButton as ActionButton,
+  MessageTime,
 } from "./MessageActions";
 import { serverUrl } from "@/lib/api-url";
 
@@ -87,6 +88,8 @@ export function MessageBubble({
   streaming,
   canAct,
   readOnly = false,
+  pinActions = false,
+  sentAt = null,
   onRegenerate,
   onContinue,
   onImageReference,
@@ -102,6 +105,10 @@ export function MessageBubble({
   streaming: boolean;
   canAct: boolean;
   readOnly?: boolean;
+  /** Keeps a reply's actions on screen instead of revealing them on hover. */
+  pinActions?: boolean;
+  /** When the message was sent, in epoch milliseconds, if known. */
+  sentAt?: number | null;
   onRegenerate?: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
@@ -156,6 +163,7 @@ export function MessageBubble({
           </div>
         )}
         <MessageActions show={canAct || readOnly}>
+          {sentAt !== null && <MessageTime at={sentAt} />}
           <CopyButton text={text} />
           {!readOnly && <ActionButton
             label="Edit"
@@ -173,6 +181,8 @@ export function MessageBubble({
       streaming={streaming}
       canAct={canAct && !readOnly}
       readOnly={readOnly}
+      pinActions={pinActions}
+      sentAt={sentAt}
       onRegenerate={onRegenerate}
       onContinue={onContinue}
       onImageReference={onImageReference}
@@ -191,6 +201,8 @@ function AssistantBubble({
   streaming,
   canAct,
   readOnly = false,
+  pinActions,
+  sentAt,
   onRegenerate,
   onContinue,
   onImageReference,
@@ -205,6 +217,8 @@ function AssistantBubble({
   streaming: boolean;
   canAct: boolean;
   readOnly?: boolean;
+  pinActions: boolean;
+  sentAt: number | null;
   onRegenerate?: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
@@ -328,7 +342,7 @@ function AssistantBubble({
         {!streaming && <Sources message={message} />}
       </div>
       {!streaming && (
-        <MessageActions show={canAct || readOnly}>
+        <MessageActions show={canAct || readOnly} alwaysVisible={pinActions}>
           <CopyButton text={stripCitationMarkers(text)} />
           {!readOnly && speech && <SpeakButton
             messageId={message.id}
@@ -348,6 +362,9 @@ function AssistantBubble({
             />
           )}
           {showStats && stats && <StatsPopover stats={stats} />}
+          {sentAt !== null && (
+            <MessageTime at={sentAt} revealOnHover={pinActions} />
+          )}
         </MessageActions>
       )}
     </div>

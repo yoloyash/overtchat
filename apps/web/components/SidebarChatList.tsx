@@ -30,6 +30,7 @@ import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 import { apiUrl } from "@/lib/api-url";
+import { usePublicCapabilities } from "@/lib/queries/capabilities";
 
 interface Chat {
   id: string;
@@ -390,13 +391,7 @@ export function SidebarItem({
                       </Menu.Positioner>
                     </Menu.Portal>
                   </Menu.SubmenuRoot>
-                  <Menu.Item
-                    render={<a href={apiUrl(`/api/chat/${chat.id}/export`)} download />}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                  >
-                    <Download className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span>Export</span>
-                  </Menu.Item>
+                  <ChatExportMenuItem chatId={chat.id} />
                   <Menu.Item
                     onClick={requestDelete}
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
@@ -533,4 +528,73 @@ function RevealedTitle({
   }, [chars.length, onComplete, reducedMotion, reveal]);
 
   return <>{reveal && !reducedMotion ? chars.slice(0, length).join("") : title}</>;
+}
+
+const EXPORT_ITEM_CLASSES =
+  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground";
+
+/**
+ * The chat menu's export entry. It offers Markdown beside JSON, or stays the
+ * plain JSON download when the server predates Markdown export, as an older
+ * server behind the desktop app does.
+ */
+function ChatExportMenuItem({ chatId }: { chatId: string }) {
+  const { drawerRef } = useSidebar();
+  const { data: capabilities } = usePublicCapabilities();
+  const jsonHref = apiUrl(`/api/chat/${chatId}/export`);
+
+  if (capabilities?.capabilities.chatMarkdownExport !== true) {
+    return (
+      <Menu.Item
+        render={<a href={jsonHref} download />}
+        className={EXPORT_ITEM_CLASSES}
+      >
+        <Download className="size-3.5 shrink-0 text-muted-foreground" />
+        <span>Export</span>
+      </Menu.Item>
+    );
+  }
+
+  // The server cannot know the reader's time zone, so the link carries it.
+  const markdownHref = `${jsonHref}?${new URLSearchParams({
+    format: "markdown",
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  })}`;
+  return (
+    <Menu.SubmenuRoot>
+      <Menu.SubmenuTrigger
+        className={cn(
+          EXPORT_ITEM_CLASSES,
+          "w-full data-[popup-open]:bg-accent",
+        )}
+      >
+        <Download className="size-3.5 shrink-0 text-muted-foreground" />
+        <span>Export</span>
+        <span className="ml-auto text-muted-foreground">›</span>
+      </Menu.SubmenuTrigger>
+      <Menu.Portal container={drawerRef}>
+        <Menu.Positioner side="right" align="start" sideOffset={6}>
+          <Menu.Popup
+            className={cn(
+              "z-50 w-40 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+              motionClasses.popup,
+            )}
+          >
+            <Menu.Item
+              render={<a href={markdownHref} download />}
+              className={EXPORT_ITEM_CLASSES}
+            >
+              Markdown
+            </Menu.Item>
+            <Menu.Item
+              render={<a href={jsonHref} download />}
+              className={EXPORT_ITEM_CLASSES}
+            >
+              JSON
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.SubmenuRoot>
+  );
 }

@@ -7,6 +7,12 @@ export const CHAT_MESSAGE_MAX_PAGE_SIZE = 100;
 
 export type ChatMessagePage = {
   messages: UIMessage[];
+  /**
+   * When each message on the page was saved, in epoch milliseconds, keyed by
+   * message ID. It travels beside the messages because a continued answer is
+   * compared with its saved metadata, so nothing may be added to a message.
+   */
+  messageTimes: Record<string, number>;
   nextCursor: string | null;
 };
 

@@ -890,6 +890,7 @@ describe("transactional chat turns", () => {
     expect(newest.messages[1].parts).toEqual([
       { type: "text", text: "Old answer" },
     ]);
+    expect(newest.messageTimes).toEqual({ edit: 2_000, assistant: 2_000 });
     expect(newest.nextCursor).toMatch(/^\d+$/);
 
     const oldest = await chatDb.getMessagesPage("chat", {
@@ -897,6 +898,7 @@ describe("transactional chat turns", () => {
       cursor: newest.nextCursor!,
     });
     expect(oldest.messages.map(({ id }) => id)).toEqual(["before"]);
+    expect(oldest.messageTimes).toEqual({ before: 1_000 });
     expect(oldest.nextCursor).toBeNull();
   });
 
