@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import {
   Brain,
   ChevronDown,
@@ -10,9 +16,7 @@ import {
   FileText,
   Globe,
   Loader2,
-  Mail,
   Wrench,
-  type LucideIcon,
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,6 +47,7 @@ import {
 import { parseMcpToolName } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
 import { CodeRunFiles } from "./CodeExecutionFiles";
+import { GmailLogo } from "@/components/GmailLogo";
 import { GmailStep } from "./GmailStep";
 import { ThinkingContent } from "./ThinkingContent";
 import { serverUrl } from "@/lib/api-url";
@@ -130,7 +135,7 @@ export function ChainOfThought({
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
 
-  const StatusIcon = active
+  const StatusIcon: StepIcon = active
     ? Loader2
     : lastToolFailed
       ? CircleAlert
@@ -140,7 +145,7 @@ export function ChainOfThought({
           : isCodeExecutionPart(lastTool)
             ? Code2
             : isGmailToolPart(lastTool)
-              ? Mail
+              ? GmailLogo
               : Globe
         : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
@@ -193,9 +198,12 @@ export function ChainOfThought({
   );
 }
 
+/** A line icon, or a connector's own mark. */
+type StepIcon = ComponentType<{ className?: string }>;
+
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
-  const icon =
+  const icon: StepIcon =
     isTool(part) && part.state === "output-error"
       ? CircleAlert
       : isWebSearch(part)
@@ -209,7 +217,7 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
               : isCodeExecutionPart(part)
                 ? Code2
                 : isGmailToolPart(part)
-                  ? Mail
+                  ? GmailLogo
                   : isMcpTool(part)
                     ? Wrench
                     : Brain;
@@ -301,7 +309,7 @@ function formatToolValue(value: unknown): string {
 }
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
-function Rail({ icon: Icon, isLast }: { icon: LucideIcon; isLast: boolean }) {
+function Rail({ icon: Icon, isLast }: { icon: StepIcon; isLast: boolean }) {
   return (
     <div className="flex flex-col items-center">
       <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">

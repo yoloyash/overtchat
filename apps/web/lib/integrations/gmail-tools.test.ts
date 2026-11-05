@@ -115,9 +115,11 @@ describe("display", () => {
     const search = part({
       input: { query: "from:grace is:unread" },
       output: {
+        account: "ada@example.test",
         hasMore: true,
         messages: [
           {
+            threadId: "19a2b3c4d5e6f708",
             from: '"Grace Hopper" <grace@example.test>',
             subject: "Numbers",
             date: "2026-11-04T10:00:00.000Z",
@@ -135,12 +137,19 @@ describe("display", () => {
       status: "done",
       title: "Searched Gmail",
       detail: "from:grace is:unread",
-      note: "2 results+",
+      note: "2+ results",
       rows: [
-        { primary: "Numbers", secondary: "Grace Hopper", unread: true },
-        { primary: "(no subject)", secondary: "alan@example.test" },
+        {
+          sender: "Grace Hopper",
+          subject: "Numbers",
+          unread: true,
+          href: "https://mail.google.com/mail/?authuser=ada%40example.test#all/19a2b3c4d5e6f708",
+        },
+        { sender: "alan@example.test", subject: "(no subject)" },
       ],
     });
+    // Without a thread to point at, a row is not a link.
+    expect(display.rows[1].href).toBeUndefined();
     expect(JSON.stringify(display)).not.toContain("private words");
     expect(gmailActivityLabel(search, true)).toBe(
       'Searching Gmail for "from:grace is:unread"',
@@ -153,6 +162,8 @@ describe("display", () => {
       part({
         type: "tool-gmail_read_thread",
         output: {
+          account: "ada@example.test",
+          threadId: "thread-1",
           subject: "Plans",
           messages: [
             {
@@ -160,15 +171,21 @@ describe("display", () => {
               body: "private words",
               attachments: [{ filename: "plan.pdf" }, { filename: "map.png" }],
             },
+            { from: "'Alan Turing' via Staff <staff@example.test>" },
           ],
         },
       }),
     );
+    const href =
+      "https://mail.google.com/mail/?authuser=ada%40example.test#all/thread-1";
     expect(display).toMatchObject({
       title: "Read email",
       detail: "Plans",
-      note: "1 message",
-      rows: [{ primary: "Grace", secondary: "plan.pdf, map.png" }],
+      note: "2 messages",
+      rows: [
+        { sender: "Grace", attachments: ["plan.pdf", "map.png"], href },
+        { sender: "Alan Turing via Staff", href },
+      ],
     });
     expect(JSON.stringify(display)).not.toContain("private words");
   });
@@ -185,7 +202,7 @@ describe("display", () => {
     ).toMatchObject({
       title: "Saved draft in Gmail",
       detail: "Hi",
-      note: "To grace@example.test",
+      recipient: "grace@example.test",
       href: "https://mail.google.com/mail/?authuser=ada%40example.test#drafts",
     });
   });
@@ -211,7 +228,26 @@ describe("display", () => {
   it("survives a saved step whose shape it does not recognize", () => {
     expect(
       describeGmailToolPart(part({ input: "x", output: { messages: "nope" } })),
-    ).toMatchObject({ status: "done", rows: [], note: "0 results" });
+    ).toMatchObject({ status: "done", rows: [], note: "No results" });
+
+    // A step saved before results named their mailbox opens nothing.
+    const [row] = describeGmailToolPart(
+      part({ output: { messages: [{ threadId: "t1", from: "a@example.test" }] } }),
+    ).rows;
+    expect(row).toMatchObject({ sender: "a@example.test" });
+    expect(row.href).toBeUndefined();
+
+    // Nor does a thread ID that could not be Gmail's.
+    expect(
+      describeGmailToolPart(
+        part({
+          output: {
+            account: "ada@example.test",
+            messages: [{ threadId: "t1/../x", from: "a@example.test" }],
+          },
+        }),
+      ).rows[0].href,
+    ).toBeUndefined();
   });
 });
 

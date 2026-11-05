@@ -44,6 +44,7 @@ import type { DynamicToolUIPart } from "ai";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { useTheme } from "@/lib/theme";
+import { GmailLogo } from "../GmailLogo";
 import { CodeBlock } from "./CodeBlock";
 import { CodeExecutionFiles } from "./CodeExecutionFiles";
 import { MarkdownBody } from "./MarkdownBody";
@@ -232,7 +233,9 @@ function StatusIcon({
   }
   if (toolKind === "mail") {
     return (
-      <Ionicons name="mail-outline" size={15} color={color} style={styles.statusIcon} />
+      <View style={styles.statusIcon}>
+        <GmailLogo size={15} />
+      </View>
     );
   }
   if (toolKind === "web") {
@@ -365,7 +368,7 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
         ) : icon === "code" ? (
           <Ionicons name="code-slash-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "mail" ? (
-          <Ionicons name="mail-outline" size={11} color={colors.mutedForeground} />
+          <GmailLogo size={11} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
@@ -797,8 +800,6 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   );
 }
 
-const GMAIL_VISIBLE_ROWS = 5;
-
 function gmailShortDate(iso: string | undefined): string {
   if (!iso) return "";
   const date = new Date(iso);
@@ -810,10 +811,52 @@ function gmailShortDate(iso: string | undefined): string {
 /** A Gmail tool call: senders and subjects, never message bodies. */
 function GmailStep({ part }: { part: GmailToolPart }) {
   const { colors, fonts } = useTheme();
+  const [showAll, setShowAll] = useLayoutState(false);
   const display = describeGmailToolPart(part);
-  const rows = display.rows.slice(0, GMAIL_VISIBLE_ROWS);
-  const hidden = display.rows.length - rows.length;
+  const visible = showAll
+    ? display.rows
+    : display.rows.slice(0, RESULTS_PREVIEW);
+  const hidden = display.rows.length - visible.length;
   const href = display.href;
+  const muted = { color: colors.mutedForeground, fontFamily: fonts.sansRegular };
+
+  // A saved draft is its card; the timeline's heading already names it.
+  if (display.action === "draft" && display.status === "done" && href) {
+    return (
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open drafts in Gmail"
+        onPress={() => Linking.openURL(href).catch(() => {})}
+        style={({ pressed }) => [
+          styles.fetchRow,
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.muted,
+            opacity: pressed ? 0.7 : 1,
+          },
+        ]}
+      >
+        <View style={styles.fetchedImageText}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.stepTitle,
+              { color: colors.foreground, fontFamily: fonts.sansMedium },
+            ]}
+          >
+            {display.detail ?? "(no subject)"}
+          </Text>
+          <Text numberOfLines={1} style={[styles.metaText, muted]}>
+            {`Draft, not sent · ${
+              display.recipient ? `To ${display.recipient}` : "no recipient yet"
+            }`}
+          </Text>
+        </View>
+        <Ionicons name="open-outline" size={14} color={colors.mutedForeground} />
+      </Pressable>
+    );
+  }
+
   return (
     <View style={styles.searchStep}>
       <View style={styles.searchHeader}>
@@ -826,17 +869,12 @@ function GmailStep({ part }: { part: GmailToolPart }) {
         >
           {display.detail ?? display.title}
         </Text>
-        <Text
-          style={[
-            styles.metaText,
-            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-          ]}
-        >
+        <Text style={[styles.metaText, muted]}>
           {display.status === "error"
             ? "Failed"
             : display.status === "running"
               ? `${display.title}…`
-              : (display.note ?? display.title)}
+              : display.note}
         </Text>
       </View>
       {display.error ? (
@@ -848,67 +886,84 @@ function GmailStep({ part }: { part: GmailToolPart }) {
         >
           {display.error}
         </Text>
-      ) : (
-        rows.map((row, index) => (
-          <View key={index} style={styles.searchHeader}>
-            <Text
-              numberOfLines={1}
+      ) : display.rows.length === 0 ? null : (
+        <View
+          style={[
+            styles.resultList,
+            { borderColor: colors.border, backgroundColor: colors.muted },
+          ]}
+        >
+          {visible.map((row, index) => (
+            <View
+              key={index}
               style={[
-                styles.metaText,
-                styles.gmailRowText,
-                {
-                  color: colors.foreground,
-                  fontFamily: row.unread ? fonts.sansMedium : fonts.sansRegular,
+                styles.resultRow,
+                index > 0 && {
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
                 },
               ]}
             >
-              {row.primary}
-              {row.secondary ? (
-                <Text style={{ color: colors.mutedForeground }}>
-                  {`  ${row.secondary}`}
-                </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.gmailSender,
+                  {
+                    color: colors.foreground,
+                    fontFamily: row.unread
+                      ? fonts.sansMedium
+                      : fonts.sansRegular,
+                  },
+                ]}
+              >
+                {row.sender || "(unknown sender)"}
+              </Text>
+              {row.attachments ? (
+                <Ionicons
+                  name="attach"
+                  size={13}
+                  color={colors.mutedForeground}
+                />
               ) : null}
-            </Text>
-            <Text
-              style={[
-                styles.metaText,
-                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.resultTitle,
+                  {
+                    color: row.unread
+                      ? colors.foreground
+                      : colors.mutedForeground,
+                    fontFamily: fonts.sansRegular,
+                  },
+                ]}
+              >
+                {row.subject ?? row.attachments?.join(", ")}
+              </Text>
+              <Text style={[styles.metaText, muted]}>
+                {gmailShortDate(row.date)}
+              </Text>
+            </View>
+          ))}
+          {hidden > 0 || showAll ? (
+            <Pressable
+              onPress={() => setShowAll((shown) => !shown)}
+              style={({ pressed }) => [
+                styles.showAllRow,
+                { borderTopColor: colors.border, opacity: pressed ? 0.7 : 1 },
               ]}
             >
-              {gmailShortDate(row.date)}
-            </Text>
-          </View>
-        ))
+              <Text
+                style={[
+                  styles.showAllText,
+                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                ]}
+              >
+                {showAll ? "Show less" : `Show ${hidden} more`}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       )}
-      {hidden > 0 ? (
-        <Text
-          style={[
-            styles.metaText,
-            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-          ]}
-        >
-          {`+${hidden} more`}
-        </Text>
-      ) : null}
-      {href ? (
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => Linking.openURL(href).catch(() => {})}
-        >
-          <Text
-            style={[
-              styles.metaText,
-              {
-                color: colors.foreground,
-                fontFamily: fonts.sansRegular,
-                textDecorationLine: "underline",
-              },
-            ]}
-          >
-            Open drafts in Gmail
-          </Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -1191,7 +1246,7 @@ const styles = StyleSheet.create({
   stepTitle: { flexShrink: 1, fontSize: 13 },
   metaText: { fontSize: 12 },
   errorText: { fontSize: 12 },
-  gmailRowText: { flexShrink: 1 },
+  gmailSender: { width: "32%", flexShrink: 0, fontSize: 13 },
   toolValue: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,

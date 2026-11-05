@@ -15,6 +15,7 @@ vi.mock("@expo/vector-icons", () => ({
   MaterialCommunityIcons: ({ name }: { name: string }) => <i data-icon={name} />,
 }));
 vi.mock("@shopify/flash-list", () => ({ useLayoutState: useState }));
+vi.mock("../GmailLogo", () => ({ GmailLogo: () => <i data-icon="gmail" /> }));
 vi.mock("@/lib/api", () => ({ getApiBase: () => "https://server.test" }));
 vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => null }));
 vi.mock("./MarkdownBody", () => ({
@@ -349,9 +350,11 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
   expect(text).toContain("Quarterly numbers");
   expect(text).toContain("Grace Hopper");
   expect(text).toContain("To grace@example.test");
-  expect(text).toContain("Open drafts in Gmail");
+  // The draft is a card that opens Gmail's drafts.
+  expect(container.querySelector('[data-icon="open-outline"]')).not.toBeNull();
   expect(text).not.toContain("private words");
-  expect(container.querySelector('[data-icon="mail-outline"]')).not.toBeNull();
+  expect(text).toContain("Draft, not sent");
+  expect(container.querySelector('[data-icon="gmail"]')).not.toBeNull();
 
   await act(async () => {
     root.render(

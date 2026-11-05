@@ -143,6 +143,11 @@ function receivedAt(message: GmailApiMessage): string {
     : "";
 }
 
+/** The address results are labeled with, so links open the right mailbox. */
+function mailbox(userId: string): string {
+  return getIntegrationConnection(userId, "gmail")?.accountEmail ?? "";
+}
+
 const SUMMARY_HEADERS = ["From", "To", "Subject", "Date"];
 
 function metadataQuery(headers: string[]): string {
@@ -177,6 +182,7 @@ export async function searchGmail(
     ),
   );
   return {
+    account: mailbox(userId),
     messages: messages.map(
       (message): GmailMessageSummary => ({
         id: message.id,
@@ -306,6 +312,7 @@ export async function readGmailThread(
   }
 
   return {
+    account: mailbox(userId),
     threadId: thread.id,
     subject: header(all[0]?.payload, "Subject"),
     messages: kept,
@@ -439,7 +446,7 @@ export async function createGmailDraft(
   return {
     draftId: draft.id,
     threadId: draft.message?.threadId ?? threadId ?? null,
-    account: getIntegrationConnection(userId, "gmail")?.accountEmail ?? "",
+    account: mailbox(userId),
     to: to.join(", "),
     subject,
   };

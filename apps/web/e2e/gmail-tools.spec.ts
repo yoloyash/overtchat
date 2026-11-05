@@ -291,6 +291,14 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
   await expect(timeline).toContainText("Grace Hopper");
   await expect(timeline).toContainText("invoice-42.pdf");
   await expect(timeline).not.toContainText("ZX-99");
+  // Each message opens its thread in the mailbox it came from.
+  for (const row of await timeline.getByRole("link", { name: /Grace Hopper/ }).all()) {
+    await expect(row).toHaveAttribute(
+      "href",
+      "https://mail.google.com/mail/?authuser=ada%40example.test#all/thread1",
+    );
+  }
+  await expect(timeline.getByRole("link", { name: /Grace Hopper/ })).toHaveCount(2);
 
   await send(page, "Draft a reply saying I will pay today");
   await expect(
@@ -313,6 +321,7 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
   const draft = await expand(page, "Saved draft in Gmail");
   await expect(draft).toContainText("Re: Invoice 42");
   await expect(draft).toContainText("To grace@example.test");
+  await expect(draft).toContainText("Draft, not sent");
   await expect(draft.getByRole("link", { name: "Open drafts in Gmail" })).toHaveAttribute(
     "href",
     "https://mail.google.com/mail/?authuser=ada%40example.test#drafts",

@@ -21,6 +21,8 @@ export interface GmailMessageSummary {
 }
 
 export interface GmailSearchOutput {
+  /** The mailbox that was searched. */
+  account: string;
   messages: GmailMessageSummary[];
   /** More messages match than were returned. */
   hasMore: boolean;
@@ -47,6 +49,8 @@ export interface GmailThreadMessage {
 }
 
 export interface GmailThreadOutput {
+  /** The mailbox the thread was read from. */
+  account: string;
   threadId: string;
   subject: string;
   /** Oldest first. */
@@ -81,14 +85,18 @@ export function isGmailToolPart(part: { type: string }): part is GmailToolPart {
   return GMAIL_PART_TYPES.has(part.type);
 }
 
+/** One message in a Gmail step: a search result, or a message of a thread. */
 export interface GmailToolRow {
-  /** Subject for a search result; sender for a message in a thread. */
-  primary: string;
-  /** Sender for a search result; attachment names for a thread message. */
-  secondary?: string;
+  sender: string;
+  /** A search result's subject. */
+  subject?: string;
+  /** Names of the files attached to a message that was read. */
+  attachments?: string[];
   /** ISO 8601. */
   date?: string;
   unread?: boolean;
+  /** Opens the message's thread in Gmail. */
+  href?: string;
 }
 
 /** What web and mobile show for one Gmail step, without any body text. */
@@ -98,8 +106,10 @@ export interface GmailToolDisplay {
   title: string;
   /** The search query, thread subject, or draft subject. */
   detail?: string;
-  /** A count or recipient, shown beside the title. */
+  /** A count, shown beside the detail. */
   note?: string;
+  /** Who a draft is addressed to. */
+  recipient?: string;
   rows: GmailToolRow[];
   /** Opens the saved draft's folder in Gmail. */
   href?: string;
@@ -127,12 +137,36 @@ function list(value: unknown): Record<string, unknown>[] {
 
 /** "Ada Lovelace <ada@example.com>" → "Ada Lovelace". */
 export function gmailSenderName(from: string): string {
-  const name = from.replace(/<[^>]*>/g, "").replace(/"/g, "").trim();
+  const name = from
+    .replace(/<[^>]*>/g, "")
+    .trim()
+    // Mailing lists quote the original sender: 'Ada' via Some List.
+    .replace(/^(["'])(.*?)\1/, "$2")
+    .replace(/"/g, "")
+    .trim();
   return name || from.replace(/[<>]/g, "").trim();
 }
 
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+function count(total: number, noun: string, more = false): string {
+  if (total === 0) return `No ${noun}s`;
+  return `${total}${more ? "+" : ""} ${noun}${total === 1 && !more ? "" : "s"}`;
+}
+
+function gmailUrl(account: string | undefined, fragment: string): string {
+  return `https://mail.google.com/mail/${account ? `?authuser=${encodeURIComponent(account)}` : ""}#${fragment}`;
+}
+
+/**
+ * Gmail opens the first signed-in account unless told which, so a thread is
+ * linked only when its mailbox is known.
+ */
+function gmailThreadUrl(
+  account: string | undefined,
+  threadId: string | undefined,
+): string | undefined {
+  return account && threadId && /^[A-Za-z0-9_-]+$/.test(threadId)
+    ? gmailUrl(account, `all/${threadId}`)
+    : undefined;
 }
 
 /**
@@ -157,6 +191,8 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
   const error =
     status === "error" ? (text(part.errorText) ?? "Gmail request failed") : undefined;
 
+  const account = text(output?.account);
+
   if (action === "search") {
     const messages = list(output?.messages);
     return {
@@ -165,13 +201,14 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
       title: status === "running" ? "Searching Gmail" : "Searched Gmail",
       detail: text(input?.query),
       note: output
-        ? `${plural(messages.length, "result")}${output.hasMore === true ? "+" : ""}`
+        ? count(messages.length, "result", output.hasMore === true)
         : undefined,
       rows: messages.map((message) => ({
-        primary: text(message.subject) ?? "(no subject)",
-        secondary: gmailSenderName(text(message.from) ?? ""),
+        sender: gmailSenderName(text(message.from) ?? ""),
+        subject: text(message.subject) ?? "(no subject)",
         date: text(message.date),
         unread: message.unread === true,
+        href: gmailThreadUrl(account, text(message.threadId)),
       })),
       error,
     };
@@ -179,37 +216,36 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
 
   if (action === "read") {
     const messages = list(output?.messages);
+    const href = gmailThreadUrl(account, text(output?.threadId));
     return {
       action,
       status,
       title: status === "running" ? "Reading email" : "Read email",
       detail: text(output?.subject),
-      note: output ? plural(messages.length, "message") : undefined,
+      note: output ? count(messages.length, "message") : undefined,
       rows: messages.map((message) => {
-        const attachments = list(message.attachments)
-          .flatMap((attachment) => text(attachment.filename) ?? [])
-          .join(", ");
+        const attachments = list(message.attachments).flatMap(
+          (attachment) => text(attachment.filename) ?? [],
+        );
         return {
-          primary: gmailSenderName(text(message.from) ?? ""),
-          secondary: attachments || undefined,
+          sender: gmailSenderName(text(message.from) ?? ""),
+          attachments: attachments.length > 0 ? attachments : undefined,
           date: text(message.date),
+          href,
         };
       }),
       error,
     };
   }
 
-  const account = text(output?.account);
   return {
     action,
     status,
     title: status === "running" ? "Writing draft" : "Saved draft in Gmail",
     detail: text(output?.subject) ?? text(input?.subject),
-    note: text(output?.to) ? `To ${text(output?.to)}` : undefined,
+    recipient: text(output?.to),
     rows: [],
-    href: output
-      ? `https://mail.google.com/mail/${account ? `?authuser=${encodeURIComponent(account)}` : ""}#drafts`
-      : undefined,
+    href: output ? gmailUrl(account, "drafts") : undefined,
     error,
   };
 }

@@ -108,6 +108,7 @@ describe("search", () => {
     );
     expect(requests.every((r) => r.authorization === "Bearer access-1")).toBe(true);
     expect(result).toEqual({
+      account: "ada@example.test",
       hasMore: true,
       messages: [
         {
@@ -129,7 +130,11 @@ describe("search", () => {
     google(() => ({ body: { resultSizeEstimate: 0 } }));
     await expect(
       gmail.searchGmail("ada", { query: "from:nobody", limit: 5 }),
-    ).resolves.toEqual({ messages: [], hasMore: false });
+    ).resolves.toEqual({
+      account: "ada@example.test",
+      messages: [],
+      hasMore: false,
+    });
   });
 });
 
@@ -181,6 +186,7 @@ describe("reading a thread", () => {
     const thread = await gmail.readGmailThread("ada", "t1");
 
     expect(thread.subject).toBe("Plans");
+    expect(thread.account).toBe("ada@example.test");
     expect(thread.omittedMessages).toBe(0);
     expect(thread.messages[0]).toMatchObject({
       id: "m1",
@@ -367,7 +373,11 @@ describe("failures", () => {
 
     await expect(
       gmail.searchGmail("ada", { query: "in:inbox", limit: 5 }),
-    ).resolves.toEqual({ messages: [], hasMore: false });
+    ).resolves.toEqual({
+      account: "ada@example.test",
+      messages: [],
+      hasMore: false,
+    });
     expect(refreshed).toBe(true);
     expect(requests).toHaveLength(3);
     expect(repository.getIntegrationConnection("ada", "gmail")).toMatchObject({
