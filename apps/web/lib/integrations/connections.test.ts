@@ -191,7 +191,8 @@ describe("signing in", () => {
 
   it("refuses and withdraws a grant missing a permission", async () => {
     const calls = google({
-      token: () => grant({ scope: INTEGRATIONS.gmail.scopes[0] }),
+      token: () =>
+        grant({ scope: "https://www.googleapis.com/auth/gmail.readonly" }),
       profile,
     });
     const state = start();
@@ -202,7 +203,7 @@ describe("signing in", () => {
         "gmail",
         redirect(state),
       ),
-    ).rejects.toThrow(/tick every checkbox/);
+    ).rejects.toThrow(/allow everything/);
 
     expect(calls.at(-1)).toEqual({
       endpoint: "revoke",

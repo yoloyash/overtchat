@@ -106,7 +106,7 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
           >
             <Step number={1} title="Sign in with Google">
               <p>
-                Allow access and tick every checkbox. If Google says it
+                Allow access, ticking any checkbox Google shows. If Google says it
                 hasn&apos;t verified this app, continue anyway. If it says
                 access is blocked, an administrator needs to add your Google
                 address as a test user first.

@@ -858,9 +858,8 @@ Google Cloud OAuth client, so an administrator creates one first:
    project and enable the **Gmail API**.
 2. Open **Google Auth Platform** and configure the consent screen with the
    **External** audience. An app name and contact address are enough.
-3. Under **Data access**, add the scopes
-   `https://www.googleapis.com/auth/gmail.readonly` and
-   `https://www.googleapis.com/auth/gmail.compose`.
+3. Under **Data access**, add the scope
+   `https://www.googleapis.com/auth/gmail.modify`.
 4. Under **Audience**, leave the publishing status on **Testing** and add the
    Google address of each person who will connect under **Test users**. Google
    blocks everyone else.
@@ -868,8 +867,8 @@ Google Cloud OAuth client, so an administrator creates one first:
    its client ID and secret.
 6. In OvertChat, choose **Set up** on the Gmail connector and enter both.
 
-Each person then chooses **Connect**, signs in on Google's page, and ticks
-every permission. Google sends their browser to a `http://localhost` address
+Each person then chooses **Connect**, signs in on Google's page, and allows
+access. Google sends their browser to a `http://localhost` address
 that cannot be reached; they copy that address back into OvertChat to finish.
 The sign-in returns through the person's own browser, so it works however the
 server is reached, including a LAN address.

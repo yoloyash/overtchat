@@ -125,7 +125,7 @@ export async function completeIntegrationAuthorization(
     await revokeToken(tokens.refreshToken ?? tokens.accessToken);
     throw new IntegrationError(
       missing.length > 0
-        ? "Google did not grant every permission. Start again and tick every checkbox on Google's page."
+        ? "Google did not grant the access OvertChat asked for. Start again and allow everything on Google's page."
         : "Google did not issue a lasting sign-in. Start again.",
       400,
     );
