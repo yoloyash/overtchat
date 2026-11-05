@@ -100,6 +100,12 @@ async function setUpGoogleAccess(page: Page) {
   await expect(dialog).toBeHidden();
 }
 
+async function expectConnected(page: Page, account: string) {
+  const row = connectors(page);
+  await expect(row.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(row).toContainText(account);
+}
+
 /** Opens the connect dialog and returns the sign-in Google would be shown. */
 async function startSignIn(page: Page) {
   await connectors(page)
@@ -187,9 +193,7 @@ test("an administrator sets up Google access, then each person connects their ow
       .fill(`http://localhost:1/?state=${state}&code=approved-code&scope=x`);
     await dialog.getByRole("button", { name: "Connect", exact: true }).click();
     await expect(dialog).toBeHidden();
-    await expect(connectors(page)).toContainText(
-      "Connected as inbox-1@example.test",
-    );
+    await expectConnected(page, "inbox-1@example.test");
     expect(tokenRequests[0]).toMatchObject({
       grant_type: "authorization_code",
       client_id: "e2e-client.apps.googleusercontent.com",
@@ -200,9 +204,7 @@ test("an administrator sets up Google access, then each person connects their ow
 
     // The connection survives a reload, and no token reaches the browser.
     await page.reload();
-    await expect(connectors(page)).toContainText(
-      "Connected as inbox-1@example.test",
-    );
+    await expectConnected(page, "inbox-1@example.test");
     const listed = await (await page.request.get("/api/integrations")).text();
     expect(listed).toContain("inbox-1@example.test");
     expect(listed).not.toMatch(/refresh-1|access-1|e2e-client-secret/);
@@ -212,21 +214,24 @@ test("an administrator sets up Google access, then each person connects their ow
     await expect(
       connectors(member).getByRole("button", { name: "Google access settings" }),
     ).toHaveCount(0);
+    // Pasting the whole address connects without another click.
     const memberSignIn = await startSignIn(member);
     await memberSignIn.dialog
       .getByLabel("Address from your browser")
-      .fill(
-        `http://localhost:1/?state=${memberSignIn.signIn.searchParams.get("state")}&code=approved-code`,
-      );
-    await memberSignIn.dialog
-      .getByRole("button", { name: "Connect", exact: true })
-      .click();
-    await expect(connectors(member)).toContainText(
-      "Connected as inbox-2@example.test",
-    );
-    await expect(connectors(page)).toContainText(
-      "Connected as inbox-1@example.test",
-    );
+      .evaluate((input, address) => {
+        const clipboardData = new DataTransfer();
+        clipboardData.setData("text", address);
+        input.dispatchEvent(
+          new ClipboardEvent("paste", {
+            clipboardData,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }, `http://localhost:1/?state=${memberSignIn.signIn.searchParams.get("state")}&code=approved-code`);
+    await expect(memberSignIn.dialog).toBeHidden();
+    await expectConnected(member, "inbox-2@example.test");
+    await expectConnected(page, "inbox-1@example.test");
 
     // Disconnecting withdraws only that person's grant.
     await connectors(page).getByRole("button", { name: "Disconnect" }).click();
@@ -235,9 +240,7 @@ test("an administrator sets up Google access, then each person connects their ow
     ).toBeVisible();
     expect(revoked).toEqual(["refresh-1"]);
     await member.reload();
-    await expect(connectors(member)).toContainText(
-      "Connected as inbox-2@example.test",
-    );
+    await expectConnected(member, "inbox-2@example.test");
 
     // Removing Google access deletes what is left and closes the connector again.
     await connectors(page)
@@ -299,9 +302,7 @@ test("a sign-in that Google does not fully grant leaves nothing connected", asyn
       `http://localhost:1/?state=${retry.searchParams.get("state")}&code=approved-code`,
     );
   await first.dialog.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(connectors(page)).toContainText(
-    "Connected as inbox-2@example.test",
-  );
+  await expectConnected(page, "inbox-2@example.test");
 });
 
 test("a sign-in Google limits to a week says when it ends, then asks to be reconnected", async ({
@@ -317,7 +318,7 @@ test("a sign-in Google limits to a week says when it ends, then asks to be recon
       `http://localhost:1/?state=${signIn.searchParams.get("state")}&code=approved-code`,
     );
   await dialog.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(connectors(page)).toContainText("Connected as inbox-1@example.test");
+  await expectConnected(page, "inbox-1@example.test");
   const { integrations } = (await (
     await page.request.get("/api/integrations")
   ).json()) as { integrations: { connection: { expiresAt: string } }[] };
@@ -331,7 +332,7 @@ test("a sign-in Google limits to a week says when it ends, then asks to be recon
     day: "numeric",
   });
   await expect(connectors(page)).toContainText(
-    `Connected as inbox-1@example.test. Google will ask you to sign in again on ${ends}.`,
+    `inbox-1@example.test · Google sign-in lasts until ${ends}`,
   );
 
   // A week later.
@@ -347,6 +348,9 @@ test("a sign-in Google limits to a week says when it ends, then asks to be recon
   await expect(connectors(page)).toContainText(
     "Google ended access for inbox-1@example.test. Reconnect to keep using it.",
   );
+  await expect(
+    connectors(page).getByText("Sign-in ended", { exact: true }),
+  ).toBeVisible();
 
   // Signing in again preselects the same account.
   const again = await startSignIn(page);
@@ -359,7 +363,7 @@ test("a sign-in Google limits to a week says when it ends, then asks to be recon
       `http://localhost:1/?state=${again.signIn.searchParams.get("state")}&code=approved-code`,
     );
   await again.dialog.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(connectors(page)).toContainText("Connected as inbox-2@example.test");
+  await expectConnected(page, "inbox-2@example.test");
   // The earlier grant is withdrawn once the new one is stored.
   expect(revoked).toEqual(["refresh-1"]);
 });

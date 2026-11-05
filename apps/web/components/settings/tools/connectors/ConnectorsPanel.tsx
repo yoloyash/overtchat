@@ -1,7 +1,8 @@
 "use client";
 
-import { Mail, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useState } from "react";
+import { GmailLogo } from "@/components/GmailLogo";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
@@ -40,14 +41,29 @@ export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function connectedSummary(connection: IntegrationConnection): string {
-  const summary = `Connected as ${connection.accountEmail}`;
-  if (!connection.expiresAt) return summary;
+  if (!connection.expiresAt) return connection.accountEmail;
   const day = new Date(connection.expiresAt).toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
-  return `${summary}. Google will ask you to sign in again on ${day}.`;
+  return `${connection.accountEmail} · Google sign-in lasts until ${day}`;
+}
+
+function StatusPill({ needsReconnect }: { needsReconnect: boolean }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-card/60 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted-foreground">
+      <span
+        aria-hidden
+        className={
+          needsReconnect
+            ? "size-1.5 rounded-full bg-destructive"
+            : "size-1.5 rounded-full bg-emerald-500"
+        }
+      />
+      {needsReconnect ? "Sign-in ended" : "Connected"}
+    </span>
+  );
 }
 
 function GmailRow({
@@ -78,18 +94,17 @@ function GmailRow({
   return (
     <div className="grid gap-3 py-4 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center">
       <div className="flex min-w-0 items-start gap-3">
-        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
-          <Mail className="size-4" />
+        <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+          <GmailLogo className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium">Gmail</p>
-          <p
-            className={
-              needsReconnect
-                ? "mt-1 text-xs leading-5 text-destructive"
-                : "mt-1 text-xs leading-5 text-muted-foreground"
-            }
-          >
+          <p className="flex items-center gap-2 text-sm font-medium">
+            Gmail
+            {configured && connection && (
+              <StatusPill needsReconnect={needsReconnect} />
+            )}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {!configured
               ? isAdmin
                 ? "Set up Google access for this server before anyone can connect."
