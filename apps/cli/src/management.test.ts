@@ -124,6 +124,39 @@ describe("component discovery", () => {
     );
     expect(JSON.stringify(report)).not.toContain("never-print-this");
   });
+  it("points a stopped stack at overtchat start", async () => {
+    const stopped = {
+      Id: "id",
+      Name: "/overtchat-app",
+      State: { Status: "exited" },
+      Config: {
+        Image: config().appImage,
+        Labels: {
+          "com.docker.compose.project": config().composeProject,
+          "com.docker.compose.service": "app",
+          "com.docker.compose.project.working_dir": runtimePaths().stackDirectory,
+        },
+      },
+    } as Container;
+    vi.mocked(runDocker).mockImplementation(async (_docker, args) => ({
+      exitCode: 0,
+      stdout: args[0] === "ps" ? "id" : args[0] === "inspect" ? JSON.stringify([stopped]) : "",
+      stderr: "",
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+    const report = await installationReport();
+    const app = report.components.find((entry) => entry.id === "app");
+    expect(app?.state).toBe("exited");
+    expect(app?.running).toBeUndefined();
+    expect(report.problems).toContain(
+      "The app is stopped. Run overtchat start to bring it back.",
+    );
+  });
   it("still reports configured components when Docker is unavailable", async () => {
     vi.mocked(detectDockerCommand).mockRejectedValue(
       new Error("Start Docker Desktop"),

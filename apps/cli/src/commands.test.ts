@@ -5,6 +5,7 @@ import { readInstallationConfig } from "./config.js";
 import { latestReleaseManifest, updateCliIfNeeded } from "./release.js";
 import { setup } from "./setup.js";
 import { status } from "./status.js";
+import { lifecycle } from "./lifecycle.js";
 import { resetPassword } from "./reset-password.js";
 import { resetTwoFactor } from "./reset-two-factor.js";
 vi.mock("./installation-lock.js", () => ({ withInstallationLock: (run: () => Promise<unknown>) => run() }));
@@ -23,6 +24,7 @@ vi.mock("./release.js", async (original) => ({
 }));
 vi.mock("./setup.js", () => ({ setup: vi.fn(), waitForApp: vi.fn() }));
 vi.mock("./status.js", () => ({ status: vi.fn() }));
+vi.mock("./lifecycle.js", () => ({ lifecycle: vi.fn() }));
 vi.mock("./reset-password.js", () => ({ resetPassword: vi.fn() }));
 vi.mock("./reset-two-factor.js", () => ({ resetTwoFactor: vi.fn() }));
 beforeEach(() => {
@@ -35,6 +37,9 @@ describe("CLI contract", () => {
     "setup",
     "update",
     "status",
+    "start",
+    "stop",
+    "restart",
     "version",
     "logs",
     "reset-password",
@@ -59,6 +64,7 @@ describe("CLI contract", () => {
   it.each([
     ["version", "--typo"],
     ["status", "extra"],
+    ["stop", "app"],
     ["restart", "--yes"],
     ["logs", "--tail", "-1"],
     ["logs", "--tail"],
@@ -103,7 +109,15 @@ describe("CLI contract", () => {
       { dryRun: false, defaults: true, development: false }, manifest,
     );
   });
-  it.each(["doctor", "start", "stop", "restart", "uninstall"])(
+  it.each(["start", "stop", "restart"] as const)(
+    "runs %s on the managed stack without setup or updates", async (command) => {
+      await main([command]);
+      expect(lifecycle).toHaveBeenCalledExactlyOnceWith(command);
+      expect(setup).not.toHaveBeenCalled();
+      expect(latestReleaseManifest).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["doctor", "uninstall"])(
     "rejects deferred command %s", (command) => {
       expect(() => parseArgs([command])).toThrow("Unknown command");
     },

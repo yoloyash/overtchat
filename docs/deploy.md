@@ -32,6 +32,7 @@ with accounts do not require a code. This is only for initial setup; use
 overtchat setup     # change access, services, or update notifications
 overtchat status    # check versions and service status
 overtchat update    # update the managed stack
+overtchat restart   # stop and start the managed stack
 overtchat logs -f   # follow container logs
 overtchat reset-password # recover an account password
 ```
@@ -578,7 +579,9 @@ route in that service as well; setup only removes routes it manages in Tailscale
 Service URLs must be reachable **from the app container**:
 
 - On the same host: `http://host.docker.internal:<port>`.
-- On another machine: its LAN URL.
+- On another machine: its LAN URL. Use an IP address or a name your DNS server
+  resolves. `.local` (mDNS) names are resolved by the host, not by the
+  container's DNS, so they usually fail there.
 - Existing search or speech: select it in `overtchat setup`.
 - MCP: configure under **Settings → Tools**. STDIO commands run in the container.
 
@@ -1082,6 +1085,13 @@ status. Every command supports `--help`.
   Unavailable components retain their configured version with unknown running
   versions. A container without a health check is reported as running, not ready.
 - `version` and `status` support `--json`.
+- `overtchat stop`, `overtchat start`, and `overtchat restart` act on every
+  container service you selected. Stopping keeps containers, data, and
+  settings, and the stack stays stopped across host restarts until
+  `overtchat start`; `overtchat setup` and `overtchat update` also start it.
+  `start` and `restart` wait until the app is ready. The Host Connector and
+  native Apple speech are host services and keep running; the connector
+  reconnects once the app is back.
 
 ## Logs and backup
 

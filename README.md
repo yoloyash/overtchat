@@ -72,6 +72,7 @@ administrator.
 overtchat status    # versions, services, and your address
 overtchat setup     # change access or add services later
 overtchat update    # update everything the manager installed
+overtchat restart   # restart the services; stop and start also work
 ```
 
 Prefer plain Compose with nothing installed on the host? Docker and rootless

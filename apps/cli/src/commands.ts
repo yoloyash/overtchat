@@ -3,6 +3,7 @@ import { runUpdatedCli, withInstallationLock } from "./installation-lock.js";
 import { withInstallationLog } from "./install-log.js";
 import { CLI_VERSION } from "./constants.js";
 import { readInstallationConfig } from "./config.js";
+import { lifecycle } from "./lifecycle.js";
 import { logs } from "./logs.js";
 import { installationReport } from "./management.js";
 import { runtimePaths } from "./paths.js";
@@ -39,6 +40,24 @@ const commands: Record<
     description:
       "Show running components, versions, access URL and storage paths.",
     flags: ["--json"],
+  },
+  start: {
+    usage: "start",
+    description:
+      "Start the installed OvertChat services and wait until the app is ready.",
+    flags: [],
+  },
+  stop: {
+    usage: "stop",
+    description:
+      "Stop the installed OvertChat services. Data and settings are kept, and the services stay stopped until overtchat start. The Host Connector keeps running.",
+    flags: [],
+  },
+  restart: {
+    usage: "restart",
+    description:
+      "Stop and start the installed OvertChat services, then wait until the app is ready. The Host Connector keeps running.",
+    flags: [],
   },
   version: {
     usage: "version [--all] [--json]",
@@ -181,6 +200,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "update":
       if (flags.has("--check")) await update({ check: true, json });
       else await withInstallationLock(() => withInstallationLog("update", () => update()));
+      return;
+    case "start":
+    case "stop":
+    case "restart":
+      await withInstallationLock(() => lifecycle(command));
       return;
     case "status":
       await status(json);
