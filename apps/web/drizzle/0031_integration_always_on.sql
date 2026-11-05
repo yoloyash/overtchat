@@ -1,1 +1,0 @@
-ALTER TABLE `integration_connections` ADD `always_on` integer DEFAULT false NOT NULL;
