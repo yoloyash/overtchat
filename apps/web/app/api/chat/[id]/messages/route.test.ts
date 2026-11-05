@@ -33,6 +33,7 @@ describe("chat message history route", () => {
     mocks.getMessages.mockResolvedValue([]);
     mocks.getMessagesPage.mockResolvedValue({
       messages: [{ id: "message", role: "user", parts: [] }],
+      messageTimes: { message: 1_700_000_000_000 },
       nextCursor: "41",
     });
   });
@@ -51,6 +52,7 @@ describe("chat message history route", () => {
     });
     await expect(response.json()).resolves.toEqual({
       messages: [{ id: "message", role: "user", parts: [] }],
+      messageTimes: { message: 1_700_000_000_000 },
       nextCursor: "41",
       projectId: "project",
       kind: "voice",

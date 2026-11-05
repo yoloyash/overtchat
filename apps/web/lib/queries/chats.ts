@@ -104,6 +104,8 @@ export function useChatUsage(id: string, enabled = true) {
 
 export type ChatMessagesPage = {
   messages: UIMessage[];
+  /** Absent when the desktop app talks to a server older than this field. */
+  messageTimes?: Record<string, number>;
   nextCursor: string | null;
   projectId: string | null;
   kind: ChatKind;
