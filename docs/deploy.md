@@ -889,9 +889,9 @@ a model reads is saved with that chat like any other tool result; shared chat
 links leave it out.
 
 Google ends every sign-in made through an app in testing after seven days. The
-connector shows the date; once it passes, the person chooses **Reconnect** and
-signs in again. Until they do, a model asked about their mail tells them where
-to reconnect.
+connector then shows **Sign-in ended**, and the person chooses **Reconnect**
+and signs in again. Until they do, a model asked about their mail tells them
+where to reconnect.
 
 - Google warns that it has not verified the app; continue past the warning.
   Someone who is not a test user sees "Access blocked" instead, until their

@@ -41,11 +41,6 @@ export interface GoogleTokens {
   accessTokenExpiresAt: Date;
   /** Present on a first exchange; a refresh usually omits it. */
   refreshToken: string | null;
-  /**
-   * Set when Google time-limits the sign-in itself, which it does for a
-   * client whose app is still in testing.
-   */
-  refreshTokenExpiresAt: Date | null;
   scopes: string[];
 }
 
@@ -129,7 +124,6 @@ interface TokenResponse {
   access_token?: unknown;
   expires_in?: unknown;
   refresh_token?: unknown;
-  refresh_token_expires_in?: unknown;
   scope?: unknown;
   error?: unknown;
   error_description?: unknown;
@@ -187,11 +181,6 @@ async function requestTokens(
     accessTokenExpiresAt: new Date(Date.now() + body.expires_in * 1000),
     refreshToken:
       typeof body.refresh_token === "string" ? body.refresh_token : null,
-    refreshTokenExpiresAt:
-      typeof body.refresh_token_expires_in === "number" &&
-      body.refresh_token_expires_in > 0
-        ? new Date(Date.now() + body.refresh_token_expires_in * 1000)
-        : null,
     scopes: typeof body.scope === "string" ? body.scope.split(" ") : [],
   };
 }

@@ -6,10 +6,7 @@ import { GmailLogo } from "@/components/GmailLogo";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
-import type {
-  Integration,
-  IntegrationConnection,
-} from "@/lib/integrations/schema";
+import type { Integration } from "@/lib/integrations/schema";
 import {
   useDisconnectIntegration,
   useIntegrations,
@@ -38,16 +35,6 @@ export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
       )}
     </SettingsSection>
   );
-}
-
-function connectedSummary(connection: IntegrationConnection): string {
-  if (!connection.expiresAt) return connection.accountEmail;
-  const day = new Date(connection.expiresAt).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-  return `${connection.accountEmail} · Google sign-in lasts until ${day}`;
 }
 
 function StatusPill({ needsReconnect }: { needsReconnect: boolean }) {
@@ -112,7 +99,7 @@ function GmailRow({
               : needsReconnect
                 ? `Google ended access for ${connection.accountEmail}. Reconnect to keep using it.`
                 : connection
-                  ? connectedSummary(connection)
+                  ? connection.accountEmail
                   : "Let models search, read and organize your mail, and write drafts for you to send."}
           </p>
         </div>

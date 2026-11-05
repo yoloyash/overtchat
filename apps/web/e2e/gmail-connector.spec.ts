@@ -8,8 +8,6 @@ const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"];
 /** Stands in for Google's token, revocation, and Gmail profile endpoints. */
 let google: Server;
 let grantedScopes = GMAIL_SCOPES;
-/** Seconds Google lets a sign-in last when its app is in testing. */
-let signInLifetime: number | undefined;
 let issued = 0;
 const tokenRequests: Record<string, string>[] = [];
 const revoked: string[] = [];
@@ -35,7 +33,6 @@ test.beforeAll(async () => {
         access_token: `access-${issued}`,
         expires_in: 3600,
         refresh_token: `refresh-${issued}`,
-        refresh_token_expires_in: signInLifetime,
         scope: grantedScopes.join(" "),
         token_type: "Bearer",
       });
@@ -66,7 +63,6 @@ test.afterAll(async () => {
 test.beforeEach(() => {
   resetE2eDatabase();
   grantedScopes = GMAIL_SCOPES;
-  signInLifetime = undefined;
   issued = 0;
   tokenRequests.length = 0;
   revoked.length = 0;
@@ -302,12 +298,11 @@ test("a sign-in that Google does not fully grant leaves nothing connected", asyn
   await expectConnected(page, "inbox-2@example.test");
 });
 
-test("a sign-in Google limits to a week says when it ends, then asks to be reconnected", async ({
+test("a sign-in Google has ended asks to be reconnected with the same account", async ({
   page,
 }) => {
   await signUpAdmin(page);
   await setUpGoogleAccess(page);
-  signInLifetime = 7 * 24 * 60 * 60 - 1;
   const { dialog, signIn } = await startSignIn(page);
   await dialog
     .getByLabel("Address from your browser")
@@ -316,28 +311,12 @@ test("a sign-in Google limits to a week says when it ends, then asks to be recon
     );
   await dialog.getByRole("button", { name: "Connect", exact: true }).click();
   await expectConnected(page, "inbox-1@example.test");
-  const { integrations } = (await (
-    await page.request.get("/api/integrations")
-  ).json()) as { integrations: { connection: { expiresAt: string } }[] };
-  const [gmail] = integrations;
-  const remaining = new Date(gmail.connection.expiresAt).getTime() - Date.now();
-  expect(remaining).toBeGreaterThan((signInLifetime - 60) * 1000);
-  expect(remaining).toBeLessThanOrEqual(signInLifetime * 1000);
-  const ends = new Date(gmail.connection.expiresAt).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-  await expect(connectors(page)).toContainText(
-    `inbox-1@example.test · Google sign-in lasts until ${ends}`,
-  );
-
-  // A week later.
+  // What a refused refresh leaves behind once Google ends the sign-in.
   const db = openE2eDatabase();
   try {
     db.prepare(
-      "UPDATE integration_connections SET refresh_token_expires_at = ?",
-    ).run(Date.now() - 1000);
+      "UPDATE integration_connections SET status = 'needs_reconnect'",
+    ).run();
   } finally {
     db.close();
   }

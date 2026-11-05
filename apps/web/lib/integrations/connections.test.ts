@@ -286,36 +286,6 @@ describe("access tokens", () => {
       .run(Date.now() + 30_000);
   }
 
-  it("asks for a new sign-in once a time-limited one has run out", async () => {
-    google({
-      token: () => grant({ refresh_token_expires_in: 604_799 }),
-      profile,
-    });
-    const connected = await connections.completeIntegrationAuthorization(
-      "ada",
-      "gmail",
-      redirect(start()),
-    );
-    vi.restoreAllMocks();
-    const ends = new Date(connected.connection!.expiresAt!).getTime();
-    expect(ends - Date.now()).toBeGreaterThan(6.9 * 86_400_000);
-    const calls = google({});
-    await expect(
-      connections.getIntegrationAccessToken("ada", "gmail"),
-    ).resolves.toBe("access-1");
-
-    vi.useFakeTimers({ now: ends + 1000, toFake: ["Date"] });
-
-    // The access token Google issued would still be sent otherwise.
-    await expect(
-      connections.getIntegrationAccessToken("ada", "gmail"),
-    ).rejects.toMatchObject({ code: "needs_reconnect" });
-    expect(calls).toHaveLength(0);
-    expect(repository.getIntegration("ada", "gmail").connection?.status).toBe(
-      "needs_reconnect",
-    );
-  });
-
   it("reuses a token that is still good", async () => {
     await connectAda();
     const calls = google({});

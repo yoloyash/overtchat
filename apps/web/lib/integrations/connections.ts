@@ -6,7 +6,6 @@ import {
   getIntegrationAuthorization,
   getIntegrationConnection,
   getIntegrationOauthClient,
-  integrationConnectionStatus,
   markIntegrationNeedsReconnect,
   saveIntegrationAuthorization,
   saveIntegrationConnection,
@@ -146,7 +145,6 @@ export async function completeIntegrationAuthorization(
     integrationId,
     accountEmail,
     refreshToken: tokens.refreshToken,
-    refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
     accessToken: tokens.accessToken,
     accessTokenExpiresAt: tokens.accessTokenExpiresAt,
   });
@@ -204,7 +202,7 @@ export async function getIntegrationAccessToken(
       "not_connected",
     );
   }
-  if (integrationConnectionStatus(connection) === "needs_reconnect") {
+  if (connection.status === "needs_reconnect") {
     throw new IntegrationReconnectError();
   }
   if (
