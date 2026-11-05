@@ -874,6 +874,12 @@ that cannot be reached; they copy that address back into OvertChat to finish.
 The sign-in returns through the person's own browser, so it works however the
 server is reached, including a LAN address.
 
+Once connected, tool-calling models can search that person's mail, read a
+thread, and save a draft, on web, desktop and mobile. Nothing is sent: a draft
+waits in Gmail for the person to send. Attachments are listed by name and not
+opened. Mail a model reads is saved with that chat like any other tool result;
+shared chat links leave it out.
+
 - Google shows an unverified-app warning and limits an unverified app to 100
   people. Continue through **Advanced**.
 - A work or school Google account may be blocked by its organization, and

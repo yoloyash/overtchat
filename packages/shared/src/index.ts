@@ -19,6 +19,7 @@ export * from "./images";
 export * from "./documents";
 export * from "./html-preview";
 export * from "./code-execution";
+export * from "./gmail";
 export * from "./conversation-files";
 export * from "./openui";
 export * from "./errors";

@@ -578,18 +578,35 @@ concurrent callers. Only Google's `invalid_grant` marks a connection
 `needs_reconnect`; other failures leave it connected. Tokens and the client
 secret never appear in an API response.
 
-Unit tests cover the protocol, storage and token lifecycle. The browser test
-answers for Google from a local stand-in, which the e2e server reaches through
-`OVERTCHAT_E2E_GOOGLE_ORIGIN`:
+A user with a live connection is offered `gmail_search`, `gmail_read_thread`
+and `gmail_create_draft` (`lib/integrations/gmail-tools.ts`) along with a system
+prompt that marks mail as untrusted. There is no send tool. Thread bodies are
+capped per message and per thread, newest kept; attachments are names only. A
+request Gmail answers with 401 discards the access token and repeats once, so a
+dead grant surfaces as `needs_reconnect`. Draft recipients must be bare
+addresses and headers are refused if they contain a line break.
+
+`describeGmailToolPart()` in `@overtchat/shared` projects a step for the web
+and mobile timelines from senders and subjects only. Tool results stay in the
+chat's saved parts for replay, are not indexed for search, and are dropped from
+share snapshots.
+
+Unit tests cover the protocol, storage, token lifecycle, Gmail client and tool
+display. The browser tests answer for Google and Gmail from a local stand-in,
+which the e2e server reaches through `OVERTCHAT_E2E_GOOGLE_ORIGIN`:
 
 ```sh
 npm run test -w apps/web -- lib/integrations lib/db/integrations.test.ts app/api/integration-oauth-clients
-E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts
+npm run test -w apps/mobile -- src/components/chat/ChainOfThought.test.tsx
+E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts gmail-tools.spec.ts
 ```
 
 Changes to the sign-in itself also need one pass against Google with a real
 client, following [Gmail](deploy.md#gmail): connect, reload, disconnect, and
 confirm the grant disappears from the Google account's third-party access page.
+Changes to the tools need a real mailbox too: search with an operator such as
+`newer_than:7d`, read an HTML-only message, and open a saved reply draft in
+Gmail to check its thread, recipient and encoding.
 
 ## Chat compaction validation
 

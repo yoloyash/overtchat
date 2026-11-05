@@ -10,6 +10,7 @@ import {
   FileText,
   Globe,
   Loader2,
+  Mail,
   Wrench,
   type LucideIcon,
   Search,
@@ -24,7 +25,10 @@ import {
   type CodeExecutionPart,
   type FetchedImage,
   type FetchUrlPart,
+  gmailActivityLabel,
+  type GmailToolPart,
   isCodeExecutionPart,
+  isGmailToolPart,
   isReadFilePart,
   isSearchFilesPart,
   isToolSettled,
@@ -39,6 +43,7 @@ import {
 import { parseMcpToolName } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
 import { CodeRunFiles } from "./CodeExecutionFiles";
+import { GmailStep } from "./GmailStep";
 import { ThinkingContent } from "./ThinkingContent";
 import { serverUrl } from "@/lib/api-url";
 
@@ -49,6 +54,7 @@ export type ActivityPart =
   | ReadFilePart
   | SearchFilesPart
   | CodeExecutionPart
+  | GmailToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -75,6 +81,7 @@ function isTool(
     isFetchUrl(p) ||
     isFileTool(p) ||
     isCodeExecutionPart(p) ||
+    isGmailToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -132,7 +139,9 @@ export function ChainOfThought({
           ? FileText
           : isCodeExecutionPart(lastTool)
             ? Code2
-            : Globe
+            : isGmailToolPart(lastTool)
+              ? Mail
+              : Globe
         : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
@@ -199,9 +208,11 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
               ? FileSearch
               : isCodeExecutionPart(part)
                 ? Code2
-                : isMcpTool(part)
-                  ? Wrench
-                  : Brain;
+                : isGmailToolPart(part)
+                  ? Mail
+                  : isMcpTool(part)
+                    ? Wrench
+                    : Brain;
 
   return (
     <div className="flex gap-2.5">
@@ -217,6 +228,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchFilesStep part={part} />
         ) : isCodeExecutionPart(part) ? (
           <CodeStep part={part} />
+        ) : isGmailToolPart(part) ? (
+          <GmailStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -613,6 +626,7 @@ function activeLabel(last: ActivityPart | undefined): string {
     return query ? `Searching files for "${query}"` : "Searching files…";
   }
   if (isCodeExecutionPart(last)) return "Running code…";
+  if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -655,6 +669,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
     // Run files show inside the steps, so the summary says they are there.
     const files = parts.filter(isCodeExecutionPart).flatMap(codeExecutionFiles).length;
     return files ? `${label} · ${files} ${files === 1 ? "file" : "files"}` : label;
+  }
+  if (lastTool && isGmailToolPart(lastTool)) {
+    return gmailActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

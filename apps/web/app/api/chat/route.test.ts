@@ -55,6 +55,8 @@ const mocks = vi.hoisted(() => {
     createImageTools: vi.fn(),
     getImageCapability: vi.fn(),
     createMemoryTools: vi.fn(),
+    createGmailTools: vi.fn(),
+    gmailToolsAvailable: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -75,6 +77,13 @@ const mocks = vi.hoisted(() => {
     },
     toolOrder: ["web_search", "fetch_url"],
     memoryToolOrder: ["set_memory", "delete_memory"],
+    gmailTools: {
+      gmail_search: { description: "search mail" },
+      gmail_read_thread: { description: "read thread" },
+      gmail_create_draft: { description: "create draft" },
+    },
+    gmailToolOrder: ["gmail_search", "gmail_read_thread", "gmail_create_draft"],
+    gmailPrompt: "stable gmail instruction",
     citationPrompt: "stable web citation instruction",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
@@ -116,6 +125,12 @@ vi.mock("@/lib/tools", () => ({
 vi.mock("@/lib/personalization/tools", () => ({
   createMemoryTools: mocks.createMemoryTools,
   MEMORY_TOOL_ORDER: mocks.memoryToolOrder,
+}));
+vi.mock("@/lib/integrations/gmail-tools", () => ({
+  createGmailTools: mocks.createGmailTools,
+  gmailToolsAvailable: mocks.gmailToolsAvailable,
+  GMAIL_TOOL_ORDER: mocks.gmailToolOrder,
+  GMAIL_TOOL_PROMPT: mocks.gmailPrompt,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
@@ -312,6 +327,8 @@ describe("chat route setup boundary", () => {
     mocks.createImageTools.mockReturnValue({});
     mocks.getImageCapability.mockReturnValue({ available: false, model: null });
     mocks.createMemoryTools.mockReturnValue(mocks.memoryTools);
+    mocks.createGmailTools.mockReturnValue(mocks.gmailTools);
+    mocks.gmailToolsAvailable.mockReturnValue(false);
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -1954,6 +1971,52 @@ describe("chat route setup boundary", () => {
         },
       }),
     );
+  });
+
+  it("offers the Gmail tools and their warning to a user with a connected mailbox", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+    mocks.gmailToolsAvailable.mockReturnValue(true);
+
+    await POST(request());
+
+    expect(mocks.gmailToolsAvailable).toHaveBeenCalledWith("user");
+    expect(mocks.createGmailTools).toHaveBeenCalledWith("user");
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        tools: mocks.gmailTools,
+        toolOrder: mocks.gmailToolOrder,
+        instructions: {
+          role: "system",
+          content: [mocks.gmailPrompt, mocks.currentDatePrompt].join("\n\n"),
+        },
+      }),
+    );
+  });
+
+  it("keeps Gmail from a model that cannot call tools and from an unconnected user", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+
+    await POST(request());
+
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+
+    mocks.gmailToolsAvailable.mockReturnValue(true);
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      toolCallingEnabled: false,
+    });
+
+    await POST(request());
+
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
   });
 
   it("does not load or expose personalization in temporary chats", async () => {
