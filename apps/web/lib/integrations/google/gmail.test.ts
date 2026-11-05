@@ -64,6 +64,7 @@ beforeEach(() => {
     integrationId: "gmail",
     accountEmail: "ada@example.test",
     refreshToken: "refresh-1",
+    refreshTokenExpiresAt: null,
     accessToken: "access-1",
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
   });
@@ -384,7 +385,9 @@ describe("failures", () => {
 
     await expect(
       gmail.searchGmail("ada", { query: "in:inbox", limit: 5 }),
-    ).rejects.toThrow(/reconnected in Settings/);
+    ).rejects.toThrow(
+      "The Gmail sign-in has ended. Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.",
+    );
     expect(repository.getIntegrationConnection("ada", "gmail")?.status).toBe(
       "needs_reconnect",
     );

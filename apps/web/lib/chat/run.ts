@@ -133,7 +133,8 @@ import {
   createGmailTools,
   GMAIL_TOOL_ORDER,
   GMAIL_TOOL_PROMPT,
-  gmailToolsAvailable,
+  gmailAccess,
+  gmailReconnectPrompt,
 } from "@/lib/integrations/gmail-tools";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
 import { acquireMcpBinding } from "@/lib/mcp/manager";
@@ -523,7 +524,8 @@ export async function runChat(
     getServerCapability("search").provider !== "disabled";
   const webToolsEnabled =
     toolCallingEnabled && webSearchEnabled && webSearchAvailable;
-  const gmailToolsEnabled = toolCallingEnabled && gmailToolsAvailable(userId);
+  const gmail = toolCallingEnabled ? gmailAccess(userId) : null;
+  const gmailToolsEnabled = gmail?.status === "available";
   const systemParts = [
     modelConfig.systemPrompt,
     activePersonalization
@@ -537,7 +539,11 @@ export async function runChat(
     documentsEnabled ? DOCUMENT_TOOL_PROMPT : null,
     sandboxInfo ? codeExecutionPrompt(sandboxInfo) : null,
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
-    gmailToolsEnabled ? GMAIL_TOOL_PROMPT : null,
+    gmailToolsEnabled
+      ? GMAIL_TOOL_PROMPT
+      : gmail?.status === "needs_reconnect"
+        ? gmailReconnectPrompt(gmail)
+        : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
       : null,

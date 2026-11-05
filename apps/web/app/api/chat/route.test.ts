@@ -56,7 +56,8 @@ const mocks = vi.hoisted(() => {
     getImageCapability: vi.fn(),
     createMemoryTools: vi.fn(),
     createGmailTools: vi.fn(),
-    gmailToolsAvailable: vi.fn(),
+    gmailAccess: vi.fn(),
+    gmailReconnectPrompt: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -128,7 +129,8 @@ vi.mock("@/lib/personalization/tools", () => ({
 }));
 vi.mock("@/lib/integrations/gmail-tools", () => ({
   createGmailTools: mocks.createGmailTools,
-  gmailToolsAvailable: mocks.gmailToolsAvailable,
+  gmailAccess: mocks.gmailAccess,
+  gmailReconnectPrompt: mocks.gmailReconnectPrompt,
   GMAIL_TOOL_ORDER: mocks.gmailToolOrder,
   GMAIL_TOOL_PROMPT: mocks.gmailPrompt,
 }));
@@ -328,7 +330,8 @@ describe("chat route setup boundary", () => {
     mocks.getImageCapability.mockReturnValue({ available: false, model: null });
     mocks.createMemoryTools.mockReturnValue(mocks.memoryTools);
     mocks.createGmailTools.mockReturnValue(mocks.gmailTools);
-    mocks.gmailToolsAvailable.mockReturnValue(false);
+    mocks.gmailAccess.mockReturnValue({ status: "unavailable" });
+    mocks.gmailReconnectPrompt.mockReturnValue("stable gmail reconnect notice");
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -1978,11 +1981,11 @@ describe("chat route setup boundary", () => {
       ...parsedRequest,
       webSearchEnabled: false,
     });
-    mocks.gmailToolsAvailable.mockReturnValue(true);
+    mocks.gmailAccess.mockReturnValue({ status: "available" });
 
     await POST(request());
 
-    expect(mocks.gmailToolsAvailable).toHaveBeenCalledWith("user");
+    expect(mocks.gmailAccess).toHaveBeenCalledWith("user");
     expect(mocks.createGmailTools).toHaveBeenCalledWith("user");
     expect(mocks.agentSettings[0]).toEqual(
       expect.objectContaining({
@@ -2007,7 +2010,7 @@ describe("chat route setup boundary", () => {
     expect(mocks.createGmailTools).not.toHaveBeenCalled();
     expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
 
-    mocks.gmailToolsAvailable.mockReturnValue(true);
+    mocks.gmailAccess.mockReturnValue({ status: "available" });
     mocks.getModelConfig.mockResolvedValue({
       ...modelConfig,
       toolCallingEnabled: false,
@@ -2017,6 +2020,42 @@ describe("chat route setup boundary", () => {
 
     expect(mocks.createGmailTools).not.toHaveBeenCalled();
     expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
+  });
+
+  it("tells the model how the user restores a Gmail sign-in Google has ended", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+    const access = { status: "needs_reconnect", timeLimited: true };
+    mocks.gmailAccess.mockReturnValue(access);
+
+    await POST(request());
+
+    expect(mocks.gmailReconnectPrompt).toHaveBeenCalledWith(access);
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        instructions: {
+          role: "system",
+          content: [
+            "stable gmail reconnect notice",
+            mocks.currentDatePrompt,
+          ].join("\n\n"),
+        },
+      }),
+    );
+
+    // A model that cannot call tools could not use Gmail either way.
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      toolCallingEnabled: false,
+    });
+    await POST(request());
+    expect(JSON.stringify(mocks.agentSettings.at(-1))).not.toContain(
+      "stable gmail reconnect notice",
+    );
   });
 
   it("does not load or expose personalization in temporary chats", async () => {

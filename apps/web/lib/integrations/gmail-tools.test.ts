@@ -21,12 +21,13 @@ beforeAll(async () => {
 beforeEach(() => database.reset());
 afterAll(() => database.close());
 
-function connect() {
+function connect(refreshTokenExpiresAt: Date | null = null) {
   repository.saveIntegrationConnection({
     userId: "ada",
     integrationId: "gmail",
     accountEmail: "ada@example.test",
     refreshToken: "refresh-1",
+    refreshTokenExpiresAt,
     accessToken: "access-1",
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
   });
@@ -34,24 +35,47 @@ function connect() {
 
 describe("availability", () => {
   it("offers the tools only to a user with a live connection", () => {
-    expect(tools.gmailToolsAvailable("ada")).toBe(false);
+    expect(tools.gmailAccess("ada")).toEqual({ status: "unavailable" });
 
     repository.saveIntegrationOauthClient("google", {
       clientId: "client-1",
       clientSecret: "secret-1",
     });
-    expect(tools.gmailToolsAvailable("ada")).toBe(false);
+    expect(tools.gmailAccess("ada")).toEqual({ status: "unavailable" });
 
     connect();
-    expect(tools.gmailToolsAvailable("ada")).toBe(true);
-    expect(tools.gmailToolsAvailable("grace")).toBe(false);
+    expect(tools.gmailAccess("ada")).toEqual({ status: "available" });
+    expect(tools.gmailAccess("grace")).toEqual({ status: "unavailable" });
 
     repository.markIntegrationNeedsReconnect({
       userId: "ada",
       integrationId: "gmail",
       refreshToken: "refresh-1",
     });
-    expect(tools.gmailToolsAvailable("ada")).toBe(false);
+    expect(tools.gmailAccess("ada")).toEqual({
+      status: "needs_reconnect",
+      timeLimited: false,
+    });
+  });
+
+  it("tells a weekly sign-in that ran out from one Google withdrew", () => {
+    repository.saveIntegrationOauthClient("google", {
+      clientId: "client-1",
+      clientSecret: "secret-1",
+    });
+    connect(new Date(Date.now() + 60_000));
+    expect(tools.gmailAccess("ada")).toEqual({ status: "available" });
+
+    connect(new Date(Date.now() - 1000));
+    const access = tools.gmailAccess("ada");
+    expect(access).toEqual({ status: "needs_reconnect", timeLimited: true });
+
+    const routine = tools.gmailReconnectPrompt({ timeLimited: true });
+    expect(routine).toContain("Settings → Tools → Connectors");
+    expect(routine).toContain("this is routine");
+    expect(tools.gmailReconnectPrompt({ timeLimited: false })).not.toContain(
+      "this is routine",
+    );
   });
 });
 

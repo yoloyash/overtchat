@@ -13,7 +13,10 @@ import {
   discardIntegrationAccessToken,
   getIntegrationAccessToken,
 } from "@/lib/integrations/connections";
-import { IntegrationError } from "@/lib/integrations/errors";
+import {
+  IntegrationError,
+  IntegrationReconnectError,
+} from "@/lib/integrations/errors";
 import { googleUrl } from "@/lib/integrations/google/oauth";
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -45,6 +48,21 @@ interface GmailApiMessage {
   payload?: GmailApiPart;
 }
 
+/** Read by the person in a failed step and by the model, which passes it on. */
+export const GMAIL_RECONNECT_MESSAGE =
+  "The Gmail sign-in has ended. Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.";
+
+async function gmailAccessToken(userId: string): Promise<string> {
+  try {
+    return await getIntegrationAccessToken(userId, "gmail");
+  } catch (error) {
+    if (error instanceof IntegrationReconnectError) {
+      throw new IntegrationReconnectError(GMAIL_RECONNECT_MESSAGE);
+    }
+    throw error;
+  }
+}
+
 async function gmailRequest<T>(
   userId: string,
   path: string,
@@ -52,7 +70,7 @@ async function gmailRequest<T>(
 ): Promise<T> {
   // A token Google refuses is refreshed once: the grant may still be good.
   for (let attempt = 0; ; attempt += 1) {
-    const accessToken = await getIntegrationAccessToken(userId, "gmail");
+    const accessToken = await gmailAccessToken(userId);
     const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     let response: Response;
     try {

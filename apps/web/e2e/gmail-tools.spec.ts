@@ -353,16 +353,54 @@ test("a grant Google has ended fails the step and asks for a new sign-in", async
   await send(page, "What does the invoice from Grace say?");
 
   const timeline = await expand(page, "Gmail request failed");
-  await expect(timeline).toContainText("This account needs to be reconnected in Settings.");
+  await expect(timeline).toContainText(
+    "The Gmail sign-in has ended. Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.",
+  );
 
   await page.goto("/settings/tools");
   await expect(page.getByText("Google ended access for ada@example.test.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Reconnect" })).toBeVisible();
 
-  // The next chat is no longer offered the tools.
+  // The next chat is not offered the tools, and its model knows what to say.
   chatRequests.length = 0;
   await page.goto("/");
   await send(page, "What does the invoice from Grace say?");
   await expect(page.getByText("I have no access to your email.", { exact: true })).toBeVisible();
   expect(toolNames(chatRequests[0])).not.toEqual(expect.arrayContaining(["gmail_search"]));
+  const system = text(chatRequests[0].messages[0]);
+  expect(system).toContain("Google has ended that sign-in");
+  expect(system).toContain(
+    "Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.",
+  );
+  expect(system).not.toContain("this is routine");
+});
+
+test("a weekly sign-in that has run out is explained to the model without asking Google", async ({
+  page,
+}) => {
+  connectGmail();
+  const db = openE2eDatabase();
+  try {
+    db.prepare(
+      "UPDATE integration_connections SET refresh_token_expires_at = ?",
+    ).run(Date.now() - 1000);
+  } finally {
+    db.close();
+  }
+  await page.goto("/");
+  await send(page, "What does the invoice from Grace say?");
+  await expect(page.getByText("I have no access to your email.", { exact: true })).toBeVisible();
+
+  expect(toolNames(chatRequests[0])).not.toEqual(expect.arrayContaining(["gmail_search"]));
+  const system = text(chatRequests[0].messages[0]);
+  expect(system).toContain(
+    "Google limits each sign-in on this server to a week, so this is routine.",
+  );
+  expect(system).toContain(
+    "Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.",
+  );
+  expect(gmailRequests).toHaveLength(0);
+
+  await page.goto("/settings/tools");
+  await expect(page.getByRole("button", { name: "Reconnect" })).toBeVisible();
 });
