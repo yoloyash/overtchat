@@ -47,8 +47,9 @@ export function GoogleAccessDialog({ onClose }: { onClose: () => void }) {
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             Everyone on this server signs in to Google through an OAuth client
-            from your own Google Cloud project. Create one of type Desktop app
-            and enter it here.{" "}
+            from your own Google Cloud project. Create one of type Desktop
+            app, enter it here, and add each person&apos;s Google address to
+            the project&apos;s test users.{" "}
             <a
               href={SETUP_GUIDE_URL}
               target="_blank"

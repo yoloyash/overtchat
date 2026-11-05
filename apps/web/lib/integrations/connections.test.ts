@@ -213,11 +213,19 @@ describe("signing in", () => {
 
   it("withdraws the earlier grant when the user signs in again", async () => {
     const calls = google({ token: grant, profile });
+    // A first sign-in has no account to preselect.
+    const first = connections.startIntegrationAuthorization("ada", "gmail");
+    expect(new URL(first.url).searchParams.has("login_hint")).toBe(false);
     await connections.completeIntegrationAuthorization(
       "ada",
       "gmail",
-      redirect(start()),
+      redirect(new URL(first.url).searchParams.get("state")!),
     );
+    expect(
+      new URL(
+        connections.startIntegrationAuthorization("ada", "gmail").url,
+      ).searchParams.get("login_hint"),
+    ).toBe("ada@example.test");
     vi.restoreAllMocks();
     const second = google({
       token: () => grant({ refresh_token: "refresh-2" }),
@@ -276,6 +284,36 @@ describe("access tokens", () => {
       .prepare("UPDATE integration_connections SET access_token_expires_at = ?")
       .run(Date.now() + 30_000);
   }
+
+  it("asks for a new sign-in once a time-limited one has run out", async () => {
+    google({
+      token: () => grant({ refresh_token_expires_in: 604_799 }),
+      profile,
+    });
+    const connected = await connections.completeIntegrationAuthorization(
+      "ada",
+      "gmail",
+      redirect(start()),
+    );
+    vi.restoreAllMocks();
+    const ends = new Date(connected.connection!.expiresAt!).getTime();
+    expect(ends - Date.now()).toBeGreaterThan(6.9 * 86_400_000);
+    const calls = google({});
+    await expect(
+      connections.getIntegrationAccessToken("ada", "gmail"),
+    ).resolves.toBe("access-1");
+
+    vi.useFakeTimers({ now: ends + 1000, toFake: ["Date"] });
+
+    // The access token Google issued would still be sent otherwise.
+    await expect(
+      connections.getIntegrationAccessToken("ada", "gmail"),
+    ).rejects.toMatchObject({ code: "needs_reconnect" });
+    expect(calls).toHaveLength(0);
+    expect(repository.getIntegration("ada", "gmail").connection?.status).toBe(
+      "needs_reconnect",
+    );
+  });
 
   it("reuses a token that is still good", async () => {
     await connectAda();

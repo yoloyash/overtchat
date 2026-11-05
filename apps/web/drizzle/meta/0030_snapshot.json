@@ -1558,6 +1558,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "refresh_token_expires_at": {
+          "name": "refresh_token_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "access_token": {
           "name": "access_token",
           "type": "text",

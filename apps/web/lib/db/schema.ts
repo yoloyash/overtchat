@@ -983,6 +983,11 @@ export const integrationConnections = sqliteTable(
     integrationId: text("integration_id", { enum: INTEGRATION_IDS }).notNull(),
     accountEmail: text("account_email").notNull(),
     refreshToken: text("refresh_token").notNull(),
+    // Set when the provider time-limits the sign-in itself, as Google does for
+    // an OAuth client whose app is still in testing.
+    refreshTokenExpiresAt: integer("refresh_token_expires_at", {
+      mode: "timestamp_ms",
+    }),
     accessToken: text("access_token"),
     accessTokenExpiresAt: integer("access_token_expires_at", {
       mode: "timestamp_ms",

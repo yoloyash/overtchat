@@ -861,9 +861,9 @@ Google Cloud OAuth client, so an administrator creates one first:
 3. Under **Data access**, add the scopes
    `https://www.googleapis.com/auth/gmail.readonly` and
    `https://www.googleapis.com/auth/gmail.compose`.
-4. Under **Audience**, choose **Publish app**. An app left in testing admits
-   only listed test users and ends every connection after seven days. You do
-   not need to submit the app for verification.
+4. Under **Audience**, leave the publishing status on **Testing** and add the
+   Google address of each person who will connect under **Test users**. Google
+   blocks everyone else.
 5. Under **Clients**, create an OAuth client of type **Desktop app** and copy
    its client ID and secret.
 6. In OvertChat, choose **Set up** on the Gmail connector and enter both.
@@ -874,8 +874,18 @@ that cannot be reached; they copy that address back into OvertChat to finish.
 The sign-in returns through the person's own browser, so it works however the
 server is reached, including a LAN address.
 
-- Google shows an unverified-app warning and limits an unverified app to 100
-  people. Continue through **Advanced**.
+Google ends every sign-in made through an app in testing after seven days. The
+connector shows the date; once it passes, the person chooses **Reconnect** and
+signs in again.
+
+- Google warns that it has not verified the app; continue past the warning.
+  Someone who is not a test user sees "Access blocked" instead, until their
+  address is added in step 4. A project can list up to 100 test users.
+- A Google Workspace organization can choose the **Internal** audience in
+  step 2 instead. Its members need no test-user entry and keep their sign-in,
+  but only accounts in that organization can connect.
+- Publishing the app also removes the weekly sign-in, but Google requires a
+  public homepage and privacy policy before it allows that.
 - A work or school Google account may be blocked by its organization, and
   accounts in Google's Advanced Protection Program cannot connect.
 - Each person's grant is stored in the OvertChat database and never sent to a

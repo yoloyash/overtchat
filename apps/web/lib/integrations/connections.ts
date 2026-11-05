@@ -6,6 +6,7 @@ import {
   getIntegrationAuthorization,
   getIntegrationConnection,
   getIntegrationOauthClient,
+  integrationConnectionStatus,
   markIntegrationNeedsReconnect,
   saveIntegrationAuthorization,
   saveIntegrationConnection,
@@ -62,6 +63,8 @@ export function startIntegrationAuthorization(
       clientId: client.clientId,
       scopes: INTEGRATIONS[integrationId].scopes,
       ...secrets,
+      // Reconnecting is routine where Google limits a sign-in to a week.
+      loginHint: getIntegrationConnection(userId, integrationId)?.accountEmail,
     }),
   };
 }
@@ -143,6 +146,7 @@ export async function completeIntegrationAuthorization(
     integrationId,
     accountEmail,
     refreshToken: tokens.refreshToken,
+    refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
     accessToken: tokens.accessToken,
     accessTokenExpiresAt: tokens.accessTokenExpiresAt,
   });
@@ -180,7 +184,7 @@ export async function getIntegrationAccessToken(
       "not_connected",
     );
   }
-  if (connection.status === "needs_reconnect") {
+  if (integrationConnectionStatus(connection) === "needs_reconnect") {
     throw new IntegrationReconnectError();
   }
   if (
