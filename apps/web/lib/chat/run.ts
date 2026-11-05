@@ -26,6 +26,7 @@ import {
 } from "@/lib/chat/context-checkpoint";
 import {
   CONTEXT_STATUS_DATA_TYPE,
+  conversationUsesGmail,
   isManualCompactionMessage,
   canContinueMessage,
   joinContinuationTextParts,
@@ -132,6 +133,7 @@ import { getActivePersonalization } from "@/lib/db/personalization";
 import {
   createGmailTools,
   GMAIL_TOOL_ORDER,
+  GMAIL_OFF_PROMPT,
   GMAIL_TOOL_PROMPT,
   gmailAccess,
   gmailReconnectPrompt,
@@ -191,6 +193,7 @@ export async function runChat(
     forceSearch,
     openuiEnabled = false,
     forceOpenUI = false,
+    gmailEnabled = false,
     imageGeneration,
     timeZone,
     chatId,
@@ -525,7 +528,13 @@ export async function runChat(
   const webToolsEnabled =
     toolCallingEnabled && webSearchEnabled && webSearchAvailable;
   const gmail = toolCallingEnabled ? gmailAccess(userId) : null;
-  const gmailToolsEnabled = gmail?.status === "available";
+  const gmailConnected = gmail !== null && gmail.status !== "unavailable";
+  // A chat keeps Gmail once it has it, so the tools a model was given never
+  // disappear partway through a conversation.
+  const gmailOn =
+    gmailConnected &&
+    (gmail.alwaysOn || gmailEnabled || conversationUsesGmail(messages));
+  const gmailToolsEnabled = gmailOn && gmail.status === "available";
   const systemParts = [
     modelConfig.systemPrompt,
     activePersonalization
@@ -541,9 +550,11 @@ export async function runChat(
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
     gmailToolsEnabled
       ? GMAIL_TOOL_PROMPT
-      : gmail?.status === "needs_reconnect"
+      : gmailOn
         ? gmailReconnectPrompt()
-        : null,
+        : gmailConnected
+          ? GMAIL_OFF_PROMPT
+          : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
       : null,

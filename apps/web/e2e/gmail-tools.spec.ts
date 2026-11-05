@@ -253,8 +253,11 @@ test.afterAll(async () => {
   }
 });
 
-/** A mailbox already connected the way the connector's own sign-in leaves it. */
-function connectGmail(accessToken = "access-live") {
+/**
+ * A mailbox already connected the way the connector's own sign-in leaves it,
+ * and switched on for every chat unless `alwaysOn` is false.
+ */
+function connectGmail(accessToken = "access-live", alwaysOn = true) {
   const db = openE2eDatabase();
   try {
     const { id } = db.prepare("SELECT id FROM user LIMIT 1").get() as { id: string };
@@ -263,9 +266,9 @@ function connectGmail(accessToken = "access-live") {
     ).run();
     db.prepare(
       `INSERT INTO integration_connections
-        (user_id, integration_id, account_email, refresh_token, access_token, access_token_expires_at)
-       VALUES (?, 'gmail', 'ada@example.test', 'refresh-live', ?, ?)`,
-    ).run(id, accessToken, Date.now() + 3_600_000);
+        (user_id, integration_id, account_email, refresh_token, access_token, access_token_expires_at, always_on)
+       VALUES (?, 'gmail', 'ada@example.test', 'refresh-live', ?, ?, ?)`,
+    ).run(id, accessToken, Date.now() + 3_600_000, alwaysOn ? 1 : 0);
   } finally {
     db.close();
   }
@@ -440,6 +443,92 @@ test("the tools are offered only while the mailbox is connected", async ({ page 
   expect(toolNames(chatRequests[0])).not.toEqual(expect.arrayContaining(["gmail_search"]));
   expect(text(chatRequests[0].messages[0])).not.toContain("Gmail");
   expect(gmailRequests).toHaveLength(0);
+});
+
+test("Gmail stays out of a chat until the user turns it on there, then stays", async ({
+  page,
+}) => {
+  connectGmail("access-live", false);
+  await page.goto("/");
+  await send(page, "What does the invoice from Grace say?");
+  await expect(page.getByText("I have no access to your email.", { exact: true })).toBeVisible();
+
+  // No tools, and the model knows which command to pass on.
+  expect(toolNames(chatRequests[0])).not.toEqual(expect.arrayContaining(["gmail_search"]));
+  const hint = text(chatRequests[0].messages[0]);
+  expect(hint).toContain("it is off in this chat");
+  expect(hint).toContain("type /gmail");
+  expect(hint).not.toContain("untrusted");
+  expect(gmailRequests).toHaveLength(0);
+
+  // The command turns Gmail on for this chat and leaves the draft alone.
+  chatRequests.length = 0;
+  const composer = page.locator("textarea");
+  await composer.fill("/gmail");
+  await expect(page.getByRole("option", { name: /Gmail/ })).toBeVisible();
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("");
+  const remove = page.getByRole("button", { name: "Remove Gmail from this chat" });
+  await expect(remove).toBeVisible();
+  await send(page, "What does the invoice from Grace say?");
+  await expect(page.getByText("Grace's invoice is for 420 euros.", { exact: true })).toBeVisible();
+  expect(toolNames(chatRequests[0])).toEqual(expect.arrayContaining(GMAIL_TOOLS));
+  expect(text(chatRequests[0].messages[0])).toContain("untrusted");
+
+  // Having used Gmail, the chat keeps it: nothing to switch off, and the
+  // next message is offered the tools without asking again.
+  await expect(remove).toBeHidden();
+  await expect(page.getByTitle("Gmail is on for this chat")).toBeVisible();
+  chatRequests.length = 0;
+  await send(page, "Draft a reply saying I will pay today");
+  await expect(
+    page.getByText("The reply is saved as a draft. Send it from Gmail when you are ready.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(toolNames(chatRequests[0])).toEqual(expect.arrayContaining(GMAIL_TOOLS));
+
+  // It still does after a reload, when only the conversation says so.
+  await page.reload();
+  await expect(page.getByTitle("Gmail is on for this chat")).toBeVisible();
+  chatRequests.length = 0;
+  await send(page, "File it under Receipts and archive it");
+  await expect(
+    page.getByText("Filed under Receipts and out of your inbox.", { exact: true }),
+  ).toBeVisible();
+  expect(toolNames(chatRequests[0])).toEqual(expect.arrayContaining(GMAIL_TOOLS));
+});
+
+test("the switch in Settings offers Gmail in every chat", async ({ page }) => {
+  connectGmail("access-live", false);
+  await page.goto("/settings/tools");
+  const everyChat = page.getByRole("switch", { name: "Use Gmail in every chat" });
+  await expect(everyChat).not.toBeChecked();
+  await everyChat.click();
+  await expect(everyChat).toBeChecked();
+  await page.reload();
+  await expect(everyChat).toBeChecked();
+
+  await page.goto("/");
+  // Nothing marks one chat when every chat has it.
+  await expect(page.getByTitle("Gmail is on for this chat")).toBeHidden();
+  await send(page, "What does the invoice from Grace say?");
+  await expect(page.getByText("Grace's invoice is for 420 euros.", { exact: true })).toBeVisible();
+  expect(toolNames(chatRequests[0])).toEqual(expect.arrayContaining(GMAIL_TOOLS));
+  expect(text(chatRequests[0].messages[0])).not.toContain("type /gmail");
+
+  // Switching it back off is saved too.
+  await page.goto("/settings/tools");
+  await everyChat.click();
+  await expect(everyChat).not.toBeChecked();
+  const db = openE2eDatabase();
+  try {
+    expect(
+      db.prepare("SELECT always_on FROM integration_connections").get(),
+    ).toEqual({ always_on: 0 });
+  } finally {
+    db.close();
+  }
 });
 
 test("a grant Google has ended fails the step and asks for a new sign-in", async ({ page }) => {

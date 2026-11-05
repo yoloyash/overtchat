@@ -594,9 +594,17 @@ accepts any label by name or ID, `TRASH` and `SPAM` included; when Gmail fails
 partway, the error says how many threads were already changed. A
 request Gmail answers with 401 discards the access token and repeats once, so a
 dead grant surfaces as `needs_reconnect`. Draft recipients must be bare
-addresses and headers are refused if they contain a line break. A user whose
-sign-in has ended is offered no tools; `gmailReconnectPrompt()` instead tells
-the model where the user reconnects, so it can say so when asked about mail.
+addresses and headers are refused if they contain a line break.
+
+A chat is offered the tools when the connection's `alwaysOn` is set, when the
+request carries `gmailEnabled` (the composer's `/gmail`), or when
+`conversationUsesGmail()` finds that the conversation already used a mail tool
+or has a user message opening with `/gmail`, which is how a client without the
+command menu asks. A chat never loses the tools once it has them, so the tool
+list a model was given does not change partway through. Other chats of a
+connected user get `GMAIL_OFF_PROMPT`, one line telling the model which
+command to pass on. Where Gmail is on but the sign-in has ended,
+`gmailReconnectPrompt()` tells the model where the user reconnects.
 
 `describeGmailToolPart()` in `@overtchat/shared` projects a step for the web
 and mobile timelines from senders and subjects only. Tool results stay in the

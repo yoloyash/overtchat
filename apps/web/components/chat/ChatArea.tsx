@@ -38,6 +38,7 @@ import {
   personalizationKeys,
 } from "@/lib/queries/keys";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
+import { useIntegrations } from "@/lib/queries/integrations";
 import {
   useChats,
   setActiveChatInCache,
@@ -82,6 +83,7 @@ import {
 } from "@/lib/chat/inference-activity";
 import {
   CONTEXT_STATUS_DATA_TYPE,
+  conversationUsesGmail,
   isContextStatus,
   type ContextStatus,
 } from "@overtchat/shared";
@@ -471,6 +473,37 @@ export function ChatArea({
     !onboardingDismissed &&
     models?.length === 0;
 
+  // Gmail joins a chat when the user asks for it there, and then stays: a
+  // conversation that has used the mail tools keeps them.
+  const { data: integrations } = useIntegrations();
+  const gmailConnection =
+    integrations?.find((integration) => integration.id === "gmail")
+      ?.connection ?? null;
+  const [gmailRequested, setGmailRequested] = useState(false);
+  const gmailUsedHere = useMemo(() => conversationUsesGmail(messages), [messages]);
+  const gmailLockedReason = !gmailConnection
+    ? undefined
+    : gmailConnection.status === "needs_reconnect"
+      ? "Reconnect Gmail in Settings → Tools → Connectors"
+      : !modelSupportsSearch
+        ? "Gmail is unavailable for this model"
+        : gmailConnection.alwaysOn
+          ? "On in every chat"
+          : gmailUsedHere
+            ? "On for this chat"
+            : undefined;
+  const gmailUsable =
+    gmailConnection?.status === "connected" && modelSupportsSearch;
+  const gmail = gmailConnection
+    ? {
+        active:
+          gmailUsable &&
+          (gmailConnection.alwaysOn || gmailUsedHere || gmailRequested),
+        ambient: gmailConnection.alwaysOn,
+        lockedReason: gmailLockedReason,
+      }
+    : undefined;
+
   const requestBody = (
     action: ChatRequestAction,
     forceSearch = false,
@@ -486,6 +519,7 @@ export function ChatArea({
     documentsSupported: true,
     codeExecutionSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
+    gmailEnabled: gmailUsable && gmailRequested,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
     clientRequestId: generateId(),
@@ -891,6 +925,10 @@ export function ChatArea({
         if (openuiAvailable && !voiceActive) {
           setOpenuiRequested((selected) => !selected);
         }
+      }}
+      gmail={gmail}
+      onToggleGmail={() => {
+        if (gmail && !gmail.lockedReason) setGmailRequested((on) => !on);
       }}
       chatQueue={chatQueue}
       onSubmit={handleSubmit}

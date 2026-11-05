@@ -143,6 +143,7 @@ function toIntegration(
           accountEmail: connection.accountEmail,
           status: connection.status,
           connectedAt: connection.createdAt.toISOString(),
+          alwaysOn: connection.alwaysOn,
         }
       : null,
   };
@@ -196,6 +197,25 @@ export function saveIntegrationConnection(input: {
       set: grant,
     })
     .run();
+}
+
+/** Returns false when the user has no connection to change. */
+export function setIntegrationAlwaysOn(
+  userId: string,
+  integrationId: IntegrationId,
+  alwaysOn: boolean,
+): boolean {
+  const result = db
+    .update(integrationConnections)
+    .set({ alwaysOn, updatedAt: new Date() })
+    .where(
+      and(
+        eq(integrationConnections.userId, userId),
+        eq(integrationConnections.integrationId, integrationId),
+      ),
+    )
+    .run();
+  return result.changes > 0;
 }
 
 /**

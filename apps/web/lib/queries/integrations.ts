@@ -138,6 +138,26 @@ export function useConnectIntegration(id: IntegrationId) {
   });
 }
 
+export function useSetIntegrationAlwaysOn(id: IntegrationId) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (alwaysOn: boolean): Promise<Integration> => {
+      const response = await fetch(
+        apiUrl(`/api/integrations/${id}/connection`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ alwaysOn }),
+        },
+      );
+      if (!response.ok) throw await responseError(response);
+      return ((await response.json()) as { integration: Integration })
+        .integration;
+    },
+    onSuccess: (integration) => storeIntegration(client, integration),
+  });
+}
+
 export function useDisconnectIntegration(id: IntegrationId) {
   const client = useQueryClient();
   return useMutation({

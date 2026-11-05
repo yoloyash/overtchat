@@ -4,12 +4,14 @@ import { Settings2 } from "lucide-react";
 import { useState } from "react";
 import { GmailLogo } from "@/components/GmailLogo";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
 import type { Integration } from "@/lib/integrations/schema";
 import {
   useDisconnectIntegration,
   useIntegrations,
+  useSetIntegrationAlwaysOn,
 } from "@/lib/queries/integrations";
 import { SettingsNotice, SettingsSection } from "../../SettingsRows";
 import { ConnectGmailDialog } from "./ConnectGmailDialog";
@@ -61,10 +63,22 @@ function GmailRow({
   isAdmin: boolean;
 }) {
   const disconnect = useDisconnectIntegration("gmail");
+  const setAlwaysOn = useSetIntegrationAlwaysOn("gmail");
   const [connecting, setConnecting] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
   const { configured, connection } = integration;
   const needsReconnect = connection?.status === "needs_reconnect";
+
+  async function onAlwaysOn(alwaysOn: boolean) {
+    try {
+      await setAlwaysOn.mutateAsync(alwaysOn);
+    } catch (error) {
+      toast.error({
+        title: "Failed to change Gmail",
+        description: getErrorMessage(error, "The setting was not saved."),
+      });
+    }
+  }
 
   async function onDisconnect() {
     try {
@@ -141,6 +155,29 @@ function GmailRow({
             </Button>
           ))}
       </div>
+
+      {configured && connection && !needsReconnect && (
+        <label
+          htmlFor="gmail-always-on"
+          className="flex items-center justify-between gap-4 @xl:col-span-2 @xl:pl-12"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Use in every chat</span>
+            <span className="block text-xs leading-5 text-muted-foreground">
+              Offers the mail tools in every chat, which adds about 1,100 tokens
+              to each request. When off, type /gmail in a chat to use your mail
+              there.
+            </span>
+          </span>
+          <Switch
+            id="gmail-always-on"
+            checked={connection.alwaysOn}
+            disabled={setAlwaysOn.isPending}
+            onCheckedChange={(checked) => void onAlwaysOn(checked)}
+            aria-label="Use Gmail in every chat"
+          />
+        </label>
+      )}
 
       {connecting && <ConnectGmailDialog onClose={() => setConnecting(false)} />}
       {settingUp && <GoogleAccessDialog onClose={() => setSettingUp(false)} />}

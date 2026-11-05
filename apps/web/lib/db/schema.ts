@@ -990,6 +990,9 @@ export const integrationConnections = sqliteTable(
     status: text("status", { enum: INTEGRATION_CONNECTION_STATUSES })
       .default("connected")
       .notNull(),
+    // Offers the integration's tools in every chat. Off, a chat gets them
+    // only once the user turns them on there.
+    alwaysOn: integer("always_on", { mode: "boolean" }).default(false).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

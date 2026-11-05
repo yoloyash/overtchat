@@ -124,6 +124,34 @@ export function isGmailToolPart(part: { type: string }): part is GmailToolPart {
   return GMAIL_PART_TYPES.has(part.type);
 }
 
+/** What the user types to turn Gmail on in one chat. */
+export const GMAIL_COMMAND = "/gmail";
+
+const GMAIL_COMMAND_PATTERN = /^\s*\/gmail(?:\s|$)/i;
+
+/**
+ * Whether a conversation has turned Gmail on: a model already used the mail
+ * tools in it, or a message opens with the command typed out, which is how a
+ * client without a command menu asks.
+ */
+export function conversationUsesGmail(
+  messages: readonly {
+    role: string;
+    parts: readonly { type: string; text?: unknown }[];
+  }[],
+): boolean {
+  return messages.some((message) =>
+    message.role === "user"
+      ? message.parts.some(
+          (part) =>
+            part.type === "text" &&
+            typeof part.text === "string" &&
+            GMAIL_COMMAND_PATTERN.test(part.text),
+        )
+      : message.parts.some(isGmailToolPart),
+  );
+}
+
 /** One message in a Gmail step: a search result, or a message of a thread. */
 export interface GmailToolRow {
   sender: string;

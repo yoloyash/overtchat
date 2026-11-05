@@ -45,6 +45,9 @@ const ChatRequestEnvelopeSchema = z.object({
   openuiEnabled: z.boolean().optional().default(false),
   openuiAction: z.unknown().optional(),
   forceOpenUI: z.boolean().optional(),
+  // Set once the user turns Gmail on in this chat. Clients without the
+  // command leave it out, and the conversation itself is read instead.
+  gmailEnabled: z.boolean().optional(),
   documentsSupported: z.boolean().optional().default(false),
   codeExecutionSupported: z.boolean().optional().default(false),
   imageGeneration: z.object({
@@ -83,6 +86,7 @@ export interface ParsedChatRequest {
   openuiEnabled?: boolean;
   openuiAction?: OpenUIAction;
   forceOpenUI?: boolean;
+  gmailEnabled?: boolean;
   documentsSupported?: boolean;
   codeExecutionSupported?: boolean;
   imageGeneration?: ImageGenerationOptions;
@@ -114,6 +118,7 @@ export function chatRequestFingerprint({
   openuiEnabled = false,
   openuiAction,
   forceOpenUI = false,
+  gmailEnabled = false,
   documentsSupported = false,
   codeExecutionSupported = false,
   imageGeneration,
@@ -136,6 +141,7 @@ export function chatRequestFingerprint({
         openuiEnabled,
         openuiAction,
         forceOpenUI,
+        gmailEnabled,
         documentsSupported,
         codeExecutionSupported,
         imageGeneration,
@@ -223,6 +229,7 @@ export async function parseChatRequest(
     openuiEnabled: envelope.data.openuiSupported && envelope.data.openuiEnabled,
     openuiAction,
     forceOpenUI: envelope.data.openuiSupported && Boolean(envelope.data.forceOpenUI),
+    gmailEnabled: Boolean(envelope.data.gmailEnabled),
     documentsSupported: envelope.data.documentsSupported,
     codeExecutionSupported: envelope.data.codeExecutionSupported,
     imageGeneration: envelope.data.imageGeneration,

@@ -218,6 +218,13 @@
       "when": 1793865239015,
       "tag": "0030_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1793913441604,
+      "tag": "0031_integration_always_on",
+      "breakpoints": true
     }
   ]
 }

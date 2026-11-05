@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  conversationUsesGmail,
   describeGmailToolPart,
   gmailActivityLabel,
   groupMessageParts,
@@ -44,16 +45,51 @@ describe("availability", () => {
     expect(tools.gmailAccess("ada")).toEqual({ status: "unavailable" });
 
     connect();
-    expect(tools.gmailAccess("ada")).toEqual({ status: "available" });
+    expect(tools.gmailAccess("ada")).toEqual({ status: "available", alwaysOn: false });
     expect(tools.gmailAccess("grace")).toEqual({ status: "unavailable" });
+    repository.setIntegrationAlwaysOn("ada", "gmail", true);
+    expect(tools.gmailAccess("ada")).toEqual({ status: "available", alwaysOn: true });
 
     repository.markIntegrationNeedsReconnect({
       userId: "ada",
       integrationId: "gmail",
       refreshToken: "refresh-1",
     });
-    expect(tools.gmailAccess("ada")).toEqual({ status: "needs_reconnect" });
+    expect(tools.gmailAccess("ada")).toEqual({
+      status: "needs_reconnect",
+      alwaysOn: true,
+    });
     expect(tools.gmailReconnectPrompt()).toContain("Settings → Tools → Connectors");
+  });
+
+  it("tells a model whose chat has Gmail off how the user turns it on", () => {
+    expect(tools.GMAIL_OFF_PROMPT).toContain("type /gmail");
+    expect(tools.GMAIL_OFF_PROMPT).toContain("Do not bring it up otherwise.");
+  });
+
+  it("treats a chat as using Gmail once a model has, or once the command is typed", () => {
+    const user = (text: string) => ({ role: "user", parts: [{ type: "text", text }] });
+    const assistant = (type: string) => ({
+      role: "assistant",
+      parts: [{ type: "text", text: "Done." }, { type }],
+    });
+
+    expect(conversationUsesGmail([])).toBe(false);
+    expect(
+      conversationUsesGmail([user("Any mail from Grace?"), assistant("tool-fetch_url")]),
+    ).toBe(false);
+    expect(
+      conversationUsesGmail([user("Any mail?"), assistant("tool-gmail_search"), user("Thanks")]),
+    ).toBe(true);
+    // A client without the command menu sends the command as text.
+    expect(conversationUsesGmail([user("/gmail any mail from Grace?")])).toBe(true);
+    expect(conversationUsesGmail([user("  /GMAIL")])).toBe(true);
+    expect(conversationUsesGmail([user("what does /gmail do?")])).toBe(false);
+    expect(conversationUsesGmail([user("/gmailer")])).toBe(false);
+    // Only the user turns it on: a model writing the command does not.
+    expect(
+      conversationUsesGmail([{ role: "assistant", parts: [{ type: "text", text: "/gmail" }] }]),
+    ).toBe(false);
   });
 });
 

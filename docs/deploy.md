@@ -873,7 +873,13 @@ that cannot be reached; they copy that address back into OvertChat to finish.
 The sign-in returns through the person's own browser, so it works however the
 server is reached, including a LAN address.
 
-Once connected, tool-calling models can work with that person's mail on web,
+A connected mailbox is off in chats until its owner turns it on, so mail and
+the roughly 1,100 tokens its tools add to each request stay out of chats that
+do not need them. Typing `/gmail` turns it on for one chat, which then keeps
+it; **Use in every chat** on the Gmail row turns it on everywhere. While it is
+off, a model asked about mail tells the person to type `/gmail`.
+
+Where it is on, tool-calling models can work with that person's mail on web,
 desktop and mobile:
 
 - Search mail and read a thread.
