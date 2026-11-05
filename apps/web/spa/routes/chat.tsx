@@ -142,6 +142,7 @@ function chatAreaProps(
     chatId,
     projectId: page.projectId,
     initialMessages: page.messages,
+    initialMessageTimes: page.messageTimes,
     initialModelId: page.modelConfigId,
     initialMessageCursor: page.nextCursor,
   };
