@@ -874,8 +874,8 @@ The sign-in returns through the person's own browser, so it works however the
 server is reached, including a LAN address.
 
 Google ends every sign-in made through an app in testing after seven days. The
-connector shows the date; once it passes, the person chooses **Reconnect** and
-signs in again.
+connector then shows **Sign-in ended**, and the person chooses **Reconnect**
+and signs in again.
 
 - Google warns that it has not verified the app; continue past the warning.
   Someone who is not a test user sees "Access blocked" instead, until their

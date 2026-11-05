@@ -575,11 +575,10 @@ names its account; anything less is revoked.
 
 `getIntegrationAccessToken()` returns a usable token, refreshing it once for
 concurrent callers. Only Google's `invalid_grant` marks a connection
-`needs_reconnect`; other failures leave it connected. Google limits a sign-in
-through an app in testing to seven days and says so in
-`refresh_token_expires_in`; the connection stores that time, and once it
-passes `integrationConnectionStatus()` reports `needs_reconnect` without
-asking Google. Tokens and the client secret never appear in an API response.
+`needs_reconnect`; other failures leave it connected. Google ends a sign-in
+through an app in testing after seven days, and the connection learns of it
+the same way, from the next refresh Google refuses. Tokens and the client
+secret never appear in an API response.
 
 Unit tests cover the protocol, storage and token lifecycle. The browser test
 answers for Google from a local stand-in, which the e2e server reaches through
@@ -591,8 +590,8 @@ E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts
 ```
 
 Changes to the sign-in itself also need one pass against Google with a real
-client, following [Gmail](deploy.md#gmail): connect, confirm the connector
-names the day the sign-in ends, reload, disconnect, and confirm the grant
+client, following [Gmail](deploy.md#gmail): connect, reload, disconnect, and
+confirm the grant
 disappears from the Google account's third-party access page. Also confirm
 that an account missing from the test users is stopped on Google's page.
 
