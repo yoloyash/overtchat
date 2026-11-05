@@ -1,3 +1,12 @@
+CREATE TABLE `gmail_sent_drafts` (
+	`user_id` text NOT NULL,
+	`draft_id` text NOT NULL,
+	`thread_id` text,
+	`sent_at` integer NOT NULL,
+	PRIMARY KEY(`user_id`, `draft_id`),
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
 CREATE TABLE `integration_authorizations` (
 	`user_id` text NOT NULL,
 	`integration_id` text NOT NULL,
@@ -16,6 +25,7 @@ CREATE TABLE `integration_connections` (
 	`access_token` text,
 	`access_token_expires_at` integer,
 	`status` text DEFAULT 'connected' NOT NULL,
+	`always_on` integer DEFAULT false NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	PRIMARY KEY(`user_id`, `integration_id`),
