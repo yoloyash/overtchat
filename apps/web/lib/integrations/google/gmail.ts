@@ -277,10 +277,19 @@ function messageBody(payload: GmailApiPart | undefined): string {
   return html ? htmlToText(decodeBody(html)) : "";
 }
 
+/** A picture shown inside the message, such as a logo in a signature. */
+function isInlineImage(part: GmailApiPart): boolean {
+  return (
+    (part.mimeType ?? "").toLowerCase().startsWith("image/") &&
+    header(part, "Content-ID") !== "" &&
+    !/^\s*attachment/i.test(header(part, "Content-Disposition"))
+  );
+}
+
 function messageAttachments(payload: GmailApiPart | undefined): GmailAttachment[] {
   const attachments: GmailAttachment[] = [];
   walk(payload, (part) => {
-    if (!part.filename || !part.partId) return;
+    if (!part.filename || !part.partId || isInlineImage(part)) return;
     attachments.push({
       id: part.partId,
       filename: part.filename,
@@ -456,8 +465,8 @@ interface GmailApiLabel {
   type?: string;
 }
 
-/** Gmail's own labels that sorting mail may add or remove. */
-const SORTING_LABELS = ["INBOX", "UNREAD", "STARRED", "IMPORTANT"];
+/** Gmail's own labels that sort mail, listed ahead of its others. */
+const SORTING_LABELS = ["INBOX", "UNREAD", "STARRED", "IMPORTANT", "TRASH", "SPAM"];
 
 async function fetchLabels(
   userId: string,
@@ -471,32 +480,39 @@ async function fetchLabels(
   return listed.labels ?? [];
 }
 
-/** The labels a model may apply: the user's own, and the few that sort mail. */
+/** Every label in the mailbox: the ones that sort mail, Gmail's others, then the user's own. */
 export async function listGmailLabels(
   userId: string,
   signal?: AbortSignal,
 ): Promise<GmailLabelsOutput> {
   const labels = await fetchLabels(userId, signal);
-  const user = labels
-    .filter((label) => label.type === "user")
-    .map((label): GmailLabel => ({
-      id: label.id,
-      name: label.name ?? label.id,
-      type: "user",
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const named = (type: "system" | "user") =>
+    labels
+      .filter(
+        (label) =>
+          (label.type === "user") === (type === "user") &&
+          !SORTING_LABELS.includes(label.id),
+      )
+      .map((label): GmailLabel => ({
+        id: label.id,
+        name: label.name ?? label.id,
+        type,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   return {
     labels: [
       ...SORTING_LABELS.map((id): GmailLabel => ({ id, name: id, type: "system" })),
-      ...user,
+      ...named("system"),
+      ...named("user"),
     ],
   };
 }
 
 /**
  * Adds and removes labels on whole threads. Labels are given by ID or by
- * name; trash, spam and Gmail's other bookkeeping labels are refused, so this
- * can sort mail but not delete it.
+ * name. Any label may be named, the trash and spam included; Gmail refuses
+ * the few it sets itself, such as sent and draft. Mail in the trash stays
+ * recoverable for 30 days, and nothing here deletes it for good.
  */
 export async function modifyGmailLabels(
   userId: string,
@@ -523,12 +539,6 @@ export async function modifyGmailLabels(
         400,
       );
     }
-    if (label.type !== "user" && !SORTING_LABELS.includes(label.id)) {
-      throw new IntegrationError(
-        `The ${label.name ?? label.id} label cannot be changed. Deleting mail and marking it as spam are not available.`,
-        400,
-      );
-    }
     return label;
   };
   const added = [...new Set(input.add)].map(resolve);
@@ -546,8 +556,9 @@ export async function modifyGmailLabels(
     addLabelIds: added.map((label) => label.id),
     removeLabelIds: removed.map((label) => label.id),
   };
+  let changed = 0;
   for (let start = 0; start < threadIds.length; start += MODIFY_CONCURRENCY) {
-    await Promise.all(
+    const results = await Promise.allSettled(
       threadIds.slice(start, start + MODIFY_CONCURRENCY).map((threadId) =>
         gmailRequest(userId, `/threads/${encodeURIComponent(threadId)}/modify`, {
           body,
@@ -555,6 +566,23 @@ export async function modifyGmailLabels(
         }),
       ),
     );
+    changed += results.filter((result) => result.status === "fulfilled").length;
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure) {
+      // A stop partway leaves some threads changed, which the user must hear.
+      if (
+        signal?.aborted ||
+        changed === 0 ||
+        !(failure.reason instanceof IntegrationError) ||
+        failure.reason instanceof IntegrationReconnectError
+      ) {
+        throw failure.reason;
+      }
+      throw new IntegrationError(
+        `${changed} of ${threadIds.length} threads were changed before this failed: ${failure.reason.message}`,
+        failure.reason.status,
+      );
+    }
   }
   const display = (label: GmailApiLabel) =>
     label.type === "user" ? (label.name ?? label.id) : label.id;

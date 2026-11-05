@@ -68,7 +68,6 @@ beforeEach(() => {
     integrationId: "gmail",
     accountEmail: "ada@example.test",
     refreshToken: "refresh-1",
-    refreshTokenExpiresAt: null,
     accessToken: "access-1",
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
   });
@@ -173,6 +172,17 @@ describe("reading a thread", () => {
                 mimeType: "application/pdf",
                 filename: "plan.pdf",
                 body: { attachmentId: "a1", size: 2048 },
+              },
+              // A logo in the signature is not something the sender attached.
+              {
+                partId: "2",
+                mimeType: "image/png",
+                filename: "image001.png",
+                headers: headers({
+                  "Content-ID": "<image001@example.test>",
+                  "Content-Disposition": 'inline; filename="image001.png"',
+                }),
+                body: { attachmentId: "a2", size: 512 },
               },
             ],
           }),
@@ -395,7 +405,7 @@ describe("labels", () => {
   const mailbox = () =>
     google((path) => (path === "/labels" ? { body: { labels } } : { body: {} }));
 
-  it("lists the user's labels and the few of Gmail's own that sort mail", async () => {
+  it("lists the labels that sort mail, then Gmail's others, then the user's own", async () => {
     mailbox();
     await expect(gmail.listGmailLabels("ada")).resolves.toEqual({
       labels: [
@@ -403,6 +413,9 @@ describe("labels", () => {
         { id: "UNREAD", name: "UNREAD", type: "system" },
         { id: "STARRED", name: "STARRED", type: "system" },
         { id: "IMPORTANT", name: "IMPORTANT", type: "system" },
+        { id: "TRASH", name: "TRASH", type: "system" },
+        { id: "SPAM", name: "SPAM", type: "system" },
+        { id: "CATEGORY_PROMOTIONS", name: "CATEGORY_PROMOTIONS", type: "system" },
         { id: "Label_2", name: "Family", type: "user" },
         { id: "Label_7", name: "Receipts", type: "user" },
       ],
@@ -438,14 +451,50 @@ describe("labels", () => {
     }
   });
 
-  it("cannot delete mail, mark it as spam, or touch Gmail's other labels", async () => {
+  it("moves threads to the trash, reports spam and changes Gmail's other labels", async () => {
     const requests = mailbox();
     const modify = (add: string[], remove: string[] = []) =>
       gmail.modifyGmailLabels("ada", { threadIds: ["t1"], add, remove });
 
-    await expect(modify(["TRASH"])).rejects.toThrow(/Deleting mail/);
-    await expect(modify(["spam"])).rejects.toThrow(/Deleting mail/);
-    await expect(modify([], ["CATEGORY_PROMOTIONS"])).rejects.toThrow(/cannot be changed/);
+    await expect(modify(["trash"])).resolves.toMatchObject({ added: ["TRASH"] });
+    await expect(modify(["SPAM"], ["CATEGORY_PROMOTIONS"])).resolves.toMatchObject({
+      added: ["SPAM"],
+      removed: ["CATEGORY_PROMOTIONS"],
+    });
+    expect(
+      requests.filter((request) => request.method === "POST").map((request) => request.body),
+    ).toEqual([
+      { addLabelIds: ["TRASH"], removeLabelIds: [] },
+      { addLabelIds: ["SPAM"], removeLabelIds: ["CATEGORY_PROMOTIONS"] },
+    ]);
+  });
+
+  it("says how many threads changed when Gmail fails partway", async () => {
+    google((path) =>
+      path === "/labels"
+        ? { body: { labels } }
+        : path === "/threads/t6/modify"
+          ? { status: 429, body: {} }
+          : { body: {} },
+    );
+    const threadIds = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
+
+    await expect(
+      gmail.modifyGmailLabels("ada", { threadIds, add: [], remove: ["INBOX"] }),
+    ).rejects.toThrow(
+      "6 of 7 threads were changed before this failed: Gmail is limiting requests for this account. Try again in a minute.",
+    );
+    // Nothing changed, so the error stands as Gmail gave it.
+    await expect(
+      gmail.modifyGmailLabels("ada", { threadIds: ["t6"], add: [], remove: ["INBOX"] }),
+    ).rejects.toThrow(/^Gmail is limiting requests/);
+  });
+
+  it("refuses a label that does not exist or a change that cancels itself", async () => {
+    const requests = mailbox();
+    const modify = (add: string[], remove: string[] = []) =>
+      gmail.modifyGmailLabels("ada", { threadIds: ["t1"], add, remove });
+
     await expect(modify(["Holidays"])).rejects.toThrow(/no label named "Holidays"/);
     await expect(modify(["Receipts"], ["Label_7"])).rejects.toThrow(/both added and removed/);
     await expect(modify([])).rejects.toThrow(/at least one label/);

@@ -2027,12 +2027,11 @@ describe("chat route setup boundary", () => {
       ...parsedRequest,
       webSearchEnabled: false,
     });
-    const access = { status: "needs_reconnect", timeLimited: true };
-    mocks.gmailAccess.mockReturnValue(access);
+    mocks.gmailAccess.mockReturnValue({ status: "needs_reconnect" });
 
     await POST(request());
 
-    expect(mocks.gmailReconnectPrompt).toHaveBeenCalledWith(access);
+    expect(mocks.gmailReconnectPrompt).toHaveBeenCalled();
     expect(mocks.createGmailTools).not.toHaveBeenCalled();
     expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
     expect(mocks.agentSettings[0]).toEqual(

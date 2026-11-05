@@ -542,7 +542,7 @@ export async function runChat(
     gmailToolsEnabled
       ? GMAIL_TOOL_PROMPT
       : gmail?.status === "needs_reconnect"
-        ? gmailReconnectPrompt(gmail)
+        ? gmailReconnectPrompt()
         : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."

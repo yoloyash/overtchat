@@ -5,6 +5,7 @@ import {
   groupMessageParts,
   type GmailToolPart,
 } from "@overtchat/shared";
+import { z } from "zod";
 import { createIntegrationTestDatabase } from "@/lib/integrations/test-database";
 import { sharedMessages } from "@/lib/sharing";
 
@@ -21,13 +22,12 @@ beforeAll(async () => {
 beforeEach(() => database.reset());
 afterAll(() => database.close());
 
-function connect(refreshTokenExpiresAt: Date | null = null) {
+function connect() {
   repository.saveIntegrationConnection({
     userId: "ada",
     integrationId: "gmail",
     accountEmail: "ada@example.test",
     refreshToken: "refresh-1",
-    refreshTokenExpiresAt,
     accessToken: "access-1",
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
   });
@@ -52,30 +52,8 @@ describe("availability", () => {
       integrationId: "gmail",
       refreshToken: "refresh-1",
     });
-    expect(tools.gmailAccess("ada")).toEqual({
-      status: "needs_reconnect",
-      timeLimited: false,
-    });
-  });
-
-  it("tells a weekly sign-in that ran out from one Google withdrew", () => {
-    repository.saveIntegrationOauthClient("google", {
-      clientId: "client-1",
-      clientSecret: "secret-1",
-    });
-    connect(new Date(Date.now() + 60_000));
-    expect(tools.gmailAccess("ada")).toEqual({ status: "available" });
-
-    connect(new Date(Date.now() - 1000));
-    const access = tools.gmailAccess("ada");
-    expect(access).toEqual({ status: "needs_reconnect", timeLimited: true });
-
-    const routine = tools.gmailReconnectPrompt({ timeLimited: true });
-    expect(routine).toContain("Settings → Tools → Connectors");
-    expect(routine).toContain("this is routine");
-    expect(tools.gmailReconnectPrompt({ timeLimited: false })).not.toContain(
-      "this is routine",
-    );
+    expect(tools.gmailAccess("ada")).toEqual({ status: "needs_reconnect" });
+    expect(tools.gmailReconnectPrompt()).toContain("Settings → Tools → Connectors");
   });
 });
 
@@ -117,7 +95,7 @@ describe("tool inputs", () => {
     ).toBe(false);
   });
 
-  it("offers no way to send or delete", () => {
+  it("offers no way to send", () => {
     expect(Object.keys(tools.createGmailTools("ada"))).toEqual([
       "gmail_search",
       "gmail_read_thread",
@@ -132,6 +110,8 @@ describe("tool inputs", () => {
     const draft = schema("gmail_create_draft");
     const body = "Hello";
     expect(draft.safeParse({ to: ["grace@example.test"], subject: "Hi", body }).success).toBe(true);
+    // The check runs here; the schema a model reads stays short.
+    expect(JSON.stringify(z.toJSONSchema(draft as unknown as z.ZodType))).not.toContain("@");
     expect(draft.safeParse({ body, replyToMessageId: "m1" }).success).toBe(true);
     expect(draft.safeParse({ to: ["Grace <grace@example.test>"], body }).success).toBe(false);
     expect(draft.safeParse({ to: ["grace@example.test\nBcc: x@y.z"], body }).success).toBe(false);
@@ -272,6 +252,8 @@ describe("display", () => {
     expect(sort([], ["UNREAD"], 1).title).toBe("1 conversation marked read");
     expect(sort(["Receipts"], []).title).toBe("3 conversations labeled Receipts");
     expect(sort([], ["Receipts"]).title).toBe("3 conversations unlabeled Receipts");
+    expect(sort(["TRASH"], []).title).toBe("3 conversations moved to trash");
+    expect(sort(["SPAM"], [], 1).title).toBe("1 conversation marked as spam");
     expect(sort(["STARRED", "Receipts"], ["INBOX", "UNREAD"])).toMatchObject({
       title: "3 conversations updated",
       note: "Archived, marked read, starred, labeled Receipts",

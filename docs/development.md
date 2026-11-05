@@ -583,14 +583,15 @@ secret never appear in an API response.
 A user with a live connection is offered `gmail_search`, `gmail_read_thread`,
 `gmail_read_attachment`, `gmail_list_labels`, `gmail_modify_labels` and
 `gmail_create_draft` (`lib/integrations/gmail-tools.ts`) along with a system
-prompt that marks mail and its attachments as untrusted. There is no send or
-delete tool. Thread bodies are capped per message and per thread, newest kept.
+prompt that marks mail and its attachments as untrusted. There is no send
+tool, and nothing deletes mail for good. Thread bodies are capped per message and per thread, newest kept.
 An attachment is named by its part's position in the message, because Gmail's
 own attachment IDs change with every request; its text comes from
 `extractFile()`, the same extraction uploads use, in parts of 60,000
-characters. `gmail_modify_labels` changes whole threads and accepts the user's
-labels plus `INBOX`, `UNREAD`, `STARRED` and `IMPORTANT`; trash, spam and
-Gmail's other system labels are refused. A
+characters. Pictures shown inside a message, such as a signature's logo, are
+not listed as attachments. `gmail_modify_labels` changes whole threads and
+accepts any label by name or ID, `TRASH` and `SPAM` included; when Gmail fails
+partway, the error says how many threads were already changed. A
 request Gmail answers with 401 discards the access token and repeats once, so a
 dead grant surfaces as `needs_reconnect`. Draft recipients must be bare
 addresses and headers are refused if they contain a line break. A user whose
@@ -614,13 +615,12 @@ E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts gmail-tool
 
 Changes to the sign-in itself also need one pass against Google with a real
 client, following [Gmail](deploy.md#gmail): connect, reload, disconnect, and
-confirm the grant
-disappears from the Google account's third-party access page. Also confirm
+confirm the grant disappears from the Google account's third-party access page. Also confirm
 that an account missing from the test users is stopped on Google's page.
 Changes to the tools need a real mailbox too: search with an operator such as
 `newer_than:7d`, read an HTML-only message, and open a saved reply draft in
 Gmail to check its thread, recipient and encoding. Also read a real PDF
-attachment, and archive and label a thread, then confirm both in Gmail.
+attachment, and archive, label and trash a thread, then confirm each in Gmail.
 
 ## Chat compaction validation
 

@@ -397,7 +397,7 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
     "https://mail.google.com/mail/?authuser=ada%40example.test#drafts",
   );
 
-  // Sorting changes labels on the thread, and nothing is deleted.
+  // Sorting changes labels on the thread, and nothing is deleted for good.
   await send(page, "File it under Receipts and archive it");
   await expect(
     page.getByText("Filed under Receipts and out of your inbox.", { exact: true }),
@@ -412,7 +412,7 @@ test("a model searches mail, reads a thread, and saves a reply as a draft", asyn
   ).toBe(false);
   const sorting = await expand(page, "1 conversation updated");
   await expect(sorting).toContainText("Archived, marked read, labeled Receipts");
-  await expect(sorting).toContainText("5 labels");
+  await expect(sorting).toContainText("7 labels");
 
   // Saved history shows the same steps after a reload.
   await page.reload();
@@ -469,35 +469,4 @@ test("a grant Google has ended fails the step and asks for a new sign-in", async
   expect(system).toContain(
     "Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.",
   );
-  expect(system).not.toContain("this is routine");
-});
-
-test("a weekly sign-in that has run out is explained to the model without asking Google", async ({
-  page,
-}) => {
-  connectGmail();
-  const db = openE2eDatabase();
-  try {
-    db.prepare(
-      "UPDATE integration_connections SET refresh_token_expires_at = ?",
-    ).run(Date.now() - 1000);
-  } finally {
-    db.close();
-  }
-  await page.goto("/");
-  await send(page, "What does the invoice from Grace say?");
-  await expect(page.getByText("I have no access to your email.", { exact: true })).toBeVisible();
-
-  expect(toolNames(chatRequests[0])).not.toEqual(expect.arrayContaining(["gmail_search"]));
-  const system = text(chatRequests[0].messages[0]);
-  expect(system).toContain(
-    "Google limits each sign-in on this server to a week, so this is routine.",
-  );
-  expect(system).toContain(
-    "Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.",
-  );
-  expect(gmailRequests).toHaveLength(0);
-
-  await page.goto("/settings/tools");
-  await expect(page.getByRole("button", { name: "Reconnect" })).toBeVisible();
 });

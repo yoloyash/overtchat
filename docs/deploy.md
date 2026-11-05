@@ -879,12 +879,12 @@ desktop and mobile:
 - Search mail and read a thread.
 - Read the text of an attached PDF, Word, spreadsheet, CSV or text file up to
   15 MB. Images and scanned PDFs cannot be read.
-- Sort mail by adding or removing labels: mark as read, archive, star, or
-  apply the person's own labels.
+- Sort mail by adding or removing labels: mark as read, archive, star, apply
+  the person's own labels, move to the trash, or report spam.
 - Save a draft, including a reply in its thread.
 
-Nothing is sent and nothing is deleted: a draft waits in Gmail for the person
-to send, and the tools cannot move mail to the trash or mark it as spam. Mail
+Nothing is sent and nothing is deleted for good: a draft waits in Gmail for
+the person to send, and mail moved to the trash stays there for 30 days. Mail
 a model reads is saved with that chat like any other tool result; shared chat
 links leave it out.
 

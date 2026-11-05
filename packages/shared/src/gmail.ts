@@ -205,6 +205,8 @@ function sortingChanges(added: string[], removed: string[]): string[] {
     UNREAD: ["marked unread", "marked read"],
     STARRED: ["starred", "unstarred"],
     IMPORTANT: ["marked important", "marked not important"],
+    TRASH: ["moved to trash", "restored from trash"],
+    SPAM: ["marked as spam", "marked not spam"],
   };
   for (const [label, [whenAdded, whenRemoved]] of Object.entries(system)) {
     if (removed.includes(label)) changes.push(whenRemoved);
