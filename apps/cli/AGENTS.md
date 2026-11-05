@@ -13,6 +13,8 @@ and operator choices into a managed Compose stack and optional Host Connector.
   Compose, readiness, and connector paths.
 - `src/management.ts` provides read-only component reporting for status, version,
   logs, and update checks. Operator commands live in `docs/deploy.md`.
+- `src/lifecycle.ts` stops and starts the managed Compose services. It leaves
+  the Host Connector and native speech alone.
 - `src/config.ts`, `src/paths.ts`, and `src/compose.ts` own persisted
   installation state, managed locations, secrets/environment output, optional
   service profiles, and Compose rendering.

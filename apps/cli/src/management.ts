@@ -302,6 +302,10 @@ export async function installationReport() {
       );
   } else if (app.state === "running" || app.state === "healthy")
     app.state = "not ready";
+  else if (app.state === "exited")
+    report.problems.push(
+      "The app is stopped. Run overtchat start to bring it back.",
+    );
   const secrets = await readInstallationSecrets(paths);
   const connector = report.components.find((entry) => entry.id === "connector");
   if (connector) {
