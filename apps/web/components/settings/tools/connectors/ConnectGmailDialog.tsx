@@ -4,6 +4,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { GmailLogo } from "@/components/GmailLogo";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,16 @@ import {
 import { integrationKeys } from "@/lib/queries/keys";
 import { cn } from "@/lib/utils";
 import { SettingsActions, SettingsNotice } from "../../SettingsRows";
+
+/** Whether pasted text is already the whole address Google sent the browser to. */
+function isRedirectAddress(text: string): boolean {
+  try {
+    const { searchParams } = new URL(text);
+    return searchParams.has("code") && searchParams.has("state");
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Google sends the browser to an address on the user's own computer, where
@@ -40,12 +51,11 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
     refetchOnReconnect: false,
   });
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(address: string) {
     if (connect.isPending) return;
     setError("");
     try {
-      const integration = await connect.mutateAsync(redirectUrl);
+      const integration = await connect.mutateAsync(address);
       toast.success({
         title: "Gmail connected",
         description: integration.connection?.accountEmail,
@@ -79,14 +89,21 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
             motionClasses.dialog,
           )}
         >
-          <Dialog.Title className="text-lg font-semibold tracking-tight">
+          <Dialog.Title className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
+            <GmailLogo className="size-5" />
             Connect Gmail
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             Sign in with Google, then bring the result back here.
           </Dialog.Description>
 
-          <form onSubmit={onSubmit} className="mt-5 space-y-5">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit(redirectUrl);
+            }}
+            className="mt-5 space-y-5"
+          >
             <Step number={1} title="Sign in with Google">
               <p>
                 Allow access and tick every checkbox. If Google says it
@@ -142,6 +159,14 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
                 required
                 value={redirectUrl}
                 onChange={(event) => setRedirectUrl(event.target.value)}
+                // A pasted address is the whole answer, so it needs no click.
+                onPaste={(event) => {
+                  const pasted = event.clipboardData.getData("text").trim();
+                  if (!isRedirectAddress(pasted)) return;
+                  event.preventDefault();
+                  setRedirectUrl(pasted);
+                  void submit(pasted);
+                }}
                 disabled={connect.isPending}
               />
             </Step>
