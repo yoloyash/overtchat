@@ -581,10 +581,17 @@ through an app in testing to seven days and says so in
 passes `integrationConnectionStatus()` reports `needs_reconnect` without
 asking Google. Tokens and the client secret never appear in an API response.
 
-A user with a live connection is offered `gmail_search`, `gmail_read_thread`
-and `gmail_create_draft` (`lib/integrations/gmail-tools.ts`) along with a system
-prompt that marks mail as untrusted. There is no send tool. Thread bodies are
-capped per message and per thread, newest kept; attachments are names only. A
+A user with a live connection is offered `gmail_search`, `gmail_read_thread`,
+`gmail_read_attachment`, `gmail_list_labels`, `gmail_modify_labels` and
+`gmail_create_draft` (`lib/integrations/gmail-tools.ts`) along with a system
+prompt that marks mail and its attachments as untrusted. There is no send or
+delete tool. Thread bodies are capped per message and per thread, newest kept.
+An attachment is named by its part's position in the message, because Gmail's
+own attachment IDs change with every request; its text comes from
+`extractFile()`, the same extraction uploads use, in parts of 60,000
+characters. `gmail_modify_labels` changes whole threads and accepts the user's
+labels plus `INBOX`, `UNREAD`, `STARRED` and `IMPORTANT`; trash, spam and
+Gmail's other system labels are refused. A
 request Gmail answers with 401 discards the access token and repeats once, so a
 dead grant surfaces as `needs_reconnect`. Draft recipients must be bare
 addresses and headers are refused if they contain a line break. A user whose
@@ -613,7 +620,8 @@ disappears from the Google account's third-party access page. Also confirm
 that an account missing from the test users is stopped on Google's page.
 Changes to the tools need a real mailbox too: search with an operator such as
 `newer_than:7d`, read an HTML-only message, and open a saved reply draft in
-Gmail to check its thread, recipient and encoding.
+Gmail to check its thread, recipient and encoding. Also read a real PDF
+attachment, and archive and label a thread, then confirm both in Gmail.
 
 ## Chat compaction validation
 

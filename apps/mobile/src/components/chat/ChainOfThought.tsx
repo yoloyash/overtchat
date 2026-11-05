@@ -819,6 +819,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
   const hidden = display.rows.length - visible.length;
   const href = display.href;
   const muted = { color: colors.mutedForeground, fontFamily: fonts.sansRegular };
+  const running = display.status === "running";
 
   // A saved draft is its card; the timeline's heading already names it.
   if (display.action === "draft" && display.status === "done" && href) {
@@ -867,13 +868,15 @@ function GmailStep({ part }: { part: GmailToolPart }) {
             { color: colors.foreground, fontFamily: fonts.sansMedium },
           ]}
         >
-          {display.detail ?? display.title}
+          {display.detail ?? (running ? `${display.title}…` : display.title)}
         </Text>
         <Text style={[styles.metaText, muted]}>
           {display.status === "error"
             ? "Failed"
-            : display.status === "running"
-              ? `${display.title}…`
+            : running
+              ? display.detail
+                ? `${display.title}…`
+                : ""
               : display.note}
         </Text>
       </View>

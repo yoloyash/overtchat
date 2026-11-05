@@ -137,7 +137,7 @@ async function readPdf(buffer: Buffer): Promise<{ text: string; pageCount: numbe
 }
 
 async function readDocx(buffer: Buffer): Promise<string> {
-  assertSafeZipSize(buffer, 100 * 1024 * 1024);
+  assertSafeZipSize(buffer, 100 * 1024 * 1024, "DOCX");
   const mammoth = await import("mammoth");
   const { value } = await mammoth.extractRawText({ buffer });
   const text = value.trim();
@@ -145,10 +145,10 @@ async function readDocx(buffer: Buffer): Promise<string> {
   return text;
 }
 
-// Guards against DOCX zip bombs: a 1MB zip can decompress to 1GB+ and blow
-// the Node heap inside mammoth. Scans the ZIP central directory for declared
-// uncompressed sizes without decompressing anything.
-function assertSafeZipSize(buf: Buffer, maxBytes: number): void {
+// Guards against zip bombs: a 1MB DOCX or XLSX can decompress to 1GB+ and
+// blow the Node heap inside its parser. Scans the ZIP central directory for
+// declared uncompressed sizes without decompressing anything.
+function assertSafeZipSize(buf: Buffer, maxBytes: number, kind: string): void {
   const EOCD_SIG = 0x06054b50;
   const CD_SIG = 0x02014b50;
   let eocd = -1;
@@ -158,7 +158,7 @@ function assertSafeZipSize(buf: Buffer, maxBytes: number): void {
       break;
     }
   }
-  if (eocd < 0) throw new ExtractionError("Not a valid DOCX archive.", 422);
+  if (eocd < 0) throw new ExtractionError(`Not a valid ${kind} archive.`, 422);
 
   const numEntries = buf.readUInt16LE(eocd + 10);
   const cdOffset = buf.readUInt32LE(eocd + 16);
@@ -167,13 +167,13 @@ function assertSafeZipSize(buf: Buffer, maxBytes: number): void {
   let total = 0;
   for (let i = 0; i < numEntries; i++) {
     if (buf.readUInt32LE(pos) !== CD_SIG) {
-      throw new ExtractionError("Corrupt DOCX archive.", 422);
+      throw new ExtractionError(`Corrupt ${kind} archive.`, 422);
     }
     const uncompressed = buf.readUInt32LE(pos + 24);
     total += uncompressed;
     if (total > maxBytes) {
       throw new ExtractionError(
-        "DOCX decompresses to an unsafe size.",
+        `${kind} decompresses to an unsafe size.`,
         422,
       );
     }
@@ -185,6 +185,10 @@ function assertSafeZipSize(buf: Buffer, maxBytes: number): void {
 }
 
 async function readSpreadsheet(buffer: Buffer): Promise<string> {
+  // XLSX is a zip; the older XLS format is not.
+  if (buffer.subarray(0, 2).toString("latin1") === "PK") {
+    assertSafeZipSize(buffer, 100 * 1024 * 1024, "XLSX");
+  }
   const XLSX = await import("xlsx");
   const wb = XLSX.read(buffer, { type: "buffer" });
   const parts: string[] = [];

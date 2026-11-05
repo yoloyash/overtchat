@@ -34,17 +34,19 @@ export function GmailStep({ part }: { part: GmailToolPart }) {
     );
   }
 
+  const running = display.status === "running";
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="min-w-0 truncate font-medium text-foreground">
-          {display.detail ?? display.title}
+          {display.detail ?? (running ? `${display.title}…` : display.title)}
         </span>
         <span className="shrink-0 text-muted-foreground">
           {display.status === "error"
             ? "Failed"
-            : display.status === "running"
-              ? `${display.title}…`
+            : running
+              ? display.detail && `${display.title}…`
               : display.note}
         </span>
       </div>

@@ -373,3 +373,38 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
   });
   expect(container.textContent).toContain("Gmail request failed");
 });
+
+it("shows what sorting mail changed and which attachment was read", async () => {
+  const attachment: GmailToolPart = {
+    type: "tool-gmail_read_attachment",
+    toolCallId: "gmail-attachment",
+    state: "output-available",
+    input: { messageId: "m1", attachmentId: "1" },
+    output: { filename: "invoice-42.pdf", text: "private words", offset: 0, pageCount: 2 },
+  };
+  const sorted: GmailToolPart = {
+    type: "tool-gmail_modify_labels",
+    toolCallId: "gmail-sort",
+    state: "output-available",
+    input: { threadIds: ["t1", "t2"], add: ["Receipts"], remove: ["INBOX"] },
+    output: {
+      account: "ada@example.test",
+      threads: 2,
+      added: ["Receipts"],
+      removed: ["INBOX"],
+    },
+  };
+
+  await act(async () => {
+    root.render(<ChainOfThought parts={[attachment, sorted]} active={false} />);
+  });
+  expect(container.textContent).toContain("2 conversations updated");
+  await act(async () => {
+    (container.querySelector("button") as unknown as { click(): void }).click();
+  });
+  const text = container.textContent ?? "";
+  expect(text).toContain("invoice-42.pdf");
+  expect(text).toContain("2 pages");
+  expect(text).toContain("Archived, labeled Receipts");
+  expect(text).not.toContain("private words");
+});

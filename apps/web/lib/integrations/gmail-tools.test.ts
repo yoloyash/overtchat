@@ -80,7 +80,13 @@ describe("availability", () => {
 });
 
 describe("tool inputs", () => {
-  const schema = (name: "gmail_read_thread" | "gmail_create_draft") =>
+  const schema = (
+    name:
+      | "gmail_read_thread"
+      | "gmail_read_attachment"
+      | "gmail_modify_labels"
+      | "gmail_create_draft",
+  ) =>
     tools.createGmailTools("ada")[name].inputSchema as {
       safeParse: (value: unknown) => { success: boolean };
     };
@@ -90,6 +96,36 @@ describe("tool inputs", () => {
     expect(thread.safeParse({ threadId: "19a2b3c4d5e6f708" }).success).toBe(true);
     expect(thread.safeParse({ threadId: "../drafts" }).success).toBe(false);
     expect(thread.safeParse({ threadId: "t1?format=raw" }).success).toBe(false);
+  });
+
+  it("names an attachment by its position, and bounds what one call can sort", () => {
+    const attachment = schema("gmail_read_attachment");
+    expect(attachment.safeParse({ messageId: "m1", attachmentId: "1" }).success).toBe(true);
+    expect(attachment.safeParse({ messageId: "m1", attachmentId: "0.2", offset: 60_000 }).success).toBe(true);
+    expect(attachment.safeParse({ messageId: "m1", attachmentId: "../x" }).success).toBe(false);
+    expect(attachment.safeParse({ messageId: "m1", attachmentId: "1", offset: -1 }).success).toBe(false);
+
+    const sort = schema("gmail_modify_labels");
+    expect(sort.safeParse({ threadIds: ["t1"], remove: ["INBOX"] }).success).toBe(true);
+    expect(sort.safeParse({ threadIds: [], remove: ["INBOX"] }).success).toBe(false);
+    expect(sort.safeParse({ threadIds: ["t1/modify"], remove: ["INBOX"] }).success).toBe(false);
+    expect(
+      sort.safeParse({
+        threadIds: Array.from({ length: 51 }, (_, index) => `t${index}`),
+        remove: ["INBOX"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("offers no way to send or delete", () => {
+    expect(Object.keys(tools.createGmailTools("ada"))).toEqual([
+      "gmail_search",
+      "gmail_read_thread",
+      "gmail_read_attachment",
+      "gmail_list_labels",
+      "gmail_modify_labels",
+      "gmail_create_draft",
+    ]);
   });
 
   it("accepts only addresses as recipients and one-line subjects", () => {
@@ -188,6 +224,71 @@ describe("display", () => {
       ],
     });
     expect(JSON.stringify(display)).not.toContain("private words");
+  });
+
+  it("shows an attachment by its name and length, never its text", () => {
+    const attachment = part({
+      type: "tool-gmail_read_attachment",
+      input: { messageId: "m1", attachmentId: "1" },
+      output: {
+        filename: "invoice-42.pdf",
+        text: "private words",
+        offset: 0,
+        pageCount: 3,
+      },
+    });
+    const display = describeGmailToolPart(attachment);
+    expect(display).toMatchObject({
+      action: "attachment",
+      title: "Read attachment",
+      detail: "invoice-42.pdf",
+      note: "3 pages",
+    });
+    expect(JSON.stringify(display)).not.toContain("private words");
+    expect(gmailActivityLabel(attachment, true)).toBe("Reading attachment…");
+    expect(
+      describeGmailToolPart(
+        part({
+          type: "tool-gmail_read_attachment",
+          output: { filename: "notes.txt", offset: 60_000, pageCount: null },
+        }),
+      ).note,
+    ).toBe("Continued");
+  });
+
+  it("says what sorting did in the words of Gmail's own buttons", () => {
+    const sort = (added: string[], removed: string[], threads = 3) =>
+      describeGmailToolPart(
+        part({
+          type: "tool-gmail_modify_labels",
+          output: { account: "ada@example.test", threads, added, removed },
+        }),
+      );
+
+    expect(sort([], ["INBOX"])).toMatchObject({
+      action: "sort",
+      title: "3 conversations archived",
+    });
+    expect(sort([], ["UNREAD"], 1).title).toBe("1 conversation marked read");
+    expect(sort(["Receipts"], []).title).toBe("3 conversations labeled Receipts");
+    expect(sort([], ["Receipts"]).title).toBe("3 conversations unlabeled Receipts");
+    expect(sort(["STARRED", "Receipts"], ["INBOX", "UNREAD"])).toMatchObject({
+      title: "3 conversations updated",
+      note: "Archived, marked read, starred, labeled Receipts",
+    });
+
+    const running = part({ type: "tool-gmail_modify_labels", state: "input-available" });
+    expect(describeGmailToolPart(running).title).toBe("Sorting mail");
+    expect(gmailActivityLabel(running, true)).toBe("Sorting mail…");
+
+    expect(
+      describeGmailToolPart(
+        part({
+          type: "tool-gmail_list_labels",
+          output: { labels: [{ id: "INBOX" }, { id: "Label_1" }] },
+        }),
+      ),
+    ).toMatchObject({ action: "labels", title: "Listed Gmail labels", note: "2 labels" });
   });
 
   it("links a saved draft to the right account's drafts", () => {

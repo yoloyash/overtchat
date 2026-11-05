@@ -873,11 +873,20 @@ that cannot be reached; they copy that address back into OvertChat to finish.
 The sign-in returns through the person's own browser, so it works however the
 server is reached, including a LAN address.
 
-Once connected, tool-calling models can search that person's mail, read a
-thread, and save a draft, on web, desktop and mobile. Nothing is sent: a draft
-waits in Gmail for the person to send. Attachments are listed by name and not
-opened. Mail a model reads is saved with that chat like any other tool result;
-shared chat links leave it out.
+Once connected, tool-calling models can work with that person's mail on web,
+desktop and mobile:
+
+- Search mail and read a thread.
+- Read the text of an attached PDF, Word, spreadsheet, CSV or text file up to
+  15 MB. Images and scanned PDFs cannot be read.
+- Sort mail by adding or removing labels: mark as read, archive, star, or
+  apply the person's own labels.
+- Save a draft, including a reply in its thread.
+
+Nothing is sent and nothing is deleted: a draft waits in Gmail for the person
+to send, and the tools cannot move mail to the trash or mark it as spam. Mail
+a model reads is saved with that chat like any other tool result; shared chat
+links leave it out.
 
 Google ends every sign-in made through an app in testing after seven days. The
 connector shows the date; once it passes, the person chooses **Reconnect** and

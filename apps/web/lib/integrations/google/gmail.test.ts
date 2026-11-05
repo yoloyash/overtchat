@@ -42,7 +42,11 @@ interface Recorded {
   path: string;
   method: string;
   authorization?: string;
-  body?: { message?: { raw?: string; threadId?: string } };
+  body?: {
+    message?: { raw?: string; threadId?: string };
+    addLabelIds?: string[];
+    removeLabelIds?: string[];
+  };
 }
 
 const encode = (text: string) => Buffer.from(text, "utf8").toString("base64url");
@@ -165,6 +169,7 @@ describe("reading a thread", () => {
                 ],
               },
               {
+                partId: "1",
                 mimeType: "application/pdf",
                 filename: "plan.pdf",
                 body: { attachmentId: "a1", size: 2048 },
@@ -193,7 +198,7 @@ describe("reading a thread", () => {
       body: "Plain words\n\nNext",
       truncated: false,
       attachments: [
-        { filename: "plan.pdf", mediaType: "application/pdf", size: 2048 },
+        { id: "1", filename: "plan.pdf", mediaType: "application/pdf", size: 2048 },
       ],
     });
     expect(thread.messages[1].body).toBe("Hello Ada,\nSee you there.");
@@ -242,6 +247,209 @@ describe("reading a thread", () => {
     expect(
       thread.messages.reduce((total, item) => total + item.body.length, 0),
     ).toBeLessThanOrEqual(60_000);
+  });
+});
+
+/** A one-page PDF whose only text is `text`. */
+function pdf(text: string): Buffer {
+  const content = `BT /F1 12 Tf 20 100 Td (${text}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let file = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = file.length;
+    file += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = file.length;
+  file += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) {
+    file += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  }
+  file += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(file, "latin1");
+}
+
+describe("attachments", () => {
+  /** A message with one attached file, served by ID like Gmail does for large ones. */
+  function attached(part: Record<string, unknown>, data?: Buffer) {
+    return google((path) =>
+      path.includes("/attachments/")
+        ? { body: { data: data?.toString("base64url") } }
+        : {
+            body: {
+              id: "m1",
+              threadId: "t1",
+              payload: {
+                mimeType: "multipart/mixed",
+                parts: [
+                  { partId: "0", mimeType: "text/plain", body: { data: encode("See attached.") } },
+                  { partId: "1", ...part },
+                ],
+              },
+            },
+          },
+    );
+  }
+  const read = (offset = 0, attachmentId = "1") =>
+    gmail.readGmailAttachment("ada", { messageId: "m1", attachmentId, offset });
+
+  it("reads the text of a PDF sent without its real type", async () => {
+    const file = pdf("Total due: 420 euros");
+    const requests = attached(
+      {
+        mimeType: "application/octet-stream",
+        filename: "Invoice 42.PDF",
+        body: { attachmentId: "changes-every-request", size: file.length },
+      },
+      file,
+    );
+
+    await expect(read()).resolves.toEqual({
+      messageId: "m1",
+      filename: "Invoice 42.PDF",
+      mediaType: "application/pdf",
+      text: "Total due: 420 euros",
+      offset: 0,
+      totalChars: 20,
+      nextOffset: null,
+      pageCount: 1,
+    });
+    expect(requests.map((request) => request.path)).toEqual([
+      "/messages/m1?format=full",
+      "/messages/m1/attachments/changes-every-request",
+    ]);
+  });
+
+  it("hands a long file over in parts", async () => {
+    const text = "0123456789".repeat(13_000);
+    attached({
+      mimeType: "text/plain",
+      filename: "notes.txt",
+      body: { data: encode(text), size: text.length },
+    });
+
+    const first = await read();
+    expect(first).toMatchObject({ offset: 0, totalChars: 130_000, nextOffset: 60_000 });
+    expect(first.text).toHaveLength(60_000);
+    const second = await read(first.nextOffset!);
+    expect(second.nextOffset).toBe(120_000);
+    const last = await read(second.nextOffset!);
+    expect(last.nextOffset).toBeNull();
+    expect(first.text + second.text + last.text).toBe(text);
+    await expect(read(130_000)).rejects.toThrow(/nothing at offset 130000/);
+  });
+
+  it("refuses an image or an oversized file before downloading it", async () => {
+    const image = attached({
+      mimeType: "image/png",
+      filename: "photo.png",
+      body: { attachmentId: "a1", size: 1024 },
+    });
+    await expect(read()).rejects.toThrow("photo.png is an image");
+    expect(image).toHaveLength(1);
+    vi.restoreAllMocks();
+
+    const huge = attached({
+      mimeType: "application/pdf",
+      filename: "scan.pdf",
+      body: { attachmentId: "a1", size: 20 * 1024 * 1024 },
+    });
+    await expect(read()).rejects.toThrow(
+      "scan.pdf is 20.0 MB. Attachments over 15.0 MB cannot be read.",
+    );
+    expect(huge).toHaveLength(1);
+  });
+
+  it("explains a file it cannot read, or one that is not there", async () => {
+    attached(
+      {
+        mimeType: "application/zip",
+        filename: "archive.zip",
+        body: { attachmentId: "a1", size: 4 },
+      },
+      Buffer.from("PK\u0003\u0004"),
+    );
+    await expect(read()).rejects.toThrow(
+      "archive.zip is a kind of file that cannot be read.",
+    );
+    await expect(read(0, "7")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("labels", () => {
+  const labels = [
+    { id: "INBOX", name: "INBOX", type: "system" },
+    { id: "UNREAD", name: "UNREAD", type: "system" },
+    { id: "TRASH", name: "TRASH", type: "system" },
+    { id: "SPAM", name: "SPAM", type: "system" },
+    { id: "CATEGORY_PROMOTIONS", name: "CATEGORY_PROMOTIONS", type: "system" },
+    { id: "Label_7", name: "Receipts", type: "user" },
+    { id: "Label_2", name: "Family", type: "user" },
+  ];
+  const mailbox = () =>
+    google((path) => (path === "/labels" ? { body: { labels } } : { body: {} }));
+
+  it("lists the user's labels and the few of Gmail's own that sort mail", async () => {
+    mailbox();
+    await expect(gmail.listGmailLabels("ada")).resolves.toEqual({
+      labels: [
+        { id: "INBOX", name: "INBOX", type: "system" },
+        { id: "UNREAD", name: "UNREAD", type: "system" },
+        { id: "STARRED", name: "STARRED", type: "system" },
+        { id: "IMPORTANT", name: "IMPORTANT", type: "system" },
+        { id: "Label_2", name: "Family", type: "user" },
+        { id: "Label_7", name: "Receipts", type: "user" },
+      ],
+    });
+  });
+
+  it("archives, marks read and labels whole threads by label name or ID", async () => {
+    const requests = mailbox();
+
+    await expect(
+      gmail.modifyGmailLabels("ada", {
+        threadIds: ["t1", "t2", "t1"],
+        add: ["receipts", "STARRED"],
+        remove: ["INBOX", "unread"],
+      }),
+    ).resolves.toEqual({
+      account: "ada@example.test",
+      threads: 2,
+      added: ["Receipts", "STARRED"],
+      removed: ["INBOX", "UNREAD"],
+    });
+
+    const changes = requests.filter((request) => request.method === "POST");
+    expect(changes.map((request) => request.path)).toEqual([
+      "/threads/t1/modify",
+      "/threads/t2/modify",
+    ]);
+    for (const change of changes) {
+      expect(change.body).toEqual({
+        addLabelIds: ["Label_7", "STARRED"],
+        removeLabelIds: ["INBOX", "UNREAD"],
+      });
+    }
+  });
+
+  it("cannot delete mail, mark it as spam, or touch Gmail's other labels", async () => {
+    const requests = mailbox();
+    const modify = (add: string[], remove: string[] = []) =>
+      gmail.modifyGmailLabels("ada", { threadIds: ["t1"], add, remove });
+
+    await expect(modify(["TRASH"])).rejects.toThrow(/Deleting mail/);
+    await expect(modify(["spam"])).rejects.toThrow(/Deleting mail/);
+    await expect(modify([], ["CATEGORY_PROMOTIONS"])).rejects.toThrow(/cannot be changed/);
+    await expect(modify(["Holidays"])).rejects.toThrow(/no label named "Holidays"/);
+    await expect(modify(["Receipts"], ["Label_7"])).rejects.toThrow(/both added and removed/);
+    await expect(modify([])).rejects.toThrow(/at least one label/);
+    expect(requests.some((request) => request.method === "POST")).toBe(false);
   });
 });
 
