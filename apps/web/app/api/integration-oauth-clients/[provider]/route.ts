@@ -6,7 +6,7 @@ import {
   toIntegrationOauthClient,
 } from "@/lib/db/integrations";
 import {
-  INTEGRATION_PROVIDERS,
+  isIntegrationProvider,
   IntegrationOauthClientInputSchema,
   type IntegrationProvider,
 } from "@/lib/integrations/schema";
@@ -24,10 +24,10 @@ async function authorize(
     return new Response("Forbidden", { status: 403 });
   }
   const { provider } = await params;
-  if (!(INTEGRATION_PROVIDERS as readonly string[]).includes(provider)) {
+  if (!isIntegrationProvider(provider)) {
     return new Response("Not found", { status: 404 });
   }
-  return provider as IntegrationProvider;
+  return provider;
 }
 
 export async function GET(request: Request, context: Context) {

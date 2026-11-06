@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { INTEGRATIONS } from "@/lib/integrations/schema";
 import { createIntegrationTestDatabase } from "@/lib/integrations/test-database";
 
 vi.mock("server-only", () => ({}));
@@ -12,14 +13,19 @@ beforeAll(async () => {
 beforeEach(() => database.reset());
 afterAll(() => database.close());
 
-function connect(userId: string, refreshToken = `refresh-${userId}`) {
-  repository.saveIntegrationConnection({
+function connect(
+  userId: string,
+  refreshToken = `refresh-${userId}`,
+  scopes: string[] = [...INTEGRATIONS.gmail.scopes],
+) {
+  repository.saveIntegrationAccount({
     userId,
-    integrationId: "gmail",
+    provider: "google",
     accountEmail: `${userId}@example.test`,
     refreshToken,
     accessToken: `access-${userId}`,
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
+    scopes,
   });
 }
 
@@ -70,7 +76,7 @@ describe("provider OAuth client", () => {
     connect("grace");
     repository.saveIntegrationAuthorization({
       userId: "ada",
-      integrationId: "gmail",
+      provider: "google",
       state: "state",
       codeVerifier: "verifier",
     });
@@ -85,7 +91,7 @@ describe("provider OAuth client", () => {
         { status: "needs_reconnect", accessToken: null },
       );
     }
-    expect(repository.getIntegrationAuthorization("ada", "gmail")).toBeNull();
+    expect(repository.getIntegrationAuthorization("ada", "google")).toBeNull();
   });
 
   it("removes every connection with the client", () => {
@@ -101,6 +107,7 @@ describe("provider OAuth client", () => {
     expect(repository.getIntegrationConnection("ada", "gmail")).toBeNull();
     expect(repository.getIntegration("ada", "gmail")).toEqual({
       id: "gmail",
+      provider: "google",
       configured: false,
       connection: null,
     });
@@ -118,6 +125,7 @@ describe("connections", () => {
     const [gmail] = repository.listIntegrations("ada");
     expect(gmail).toEqual({
       id: "gmail",
+      provider: "google",
       configured: true,
       connection: {
         accountEmail: "ada@example.test",
@@ -130,11 +138,23 @@ describe("connections", () => {
     expect(repository.listIntegrations("grace")[0].connection).toBeNull();
   });
 
+  it("covers an integration only when its permission was granted", () => {
+    repository.saveIntegrationOauthClient("google", {
+      clientId: "client-1",
+      clientSecret: "secret-1",
+    });
+    connect("ada", "refresh-ada", ["https://example.test/another-scope"]);
+
+    expect(repository.getIntegrationAccount("ada", "google")).not.toBeNull();
+    expect(repository.getIntegrationConnection("ada", "gmail")).toBeNull();
+    expect(repository.getIntegration("ada", "gmail").connection).toBeNull();
+  });
+
   it("restores a connection that needed a new sign-in", () => {
     connect("ada", "old-refresh");
     repository.markIntegrationNeedsReconnect({
       userId: "ada",
-      integrationId: "gmail",
+      provider: "google",
       refreshToken: "old-refresh",
     });
 
@@ -151,14 +171,14 @@ describe("connections", () => {
 
     repository.storeIntegrationAccessToken({
       userId: "ada",
-      integrationId: "gmail",
+      provider: "google",
       refreshToken: "old-refresh",
       accessToken: "stale-access",
       accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
     });
     repository.markIntegrationNeedsReconnect({
       userId: "ada",
-      integrationId: "gmail",
+      provider: "google",
       refreshToken: "old-refresh",
     });
 

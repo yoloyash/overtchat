@@ -25,8 +25,8 @@ import { MODEL_CREDENTIAL_SCOPES } from "@overtchat/shared/admin-settings";
 import type { McpServerConfig } from "@/lib/mcp/schema";
 import {
   INTEGRATION_CONNECTION_STATUSES,
-  INTEGRATION_IDS,
   INTEGRATION_PROVIDERS,
+  type IntegrationId,
 } from "@/lib/integrations/schema";
 import type { AgentTurnSummary } from "@overtchat/agent-bridge";
 
@@ -991,14 +991,17 @@ export const gmailSentDrafts = sqliteTable(
   (table) => [primaryKey({ columns: [table.userId, table.draftId] })],
 );
 
-/** One user's grant for one integration. Tokens never leave the server. */
-export const integrationConnections = sqliteTable(
-  "integration_connections",
+/**
+ * One user's sign-in to a provider. It covers the integrations whose scopes it
+ * was granted. Tokens never leave the server.
+ */
+export const integrationAccounts = sqliteTable(
+  "integration_accounts",
   {
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    integrationId: text("integration_id", { enum: INTEGRATION_IDS }).notNull(),
+    provider: text("provider", { enum: INTEGRATION_PROVIDERS }).notNull(),
     accountEmail: text("account_email").notNull(),
     refreshToken: text("refresh_token").notNull(),
     accessToken: text("access_token"),
@@ -1008,9 +1011,14 @@ export const integrationConnections = sqliteTable(
     status: text("status", { enum: INTEGRATION_CONNECTION_STATUSES })
       .default("connected")
       .notNull(),
-    // Offers the integration's tools in every chat. Off, a chat gets them
-    // only once the user turns them on there.
-    alwaysOn: integer("always_on", { mode: "boolean" }).default(false).notNull(),
+    /** What the provider granted, which can be less than was asked for. */
+    scopes: text("scopes", { mode: "json" }).$type<string[]>().notNull(),
+    // The integrations whose tools are offered in every chat. Any other
+    // integration reaches a chat only once the user turns it on there.
+    alwaysOn: text("always_on", { mode: "json" })
+      .$type<IntegrationId[]>()
+      .default(sql`'[]'`)
+      .notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -1019,7 +1027,7 @@ export const integrationConnections = sqliteTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.integrationId] })],
+  (table) => [primaryKey({ columns: [table.userId, table.provider] })],
 );
 
 // A sign-in the user has started but not finished. Starting again replaces it.
@@ -1029,12 +1037,12 @@ export const integrationAuthorizations = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    integrationId: text("integration_id", { enum: INTEGRATION_IDS }).notNull(),
+    provider: text("provider", { enum: INTEGRATION_PROVIDERS }).notNull(),
     state: text("state").notNull(),
     codeVerifier: text("code_verifier").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.integrationId] })],
+  (table) => [primaryKey({ columns: [table.userId, table.provider] })],
 );
 
 export const serverCapabilities = sqliteTable("server_capabilities", {
