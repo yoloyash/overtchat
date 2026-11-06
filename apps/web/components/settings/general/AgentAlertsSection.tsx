@@ -7,10 +7,7 @@ import {
   AGENT_ALERT_SOUND_KEY,
   AGENT_ALERT_SYSTEM_KEY,
 } from "@/lib/notifications/agentNotification";
-import {
-  playAgentAlertSound,
-  unlockAgentAlertSound,
-} from "@/lib/notifications/sound";
+import { playAgentAlertSound } from "@/lib/notifications/sound";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { SettingsRow, SettingsSection } from "../SettingsRows";
 
@@ -26,8 +23,7 @@ export function AgentAlertsSection() {
     setSound(next);
     if (!next) return;
     // The switch is the gesture that lets the page play sound.
-    unlockAgentAlertSound();
-    playAgentAlertSound("done");
+    void playAgentAlertSound("done");
   }
 
   async function toggleSystem(next: boolean) {
