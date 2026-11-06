@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { agentNotificationText, isAgentNotification } from "./agentNotification";
+import {
+  agentNotificationHeading,
+  agentNotificationText,
+  isAgentNotification,
+} from "./agentNotification";
 
 const session = { title: "Fix tests", workspaceName: "app", hostName: "This machine" };
 
@@ -47,6 +51,18 @@ describe("agent notification text", () => {
     );
     expect(body.length).toBe(160);
     expect(body.endsWith("…")).toBe(true);
+  });
+
+  it("takes a title apart into the state and the session", () => {
+    const { title } = agentNotificationText({ reason: "completed" }, session);
+    expect(agentNotificationHeading({ reason: "completed", title })).toEqual({
+      label: "Finished",
+      session: "Fix tests",
+    });
+    // A title in another shape is shown whole.
+    expect(
+      agentNotificationHeading({ reason: "failed", title: "An agent failed" }),
+    ).toEqual({ label: "An agent failed" });
   });
 
   it("recognizes what the stream carries", () => {

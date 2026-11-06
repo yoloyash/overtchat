@@ -1793,9 +1793,29 @@ need input, failed, or finished unseen, whatever the device wants. The
 desktop bridge gained optional `setBadge`, `revealWindow` and
 `getSystemIdleSeconds`; the UI treats them as absent on older apps. Mobile
 marks a session read when it is open in the foreground and whenever a turn
-ends while it is open. `apps/web/e2e/agent-notifications.spec.ts` streams a
-scripted alert and checks the heartbeat, the badge, both settings and both
-presentations.
+ends while it is open.
+
+Toasts sit at the top right, under the header row, so none covers the
+composer. An alert's toast shows the state, the session and two lines of the
+request, reply or error. It leaves after five seconds, waiting while the
+pointer is on it. Each session has one: a newer alert takes the older one's
+place, and it closes when Open is used or the session is opened any other
+way.
+
+A browser starts a page's audio only after the page has been clicked or
+typed in, so the chime is asked for when an alert arrives
+(`apps/web/lib/notifications/sound.ts`): audio that sleep or a changed output
+device stopped comes back, and a page that may not play says so. The desktop
+app has no such rule and chimes from its first alert. A system notification
+is silent when the chime played or is not wanted; when the chime
+is wanted and could not play, the notification makes the system's own sound.
+
+`apps/web/e2e/agent-notifications.spec.ts` streams scripted alerts and checks
+the heartbeat, the badge, both settings, both presentations, the toast's
+lifetime and which of the two sounds is heard. It records no trace: trace
+snapshots count as using the page, which lets it play sound. For the same
+reason the page reports what it showed and played itself; `page.evaluate`
+counts as using it too.
 
 ```sh
 npm run test -w apps/web -- lib/notifications app/api/agent-presence
