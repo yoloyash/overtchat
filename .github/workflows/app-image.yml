@@ -5,11 +5,17 @@ name: Build and publish app image
 on:
   push:
     tags: ["v[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v* release tag to publish
+        required: true
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: app-image-${{ github.ref }}
+  group: app-image-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -27,12 +33,12 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.tag || github.sha }}
 
       - name: Validate release tag
         id: version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "release tag must be a semantic version such as v0.13.5" >&2
@@ -107,7 +113,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
           VERSION: ${{ needs.app.outputs.version }}
         run: |
           if gh release view "$TAG" --json isDraft --jq '.isDraft' > release-draft; then
