@@ -19,6 +19,7 @@ import {
 import {
   createAuthorizationSecrets,
   exchangeAuthorizationCode,
+  fetchCalendarAddress,
   fetchGmailAddress,
   googleAuthorizationUrl,
   parseAuthorizationResponse,
@@ -46,6 +47,7 @@ const ACCOUNT_EMAIL: Record<
   (accessToken: string) => Promise<string>
 > = {
   gmail: fetchGmailAddress,
+  calendar: fetchCalendarAddress,
 };
 
 function requireOauthClient(provider: IntegrationProvider): GoogleOauthClient {

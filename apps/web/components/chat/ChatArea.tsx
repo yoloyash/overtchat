@@ -38,6 +38,7 @@ import {
   personalizationKeys,
 } from "@/lib/queries/keys";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
+import type { IntegrationId } from "@/lib/integrations/schema";
 import { useIntegrations } from "@/lib/queries/integrations";
 import {
   useChats,
@@ -84,7 +85,6 @@ import {
 } from "@/lib/chat/inference-activity";
 import {
   CONTEXT_STATUS_DATA_TYPE,
-  conversationUsesGmail,
   isContextStatus,
   type ContextStatus,
 } from "@overtchat/shared";
@@ -101,6 +101,7 @@ import { DocumentPanel } from "./DocumentPanel";
 import { DocumentPanelProvider } from "./DocumentPanelContext";
 import { FilePanel } from "./FilePanel";
 import { FilePanelProvider } from "./FilePanelContext";
+import { CHAT_CONNECTORS } from "./chat-connectors";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
@@ -482,36 +483,45 @@ export function ChatArea({
     !onboardingDismissed &&
     models?.length === 0;
 
-  // Gmail joins a chat when the user asks for it there, and then stays: a
-  // conversation that has used the mail tools keeps them.
+  // A connector joins a chat when the user asks for it there, and then
+  // stays: a conversation that has used its tools keeps them.
   const { data: integrations } = useIntegrations();
-  const gmailConnection =
-    integrations?.find((integration) => integration.id === "gmail")
-      ?.connection ?? null;
-  const [gmailRequested, setGmailRequested] = useState(false);
-  const gmailUsedHere = useMemo(() => conversationUsesGmail(messages), [messages]);
-  const gmailLockedReason = !gmailConnection
-    ? undefined
-    : gmailConnection.status === "needs_reconnect"
-      ? "Reconnect Gmail in Settings → Tools → Connectors"
-      : !modelSupportsSearch
-        ? "Gmail is unavailable for this model"
-        : gmailConnection.alwaysOn
-          ? "On in every chat"
-          : gmailUsedHere
-            ? "On for this chat"
-            : undefined;
-  const gmailUsable =
-    gmailConnection?.status === "connected" && modelSupportsSearch;
-  const gmail = gmailConnection
-    ? {
-        active:
-          gmailUsable &&
-          (gmailConnection.alwaysOn || gmailUsedHere || gmailRequested),
-        ambient: gmailConnection.alwaysOn,
-        lockedReason: gmailLockedReason,
-      }
-    : undefined;
+  const [connectorsRequested, setConnectorsRequested] = useState<
+    readonly IntegrationId[]
+  >([]);
+  const connectors = useMemo(
+    () =>
+      CHAT_CONNECTORS.flatMap((connector) => {
+        const connection = integrations?.find(
+          (integration) => integration.id === connector.id,
+        )?.connection;
+        if (!connection) return [];
+        const usedHere = connector.usedIn(messages);
+        const usable = connection.status === "connected" && modelSupportsSearch;
+        const requested = usable && connectorsRequested.includes(connector.id);
+        return [
+          {
+            ...connector,
+            requested,
+            active: usable && (connection.alwaysOn || usedHere || requested),
+            ambient: connection.alwaysOn,
+            lockedReason:
+              connection.status === "needs_reconnect"
+                ? `Reconnect ${connector.title} in Settings → Tools → Connectors`
+                : !modelSupportsSearch
+                  ? `${connector.title} is unavailable for this model`
+                  : connection.alwaysOn
+                    ? "On in every chat"
+                    : usedHere
+                      ? "On for this chat"
+                      : undefined,
+          },
+        ];
+      }),
+    [integrations, messages, modelSupportsSearch, connectorsRequested],
+  );
+  const connectorRequested = (id: IntegrationId) =>
+    connectors.some((connector) => connector.id === id && connector.requested);
 
   const requestBody = (
     action: ChatRequestAction,
@@ -528,7 +538,8 @@ export function ChatArea({
     documentsSupported: true,
     codeExecutionSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
-    gmailEnabled: gmailUsable && gmailRequested,
+    gmailEnabled: connectorRequested("gmail"),
+    calendarEnabled: connectorRequested("calendar"),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
     clientRequestId: generateId(),
@@ -935,9 +946,15 @@ export function ChatArea({
           setOpenuiRequested((selected) => !selected);
         }
       }}
-      gmail={gmail}
-      onToggleGmail={() => {
-        if (gmail && !gmail.lockedReason) setGmailRequested((on) => !on);
+      connectors={connectors}
+      onToggleConnector={(id) => {
+        const connector = connectors.find((item) => item.id === id);
+        if (!connector || connector.lockedReason) return;
+        setConnectorsRequested((requested) =>
+          requested.includes(id)
+            ? requested.filter((item) => item !== id)
+            : [...requested, id],
+        );
       }}
       chatQueue={chatQueue}
       onSubmit={handleSubmit}

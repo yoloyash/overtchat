@@ -562,10 +562,10 @@ SANDBOX_URL=http://127.0.0.1:4794 CODE_EXECUTION_LIVE_URL=http://127.0.0.1:8000/
 On Android and iOS, ask for a chart and a spreadsheet, then expand the run,
 open the chart, and save both files.
 
-## Gmail connector validation
+## Gmail and Google Calendar connector validation
 
-`lib/integrations` connects a person's own Gmail through the operator's Google
-OAuth client, a Desktop app client stored in `integration_oauth_clients`. Its
+`lib/integrations` connects a person's own Google account, for Gmail and
+Google Calendar, through the operator's Google OAuth client, a Desktop app client stored in `integration_oauth_clients`. Its
 loopback redirect, `http://localhost:1`, needs no registration and no public
 address: nothing listens there, and the person pastes the address their browser
 ended on. A sign-in is bound to the user who started it by a stored state and
@@ -575,6 +575,8 @@ A person has one sign-in per provider, stored in `integration_accounts` with
 the scopes Google granted. It covers each integration in `INTEGRATIONS` whose
 scopes are all among them, so someone who leaves a permission unticked on
 Google's page connects the rest. A sign-in that covers nothing is not stored.
+The account's address comes from Gmail when the sign-in covers it, and
+otherwise from the ID of the account's primary calendar.
 Signing in again replaces the stored sign-in; the earlier grant is revoked only
 when it belonged to a different Google account, because revoking one grant of
 an account may end its other grants to the same client.
@@ -602,15 +604,34 @@ request Gmail answers with 401 discards the access token and repeats once, so a
 dead grant surfaces as `needs_reconnect`. Draft recipients must be bare
 addresses and headers are refused if they contain a line break.
 
-A chat is offered the tools when the connection's `alwaysOn` is set, when the
-request carries `gmailEnabled` (the composer's `/gmail`), or when
-`conversationUsesGmail()` finds that the conversation already used a mail tool
-or has a user message opening with `/gmail`, which is how a client without the
-command menu asks. A chat never loses the tools once it has them, so the tool
-list a model was given does not change partway through. Other chats of a
-connected user get `GMAIL_OFF_PROMPT`, one line telling the model which
-command to pass on. Where Gmail is on but the sign-in has ended,
-`gmailReconnectPrompt()` tells the model where the user reconnects.
+A sign-in that covers the calendar is offered `calendar_list_calendars`,
+`calendar_list_events`, `calendar_create_event`, `calendar_update_event` and
+`calendar_delete_event` (`lib/integrations/calendar-tools.ts`), with a system
+prompt that marks event text as untrusted, since anyone can put an event on a
+calendar by inviting its owner. Times follow the calendar's own clock: a date
+or a time without an offset is read in the calendar's time zone, a listing
+reports that zone and the current time, and an all-day event's `end` is its
+last day although Google stores the day after. Guests are sent as attendees
+without `sendUpdates`, so Google is not asked to email them. Changing the
+guest list keeps the answers of guests who stay. A deleted event is read
+first so the step can name it. Gmail and Calendar share
+`googleRequest()` (`lib/integrations/google/request.ts`) for the token, the
+single retry after a 401, and error wording.
+
+Each connector joins a chat on its own. A chat is offered a connector's tools
+when its `alwaysOn` is set, when the request carries `gmailEnabled` or
+`calendarEnabled` (the composer's `/gmail` and `/calendar`), or when
+`conversationUsesGmail()` or `conversationUsesCalendar()` finds that the
+conversation already used one of its tools or has a user message opening with
+the command, which is how a client without the command menu asks. A chat
+never loses the tools once it has them, so the tool list a model was given
+does not change partway through. Other chats of a connected user get one line
+telling the model which command to pass on: `GMAIL_OFF_PROMPT`,
+`CALENDAR_OFF_PROMPT`, or `GMAIL_AND_CALENDAR_OFF_PROMPT` when both are off.
+Where a connector is on but the sign-in has ended, `gmailReconnectPrompt()` or
+`calendarReconnectPrompt()` tells the model where the user reconnects. The
+composer reads its connectors from `CHAT_CONNECTORS`
+(`components/chat/chat-connectors.tsx`).
 
 A saved draft is not a timeline step: `groupMessageParts()` gives it its own
 segment, and the web and mobile cards show its subject, recipients and body.
@@ -622,29 +643,39 @@ model reads stays the same; `withSentGmailDrafts()` marks sent drafts in the
 messages a client loads.
 
 `describeGmailToolPart()` in `@overtchat/shared` projects a step for the web
-and mobile timelines from senders and subjects only. Tool results stay in the
+and mobile timelines from senders and subjects only, and
+`describeCalendarToolPart()` from event times, titles, places and guest
+counts. An event's time is shown on the calendar's clock, not the viewer's, so
+a step names the same hour as the model's answer. Tool results stay in the
 chat's saved parts for replay, are not indexed for search, and are dropped from
 share snapshots.
 
-Unit tests cover the protocol, storage, token lifecycle, Gmail client and tool
-display. The browser tests answer for Google and Gmail from a local stand-in,
-which the e2e server reaches through `OVERTCHAT_E2E_GOOGLE_ORIGIN`:
+Unit tests cover the protocol, storage, token lifecycle, the Gmail and
+Calendar clients and tool display. The browser tests answer for Google, Gmail
+and Calendar from a local stand-in, which the e2e server reaches through
+`OVERTCHAT_E2E_GOOGLE_ORIGIN`:
 
 ```sh
-npm run test -w apps/web -- lib/integrations lib/db/integrations.test.ts app/api/integration-oauth-clients
+npm run test -w apps/web -- lib/integrations lib/db/integrations.test.ts app/api/integration-oauth-clients app/api/chat/route.test.ts
 npm run test -w apps/mobile -- src/components/chat/ChainOfThought.test.tsx
-E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts gmail-tools.spec.ts
+E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts gmail-tools.spec.ts calendar-tools.spec.ts
 ```
 
 Changes to the sign-in itself also need one pass against Google with a real
-client, following [Gmail](deploy.md#gmail): connect, reload, disconnect, and
-confirm the grant disappears from the Google account's third-party access page. Also confirm
+client, following [Gmail and Google Calendar](deploy.md#gmail-and-google-calendar):
+connect, reload, disconnect, and confirm the grant disappears from the Google
+account's third-party access page. Connect one connector, then add the other
+with **Add**, and confirm both still work afterwards. Also confirm
 that an account missing from the test users is stopped on Google's page.
 Changes to the tools need a real mailbox too: search with an operator such as
 `newer_than:7d`, read an HTML-only message, and open a saved reply draft in
 Gmail to check its thread, recipient and encoding. Also read a real PDF
 attachment, and archive, label and trash a thread, then confirm each in Gmail.
 Press **Send** on a draft addressed to yourself and confirm it arrives once.
+Changes to the calendar tools need a real calendar: list a day that has a
+timed, an all-day and a repeating event, add an event with a guest and check
+it on both calendars, move it, and delete it. Do this from a browser in a
+different time zone from the calendar's when the change touches times.
 
 ## Chat compaction validation
 

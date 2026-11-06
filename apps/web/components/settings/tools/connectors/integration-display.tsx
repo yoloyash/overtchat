@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { CalendarLogo } from "@/components/CalendarLogo";
 import { GmailLogo } from "@/components/GmailLogo";
 import type { IntegrationId } from "@/lib/integrations/schema";
 
@@ -20,6 +21,14 @@ export const INTEGRATION_DISPLAY: Record<
       "Let models search, read and organize your mail, and write drafts for you to send.",
     everyChat:
       "Offers the mail tools in every chat, which adds about 1,100 tokens to each request. When off, type /gmail in a chat to use your mail there.",
+  },
+  calendar: {
+    name: "Google Calendar",
+    Logo: CalendarLogo,
+    description:
+      "Let models check your schedule and add, change or delete events.",
+    everyChat:
+      "Offers the calendar tools in every chat, which adds about 1,000 tokens to each request. When off, type /calendar in a chat to use your calendar there.",
   },
 };
 

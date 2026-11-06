@@ -15,6 +15,7 @@ const ENDPOINTS = {
   token: "https://oauth2.googleapis.com/token",
   revocation: "https://oauth2.googleapis.com/revoke",
   gmailProfile: "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+  primaryCalendar: "https://www.googleapis.com/calendar/v3/calendars/primary",
 } as const;
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -243,4 +244,27 @@ export async function fetchGmailAddress(accessToken: string): Promise<string> {
     );
   }
   return body.emailAddress;
+}
+
+/** A Google account's own calendar is named by the account's address. */
+export async function fetchCalendarAddress(accessToken: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(endpoint("primaryCalendar"), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    throw new IntegrationError("Could not reach Google Calendar. Try again.", 502);
+  }
+  const body = (await response.json().catch(() => ({}))) as { id?: unknown };
+  if (!response.ok || typeof body.id !== "string" || !body.id.includes("@")) {
+    throw new IntegrationError(
+      response.status === 403
+        ? "Google Calendar refused access. An administrator needs to check that the Google Calendar API is enabled for this server's Google project."
+        : "Google Calendar did not return the account's address. Try again.",
+      502,
+    );
+  }
+  return body.id;
 }

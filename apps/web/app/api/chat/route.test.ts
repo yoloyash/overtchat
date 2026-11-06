@@ -58,6 +58,9 @@ const mocks = vi.hoisted(() => {
     createGmailTools: vi.fn(),
     gmailAccess: vi.fn(),
     gmailReconnectPrompt: vi.fn(),
+    createCalendarTools: vi.fn(),
+    calendarAccess: vi.fn(),
+    calendarReconnectPrompt: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -86,6 +89,11 @@ const mocks = vi.hoisted(() => {
     gmailToolOrder: ["gmail_search", "gmail_read_thread", "gmail_create_draft"],
     gmailPrompt: "stable gmail instruction",
     gmailOffPrompt: "stable gmail off hint",
+    calendarTools: { calendar_list_events: { description: "events" } },
+    calendarToolOrder: ["calendar_list_events"],
+    calendarPrompt: "stable calendar instruction",
+    calendarOffPrompt: "stable calendar off hint",
+    bothOffPrompt: "stable gmail and calendar off hint",
     citationPrompt: "stable web citation instruction",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
@@ -135,6 +143,15 @@ vi.mock("@/lib/integrations/gmail-tools", () => ({
   GMAIL_TOOL_ORDER: mocks.gmailToolOrder,
   GMAIL_TOOL_PROMPT: mocks.gmailPrompt,
   GMAIL_OFF_PROMPT: mocks.gmailOffPrompt,
+}));
+vi.mock("@/lib/integrations/calendar-tools", () => ({
+  createCalendarTools: mocks.createCalendarTools,
+  calendarAccess: mocks.calendarAccess,
+  calendarReconnectPrompt: mocks.calendarReconnectPrompt,
+  CALENDAR_TOOL_ORDER: mocks.calendarToolOrder,
+  CALENDAR_TOOL_PROMPT: mocks.calendarPrompt,
+  CALENDAR_OFF_PROMPT: mocks.calendarOffPrompt,
+  GMAIL_AND_CALENDAR_OFF_PROMPT: mocks.bothOffPrompt,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
@@ -334,6 +351,11 @@ describe("chat route setup boundary", () => {
     mocks.createGmailTools.mockReturnValue(mocks.gmailTools);
     mocks.gmailAccess.mockReturnValue({ status: "unavailable" });
     mocks.gmailReconnectPrompt.mockReturnValue("stable gmail reconnect notice");
+    mocks.createCalendarTools.mockReturnValue(mocks.calendarTools);
+    mocks.calendarAccess.mockReturnValue({ status: "unavailable" });
+    mocks.calendarReconnectPrompt.mockReturnValue(
+      "stable calendar reconnect notice",
+    );
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -2163,6 +2185,117 @@ describe("chat route setup boundary", () => {
     await POST(request());
     expect(JSON.stringify(mocks.agentSettings.at(-1))).not.toContain(
       "stable gmail reconnect notice",
+    );
+  });
+
+  it("offers the calendar tools beside Gmail's, each only where it is on", async () => {
+    const off = { ...parsedRequest, webSearchEnabled: false };
+    mocks.parseChatRequest.mockResolvedValue(off);
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: false });
+    mocks.calendarAccess.mockReturnValue({ status: "available", alwaysOn: false });
+
+    // Both connected and off: one hint names both commands.
+    await POST(request());
+    expect(mocks.calendarAccess).toHaveBeenCalledWith("user");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        instructions: {
+          role: "system",
+          content: [mocks.bothOffPrompt, mocks.currentDatePrompt].join("\n\n"),
+        },
+      }),
+    );
+
+    // The user asked for the calendar here; Gmail stays off and says how.
+    mocks.parseChatRequest.mockResolvedValue({ ...off, calendarEnabled: true });
+    await POST(request());
+    expect(mocks.createCalendarTools).toHaveBeenCalledWith("user");
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings.at(-1)).toEqual(
+      expect.objectContaining({
+        tools: mocks.calendarTools,
+        toolOrder: mocks.calendarToolOrder,
+        instructions: {
+          role: "system",
+          content: [
+            mocks.calendarPrompt,
+            mocks.gmailOffPrompt,
+            mocks.currentDatePrompt,
+          ].join("\n\n"),
+        },
+      }),
+    );
+
+    // Both on: Gmail's tools come first, and no hint is left to give.
+    mocks.parseChatRequest.mockResolvedValue({
+      ...off,
+      gmailEnabled: true,
+      messages: [
+        { id: "m1", role: "user", parts: [{ type: "text", text: "/calendar am I free?" }] },
+      ],
+    });
+    await POST(request());
+    expect(mocks.agentSettings.at(-1)).toEqual(
+      expect.objectContaining({
+        tools: { ...mocks.gmailTools, ...mocks.calendarTools },
+        toolOrder: [...mocks.gmailToolOrder, ...mocks.calendarToolOrder],
+        instructions: {
+          role: "system",
+          content: [
+            mocks.gmailPrompt,
+            mocks.calendarPrompt,
+            mocks.currentDatePrompt,
+          ].join("\n\n"),
+        },
+      }),
+    );
+  });
+
+  it("keeps the calendar in a chat that has used it, and explains an ended sign-in there", async () => {
+    const used = {
+      ...parsedRequest,
+      webSearchEnabled: false,
+      messages: [
+        { id: "m1", role: "user", parts: [{ type: "text", text: "Am I free?" }] },
+        {
+          id: "m2",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-calendar_list_events",
+              toolCallId: "call-1",
+              state: "output-available",
+              input: {},
+              output: { events: [], hasMore: false },
+            },
+            { type: "text", text: "You are free." },
+          ],
+        },
+        { id: "m3", role: "user", parts: [{ type: "text", text: "And Monday?" }] },
+      ],
+    };
+    mocks.parseChatRequest.mockResolvedValue(used);
+    mocks.calendarAccess.mockReturnValue({ status: "available", alwaysOn: false });
+
+    await POST(request());
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({ tools: mocks.calendarTools }),
+    );
+
+    mocks.calendarAccess.mockReturnValue({ status: "needs_reconnect", alwaysOn: false });
+    await POST(request());
+    expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
+    expect(mocks.agentSettings.at(-1)).toEqual(
+      expect.objectContaining({
+        instructions: {
+          role: "system",
+          content: [
+            "stable calendar reconnect notice",
+            mocks.currentDatePrompt,
+          ].join("\n\n"),
+        },
+      }),
     );
   });
 

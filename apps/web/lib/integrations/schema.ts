@@ -7,7 +7,7 @@ import { z } from "zod";
 export const INTEGRATION_PROVIDERS = ["google"] as const;
 export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 
-export const INTEGRATION_IDS = ["gmail"] as const;
+export const INTEGRATION_IDS = ["gmail", "calendar"] as const;
 export type IntegrationId = (typeof INTEGRATION_IDS)[number];
 
 export const INTEGRATION_CONNECTION_STATUSES = [
@@ -30,6 +30,13 @@ export const INTEGRATIONS: Record<IntegrationId, IntegrationDefinition> = {
     // One scope covers reading, drafting and labels, the trash included. It
     // also permits sending, which no tool does.
     scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+  },
+  calendar: {
+    provider: "google",
+    // Reading and changing events on any of the user's calendars. It also
+    // permits changing a calendar's sharing and deleting one, which no tool
+    // does.
+    scopes: ["https://www.googleapis.com/auth/calendar"],
   },
 };
 

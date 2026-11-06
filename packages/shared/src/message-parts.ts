@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { isCalendarToolPart } from "./calendar";
 import {
   isGmailToolPart,
   isSavedGmailDraftPart,
@@ -49,6 +50,7 @@ export function isActivityPart(part: AnyPart): boolean {
   return (
     ACTIVITY_TYPES.has(part.type) ||
     isGmailToolPart(part) ||
+    isCalendarToolPart(part) ||
     (part.type === "dynamic-tool" && isMcpToolName(part.toolName))
   );
 }

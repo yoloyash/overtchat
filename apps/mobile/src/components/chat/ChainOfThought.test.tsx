@@ -4,6 +4,7 @@ import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   groupMessageParts,
+  type CalendarToolPart,
   type CodeExecutionPart,
   type GmailToolPart,
   type ReadFilePart,
@@ -17,6 +18,9 @@ vi.mock("@expo/vector-icons", () => ({
 }));
 vi.mock("@shopify/flash-list", () => ({ useLayoutState: useState }));
 vi.mock("../GmailLogo", () => ({ GmailLogo: () => <i data-icon="gmail" /> }));
+vi.mock("../CalendarLogo", () => ({
+  CalendarLogo: () => <i data-icon="calendar" />,
+}));
 vi.mock("@/lib/api", () => ({ getApiBase: () => "https://server.test" }));
 vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => null }));
 vi.mock("./MarkdownBody", () => ({
@@ -301,6 +305,60 @@ it("labels running, failed and unfinished code runs", async () => {
     (container.querySelector("button") as unknown as { click(): void }).click();
   });
   expect(container.textContent).toContain("The code sandbox is unreachable.");
+});
+
+it("shows calendar steps by time, title and guests, never descriptions", async () => {
+  const event = {
+    id: "e1",
+    title: "Lunch with Grace",
+    start: "2026-11-06T12:00:00-05:00",
+    end: "2026-11-06T13:00:00-05:00",
+    allDay: false,
+    description: "private words",
+    guests: [{ email: "grace@example.test", response: "accepted" }],
+    link: "https://www.google.com/calendar/event?eid=abc",
+  };
+  const listed: CalendarToolPart = {
+    type: "tool-calendar_list_events",
+    toolCallId: "calendar-list",
+    state: "output-available",
+    input: {},
+    output: {
+      account: "ada@example.test",
+      calendarId: "primary",
+      timeZone: "America/New_York",
+      now: "2026-11-06T09:00:00-05:00",
+      hasMore: false,
+      events: [event],
+    },
+  };
+  const deleted: CalendarToolPart = {
+    type: "tool-calendar_delete_event",
+    toolCallId: "calendar-delete",
+    state: "output-available",
+    input: { eventId: "e1" },
+    output: { account: "ada@example.test", calendarId: "primary", event },
+  };
+
+  await act(async () => {
+    root.render(<ChainOfThought parts={[listed]} active />);
+  });
+  expect(container.textContent).toContain("Checking calendar…");
+
+  await act(async () => {
+    root.render(<ChainOfThought parts={[listed, deleted]} active={false} />);
+  });
+  expect(container.textContent).toContain("Deleted event");
+  await act(async () => {
+    (container.querySelector("button") as unknown as { click(): void }).click();
+  });
+  const text = (container.textContent ?? "").replace(/\s/g, " ");
+  expect(text).toContain("Checked calendar");
+  expect(text).toContain("1 event");
+  expect(text).toContain("Lunch with Grace");
+  expect(text).toContain("12:00 PM – 1:00 PM");
+  expect(text).not.toContain("private words");
+  expect(container.querySelector('[data-icon="calendar"]')).not.toBeNull();
 });
 
 it("shows Gmail steps by sender and subject, never message text", async () => {

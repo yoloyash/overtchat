@@ -14,18 +14,16 @@ import type {
 } from "@overtchat/shared";
 import { getIntegrationConnection } from "@/lib/db/integrations";
 import {
-  discardIntegrationAccessToken,
-  getIntegrationAccessToken,
-} from "@/lib/integrations/connections";
-import {
   IntegrationError,
   IntegrationReconnectError,
 } from "@/lib/integrations/errors";
-import { googleUrl } from "@/lib/integrations/google/oauth";
+import {
+  googleRequest,
+  type GoogleService,
+} from "@/lib/integrations/google/request";
 import { ExtractionError, MAX_BYTES_DOC, extractFile } from "@/lib/extract";
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
-const REQUEST_TIMEOUT_MS = 20_000;
 
 /** One message's share of a thread, and the whole thread's, in characters. */
 const MAX_MESSAGE_CHARS = 20_000;
@@ -65,80 +63,19 @@ interface GmailApiMessage {
 export const GMAIL_RECONNECT_MESSAGE =
   "The Gmail sign-in has ended. Reconnect Gmail in the OvertChat web app under Settings → Tools → Connectors.";
 
-async function gmailAccessToken(userId: string): Promise<string> {
-  try {
-    return await getIntegrationAccessToken(userId, "gmail");
-  } catch (error) {
-    if (error instanceof IntegrationReconnectError) {
-      throw new IntegrationReconnectError(GMAIL_RECONNECT_MESSAGE);
-    }
-    throw error;
-  }
-}
+const GMAIL: GoogleService = {
+  integrationId: "gmail",
+  name: "Gmail",
+  reconnectMessage: GMAIL_RECONNECT_MESSAGE,
+  notFoundMessage: "Gmail has no message or thread with that ID.",
+};
 
-async function gmailRequest<T>(
+function gmailRequest<T>(
   userId: string,
   path: string,
   options: { body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
-  // A token Google refuses is refreshed once: the grant may still be good.
-  for (let attempt = 0; ; attempt += 1) {
-    const accessToken = await gmailAccessToken(userId);
-    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-    let response: Response;
-    try {
-      response = await fetch(googleUrl(`${GMAIL_API}${path}`), {
-        method: options.body === undefined ? "GET" : "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          ...(options.body === undefined
-            ? {}
-            : { "Content-Type": "application/json" }),
-        },
-        body:
-          options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: options.signal
-          ? AbortSignal.any([timeout, options.signal])
-          : timeout,
-      });
-    } catch (error) {
-      if (options.signal?.aborted) throw error;
-      throw new IntegrationError("Could not reach Gmail. Try again.", 502);
-    }
-    if (response.status === 401 && attempt === 0) {
-      discardIntegrationAccessToken(userId, "gmail", accessToken);
-      continue;
-    }
-    if (!response.ok) throw await gmailError(response);
-    return (await response.json()) as T;
-  }
-}
-
-async function gmailError(response: Response): Promise<IntegrationError> {
-  const body = (await response.json().catch(() => null)) as {
-    error?: { message?: unknown };
-  } | null;
-  const detail =
-    typeof body?.error?.message === "string" ? body.error.message : "";
-  if (response.status === 404) {
-    return new IntegrationError("Gmail has no message or thread with that ID.", 404);
-  }
-  if (response.status === 429) {
-    return new IntegrationError(
-      "Gmail is limiting requests for this account. Try again in a minute.",
-      429,
-    );
-  }
-  if (response.status === 403) {
-    return new IntegrationError(
-      `Gmail refused the request${detail ? `: ${detail}` : "."}`,
-      403,
-    );
-  }
-  return new IntegrationError(
-    `Gmail returned an error${detail ? `: ${detail}` : "."}`,
-    502,
-  );
+  return googleRequest<T>(userId, GMAIL, `${GMAIL_API}${path}`, options);
 }
 
 function header(part: GmailApiPart | undefined, name: string): string {

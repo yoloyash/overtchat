@@ -3,6 +3,7 @@ import {
   openUIActionOf,
   isActivityPart,
   isDocumentToolPart,
+  isCalendarToolPart,
   isGmailToolPart,
   isImageToolPart,
   isOpenUIToolPart,
@@ -65,9 +66,11 @@ export function sharedMessages(messages: UIMessage[]): UIMessage[] {
                 "source-document",
                 "step-start",
               ].includes(part.type) ||
-              // Mail stays private: a link never carries what the Gmail tools
-              // read or wrote, only what the answer itself says.
-              (isActivityPart(part) && !isGmailToolPart(part)) ||
+              // Mail and calendars stay private: a link never carries what
+              // their tools read or wrote, only what the answer itself says.
+              (isActivityPart(part) &&
+                !isGmailToolPart(part) &&
+                !isCalendarToolPart(part)) ||
               isImageToolPart(part) ||
               isDocumentToolPart(part) ||
               isOpenUIToolPart(part) ||

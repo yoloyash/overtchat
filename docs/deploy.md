@@ -848,18 +848,20 @@ a fresh unprivileged user. Without them it refuses runs, and models are not
 offered code execution. Web, desktop and mobile clients show each run's code,
 output and returned files.
 
-## Gmail
+## Gmail and Google Calendar
 
-People on your server can connect their own Gmail account under **Settings →
-Tools → Connectors**. Google has each server sign people in through its own
-Google Cloud OAuth client, so an administrator creates one first:
+People on your server can connect their own Google account under **Settings →
+Tools → Connectors**, for Gmail, Google Calendar, or both. Google has each
+server sign people in through its own Google Cloud OAuth client, so an
+administrator creates one first:
 
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a
-   project and enable the **Gmail API**.
+   project and enable the **Gmail API** and the **Google Calendar API**.
 2. Open **Google Auth Platform** and configure the consent screen with the
    **External** audience. An app name and contact address are enough.
-3. Under **Data access**, add the scope
-   `https://www.googleapis.com/auth/gmail.modify`.
+3. Under **Data access**, add the scopes
+   `https://www.googleapis.com/auth/gmail.modify` and
+   `https://www.googleapis.com/auth/calendar`.
 4. Under **Audience**, leave the publishing status on **Testing** and add the
    Google address of each person who will connect under **Test users**. Google
    blocks everyone else.
@@ -867,20 +869,26 @@ Google Cloud OAuth client, so an administrator creates one first:
    its client ID and secret.
 6. In OvertChat, choose **Set up** on the Google connector and enter both.
 
-Each person then chooses **Connect**, signs in on Google's page, and allows
-access. Google sends their browser to a `http://localhost` address
-that cannot be reached; they copy that address back into OvertChat to finish.
-The sign-in returns through the person's own browser, so it works however the
-server is reached, including a LAN address.
+Each person then chooses **Connect**, picks Gmail, Google Calendar or both,
+signs in on Google's page, and allows access. Google sends their browser to a
+`http://localhost` address that cannot be reached; they copy that address back
+into OvertChat to finish. The sign-in returns through the person's own browser,
+so it works however the server is reached, including a LAN address.
 
-A connected mailbox is off in chats until its owner turns it on, so mail and
-the roughly 1,100 tokens its tools add to each request stay out of chats that
-do not need them. Typing `/gmail` turns it on for one chat, which then keeps
-it; **Use in every chat** on the Gmail row turns it on everywhere. While it is
-off, a model asked about mail tells the person to type `/gmail`.
+One sign-in covers whatever the person picked. A permission they leave
+unticked on Google's page is left out and the rest connects. **Change access**,
+or **Add** beside a connector that was left out, signs in again with a new
+choice; Google has no way to widen or narrow a sign-in in place.
 
-Where it is on, tool-calling models can work with that person's mail on web,
-desktop and mobile:
+A connector is off in chats until its owner turns it on, so mail, events and
+the roughly 1,000 tokens each connector's tools add to a request stay out of
+chats that do not need them. Typing `/gmail` or `/calendar` turns that
+connector on for one chat, which then keeps it; **Use in every chat** beside
+it turns it on everywhere. While a connector is off, a model asked about mail
+or the calendar tells the person which command to type.
+
+Where Gmail is on, tool-calling models can work with that person's mail on
+web, desktop and mobile:
 
 - Search mail and read a thread.
 - Read the text of an attached PDF, Word, spreadsheet, CSV or text file up to
@@ -892,14 +900,31 @@ desktop and mobile:
 A model cannot send mail. A draft it saves shows in the chat with its text and
 a **Send** button, and goes out only when the person presses that or sends it
 from Gmail. Nothing is deleted for good either: mail moved to the trash stays
-there for 30 days. Mail
-a model reads is saved with that chat like any other tool result; shared chat
-links leave it out.
+there for 30 days.
+
+Where Google Calendar is on, models can work with that person's calendars:
+
+- List their calendars, and the events on one of them in a range of days.
+- Add an event, with a place, a description and guests.
+- Change or delete an event. Deleting an event the person organizes cancels it
+  for its guests.
+
+Guests see an event on their own Google calendars. OvertChat does not ask
+Google to email them an invitation, so a guest who does not use Google
+Calendar may not hear of it. Models are told to change the calendar only when
+asked, and to confirm first when a request leaves the details to them, but
+nothing enforces that the way the **Send** button does for mail. A deleted
+event stays in Google Calendar's trash for 30 days.
+
+Mail and events a model reads are saved with that chat like any other tool
+result; shared chat links leave them out. Anyone can put an event on a
+calendar by sending an invitation, so models are told to treat events, like
+mail, as text written by other people and not as instructions.
 
 Google ends every sign-in made through an app in testing after seven days. The
 connector then shows **Sign-in ended**, and the person chooses **Reconnect**
-and signs in again. Until they do, a model asked about their mail tells them
-where to reconnect.
+and signs in again. Until they do, a model asked about their mail or calendar
+tells them where to reconnect.
 
 - Google warns that it has not verified the app; continue past the warning.
   Someone who is not a test user sees "Access blocked" instead, until their

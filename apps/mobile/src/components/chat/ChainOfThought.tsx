@@ -23,9 +23,14 @@ import {
   type CodeExecutionPart,
   type FetchedImage,
   type FetchUrlPart,
+  calendarActivityLabel,
+  type CalendarToolPart,
+  describeCalendarToolPart,
   describeGmailToolPart,
+  formatCalendarEventTime,
   gmailActivityLabel,
   type GmailToolPart,
+  isCalendarToolPart,
   isCodeExecutionPart,
   isGmailToolPart,
   isReadFilePart,
@@ -44,6 +49,7 @@ import type { DynamicToolUIPart } from "ai";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { useTheme } from "@/lib/theme";
+import { CalendarLogo } from "../CalendarLogo";
 import { GmailLogo } from "../GmailLogo";
 import { CodeBlock } from "./CodeBlock";
 import { CodeExecutionFiles } from "./CodeExecutionFiles";
@@ -57,6 +63,7 @@ export type ActivityPart =
   | SearchFilesPart
   | CodeExecutionPart
   | GmailToolPart
+  | CalendarToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -84,6 +91,7 @@ function isTool(
     isFileTool(p) ||
     isCodeExecutionPart(p) ||
     isGmailToolPart(p) ||
+    isCalendarToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -137,7 +145,9 @@ export function ChainOfThought({
         ? "code"
         : isGmailToolPart(lastTool)
           ? "mail"
-          : "web"
+          : isCalendarToolPart(lastTool)
+            ? "calendar"
+            : "web"
     : null;
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
@@ -199,7 +209,7 @@ function StatusIcon({
   color,
 }: {
   active: boolean;
-  toolKind: "web" | "file" | "code" | "mail" | null;
+  toolKind: "web" | "file" | "code" | "mail" | "calendar" | null;
   failed: boolean;
   color: string;
 }) {
@@ -235,6 +245,13 @@ function StatusIcon({
     return (
       <View style={styles.statusIcon}>
         <GmailLogo size={15} />
+      </View>
+    );
+  }
+  if (toolKind === "calendar") {
+    return (
+      <View style={styles.statusIcon}>
+        <CalendarLogo size={15} />
       </View>
     );
   }
@@ -308,9 +325,11 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
                 ? "code"
                 : isGmailToolPart(part)
                   ? "mail"
-                  : isMcpTool(part)
-                    ? "tool"
-                    : "brain";
+                  : isCalendarToolPart(part)
+                    ? "calendar"
+                    : isMcpTool(part)
+                      ? "tool"
+                      : "brain";
 
   return (
     <View style={styles.step}>
@@ -328,6 +347,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <CodeStep part={part} />
         ) : isGmailToolPart(part) ? (
           <GmailStep part={part} />
+        ) : isCalendarToolPart(part) ? (
+          <CalendarStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -345,6 +366,7 @@ type RailIcon =
   | "file-search"
   | "code"
   | "mail"
+  | "calendar"
   | "tool"
   | "brain"
   | "failed";
@@ -369,6 +391,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <Ionicons name="code-slash-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "mail" ? (
           <GmailLogo size={11} />
+        ) : icon === "calendar" ? (
+          <CalendarLogo size={11} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
@@ -936,6 +960,131 @@ function GmailStep({ part }: { part: GmailToolPart }) {
   );
 }
 
+/**
+ * A Google Calendar tool call: the events that were listed, or the one that
+ * was added, changed or deleted, with times and titles but never descriptions.
+ */
+function CalendarStep({ part }: { part: CalendarToolPart }) {
+  const { colors, fonts } = useTheme();
+  const [showAll, setShowAll] = useLayoutState(false);
+  const display = describeCalendarToolPart(part);
+  const visible = showAll
+    ? display.rows
+    : display.rows.slice(0, RESULTS_PREVIEW);
+  const hidden = display.rows.length - visible.length;
+  const muted = { color: colors.mutedForeground, fontFamily: fonts.sansRegular };
+  const running = display.status === "running";
+
+  return (
+    <View style={styles.searchStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {display.detail ?? (running ? `${display.title}…` : display.title)}
+        </Text>
+        <Text style={[styles.metaText, muted]}>
+          {display.status === "error"
+            ? "Failed"
+            : running
+              ? display.detail
+                ? `${display.title}…`
+                : ""
+              : display.note}
+        </Text>
+      </View>
+      {display.error ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {display.error}
+        </Text>
+      ) : display.rows.length === 0 ? null : (
+        <View
+          style={[
+            styles.resultList,
+            { borderColor: colors.border, backgroundColor: colors.muted },
+          ]}
+        >
+          {visible.map((row, index) => (
+            <Pressable
+              key={index}
+              disabled={!row.href}
+              accessibilityRole={row.href ? "link" : undefined}
+              accessibilityHint={
+                row.href ? "Opens in Google Calendar" : undefined
+              }
+              onPress={() => {
+                if (row.href) Linking.openURL(row.href).catch(() => {});
+              }}
+              style={({ pressed }) => [
+                styles.resultRow,
+                index > 0 && {
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
+                },
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text numberOfLines={1} style={[styles.calendarWhen, muted]}>
+                {formatCalendarEventTime(row)}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.resultTitle,
+                  {
+                    color: row.gone ? colors.mutedForeground : colors.foreground,
+                    fontFamily: fonts.sansRegular,
+                    textDecorationLine: row.gone ? "line-through" : "none",
+                  },
+                ]}
+              >
+                {row.title}
+              </Text>
+              {row.guests > 0 ? (
+                <>
+                  <Ionicons
+                    name="people-outline"
+                    size={13}
+                    color={colors.mutedForeground}
+                  />
+                  <Text style={[styles.metaText, muted]}>{row.guests}</Text>
+                </>
+              ) : null}
+            </Pressable>
+          ))}
+          {hidden > 0 || showAll ? (
+            <Pressable
+              onPress={() => setShowAll((shown) => !shown)}
+              style={({ pressed }) => [
+                styles.showAllRow,
+                { borderTopColor: colors.border, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.showAllText,
+                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                ]}
+              >
+                {showAll ? "Show less" : `Show ${hidden} more`}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function ReadFileStep({ part }: { part: ReadFilePart }) {
   const { colors, fonts } = useTheme();
   const output = part.output;
@@ -1119,6 +1268,7 @@ function activeLabel(last: ActivityPart | undefined): string {
   }
   if (isCodeExecutionPart(last)) return "Running code…";
   if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
+  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -1164,6 +1314,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool && isGmailToolPart(lastTool)) {
     return gmailActivityLabel(lastTool, false);
+  }
+  if (lastTool && isCalendarToolPart(lastTool)) {
+    return calendarActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);
@@ -1215,6 +1368,7 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12 },
   errorText: { fontSize: 12 },
   gmailSender: { width: "32%", flexShrink: 0, fontSize: 13 },
+  calendarWhen: { width: "44%", flexShrink: 0, fontSize: 12 },
   toolValue: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,

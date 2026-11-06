@@ -24,6 +24,8 @@ import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import { CodeBlock } from "streamdown";
 import {
+  calendarActivityLabel,
+  type CalendarToolPart,
   codeExecutionFiles,
   codeRunStatus,
   type CodeExecutionPart,
@@ -31,6 +33,7 @@ import {
   type FetchUrlPart,
   gmailActivityLabel,
   type GmailToolPart,
+  isCalendarToolPart,
   isCodeExecutionPart,
   isGmailToolPart,
   isReadFilePart,
@@ -47,7 +50,9 @@ import {
 import { parseMcpToolName } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
 import { CodeRunFiles } from "./CodeExecutionFiles";
+import { CalendarLogo } from "@/components/CalendarLogo";
 import { GmailLogo } from "@/components/GmailLogo";
+import { CalendarStep } from "./CalendarStep";
 import { GmailStep } from "./GmailStep";
 import { ThinkingContent } from "./ThinkingContent";
 import { serverUrl } from "@/lib/api-url";
@@ -60,6 +65,7 @@ export type ActivityPart =
   | SearchFilesPart
   | CodeExecutionPart
   | GmailToolPart
+  | CalendarToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -87,6 +93,7 @@ function isTool(
     isFileTool(p) ||
     isCodeExecutionPart(p) ||
     isGmailToolPart(p) ||
+    isCalendarToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -146,7 +153,9 @@ export function ChainOfThought({
             ? Code2
             : isGmailToolPart(lastTool)
               ? GmailLogo
-              : Globe
+              : isCalendarToolPart(lastTool)
+                ? CalendarLogo
+                : Globe
         : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
@@ -218,9 +227,11 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
                 ? Code2
                 : isGmailToolPart(part)
                   ? GmailLogo
-                  : isMcpTool(part)
-                    ? Wrench
-                    : Brain;
+                  : isCalendarToolPart(part)
+                    ? CalendarLogo
+                    : isMcpTool(part)
+                      ? Wrench
+                      : Brain;
 
   return (
     <div className="flex gap-2.5">
@@ -238,6 +249,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <CodeStep part={part} />
         ) : isGmailToolPart(part) ? (
           <GmailStep part={part} />
+        ) : isCalendarToolPart(part) ? (
+          <CalendarStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -635,6 +648,7 @@ function activeLabel(last: ActivityPart | undefined): string {
   }
   if (isCodeExecutionPart(last)) return "Running code…";
   if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
+  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -680,6 +694,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool && isGmailToolPart(lastTool)) {
     return gmailActivityLabel(lastTool, false);
+  }
+  if (lastTool && isCalendarToolPart(lastTool)) {
+    return calendarActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);
