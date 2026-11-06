@@ -14,6 +14,7 @@ import {
   availableMcpServersQuery,
   mcpServersQuery,
 } from "@/lib/queries/mcpServers";
+import { integrationsQuery } from "@/lib/queries/integrations";
 import { adminModelConfigsQuery } from "@/lib/queries/modelConfigs";
 import { serverCapabilitiesQuery } from "@/lib/queries/serverCapabilities";
 import { usersQuery } from "@/lib/queries/users";
@@ -258,6 +259,7 @@ export const toolsSettingsRoute = createRoute({
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(availableMcpServersQuery),
+      context.queryClient.ensureQueryData(integrationsQuery),
       context.isAdmin
         ? context.queryClient.ensureQueryData(mcpServersQuery)
         : undefined,

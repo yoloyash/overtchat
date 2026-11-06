@@ -1,0 +1,228 @@
+"use client";
+
+import { Settings2 } from "lucide-react";
+import { useState } from "react";
+import { GoogleLogo } from "@/components/GoogleLogo";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
+import type { Integration, IntegrationId } from "@/lib/integrations/schema";
+import {
+  useDisconnectIntegrationAccount,
+  useIntegrations,
+} from "@/lib/queries/integrations";
+import { SettingsNotice, SettingsSection } from "../../SettingsRows";
+import { ConnectGoogleDialog } from "./ConnectGoogleDialog";
+import { GoogleAccessDialog } from "./GoogleAccessDialog";
+import { INTEGRATION_DISPLAY, integrationNames } from "./integration-display";
+
+export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
+  const { data: integrations, isPending, error } = useIntegrations();
+  const google = integrations?.filter(({ provider }) => provider === "google");
+
+  return (
+    <SettingsSection
+      title="Connectors"
+      description="Connect your own accounts so models can work with them in your chats."
+    >
+      {isPending ? (
+        <SettingsNotice className="py-6">Loading connectors…</SettingsNotice>
+      ) : error || !google?.length ? (
+        <SettingsNotice tone="error" className="py-6">
+          {getErrorMessage(error, "Unable to load connectors.")}
+        </SettingsNotice>
+      ) : (
+        <GoogleAccount integrations={google} isAdmin={isAdmin} />
+      )}
+    </SettingsSection>
+  );
+}
+
+function StatusPill({ needsReconnect }: { needsReconnect: boolean }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-card/60 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted-foreground">
+      <span
+        aria-hidden
+        className={
+          needsReconnect
+            ? "size-1.5 rounded-full bg-destructive"
+            : "size-1.5 rounded-full bg-emerald-500"
+        }
+      />
+      {needsReconnect ? "Sign-in ended" : "Connected"}
+    </span>
+  );
+}
+
+/** One Google sign-in, and the connectors it does and does not cover. */
+function GoogleAccount({
+  integrations,
+  isAdmin,
+}: {
+  integrations: Integration[];
+  isAdmin: boolean;
+}) {
+  const disconnect = useDisconnectIntegrationAccount("google");
+  // What the sign-in dialog starts with, while it is open.
+  const [connecting, setConnecting] = useState<IntegrationId[] | null>(null);
+  const [settingUp, setSettingUp] = useState(false);
+
+  const all = integrations.map(({ id }) => id);
+  const covered = integrations.filter(({ connection }) => connection);
+  const coveredIds = covered.map(({ id }) => id);
+  const account = covered[0]?.connection ?? null;
+  const configured = integrations[0].configured;
+  const needsReconnect = account?.status === "needs_reconnect";
+
+  async function onDisconnect() {
+    try {
+      await disconnect.mutateAsync();
+      toast.success({ title: "Google disconnected" });
+    } catch (error) {
+      toast.error({
+        title: "Failed to disconnect Google",
+        description: getErrorMessage(error, "The account is still connected."),
+      });
+    }
+  }
+
+  return (
+    <div className="py-4">
+      <div className="grid gap-3 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+            <GoogleLogo className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              Google
+              {configured && account && (
+                <StatusPill needsReconnect={needsReconnect} />
+              )}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {!configured
+                ? isAdmin
+                  ? "Set up Google access for this server before anyone can connect."
+                  : "Not set up on this server. Ask an administrator to set up Google access."
+                : needsReconnect
+                  ? `Google ended access for ${account.accountEmail}. Reconnect to keep using it.`
+                  : account
+                    ? account.accountEmail
+                    : `Sign in once to connect ${integrationNames(all)}.`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {configured && account && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              disabled={disconnect.isPending}
+              onClick={() => void onDisconnect()}
+            >
+              {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+            </Button>
+          )}
+          {configured && account && !needsReconnect && all.length > 1 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setConnecting(coveredIds)}
+            >
+              Change access
+            </Button>
+          )}
+          {configured && (!account || needsReconnect) && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setConnecting(account ? coveredIds : all)}
+            >
+              {needsReconnect ? "Reconnect" : "Connect"}
+            </Button>
+          )}
+          {isAdmin &&
+            (configured ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Google access settings"
+                title="Google access settings"
+                onClick={() => setSettingUp(true)}
+              >
+                <Settings2 />
+              </Button>
+            ) : (
+              <Button type="button" size="sm" onClick={() => setSettingUp(true)}>
+                Set up
+              </Button>
+            ))}
+        </div>
+      </div>
+
+      {configured && (
+        <ul className="mt-3 space-y-3 pl-12">
+          {integrations.map((integration) => (
+            <IntegrationRow
+              key={integration.id}
+              integration={integration}
+              // A sign-in that leaves one out can be widened to include it.
+              onAdd={
+                account && !needsReconnect
+                  ? () => setConnecting([...coveredIds, integration.id])
+                  : undefined
+              }
+            />
+          ))}
+        </ul>
+      )}
+
+      {connecting && (
+        <ConnectGoogleDialog
+          initial={connecting}
+          onClose={() => setConnecting(null)}
+        />
+      )}
+      {settingUp && <GoogleAccessDialog onClose={() => setSettingUp(false)} />}
+    </div>
+  );
+}
+
+function IntegrationRow({
+  integration,
+  onAdd,
+}: {
+  integration: Integration;
+  onAdd?: () => void;
+}) {
+  const { name, Logo, description } = INTEGRATION_DISPLAY[integration.id];
+  const left = !integration.connection && onAdd;
+
+  return (
+    <li
+      aria-label={name}
+      className="grid gap-2 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center"
+    >
+      <div className="flex min-w-0 items-start gap-2.5">
+        <Logo className="mt-1 size-4" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{name}</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {left ? "Not part of this sign-in." : description}
+          </p>
+        </div>
+      </div>
+      {left && (
+        <Button type="button" variant="outline" size="sm" onClick={onAdd}>
+          Add
+        </Button>
+      )}
+    </li>
+  );
+}

@@ -562,6 +562,45 @@ SANDBOX_URL=http://127.0.0.1:4794 CODE_EXECUTION_LIVE_URL=http://127.0.0.1:8000/
 On Android and iOS, ask for a chart and a spreadsheet, then expand the run,
 open the chart, and save both files.
 
+## Gmail connector validation
+
+`lib/integrations` connects a person's own Gmail through the operator's Google
+OAuth client, a Desktop app client stored in `integration_oauth_clients`. Its
+loopback redirect, `http://localhost:1`, needs no registration and no public
+address: nothing listens there, and the person pastes the address their browser
+ended on. A sign-in is bound to the user who started it by a stored state and
+PKCE verifier, lasts 15 minutes, and is spent on its first code exchange.
+
+A person has one sign-in per provider, stored in `integration_accounts` with
+the scopes Google granted. It covers each integration in `INTEGRATIONS` whose
+scopes are all among them, so someone who leaves a permission unticked on
+Google's page connects the rest. A sign-in that covers nothing is not stored.
+Signing in again replaces the stored sign-in; the earlier grant is revoked only
+when it belonged to a different Google account, because revoking one grant of
+an account may end its other grants to the same client.
+
+`getIntegrationAccessToken()` returns a usable token, refreshing it once for
+concurrent callers. Only Google's `invalid_grant` marks a connection
+`needs_reconnect`; other failures leave it connected. Google ends a sign-in
+through an app in testing after seven days, and the connection learns of it
+the same way, from the next refresh Google refuses. Tokens and the client
+secret never appear in an API response.
+
+Unit tests cover the protocol, storage and token lifecycle. The browser test
+answers for Google from a local stand-in, which the e2e server reaches through
+`OVERTCHAT_E2E_GOOGLE_ORIGIN`:
+
+```sh
+npm run test -w apps/web -- lib/integrations lib/db/integrations.test.ts app/api/integration-oauth-clients
+E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts
+```
+
+Changes to the sign-in itself also need one pass against Google with a real
+client, following [Gmail](deploy.md#gmail): connect, reload, disconnect, and
+confirm the grant
+disappears from the Google account's third-party access page. Also confirm
+that an account missing from the test users is stopped on Google's page.
+
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,

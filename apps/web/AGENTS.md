@@ -32,6 +32,9 @@ chat delivery.
 - `lib/agents` owns Agent Connections projections and access rules.
   `lib/agents/connector` owns the authorized web-side connector relay.
 - `lib/mcp` owns MCP configuration, connections, tool bindings, and lifecycle.
+- `lib/integrations` owns each user's sign-in to their own outside account
+  (Google) and the integrations it covers (Gmail): the operator's OAuth
+  client, sign-in, and token refresh. It is unrelated to the Host Connector.
 - `lib/queries` owns client-side React Query keys, queries, and mutations.
 
 ## Authentication boundaries
@@ -51,7 +54,8 @@ existing bundled clients.
 Host Connector routes authenticate connector tokens. Internal management routes
 authenticate `OVERTCHAT_MANAGEMENT_SECRET`. Keep both separate from user
 sessions, and never expose connector tokens, management secrets, provider keys,
-or executable MCP configuration through user APIs.
+integration tokens or OAuth client secrets, or executable MCP configuration
+through user APIs.
 
 Realtime voice browser routes require the user session and issue short-lived,
 chat-bound tickets. Internal voice routes independently authenticate

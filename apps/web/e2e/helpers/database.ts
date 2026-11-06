@@ -27,6 +27,7 @@ export function resetE2eDatabase() {
       db.prepare("DELETE FROM user").run();
       db.prepare("DELETE FROM initial_setup").run();
       db.prepare("DELETE FROM model_configs").run();
+      db.prepare("DELETE FROM integration_oauth_clients").run();
     })();
   } finally {
     db.close();
