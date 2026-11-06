@@ -265,10 +265,16 @@ function connectGmail(accessToken = "access-live", alwaysOn = true) {
       "INSERT INTO integration_oauth_clients (provider, client_id, client_secret) VALUES ('google', 'e2e-client', 'e2e-secret')",
     ).run();
     db.prepare(
-      `INSERT INTO integration_connections
-        (user_id, integration_id, account_email, refresh_token, access_token, access_token_expires_at, always_on)
-       VALUES (?, 'gmail', 'ada@example.test', 'refresh-live', ?, ?, ?)`,
-    ).run(id, accessToken, Date.now() + 3_600_000, alwaysOn ? 1 : 0);
+      `INSERT INTO integration_accounts
+        (user_id, provider, account_email, refresh_token, access_token, access_token_expires_at, scopes, always_on)
+       VALUES (?, 'google', 'ada@example.test', 'refresh-live', ?, ?, ?, ?)`,
+    ).run(
+      id,
+      accessToken,
+      Date.now() + 3_600_000,
+      JSON.stringify(["https://www.googleapis.com/auth/gmail.modify"]),
+      JSON.stringify(alwaysOn ? ["gmail"] : []),
+    );
   } finally {
     db.close();
   }
@@ -524,8 +530,8 @@ test("the switch in Settings offers Gmail in every chat", async ({ page }) => {
   const db = openE2eDatabase();
   try {
     expect(
-      db.prepare("SELECT always_on FROM integration_connections").get(),
-    ).toEqual({ always_on: 0 });
+      db.prepare("SELECT always_on FROM integration_accounts").get(),
+    ).toEqual({ always_on: "[]" });
   } finally {
     db.close();
   }

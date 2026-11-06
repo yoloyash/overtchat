@@ -66,7 +66,7 @@ export function gmailAccess(userId: string): GmailAccess {
   }
   return {
     status: connection.status === "connected" ? "available" : "needs_reconnect",
-    alwaysOn: connection.alwaysOn,
+    alwaysOn: connection.alwaysOn.includes("gmail"),
   };
 }
 

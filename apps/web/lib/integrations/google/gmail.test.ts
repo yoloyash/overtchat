@@ -8,6 +8,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { INTEGRATIONS } from "@/lib/integrations/schema";
 import { createIntegrationTestDatabase } from "@/lib/integrations/test-database";
 
 vi.mock("server-only", () => ({}));
@@ -63,13 +64,14 @@ beforeEach(() => {
     clientId: "client-1",
     clientSecret: "secret-1",
   });
-  repository.saveIntegrationConnection({
+  repository.saveIntegrationAccount({
     userId: "ada",
-    integrationId: "gmail",
+    provider: "google",
     accountEmail: "ada@example.test",
     refreshToken: "refresh-1",
     accessToken: "access-1",
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
+    scopes: [...INTEGRATIONS.gmail.scopes],
   });
 });
 afterEach(() => vi.restoreAllMocks());

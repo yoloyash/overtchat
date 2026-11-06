@@ -7,6 +7,7 @@ import {
   type GmailToolPart,
 } from "@overtchat/shared";
 import { z } from "zod";
+import { INTEGRATIONS } from "@/lib/integrations/schema";
 import { createIntegrationTestDatabase } from "@/lib/integrations/test-database";
 import { sharedMessages } from "@/lib/sharing";
 
@@ -24,13 +25,14 @@ beforeEach(() => database.reset());
 afterAll(() => database.close());
 
 function connect() {
-  repository.saveIntegrationConnection({
+  repository.saveIntegrationAccount({
     userId: "ada",
-    integrationId: "gmail",
+    provider: "google",
     accountEmail: "ada@example.test",
     refreshToken: "refresh-1",
     accessToken: "access-1",
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
+    scopes: [...INTEGRATIONS.gmail.scopes],
   });
 }
 
@@ -52,7 +54,7 @@ describe("availability", () => {
 
     repository.markIntegrationNeedsReconnect({
       userId: "ada",
-      integrationId: "gmail",
+      provider: "google",
       refreshToken: "refresh-1",
     });
     expect(tools.gmailAccess("ada")).toEqual({

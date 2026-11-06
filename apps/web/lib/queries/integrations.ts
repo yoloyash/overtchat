@@ -96,34 +96,32 @@ export function useDeleteIntegrationOauthClient(provider: IntegrationProvider) {
 }
 
 /**
- * Starts a sign-in and resolves to the provider page the user approves it on.
- * Each call replaces the user's pending sign-in for this integration.
+ * Starts a sign-in for the chosen integrations and resolves to the provider
+ * page the user approves it on. Each call replaces the user's pending sign-in.
  */
 export async function startIntegrationAuthorization(
-  id: IntegrationId,
+  provider: IntegrationProvider,
+  integrations: readonly IntegrationId[],
 ): Promise<string> {
-  const response = await fetch(apiUrl(`/api/integrations/${id}/authorization`), {
-    method: "POST",
-  });
+  const response = await fetch(
+    apiUrl(`/api/integration-accounts/${provider}/authorization`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ integrations }),
+    },
+  );
   if (!response.ok) throw await responseError(response);
   return ((await response.json()) as { url: string }).url;
 }
 
-function storeIntegration(
-  client: ReturnType<typeof useQueryClient>,
-  integration: Integration,
-) {
-  client.setQueryData<Integration[]>(integrationKeys.list(), (current) =>
-    current?.map((item) => (item.id === integration.id ? integration : item)),
-  );
-}
-
-export function useConnectIntegration(id: IntegrationId) {
+/** Finishes a sign-in and resolves to the provider's integrations. */
+export function useConnectIntegrationAccount(provider: IntegrationProvider) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (redirectUrl: string): Promise<Integration> => {
+    mutationFn: async (redirectUrl: string): Promise<Integration[]> => {
       const response = await fetch(
-        apiUrl(`/api/integrations/${id}/connection`),
+        apiUrl(`/api/integration-accounts/${provider}`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -131,10 +129,15 @@ export function useConnectIntegration(id: IntegrationId) {
         },
       );
       if (!response.ok) throw await responseError(response);
-      return ((await response.json()) as { integration: Integration })
-        .integration;
+      return ((await response.json()) as { integrations: Integration[] })
+        .integrations;
     },
-    onSuccess: (integration) => storeIntegration(client, integration),
+    onSuccess: (integrations) =>
+      client.setQueryData<Integration[]>(integrationKeys.list(), (current) =>
+        current?.map(
+          (item) => integrations.find(({ id }) => id === item.id) ?? item,
+        ),
+      ),
   });
 }
 
@@ -142,28 +145,30 @@ export function useSetIntegrationAlwaysOn(id: IntegrationId) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (alwaysOn: boolean): Promise<Integration> => {
-      const response = await fetch(
-        apiUrl(`/api/integrations/${id}/connection`),
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ alwaysOn }),
-        },
-      );
+      const response = await fetch(apiUrl(`/api/integrations/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alwaysOn }),
+      });
       if (!response.ok) throw await responseError(response);
       return ((await response.json()) as { integration: Integration })
         .integration;
     },
-    onSuccess: (integration) => storeIntegration(client, integration),
+    onSuccess: (integration) =>
+      client.setQueryData<Integration[]>(integrationKeys.list(), (current) =>
+        current?.map((item) =>
+          item.id === integration.id ? integration : item,
+        ),
+      ),
   });
 }
 
-export function useDisconnectIntegration(id: IntegrationId) {
+export function useDisconnectIntegrationAccount(provider: IntegrationProvider) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const response = await fetch(
-        apiUrl(`/api/integrations/${id}/connection`),
+        apiUrl(`/api/integration-accounts/${provider}`),
         { method: "DELETE" },
       );
       if (!response.ok) throw await responseError(response);

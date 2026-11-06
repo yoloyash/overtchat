@@ -28,7 +28,7 @@ export function createIntegrationTestDatabase(name: string) {
       raw.exec(`
         DELETE FROM gmail_sent_drafts;
         DELETE FROM integration_authorizations;
-        DELETE FROM integration_connections;
+        DELETE FROM integration_accounts;
         DELETE FROM integration_oauth_clients;
         DELETE FROM user;
         INSERT INTO user (id) VALUES ('ada'), ('grace');

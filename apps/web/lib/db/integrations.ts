@@ -1,12 +1,13 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
+  integrationAccounts,
   integrationAuthorizations,
-  integrationConnections,
   integrationOauthClients,
 } from "@/lib/db/schema";
 import {
+  grantedIntegrations,
   INTEGRATION_IDS,
   INTEGRATIONS,
   type Integration,
@@ -17,14 +18,9 @@ import {
 
 export type IntegrationOauthClientRow =
   typeof integrationOauthClients.$inferSelect;
-export type IntegrationConnectionRow =
-  typeof integrationConnections.$inferSelect;
+export type IntegrationAccountRow = typeof integrationAccounts.$inferSelect;
 export type IntegrationAuthorizationRow =
   typeof integrationAuthorizations.$inferSelect;
-
-function providerIntegrations(provider: IntegrationProvider): IntegrationId[] {
-  return INTEGRATION_IDS.filter((id) => INTEGRATIONS[id].provider === provider);
-}
 
 export function toIntegrationOauthClient(
   provider: IntegrationProvider,
@@ -71,19 +67,18 @@ export function saveIntegrationOauthClient(
         set: { ...input, updatedAt: new Date() },
       })
       .run();
-    const integrations = providerIntegrations(provider);
     if (previous && previous.clientId !== input.clientId) {
-      tx.update(integrationConnections)
+      tx.update(integrationAccounts)
         .set({
           status: "needs_reconnect",
           accessToken: null,
           accessTokenExpiresAt: null,
           updatedAt: new Date(),
         })
-        .where(inArray(integrationConnections.integrationId, integrations))
+        .where(eq(integrationAccounts.provider, provider))
         .run();
       tx.delete(integrationAuthorizations)
-        .where(inArray(integrationAuthorizations.integrationId, integrations))
+        .where(eq(integrationAuthorizations.provider, provider))
         .run();
     }
     return tx
@@ -98,13 +93,12 @@ export function saveIntegrationOauthClient(
 export function deleteIntegrationOauthClient(
   provider: IntegrationProvider,
 ): void {
-  const integrations = providerIntegrations(provider);
   db.transaction((tx) => {
-    tx.delete(integrationConnections)
-      .where(inArray(integrationConnections.integrationId, integrations))
+    tx.delete(integrationAccounts)
+      .where(eq(integrationAccounts.provider, provider))
       .run();
     tx.delete(integrationAuthorizations)
-      .where(inArray(integrationAuthorizations.integrationId, integrations))
+      .where(eq(integrationAuthorizations.provider, provider))
       .run();
     tx.delete(integrationOauthClients)
       .where(eq(integrationOauthClients.provider, provider))
@@ -112,38 +106,57 @@ export function deleteIntegrationOauthClient(
   });
 }
 
-export function getIntegrationConnection(
+/** The user's sign-in to a provider, whatever it covers. */
+export function getIntegrationAccount(
   userId: string,
-  integrationId: IntegrationId,
-): IntegrationConnectionRow | null {
+  provider: IntegrationProvider,
+): IntegrationAccountRow | null {
   return (
     db
       .select()
-      .from(integrationConnections)
+      .from(integrationAccounts)
       .where(
         and(
-          eq(integrationConnections.userId, userId),
-          eq(integrationConnections.integrationId, integrationId),
+          eq(integrationAccounts.userId, userId),
+          eq(integrationAccounts.provider, provider),
         ),
       )
       .get() ?? null
   );
 }
 
+/** The user's sign-in, when it covers this integration. */
+export function getIntegrationConnection(
+  userId: string,
+  integrationId: IntegrationId,
+): IntegrationAccountRow | null {
+  const { provider } = INTEGRATIONS[integrationId];
+  const account = getIntegrationAccount(userId, provider);
+  return account &&
+    grantedIntegrations(provider, account.scopes).includes(integrationId)
+    ? account
+    : null;
+}
+
 function toIntegration(
   id: IntegrationId,
   configured: boolean,
-  connection: IntegrationConnectionRow | null,
+  account: IntegrationAccountRow | null,
 ): Integration {
+  const { provider } = INTEGRATIONS[id];
+  const covered =
+    account !== null &&
+    grantedIntegrations(provider, account.scopes).includes(id);
   return {
     id,
+    provider,
     configured,
-    connection: connection
+    connection: covered
       ? {
-          accountEmail: connection.accountEmail,
-          status: connection.status,
-          connectedAt: connection.createdAt.toISOString(),
-          alwaysOn: connection.alwaysOn,
+          accountEmail: account.accountEmail,
+          status: account.status,
+          connectedAt: account.createdAt.toISOString(),
+          alwaysOn: account.alwaysOn.includes(id),
         }
       : null,
   };
@@ -153,10 +166,11 @@ export function getIntegration(
   userId: string,
   integrationId: IntegrationId,
 ): Integration {
+  const { provider } = INTEGRATIONS[integrationId];
   return toIntegration(
     integrationId,
-    getIntegrationOauthClient(INTEGRATIONS[integrationId].provider) !== null,
-    getIntegrationConnection(userId, integrationId),
+    getIntegrationOauthClient(provider) !== null,
+    getIntegrationAccount(userId, provider),
   );
 }
 
@@ -164,13 +178,14 @@ export function listIntegrations(userId: string): Integration[] {
   return INTEGRATION_IDS.map((id) => getIntegration(userId, id));
 }
 
-export function saveIntegrationConnection(input: {
+export function saveIntegrationAccount(input: {
   userId: string;
-  integrationId: IntegrationId;
+  provider: IntegrationProvider;
   accountEmail: string;
   refreshToken: string;
   accessToken: string;
   accessTokenExpiresAt: Date;
+  scopes: string[];
 }): void {
   const now = new Date();
   const grant = {
@@ -178,44 +193,43 @@ export function saveIntegrationConnection(input: {
     refreshToken: input.refreshToken,
     accessToken: input.accessToken,
     accessTokenExpiresAt: input.accessTokenExpiresAt,
+    scopes: input.scopes,
     status: "connected" as const,
     // A reconnect is a new grant, so its connection date starts over.
     createdAt: now,
     updatedAt: now,
   };
-  db.insert(integrationConnections)
-    .values({
-      userId: input.userId,
-      integrationId: input.integrationId,
-      ...grant,
-    })
+  db.insert(integrationAccounts)
+    .values({ userId: input.userId, provider: input.provider, ...grant })
     .onConflictDoUpdate({
-      target: [
-        integrationConnections.userId,
-        integrationConnections.integrationId,
-      ],
+      target: [integrationAccounts.userId, integrationAccounts.provider],
       set: grant,
     })
     .run();
 }
 
-/** Returns false when the user has no connection to change. */
+/** Returns false when the user's sign-in does not cover the integration. */
 export function setIntegrationAlwaysOn(
   userId: string,
   integrationId: IntegrationId,
   alwaysOn: boolean,
 ): boolean {
-  const result = db
-    .update(integrationConnections)
-    .set({ alwaysOn, updatedAt: new Date() })
+  const account = getIntegrationConnection(userId, integrationId);
+  if (!account) return false;
+  const others = account.alwaysOn.filter((id) => id !== integrationId);
+  db.update(integrationAccounts)
+    .set({
+      alwaysOn: alwaysOn ? [...others, integrationId] : others,
+      updatedAt: new Date(),
+    })
     .where(
       and(
-        eq(integrationConnections.userId, userId),
-        eq(integrationConnections.integrationId, integrationId),
+        eq(integrationAccounts.userId, userId),
+        eq(integrationAccounts.provider, account.provider),
       ),
     )
     .run();
-  return result.changes > 0;
+  return true;
 }
 
 /**
@@ -224,12 +238,12 @@ export function setIntegrationAlwaysOn(
  */
 export function storeIntegrationAccessToken(input: {
   userId: string;
-  integrationId: IntegrationId;
+  provider: IntegrationProvider;
   refreshToken: string;
   accessToken: string;
   accessTokenExpiresAt: Date;
 }): void {
-  db.update(integrationConnections)
+  db.update(integrationAccounts)
     .set({
       accessToken: input.accessToken,
       accessTokenExpiresAt: input.accessTokenExpiresAt,
@@ -237,9 +251,9 @@ export function storeIntegrationAccessToken(input: {
     })
     .where(
       and(
-        eq(integrationConnections.userId, input.userId),
-        eq(integrationConnections.integrationId, input.integrationId),
-        eq(integrationConnections.refreshToken, input.refreshToken),
+        eq(integrationAccounts.userId, input.userId),
+        eq(integrationAccounts.provider, input.provider),
+        eq(integrationAccounts.refreshToken, input.refreshToken),
       ),
     )
     .run();
@@ -248,10 +262,10 @@ export function storeIntegrationAccessToken(input: {
 /** Same guard as `storeIntegrationAccessToken`. */
 export function markIntegrationNeedsReconnect(input: {
   userId: string;
-  integrationId: IntegrationId;
+  provider: IntegrationProvider;
   refreshToken: string;
 }): void {
-  db.update(integrationConnections)
+  db.update(integrationAccounts)
     .set({
       status: "needs_reconnect",
       accessToken: null,
@@ -260,25 +274,25 @@ export function markIntegrationNeedsReconnect(input: {
     })
     .where(
       and(
-        eq(integrationConnections.userId, input.userId),
-        eq(integrationConnections.integrationId, input.integrationId),
-        eq(integrationConnections.refreshToken, input.refreshToken),
+        eq(integrationAccounts.userId, input.userId),
+        eq(integrationAccounts.provider, input.provider),
+        eq(integrationAccounts.refreshToken, input.refreshToken),
       ),
     )
     .run();
 }
 
-/** Returns the removed connection so the caller can revoke its grant. */
-export function deleteIntegrationConnection(
+/** Returns the removed sign-in so the caller can revoke its grant. */
+export function deleteIntegrationAccount(
   userId: string,
-  integrationId: IntegrationId,
-): IntegrationConnectionRow | null {
+  provider: IntegrationProvider,
+): IntegrationAccountRow | null {
   const [row] = db
-    .delete(integrationConnections)
+    .delete(integrationAccounts)
     .where(
       and(
-        eq(integrationConnections.userId, userId),
-        eq(integrationConnections.integrationId, integrationId),
+        eq(integrationAccounts.userId, userId),
+        eq(integrationAccounts.provider, provider),
       ),
     )
     .returning()
@@ -288,7 +302,7 @@ export function deleteIntegrationConnection(
 
 export function saveIntegrationAuthorization(input: {
   userId: string;
-  integrationId: IntegrationId;
+  provider: IntegrationProvider;
   state: string;
   codeVerifier: string;
 }): void {
@@ -298,7 +312,7 @@ export function saveIntegrationAuthorization(input: {
     .onConflictDoUpdate({
       target: [
         integrationAuthorizations.userId,
-        integrationAuthorizations.integrationId,
+        integrationAuthorizations.provider,
       ],
       set: {
         state: input.state,
@@ -311,7 +325,7 @@ export function saveIntegrationAuthorization(input: {
 
 export function getIntegrationAuthorization(
   userId: string,
-  integrationId: IntegrationId,
+  provider: IntegrationProvider,
 ): IntegrationAuthorizationRow | null {
   return (
     db
@@ -320,7 +334,7 @@ export function getIntegrationAuthorization(
       .where(
         and(
           eq(integrationAuthorizations.userId, userId),
-          eq(integrationAuthorizations.integrationId, integrationId),
+          eq(integrationAuthorizations.provider, provider),
         ),
       )
       .get() ?? null
@@ -329,13 +343,13 @@ export function getIntegrationAuthorization(
 
 export function deleteIntegrationAuthorization(
   userId: string,
-  integrationId: IntegrationId,
+  provider: IntegrationProvider,
 ): void {
   db.delete(integrationAuthorizations)
     .where(
       and(
         eq(integrationAuthorizations.userId, userId),
-        eq(integrationAuthorizations.integrationId, integrationId),
+        eq(integrationAuthorizations.provider, provider),
       ),
     )
     .run();

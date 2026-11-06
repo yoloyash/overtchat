@@ -104,7 +104,7 @@ async function startSignIn(page: Page) {
   await connectors(page)
     .getByRole("button", { name: /^(Connect|Reconnect)$/ })
     .click();
-  const dialog = page.getByRole("dialog", { name: "Connect Gmail" });
+  const dialog = page.getByRole("dialog", { name: "Connect Google" });
   const link = dialog.getByRole("link", { name: "Open Google sign-in" });
   await expect(link).toHaveAttribute("href", /state=/);
   return { dialog, signIn: new URL((await link.getAttribute("href"))!) };
@@ -149,11 +149,14 @@ test("an administrator sets up Google access, then each person connects their ow
       })).status(),
     ).toBe(403);
     expect(
-      (await member.request.post("/api/integrations/gmail/authorization")).status(),
+      (await member.request.post("/api/integration-accounts/google/authorization", {
+        data: { integrations: ["gmail"] },
+      })).status(),
     ).toBe(409);
 
     await setUpGoogleAccess(page);
-    await expect(connectors(page)).toContainText(
+    await expect(connectors(page)).toContainText("Sign in once to connect Gmail.");
+    await expect(connectors(page).getByRole("listitem", { name: "Gmail" })).toContainText(
       "Let models search, read and organize your mail, and write drafts for you to send.",
     );
 
@@ -245,7 +248,7 @@ test("an administrator sets up Google access, then each person connects their ow
     );
     await expect(access.getByLabel("Client secret")).toHaveValue("");
     await access.getByRole("button", { name: "Remove" }).click();
-    await expect(access).toContainText("Everyone's Gmail connection");
+    await expect(access).toContainText("Everyone's Google connection");
     await access.getByRole("button", { name: "Remove" }).click();
     await expect(access).toBeHidden();
     await member.reload();
@@ -271,7 +274,7 @@ test("a sign-in that Google does not fully grant leaves nothing connected", asyn
     );
   await first.dialog.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(first.dialog).toContainText(
-    "Google did not grant the access OvertChat asked for. Start again and allow everything on Google's page.",
+    "Google did not grant the access OvertChat asked for. Start again and keep the checkboxes on Google's page ticked.",
   );
   expect(revoked).toEqual(["refresh-1"]);
 
@@ -315,7 +318,7 @@ test("a sign-in Google has ended asks to be reconnected with the same account", 
   const db = openE2eDatabase();
   try {
     db.prepare(
-      "UPDATE integration_connections SET status = 'needs_reconnect'",
+      "UPDATE integration_accounts SET status = 'needs_reconnect'",
     ).run();
   } finally {
     db.close();
@@ -340,6 +343,7 @@ test("a sign-in Google has ended asks to be reconnected with the same account", 
     );
   await again.dialog.getByRole("button", { name: "Connect", exact: true }).click();
   await expectConnected(page, "inbox-2@example.test");
-  // The earlier grant is withdrawn once the new one is stored.
+  // The stand-in names a new account each time, and a different account's
+  // earlier grant is withdrawn once the new one is stored.
   expect(revoked).toEqual(["refresh-1"]);
 });
