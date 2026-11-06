@@ -131,11 +131,26 @@ describe("connections", () => {
         accountEmail: "ada@example.test",
         status: "connected",
         connectedAt: expect.any(String),
+        alwaysOn: false,
       },
     });
     expect(JSON.stringify(gmail)).not.toContain("refresh-ada");
     expect(JSON.stringify(gmail)).not.toContain("access-ada");
     expect(repository.listIntegrations("grace")[0].connection).toBeNull();
+  });
+
+  it("keeps the choice to use it in every chat through a new sign-in", () => {
+    expect(repository.setIntegrationAlwaysOn("ada", "gmail", true)).toBe(false);
+
+    connect("ada");
+    expect(repository.setIntegrationAlwaysOn("ada", "gmail", true)).toBe(true);
+    expect(repository.getIntegration("ada", "gmail").connection?.alwaysOn).toBe(true);
+
+    connect("ada", "newer-refresh");
+    expect(repository.getIntegration("ada", "gmail").connection?.alwaysOn).toBe(true);
+
+    expect(repository.setIntegrationAlwaysOn("ada", "gmail", false)).toBe(true);
+    expect(repository.getIntegration("ada", "gmail").connection?.alwaysOn).toBe(false);
   });
 
   it("covers an integration only when its permission was granted", () => {

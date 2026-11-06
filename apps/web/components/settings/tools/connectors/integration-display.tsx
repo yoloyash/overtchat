@@ -9,6 +9,8 @@ export const INTEGRATION_DISPLAY: Record<
     name: string;
     Logo: ComponentType<{ className?: string }>;
     description: string;
+    /** What turning on "Use in every chat" costs, and the alternative. */
+    everyChat: string;
   }
 > = {
   gmail: {
@@ -16,6 +18,8 @@ export const INTEGRATION_DISPLAY: Record<
     Logo: GmailLogo,
     description:
       "Let models search, read and organize your mail, and write drafts for you to send.",
+    everyChat:
+      "Offers the mail tools in every chat, which adds about 1,100 tokens to each request. When off, type /gmail in a chat to use your mail there.",
   },
 };
 

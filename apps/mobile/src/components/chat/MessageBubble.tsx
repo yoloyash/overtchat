@@ -24,6 +24,7 @@ import { DocumentCard } from "./DocumentCard";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { GeneratedImageCard } from "./GeneratedImageCard";
+import { GmailDraftCard } from "./GmailDraftCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { OpenUICard } from "./OpenUICard";
 import { MessageActions } from "./MessageActions";
@@ -257,6 +258,9 @@ export function MessageBubble({
                 streaming={streaming}
               />
             );
+          }
+          if (seg.kind === "gmail-draft") {
+            return <GmailDraftCard key={seg.part.toolCallId} part={seg.part} />;
           }
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =

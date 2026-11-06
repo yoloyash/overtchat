@@ -4,12 +4,14 @@ import { Settings2 } from "lucide-react";
 import { useState } from "react";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
 import type { Integration, IntegrationId } from "@/lib/integrations/schema";
 import {
   useDisconnectIntegrationAccount,
   useIntegrations,
+  useSetIntegrationAlwaysOn,
 } from "@/lib/queries/integrations";
 import { SettingsNotice, SettingsSection } from "../../SettingsRows";
 import { ConnectGoogleDialog } from "./ConnectGoogleDialog";
@@ -201,8 +203,24 @@ function IntegrationRow({
   integration: Integration;
   onAdd?: () => void;
 }) {
-  const { name, Logo, description } = INTEGRATION_DISPLAY[integration.id];
-  const left = !integration.connection && onAdd;
+  const { name, Logo, description, everyChat } =
+    INTEGRATION_DISPLAY[integration.id];
+  const setAlwaysOn = useSetIntegrationAlwaysOn(integration.id);
+  const { connection } = integration;
+  const left = !connection && onAdd;
+  const usable = connection?.status === "connected";
+  const switchId = `${integration.id}-always-on`;
+
+  async function onAlwaysOn(alwaysOn: boolean) {
+    try {
+      await setAlwaysOn.mutateAsync(alwaysOn);
+    } catch (error) {
+      toast.error({
+        title: `Failed to change ${name}`,
+        description: getErrorMessage(error, "The setting was not saved."),
+      });
+    }
+  }
 
   return (
     <li
@@ -214,10 +232,29 @@ function IntegrationRow({
         <div className="min-w-0">
           <p className="text-sm font-medium">{name}</p>
           <p className="text-xs leading-5 text-muted-foreground">
-            {left ? "Not part of this sign-in." : description}
+            {left
+              ? "Not part of this sign-in."
+              : usable
+                ? everyChat
+                : description}
           </p>
         </div>
       </div>
+      {usable && (
+        <label
+          htmlFor={switchId}
+          className="flex items-center justify-end gap-2 text-xs text-muted-foreground"
+        >
+          Use in every chat
+          <Switch
+            id={switchId}
+            checked={connection.alwaysOn}
+            disabled={setAlwaysOn.isPending}
+            onCheckedChange={(checked) => void onAlwaysOn(checked)}
+            aria-label={`Use ${name} in every chat`}
+          />
+        </label>
+      )}
       {left && (
         <Button type="button" variant="outline" size="sm" onClick={onAdd}>
           Add

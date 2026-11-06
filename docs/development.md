@@ -586,20 +586,65 @@ through an app in testing after seven days, and the connection learns of it
 the same way, from the next refresh Google refuses. Tokens and the client
 secret never appear in an API response.
 
-Unit tests cover the protocol, storage and token lifecycle. The browser test
-answers for Google from a local stand-in, which the e2e server reaches through
-`OVERTCHAT_E2E_GOOGLE_ORIGIN`:
+A user with a live connection is offered `gmail_search`, `gmail_read_thread`,
+`gmail_read_attachment`, `gmail_list_labels`, `gmail_modify_labels` and
+`gmail_create_draft` (`lib/integrations/gmail-tools.ts`) along with a system
+prompt that marks mail and its attachments as untrusted. There is no send
+tool, by design, and nothing deletes mail for good. Thread bodies are capped per message and per thread, newest kept.
+An attachment is named by its part's position in the message, because Gmail's
+own attachment IDs change with every request; its text comes from
+`extractFile()`, the same extraction uploads use, in parts of 60,000
+characters. Pictures shown inside a message, such as a signature's logo, are
+not listed as attachments. `gmail_modify_labels` changes whole threads and
+accepts any label by name or ID, `TRASH` and `SPAM` included; when Gmail fails
+partway, the error says how many threads were already changed. A
+request Gmail answers with 401 discards the access token and repeats once, so a
+dead grant surfaces as `needs_reconnect`. Draft recipients must be bare
+addresses and headers are refused if they contain a line break.
+
+A chat is offered the tools when the connection's `alwaysOn` is set, when the
+request carries `gmailEnabled` (the composer's `/gmail`), or when
+`conversationUsesGmail()` finds that the conversation already used a mail tool
+or has a user message opening with `/gmail`, which is how a client without the
+command menu asks. A chat never loses the tools once it has them, so the tool
+list a model was given does not change partway through. Other chats of a
+connected user get `GMAIL_OFF_PROMPT`, one line telling the model which
+command to pass on. Where Gmail is on but the sign-in has ended,
+`gmailReconnectPrompt()` tells the model where the user reconnects.
+
+A saved draft is not a timeline step: `groupMessageParts()` gives it its own
+segment, and the web and mobile cards show its subject, recipients and body.
+The web card's **Send** posts to `/api/integrations/gmail/drafts/[draftId]/send`,
+the only code that sends mail and one no tool reaches. `sendSavedGmailDraft()`
+sends a draft once however often it is asked and records it in
+`gmail_sent_drafts`. The chat's stored tool result is never changed, so what a
+model reads stays the same; `withSentGmailDrafts()` marks sent drafts in the
+messages a client loads.
+
+`describeGmailToolPart()` in `@overtchat/shared` projects a step for the web
+and mobile timelines from senders and subjects only. Tool results stay in the
+chat's saved parts for replay, are not indexed for search, and are dropped from
+share snapshots.
+
+Unit tests cover the protocol, storage, token lifecycle, Gmail client and tool
+display. The browser tests answer for Google and Gmail from a local stand-in,
+which the e2e server reaches through `OVERTCHAT_E2E_GOOGLE_ORIGIN`:
 
 ```sh
 npm run test -w apps/web -- lib/integrations lib/db/integrations.test.ts app/api/integration-oauth-clients
-E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts
+npm run test -w apps/mobile -- src/components/chat/ChainOfThought.test.tsx
+E2E_PORT=4791 npm run test:e2e -w apps/web -- gmail-connector.spec.ts gmail-tools.spec.ts
 ```
 
 Changes to the sign-in itself also need one pass against Google with a real
 client, following [Gmail](deploy.md#gmail): connect, reload, disconnect, and
-confirm the grant
-disappears from the Google account's third-party access page. Also confirm
+confirm the grant disappears from the Google account's third-party access page. Also confirm
 that an account missing from the test users is stopped on Google's page.
+Changes to the tools need a real mailbox too: search with an operator such as
+`newer_than:7d`, read an HTML-only message, and open a saved reply draft in
+Gmail to check its thread, recipient and encoding. Also read a real PDF
+attachment, and archive, label and trash a thread, then confirm each in Gmail.
+Press **Send** on a draft addressed to yourself and confirm it arrives once.
 
 ## Chat compaction validation
 

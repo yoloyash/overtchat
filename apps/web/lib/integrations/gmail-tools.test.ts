@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   conversationUsesGmail,
+  describeGmailDraft,
   describeGmailToolPart,
   gmailActivityLabel,
   groupMessageParts,
@@ -311,21 +312,17 @@ describe("display", () => {
     ).toMatchObject({ action: "labels", title: "Listed Gmail labels", note: "2 labels" });
   });
 
-  it("links a saved draft to the right account's drafts", () => {
+  it("names a draft by its subject while it is being written", () => {
     expect(
       describeGmailToolPart(
         part({
           type: "tool-gmail_create_draft",
+          state: "input-available",
           input: { subject: "Hi" },
-          output: { account: "ada@example.test", to: "grace@example.test", subject: "Hi" },
+          output: undefined,
         }),
       ),
-    ).toMatchObject({
-      title: "Saved draft in Gmail",
-      detail: "Hi",
-      recipient: "grace@example.test",
-      href: "https://mail.google.com/mail/?authuser=ada%40example.test#drafts",
-    });
+    ).toMatchObject({ status: "running", title: "Writing draft", detail: "Hi" });
   });
 
   it("reports a running, failed, or interrupted step", () => {
@@ -391,12 +388,75 @@ describe("in a conversation", () => {
     expect(segments[0]).toMatchObject({ parts: [{ type: "reasoning" }, gmailPart] });
   });
 
+  const savedDraft = {
+    type: "tool-gmail_create_draft",
+    toolCallId: "call-2",
+    state: "output-available",
+    input: {
+      cc: ["alan@example.test"],
+      body: "Thanks Grace,\n\nPaying it today.",
+      replyToMessageId: "m1",
+    },
+    output: {
+      draftId: "r-42",
+      threadId: "t1",
+      account: "ada@example.test",
+      to: "grace@example.test",
+      subject: "Re: Plans",
+    },
+  } as const;
+
+  it("shows a saved draft as its own card, outside the timeline", () => {
+    const segments = groupMessageParts([
+      gmailPart,
+      savedDraft,
+      { type: "text", text: "Saved." },
+    ] as never);
+    expect(segments.map((segment) => segment.kind)).toEqual([
+      "activity",
+      "gmail-draft",
+      "text",
+    ]);
+
+    // Still being written, or failed, it is a step like any other.
+    for (const state of ["input-streaming", "input-available", "output-error"]) {
+      expect(
+        groupMessageParts([{ ...savedDraft, state, output: undefined }] as never).map(
+          (segment) => segment.kind,
+        ),
+      ).toEqual(["activity"]);
+    }
+  });
+
+  it("describes a draft before and after the user sends it", () => {
+    expect(describeGmailDraft(savedDraft as never)).toEqual({
+      draftId: "r-42",
+      subject: "Re: Plans",
+      recipients: "To grace@example.test · Cc alan@example.test",
+      body: "Thanks Grace,\n\nPaying it today.",
+      href: "https://mail.google.com/mail/?authuser=ada%40example.test#drafts",
+      sentAt: undefined,
+    });
+    expect(
+      describeGmailDraft({
+        ...savedDraft,
+        output: {
+          ...savedDraft.output,
+          sent: { at: "2026-11-05T12:00:00.000Z", threadId: "t9" },
+        },
+      } as never),
+    ).toMatchObject({
+      sentAt: "2026-11-05T12:00:00.000Z",
+      href: "https://mail.google.com/mail/?authuser=ada%40example.test#all/t9",
+    });
+  });
+
   it("is left out of a shared link", () => {
     const shared = sharedMessages([
       {
         id: "a1",
         role: "assistant",
-        parts: [gmailPart, { type: "text", text: "Here is the plan." }],
+        parts: [gmailPart, savedDraft, { type: "text", text: "Here is the plan." }],
       },
     ] as never);
     expect(JSON.stringify(shared)).not.toContain("private words");

@@ -50,6 +50,7 @@ import { ChainOfThought } from "./ChainOfThought";
 import { CodeFileLink, CodeFilesProvider } from "./CodeExecutionFiles";
 import { DocumentCard } from "./DocumentCard";
 import { GeneratedImageCard } from "./GeneratedImageCard";
+import { GmailDraftCard } from "./GmailDraftCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { OpenUICard } from "./OpenUICard";
 import { StatsPopover } from "./StatsPopover";
@@ -319,6 +320,15 @@ function AssistantBubble({
             }
             if (seg.kind === "memory") {
               return <MemoryArtifact key={seg.startIndex} parts={seg.parts} />;
+            }
+            if (seg.kind === "gmail-draft") {
+              return (
+                <GmailDraftCard
+                  key={seg.part.toolCallId}
+                  part={seg.part}
+                  canSend={canAct}
+                />
+              );
             }
             const trailing = seg.parts[seg.parts.length - 1];
             const trailingDone =

@@ -873,9 +873,33 @@ that cannot be reached; they copy that address back into OvertChat to finish.
 The sign-in returns through the person's own browser, so it works however the
 server is reached, including a LAN address.
 
+A connected mailbox is off in chats until its owner turns it on, so mail and
+the roughly 1,100 tokens its tools add to each request stay out of chats that
+do not need them. Typing `/gmail` turns it on for one chat, which then keeps
+it; **Use in every chat** on the Gmail row turns it on everywhere. While it is
+off, a model asked about mail tells the person to type `/gmail`.
+
+Where it is on, tool-calling models can work with that person's mail on web,
+desktop and mobile:
+
+- Search mail and read a thread.
+- Read the text of an attached PDF, Word, spreadsheet, CSV or text file up to
+  15 MB. Images and scanned PDFs cannot be read.
+- Sort mail by adding or removing labels: mark as read, archive, star, apply
+  the person's own labels, move to the trash, or report spam.
+- Save a draft, including a reply in its thread.
+
+A model cannot send mail. A draft it saves shows in the chat with its text and
+a **Send** button, and goes out only when the person presses that or sends it
+from Gmail. Nothing is deleted for good either: mail moved to the trash stays
+there for 30 days. Mail
+a model reads is saved with that chat like any other tool result; shared chat
+links leave it out.
+
 Google ends every sign-in made through an app in testing after seven days. The
 connector then shows **Sign-in ended**, and the person chooses **Reconnect**
-and signs in again.
+and signs in again. Until they do, a model asked about their mail tells them
+where to reconnect.
 
 - Google warns that it has not verified the app; continue past the warning.
   Someone who is not a test user sees "Access blocked" instead, until their
