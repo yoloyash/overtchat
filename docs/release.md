@@ -33,7 +33,10 @@ Do not change unrelated manifest fields.
 
 1. Make the version changes above and run validation.
 2. Open the PR against `main` and squash-merge it.
-3. Tag the released `main` commit with the component tag.
+3. Tag the released `main` commit with each component tag, pushing the tags
+   individually. Bulk-pushing several tags can fail to queue their tag-triggered
+   workflows. If a tag exists without a run, dispatch its workflow with the
+   `tag` input instead of moving the tag.
 4. Wait for artifact publication and the serialized promotion workflow.
 5. Verify `https://overtchat.com/install-manifest.json`.
 
