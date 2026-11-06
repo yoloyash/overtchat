@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { SettingsActions, SettingsNotice } from "../../SettingsRows";
 
 const SETUP_GUIDE_URL =
-  "https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#gmail";
+  "https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#gmail-and-google-calendar";
 
 /** The server's own Google OAuth client, which every user's sign-in goes through. */
 export function GoogleAccessDialog({ onClose }: { onClose: () => void }) {

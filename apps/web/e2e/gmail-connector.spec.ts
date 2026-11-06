@@ -4,10 +4,16 @@ import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database"
 import { e2eGoogleOrigin, e2eGooglePort } from "./helpers/google";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"];
+const CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"];
+const ALL_SCOPES = [...GMAIL_SCOPES, ...CALENDAR_SCOPES];
 
-/** Stands in for Google's token, revocation, and Gmail profile endpoints. */
+/**
+ * Stands in for Google's token and revocation endpoints, and for the Gmail
+ * and Calendar endpoints that name the account.
+ */
 let google: Server;
-let grantedScopes = GMAIL_SCOPES;
+/** What Google grants, whatever the sign-in asked for. */
+let grantedScopes = ALL_SCOPES;
 let issued = 0;
 const tokenRequests: Record<string, string>[] = [];
 const revoked: string[] = [];
@@ -47,6 +53,12 @@ test.beforeAll(async () => {
         ? json(200, { emailAddress: `inbox-${account}@example.test` })
         : json(401, {});
     }
+    if (req.url === "/calendar/v3/calendars/primary") {
+      const account = req.headers.authorization?.replace("Bearer access-", "");
+      return account
+        ? json(200, { id: `calendar-${account}@example.test` })
+        : json(401, {});
+    }
     json(404, {});
   });
   await new Promise<void>((resolve) =>
@@ -62,7 +74,7 @@ test.afterAll(async () => {
 
 test.beforeEach(() => {
   resetE2eDatabase();
-  grantedScopes = GMAIL_SCOPES;
+  grantedScopes = ALL_SCOPES;
   issued = 0;
   tokenRequests.length = 0;
   revoked.length = 0;
@@ -155,7 +167,9 @@ test("an administrator sets up Google access, then each person connects their ow
     ).toBe(409);
 
     await setUpGoogleAccess(page);
-    await expect(connectors(page)).toContainText("Sign in once to connect Gmail.");
+    await expect(connectors(page)).toContainText(
+      "Sign in once to connect Gmail and Google Calendar.",
+    );
     await expect(connectors(page).getByRole("listitem", { name: "Gmail" })).toContainText(
       "Let models search, read and organize your mail, and write drafts for you to send.",
     );
@@ -168,7 +182,7 @@ test("an administrator sets up Google access, then each person connects their ow
       "e2e-client.apps.googleusercontent.com",
     );
     expect(signIn.searchParams.get("redirect_uri")).toBe("http://localhost:1");
-    expect(signIn.searchParams.get("scope")).toBe(GMAIL_SCOPES.join(" "));
+    expect(signIn.searchParams.get("scope")).toBe(ALL_SCOPES.join(" "));
     expect(signIn.searchParams.get("access_type")).toBe("offline");
     expect(signIn.searchParams.has("login_hint")).toBe(false);
     const state = signIn.searchParams.get("state")!;
@@ -279,7 +293,7 @@ test("a sign-in that Google does not fully grant leaves nothing connected", asyn
   expect(revoked).toEqual(["refresh-1"]);
 
   // That sign-in is spent; starting again issues a new one that works.
-  grantedScopes = GMAIL_SCOPES;
+  grantedScopes = ALL_SCOPES;
   await first.dialog.getByRole("button", { name: "Start again" }).click();
   await expect(
     first.dialog.getByRole("link", { name: "Open Google sign-in" }),
@@ -346,4 +360,101 @@ test("a sign-in Google has ended asks to be reconnected with the same account", 
   // The stand-in names a new account each time, and a different account's
   // earlier grant is withdrawn once the new one is stored.
   expect(revoked).toEqual(["refresh-1"]);
+});
+
+test("one sign-in covers what the person chooses, and is widened by signing in again", async ({
+  page,
+}) => {
+  await signUpAdmin(page);
+  await setUpGoogleAccess(page);
+  const gmailRow = connectors(page).getByRole("listitem", { name: "Gmail" });
+  const calendarRow = connectors(page).getByRole("listitem", {
+    name: "Google Calendar",
+  });
+  const finish = async (signIn: Awaited<ReturnType<typeof startSignIn>>) => {
+    const link = signIn.dialog.getByRole("link", { name: "Open Google sign-in" });
+    await expect(link).toHaveAttribute("href", /state=/);
+    const state = new URL((await link.getAttribute("href"))!).searchParams.get("state");
+    await signIn.dialog
+      .getByLabel("Address from your browser")
+      .fill(`http://localhost:1/?state=${state}&code=approved-code`);
+    await signIn.dialog.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(signIn.dialog).toBeHidden();
+  };
+
+  // Both are offered. Leaving Gmail out asks Google for the calendar alone.
+  const first = await startSignIn(page);
+  const gmailChoice = first.dialog.getByRole("switch", { name: "Gmail" });
+  await expect(gmailChoice).toBeChecked();
+  await expect(
+    first.dialog.getByRole("switch", { name: "Google Calendar" }),
+  ).toBeChecked();
+  await gmailChoice.click();
+  const link = first.dialog.getByRole("link", { name: "Open Google sign-in" });
+  await expect(link).toHaveAttribute("href", /scope=[^&]*calendar(&|$)/);
+  expect(
+    new URL((await link.getAttribute("href"))!).searchParams.get("scope"),
+  ).toBe(CALENDAR_SCOPES.join(" "));
+  grantedScopes = CALENDAR_SCOPES;
+  await finish(first);
+
+  // Without Gmail, the calendar names the account.
+  await expectConnected(page, "calendar-1@example.test");
+  await expect(gmailRow).toContainText("Not part of this sign-in.");
+  await expect(
+    calendarRow.getByRole("switch", { name: "Use Google Calendar in every chat" }),
+  ).not.toBeChecked();
+  await expect(connectors(page).getByRole("switch")).toHaveCount(1);
+
+  // Adding Gmail signs in again for both, with the same account preselected.
+  await gmailRow.getByRole("button", { name: "Add" }).click();
+  const second = {
+    dialog: page.getByRole("dialog", { name: "Connect Google" }),
+    signIn: first.signIn,
+  };
+  await expect(second.dialog.getByRole("switch", { name: "Gmail" })).toBeChecked();
+  await expect(
+    second.dialog.getByRole("switch", { name: "Google Calendar" }),
+  ).toBeChecked();
+  const widened = second.dialog.getByRole("link", { name: "Open Google sign-in" });
+  await expect(widened).toHaveAttribute("href", /login_hint=calendar-1/);
+  expect(
+    new URL((await widened.getAttribute("href"))!).searchParams.get("scope"),
+  ).toBe(ALL_SCOPES.join(" "));
+  grantedScopes = ALL_SCOPES;
+  await finish(second);
+  await expect(connectors(page).getByRole("switch")).toHaveCount(2);
+
+  // Each connector has its own switch for every chat.
+  const everyChat = calendarRow.getByRole("switch", {
+    name: "Use Google Calendar in every chat",
+  });
+  await everyChat.click();
+  await expect(everyChat).toBeChecked();
+  await expect(
+    gmailRow.getByRole("switch", { name: "Use Gmail in every chat" }),
+  ).not.toBeChecked();
+  const db = openE2eDatabase();
+  try {
+    expect(db.prepare("SELECT always_on FROM integration_accounts").get()).toEqual({
+      always_on: '["calendar"]',
+    });
+  } finally {
+    db.close();
+  }
+
+  // A permission left unticked on Google's page connects the rest, and says so.
+  await connectors(page).getByRole("button", { name: "Change access" }).click();
+  grantedScopes = GMAIL_SCOPES;
+  await finish({
+    dialog: page.getByRole("dialog", { name: "Connect Google" }),
+    signIn: first.signIn,
+  });
+  await expect(
+    page.getByText("Google Calendar was not allowed on Google's page. Change access to add it."),
+  ).toBeVisible();
+  await expect(calendarRow).toContainText("Not part of this sign-in.");
+  await expect(
+    gmailRow.getByRole("switch", { name: "Use Gmail in every chat" }),
+  ).toBeVisible();
 });

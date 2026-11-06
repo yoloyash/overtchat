@@ -18,11 +18,15 @@ let repository: typeof import("@/lib/db/integrations");
 let connections: typeof import("./connections");
 
 const GMAIL_SCOPES = INTEGRATIONS.gmail.scopes.join(" ");
+const CALENDAR_SCOPES = INTEGRATIONS.calendar.scopes.join(" ");
 
 /** Stands in for Google: answers by endpoint and records what it was sent. */
 function google(
   answers: Partial<
-    Record<"token" | "profile" | "revoke", () => { status: number; body: unknown }>
+    Record<
+      "token" | "profile" | "calendar" | "revoke",
+      () => { status: number; body: unknown }
+    >
   >,
 ) {
   const calls: { endpoint: string; body: Record<string, string> }[] = [];
@@ -32,7 +36,9 @@ function google(
       ? "token"
       : url.endsWith("/revoke")
         ? "revoke"
-        : "profile";
+        : url.endsWith("/calendars/primary")
+          ? "calendar"
+          : "profile";
     calls.push({
       endpoint,
       body: init?.body
@@ -312,6 +318,78 @@ describe("signing in", () => {
     });
     expect(repository.getIntegrationConnection("ada", "gmail")).toMatchObject({
       accountEmail: "ada.work@example.test",
+      refreshToken: "refresh-2",
+    });
+  });
+
+  it("connects what Google granted when the user left a permission unticked", async () => {
+    const calls = google({
+      token: () => grant({ scope: CALENDAR_SCOPES }),
+      calendar: () => ({ status: 200, body: { id: "ada@example.test" } }),
+    });
+    const { url } = connections.startIntegrationAuthorization("ada", "google", [
+      "gmail",
+      "calendar",
+    ]);
+    expect(new URL(url).searchParams.get("scope")).toBe(
+      `${GMAIL_SCOPES} ${CALENDAR_SCOPES}`,
+    );
+
+    const integrations = await connections.completeIntegrationAuthorization(
+      "ada",
+      "google",
+      redirect(new URL(url).searchParams.get("state")!),
+    );
+
+    expect(
+      integrations.map(({ id, connection }) => [id, connection?.accountEmail]),
+    ).toEqual([
+      ["gmail", undefined],
+      ["calendar", "ada@example.test"],
+    ]);
+    // Without Gmail, the calendar names the account.
+    expect(calls.map(({ endpoint }) => endpoint)).toEqual(["token", "calendar"]);
+    await expect(
+      connections.getIntegrationAccessToken("ada", "gmail"),
+    ).rejects.toMatchObject({ code: "not_connected" });
+    await expect(
+      connections.getIntegrationAccessToken("ada", "calendar"),
+    ).resolves.toBe("access-1");
+  });
+
+  it("covers both with one sign-in, and widens a sign-in that covered one", async () => {
+    google({ token: grant, profile });
+    await connections.completeIntegrationAuthorization(
+      "ada",
+      "google",
+      redirect(start()),
+    );
+    expect(repository.getIntegration("ada", "calendar").connection).toBeNull();
+    vi.restoreAllMocks();
+
+    google({
+      token: () =>
+        grant({
+          refresh_token: "refresh-2",
+          scope: `${GMAIL_SCOPES} ${CALENDAR_SCOPES}`,
+        }),
+      profile,
+    });
+    const { url } = connections.startIntegrationAuthorization("ada", "google", [
+      "gmail",
+      "calendar",
+    ]);
+    const integrations = await connections.completeIntegrationAuthorization(
+      "ada",
+      "google",
+      redirect(new URL(url).searchParams.get("state")!),
+    );
+
+    expect(integrations.map(({ connection }) => connection?.status)).toEqual([
+      "connected",
+      "connected",
+    ]);
+    expect(repository.getIntegrationAccount("ada", "google")).toMatchObject({
       refreshToken: "refresh-2",
     });
   });

@@ -26,6 +26,7 @@ import {
 } from "@/lib/chat/context-checkpoint";
 import {
   CONTEXT_STATUS_DATA_TYPE,
+  conversationUsesCalendar,
   conversationUsesGmail,
   isManualCompactionMessage,
   canContinueMessage,
@@ -131,6 +132,15 @@ import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
 import {
+  CALENDAR_OFF_PROMPT,
+  CALENDAR_TOOL_ORDER,
+  CALENDAR_TOOL_PROMPT,
+  GMAIL_AND_CALENDAR_OFF_PROMPT,
+  calendarAccess,
+  calendarReconnectPrompt,
+  createCalendarTools,
+} from "@/lib/integrations/calendar-tools";
+import {
   createGmailTools,
   GMAIL_TOOL_ORDER,
   GMAIL_OFF_PROMPT,
@@ -194,6 +204,7 @@ export async function runChat(
     openuiEnabled = false,
     forceOpenUI = false,
     gmailEnabled = false,
+    calendarEnabled = false,
     imageGeneration,
     timeZone,
     chatId,
@@ -535,6 +546,17 @@ export async function runChat(
     gmailConnected &&
     (gmail.alwaysOn || gmailEnabled || conversationUsesGmail(messages));
   const gmailToolsEnabled = gmailOn && gmail.status === "available";
+  const calendar = toolCallingEnabled ? calendarAccess(userId) : null;
+  const calendarConnected =
+    calendar !== null && calendar.status !== "unavailable";
+  const calendarOn =
+    calendarConnected &&
+    (calendar.alwaysOn ||
+      calendarEnabled ||
+      conversationUsesCalendar(messages));
+  const calendarToolsEnabled = calendarOn && calendar.status === "available";
+  const gmailOff = gmailConnected && !gmailOn;
+  const calendarOff = calendarConnected && !calendarOn;
   const systemParts = [
     modelConfig.systemPrompt,
     activePersonalization
@@ -552,8 +574,19 @@ export async function runChat(
       ? GMAIL_TOOL_PROMPT
       : gmailOn
         ? gmailReconnectPrompt()
-        : gmailConnected
-          ? GMAIL_OFF_PROMPT
+        : null,
+    calendarToolsEnabled
+      ? CALENDAR_TOOL_PROMPT
+      : calendarOn
+        ? calendarReconnectPrompt()
+        : null,
+    // One hint covers whichever connectors are off in this chat.
+    gmailOff && calendarOff
+      ? GMAIL_AND_CALENDAR_OFF_PROMPT
+      : gmailOff
+        ? GMAIL_OFF_PROMPT
+        : calendarOff
+          ? CALENDAR_OFF_PROMPT
           : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
@@ -682,6 +715,7 @@ export async function runChat(
       ...(openuiToolsEnabled ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
       ...(gmailToolsEnabled ? [createGmailTools(userId)] : []),
+      ...(calendarToolsEnabled ? [createCalendarTools(userId)] : []),
       ...(hasMcpTools ? [mcpTools] : []),
     ];
     const agentTools: ToolSet =
@@ -697,6 +731,7 @@ export async function runChat(
       ...(codeExecutionEnabled ? CODE_EXECUTION_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
       ...(gmailToolsEnabled ? GMAIL_TOOL_ORDER : []),
+      ...(calendarToolsEnabled ? CALENDAR_TOOL_ORDER : []),
       ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
         (name) =>
@@ -706,6 +741,7 @@ export async function runChat(
           !(CODE_EXECUTION_TOOL_ORDER as readonly string[]).includes(name) &&
           !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
           !(GMAIL_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(CALENDAR_TOOL_ORDER as readonly string[]).includes(name) &&
           !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];
