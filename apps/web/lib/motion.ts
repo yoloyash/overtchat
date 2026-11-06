@@ -12,7 +12,7 @@ export const motionClasses = {
   selectPopup:
     "origin-(--transform-origin) duration-(--motion-duration-fast) data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
   toast:
-    "motion-surface data-[swiping]:transition-none data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0 data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0",
+    "transition-[opacity,translate] duration-(--motion-duration-base) ease-(--motion-ease-standard) data-[swiping]:transition-none data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0 data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0",
   collapse: "motion-collapse",
   spinner: "animate-spin motion-reduce:animate-none",
   shimmer: "animate-text-shimmer motion-reduce:animate-none",

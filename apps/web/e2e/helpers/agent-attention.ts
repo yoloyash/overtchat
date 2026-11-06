@@ -165,12 +165,13 @@ export type AgentPresenceHeartbeat = {
 /**
  * Signs in as an admin with the fixture's sessions scripted into the list
  * and event stream. `streamed` is sent after the snapshot, as the server
- * sends an alert.
+ * sends an alert; a function is asked again each time the page reconnects,
+ * a few seconds after each response ends.
  */
 export async function setupAgentAttention(
   page: Page,
   connections = agentAttentionFixture(),
-  streamed = "",
+  streamed: string | (() => string) = "",
 ) {
   const reads: Array<{ sessionId: string; read: boolean }> = [];
   const presence: AgentPresenceHeartbeat[] = [];
@@ -180,7 +181,9 @@ export async function setupAgentAttention(
   await page.context().route("**/api/agent-connections/events*", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
-      body: `event: snapshot\ndata: ${JSON.stringify({ sessions: directory(connections) })}\n\n${streamed}`,
+      body: `event: snapshot\ndata: ${JSON.stringify({ sessions: directory(connections) })}\n\n${
+        typeof streamed === "function" ? streamed() : streamed
+      }`,
     }),
   );
   await page.context().route("**/api/agent-presence", (route) => {

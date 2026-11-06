@@ -92,6 +92,21 @@ export function agentNotificationText(
   return { title, body };
 }
 
+/**
+ * An alert's title taken apart again, for a surface that shows the state and
+ * the session on lines of their own.
+ */
+export function agentNotificationHeading(
+  notification: Pick<AgentNotification, "reason" | "title">,
+): { label: string; session?: string } {
+  const label = AGENT_NOTIFICATION_LABELS[notification.reason];
+  const prefix = `${label}: `;
+  return notification.title.startsWith(prefix) &&
+    notification.title.length > prefix.length
+    ? { label, session: notification.title.slice(prefix.length) }
+    : { label: notification.title };
+}
+
 /** How long after its last heartbeat a client still counts as present. */
 export const AGENT_PRESENCE_WINDOW_MS = 180_000;
 /** How often a client reports in while it can be seen. */
