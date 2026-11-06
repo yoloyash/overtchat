@@ -156,7 +156,6 @@ function toIntegration(
           accountEmail: account.accountEmail,
           status: account.status,
           connectedAt: account.createdAt.toISOString(),
-          alwaysOn: account.alwaysOn.includes(id),
         }
       : null,
   };
@@ -206,30 +205,6 @@ export function saveIntegrationAccount(input: {
       set: grant,
     })
     .run();
-}
-
-/** Returns false when the user's sign-in does not cover the integration. */
-export function setIntegrationAlwaysOn(
-  userId: string,
-  integrationId: IntegrationId,
-  alwaysOn: boolean,
-): boolean {
-  const account = getIntegrationConnection(userId, integrationId);
-  if (!account) return false;
-  const others = account.alwaysOn.filter((id) => id !== integrationId);
-  db.update(integrationAccounts)
-    .set({
-      alwaysOn: alwaysOn ? [...others, integrationId] : others,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(integrationAccounts.userId, userId),
-        eq(integrationAccounts.provider, account.provider),
-      ),
-    )
-    .run();
-  return true;
 }
 
 /**

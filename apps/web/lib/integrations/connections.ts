@@ -198,26 +198,6 @@ export async function disconnectIntegrationAccount(
   if (removed) await revokeToken(removed.refreshToken);
 }
 
-/**
- * Forgets an access token Google has just refused, so the next request
- * refreshes it and learns whether the grant itself is still alive.
- */
-export function discardIntegrationAccessToken(
-  userId: string,
-  integrationId: IntegrationId,
-  accessToken: string,
-): void {
-  const connection = getIntegrationConnection(userId, integrationId);
-  if (connection?.accessToken !== accessToken) return;
-  storeIntegrationAccessToken({
-    userId,
-    provider: connection.provider,
-    refreshToken: connection.refreshToken,
-    accessToken,
-    accessTokenExpiresAt: new Date(0),
-  });
-}
-
 const refreshes = new Map<string, Promise<string>>();
 
 /**

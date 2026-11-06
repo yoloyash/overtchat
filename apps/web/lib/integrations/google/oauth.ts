@@ -20,15 +20,11 @@ const ENDPOINTS = {
 const REQUEST_TIMEOUT_MS = 15_000;
 
 /** End-to-end tests answer for Google from a local stand-in. */
-export function googleUrl(url: string): string {
-  const override = process.env.OVERTCHAT_E2E_GOOGLE_ORIGIN;
-  if (!override) return url;
-  const { pathname, search } = new URL(url);
-  return `${override}${pathname}${search}`;
-}
-
 function endpoint(name: keyof typeof ENDPOINTS): string {
-  return googleUrl(ENDPOINTS[name]);
+  const override = process.env.OVERTCHAT_E2E_GOOGLE_ORIGIN;
+  if (!override) return ENDPOINTS[name];
+  const url = new URL(ENDPOINTS[name]);
+  return `${override}${url.pathname}`;
 }
 
 export interface GoogleOauthClient {

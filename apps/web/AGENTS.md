@@ -34,8 +34,7 @@ chat delivery.
 - `lib/mcp` owns MCP configuration, connections, tool bindings, and lifecycle.
 - `lib/integrations` owns each user's sign-in to their own outside account
   (Google) and the integrations it covers (Gmail): the operator's OAuth
-  client, sign-in, token refresh, and the chat tools that use them. It is
-  unrelated to the Host Connector.
+  client, sign-in, and token refresh. It is unrelated to the Host Connector.
 - `lib/queries` owns client-side React Query keys, queries, and mutations.
 
 ## Authentication boundaries
