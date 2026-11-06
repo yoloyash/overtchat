@@ -26,6 +26,7 @@ import {
 } from "@/lib/chat/context-checkpoint";
 import {
   CONTEXT_STATUS_DATA_TYPE,
+  conversationUsesGmail,
   isManualCompactionMessage,
   canContinueMessage,
   joinContinuationTextParts,
@@ -129,6 +130,14 @@ import {
 import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
+import {
+  createGmailTools,
+  GMAIL_TOOL_ORDER,
+  GMAIL_OFF_PROMPT,
+  GMAIL_TOOL_PROMPT,
+  gmailAccess,
+  gmailReconnectPrompt,
+} from "@/lib/integrations/gmail-tools";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
 import { acquireMcpBinding } from "@/lib/mcp/manager";
 import { ensureChatTitle } from "@/lib/title";
@@ -184,6 +193,7 @@ export async function runChat(
     forceSearch,
     openuiEnabled = false,
     forceOpenUI = false,
+    gmailEnabled = false,
     imageGeneration,
     timeZone,
     chatId,
@@ -517,6 +527,14 @@ export async function runChat(
     getServerCapability("search").provider !== "disabled";
   const webToolsEnabled =
     toolCallingEnabled && webSearchEnabled && webSearchAvailable;
+  const gmail = toolCallingEnabled ? gmailAccess(userId) : null;
+  const gmailConnected = gmail !== null && gmail.status !== "unavailable";
+  // A chat keeps Gmail once it has it, so the tools a model was given never
+  // disappear partway through a conversation.
+  const gmailOn =
+    gmailConnected &&
+    (gmail.alwaysOn || gmailEnabled || conversationUsesGmail(messages));
+  const gmailToolsEnabled = gmailOn && gmail.status === "available";
   const systemParts = [
     modelConfig.systemPrompt,
     activePersonalization
@@ -530,6 +548,13 @@ export async function runChat(
     documentsEnabled ? DOCUMENT_TOOL_PROMPT : null,
     sandboxInfo ? codeExecutionPrompt(sandboxInfo) : null,
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
+    gmailToolsEnabled
+      ? GMAIL_TOOL_PROMPT
+      : gmailOn
+        ? gmailReconnectPrompt()
+        : gmailConnected
+          ? GMAIL_OFF_PROMPT
+          : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
       : null,
@@ -656,6 +681,7 @@ export async function runChat(
       ...(imageToolsEnabled ? [imageTools] : []),
       ...(openuiToolsEnabled ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
+      ...(gmailToolsEnabled ? [createGmailTools(userId)] : []),
       ...(hasMcpTools ? [mcpTools] : []),
     ];
     const agentTools: ToolSet =
@@ -670,6 +696,7 @@ export async function runChat(
       ...(documentsEnabled ? DOCUMENT_TOOL_ORDER : []),
       ...(codeExecutionEnabled ? CODE_EXECUTION_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
+      ...(gmailToolsEnabled ? GMAIL_TOOL_ORDER : []),
       ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
         (name) =>
@@ -678,6 +705,7 @@ export async function runChat(
           !(DOCUMENT_TOOL_ORDER as readonly string[]).includes(name) &&
           !(CODE_EXECUTION_TOOL_ORDER as readonly string[]).includes(name) &&
           !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(GMAIL_TOOL_ORDER as readonly string[]).includes(name) &&
           !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];

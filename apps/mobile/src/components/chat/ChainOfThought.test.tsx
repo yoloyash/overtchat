@@ -2,7 +2,12 @@ import React, { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { CodeExecutionPart, ReadFilePart, SearchFilesPart } from "@overtchat/shared";
+import type {
+  CodeExecutionPart,
+  GmailToolPart,
+  ReadFilePart,
+  SearchFilesPart,
+} from "@overtchat/shared";
 
 vi.mock("@expo/vector-icons", () => ({
   Feather: () => null,
@@ -10,6 +15,7 @@ vi.mock("@expo/vector-icons", () => ({
   MaterialCommunityIcons: ({ name }: { name: string }) => <i data-icon={name} />,
 }));
 vi.mock("@shopify/flash-list", () => ({ useLayoutState: useState }));
+vi.mock("../GmailLogo", () => ({ GmailLogo: () => <i data-icon="gmail" /> }));
 vi.mock("@/lib/api", () => ({ getApiBase: () => "https://server.test" }));
 vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => null }));
 vi.mock("./MarkdownBody", () => ({
@@ -293,4 +299,112 @@ it("labels running, failed and unfinished code runs", async () => {
     (container.querySelector("button") as unknown as { click(): void }).click();
   });
   expect(container.textContent).toContain("The code sandbox is unreachable.");
+});
+
+it("shows Gmail steps by sender and subject, never message text", async () => {
+  const gmailSearch: GmailToolPart = {
+    type: "tool-gmail_search",
+    toolCallId: "gmail-search",
+    state: "output-available",
+    input: { query: "from:grace is:unread" },
+    output: {
+      hasMore: false,
+      messages: [
+        {
+          from: "Grace Hopper <grace@example.test>",
+          subject: "Quarterly numbers",
+          date: "2026-11-04T10:00:00.000Z",
+          snippet: "private words",
+          unread: true,
+        },
+      ],
+    },
+  };
+  const draft: GmailToolPart = {
+    type: "tool-gmail_create_draft",
+    toolCallId: "gmail-draft",
+    state: "output-available",
+    input: { subject: "Re: Quarterly numbers" },
+    output: {
+      account: "ada@example.test",
+      to: "grace@example.test",
+      subject: "Re: Quarterly numbers",
+    },
+  };
+
+  await act(async () => {
+    root.render(<ChainOfThought parts={[gmailSearch]} active />);
+  });
+  expect(container.textContent).toContain('Searching Gmail for "from:grace is:unread"');
+
+  await act(async () => {
+    root.render(<ChainOfThought parts={[gmailSearch, draft]} active={false} />);
+  });
+  expect(container.textContent).toContain("Saved draft in Gmail");
+  await act(async () => {
+    (container.querySelector("button") as unknown as { click(): void }).click();
+  });
+  const text = container.textContent ?? "";
+  expect(text).toContain("from:grace is:unread");
+  expect(text).toContain("1 result");
+  expect(text).toContain("Quarterly numbers");
+  expect(text).toContain("Grace Hopper");
+  expect(text).toContain("To grace@example.test");
+  // The draft is a card that opens Gmail's drafts.
+  expect(container.querySelector('[data-icon="open-outline"]')).not.toBeNull();
+  expect(text).not.toContain("private words");
+  expect(text).toContain("Draft, not sent");
+  expect(container.querySelector('[data-icon="gmail"]')).not.toBeNull();
+
+  await act(async () => {
+    root.render(
+      <ChainOfThought
+        parts={[
+          {
+            ...gmailSearch,
+            state: "output-error",
+            output: undefined,
+            errorText: "This account needs to be reconnected in Settings.",
+          },
+        ]}
+        active={false}
+      />,
+    );
+  });
+  expect(container.textContent).toContain("Gmail request failed");
+});
+
+it("shows what sorting mail changed and which attachment was read", async () => {
+  const attachment: GmailToolPart = {
+    type: "tool-gmail_read_attachment",
+    toolCallId: "gmail-attachment",
+    state: "output-available",
+    input: { messageId: "m1", attachmentId: "1" },
+    output: { filename: "invoice-42.pdf", text: "private words", offset: 0, pageCount: 2 },
+  };
+  const sorted: GmailToolPart = {
+    type: "tool-gmail_modify_labels",
+    toolCallId: "gmail-sort",
+    state: "output-available",
+    input: { threadIds: ["t1", "t2"], add: ["Receipts"], remove: ["INBOX"] },
+    output: {
+      account: "ada@example.test",
+      threads: 2,
+      added: ["Receipts"],
+      removed: ["INBOX"],
+    },
+  };
+
+  await act(async () => {
+    root.render(<ChainOfThought parts={[attachment, sorted]} active={false} />);
+  });
+  expect(container.textContent).toContain("2 conversations updated");
+  await act(async () => {
+    (container.querySelector("button") as unknown as { click(): void }).click();
+  });
+  const text = container.textContent ?? "";
+  expect(text).toContain("invoice-42.pdf");
+  expect(text).toContain("2 pages");
+  expect(text).toContain("Archived, labeled Receipts");
+  expect(text).not.toContain("private words");
 });

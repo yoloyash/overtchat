@@ -55,6 +55,9 @@ const mocks = vi.hoisted(() => {
     createImageTools: vi.fn(),
     getImageCapability: vi.fn(),
     createMemoryTools: vi.fn(),
+    createGmailTools: vi.fn(),
+    gmailAccess: vi.fn(),
+    gmailReconnectPrompt: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -75,6 +78,14 @@ const mocks = vi.hoisted(() => {
     },
     toolOrder: ["web_search", "fetch_url"],
     memoryToolOrder: ["set_memory", "delete_memory"],
+    gmailTools: {
+      gmail_search: { description: "search mail" },
+      gmail_read_thread: { description: "read thread" },
+      gmail_create_draft: { description: "create draft" },
+    },
+    gmailToolOrder: ["gmail_search", "gmail_read_thread", "gmail_create_draft"],
+    gmailPrompt: "stable gmail instruction",
+    gmailOffPrompt: "stable gmail off hint",
     citationPrompt: "stable web citation instruction",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
@@ -116,6 +127,14 @@ vi.mock("@/lib/tools", () => ({
 vi.mock("@/lib/personalization/tools", () => ({
   createMemoryTools: mocks.createMemoryTools,
   MEMORY_TOOL_ORDER: mocks.memoryToolOrder,
+}));
+vi.mock("@/lib/integrations/gmail-tools", () => ({
+  createGmailTools: mocks.createGmailTools,
+  gmailAccess: mocks.gmailAccess,
+  gmailReconnectPrompt: mocks.gmailReconnectPrompt,
+  GMAIL_TOOL_ORDER: mocks.gmailToolOrder,
+  GMAIL_TOOL_PROMPT: mocks.gmailPrompt,
+  GMAIL_OFF_PROMPT: mocks.gmailOffPrompt,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
@@ -312,6 +331,9 @@ describe("chat route setup boundary", () => {
     mocks.createImageTools.mockReturnValue({});
     mocks.getImageCapability.mockReturnValue({ available: false, model: null });
     mocks.createMemoryTools.mockReturnValue(mocks.memoryTools);
+    mocks.createGmailTools.mockReturnValue(mocks.gmailTools);
+    mocks.gmailAccess.mockReturnValue({ status: "unavailable" });
+    mocks.gmailReconnectPrompt.mockReturnValue("stable gmail reconnect notice");
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -1953,6 +1975,194 @@ describe("chat route setup boundary", () => {
           content: mocks.currentDatePrompt,
         },
       }),
+    );
+  });
+
+  it("offers the Gmail tools and their warning to a user with a connected mailbox", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: true });
+
+    await POST(request());
+
+    expect(mocks.gmailAccess).toHaveBeenCalledWith("user");
+    expect(mocks.createGmailTools).toHaveBeenCalledWith("user");
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        tools: mocks.gmailTools,
+        toolOrder: mocks.gmailToolOrder,
+        instructions: {
+          role: "system",
+          content: [mocks.gmailPrompt, mocks.currentDatePrompt].join("\n\n"),
+        },
+      }),
+    );
+  });
+
+  it("keeps Gmail from a model that cannot call tools and from an unconnected user", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+
+    await POST(request());
+
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: true });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      toolCallingEnabled: false,
+    });
+
+    await POST(request());
+
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
+  });
+
+  it("keeps Gmail out of a chat until the user turns it on there, and says how", async () => {
+    const off = { ...parsedRequest, webSearchEnabled: false };
+    mocks.parseChatRequest.mockResolvedValue(off);
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: false });
+
+    await POST(request());
+
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        instructions: {
+          role: "system",
+          content: [mocks.gmailOffPrompt, mocks.currentDatePrompt].join("\n\n"),
+        },
+      }),
+    );
+
+    // The user asked for Gmail in this chat.
+    mocks.parseChatRequest.mockResolvedValue({ ...off, gmailEnabled: true });
+    await POST(request());
+    expect(mocks.agentSettings.at(-1)).toEqual(
+      expect.objectContaining({
+        tools: mocks.gmailTools,
+        instructions: {
+          role: "system",
+          content: [mocks.gmailPrompt, mocks.currentDatePrompt].join("\n\n"),
+        },
+      }),
+    );
+
+    // A chat that has used Gmail keeps it, whatever the client sends.
+    mocks.parseChatRequest.mockResolvedValue({
+      ...off,
+      messages: [
+        { id: "m1", role: "user", parts: [{ type: "text", text: "Any mail?" }] },
+        {
+          id: "m2",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-gmail_search",
+              toolCallId: "call-1",
+              state: "output-available",
+              input: { query: "in:inbox" },
+              output: { messages: [], hasMore: false },
+            },
+            { type: "text", text: "Nothing new." },
+          ],
+        },
+        { id: "m3", role: "user", parts: [{ type: "text", text: "And from Grace?" }] },
+      ],
+    });
+    await POST(request());
+    expect(mocks.agentSettings.at(-1)).toEqual(
+      expect.objectContaining({ tools: mocks.gmailTools }),
+    );
+  });
+
+  it("turns Gmail on for a client that can only type the command", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+      messages: [
+        { id: "m1", role: "user", parts: [{ type: "text", text: "/gmail any mail from Grace?" }] },
+      ],
+    });
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: false });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({ tools: mocks.gmailTools }),
+    );
+  });
+
+  it("explains an ended sign-in only where Gmail is on", async () => {
+    const off = { ...parsedRequest, webSearchEnabled: false };
+    mocks.parseChatRequest.mockResolvedValue(off);
+    mocks.gmailAccess.mockReturnValue({ status: "needs_reconnect", alwaysOn: false });
+
+    await POST(request());
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        instructions: {
+          role: "system",
+          content: [mocks.gmailOffPrompt, mocks.currentDatePrompt].join("\n\n"),
+        },
+      }),
+    );
+
+    mocks.parseChatRequest.mockResolvedValue({ ...off, gmailEnabled: true });
+    await POST(request());
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings.at(-1)).toEqual(
+      expect.objectContaining({
+        instructions: {
+          role: "system",
+          content: [
+            "stable gmail reconnect notice",
+            mocks.currentDatePrompt,
+          ].join("\n\n"),
+        },
+      }),
+    );
+  });
+
+  it("tells the model how the user restores a Gmail sign-in Google has ended", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+    mocks.gmailAccess.mockReturnValue({ status: "needs_reconnect", alwaysOn: true });
+
+    await POST(request());
+
+    expect(mocks.gmailReconnectPrompt).toHaveBeenCalled();
+    expect(mocks.createGmailTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        instructions: {
+          role: "system",
+          content: [
+            "stable gmail reconnect notice",
+            mocks.currentDatePrompt,
+          ].join("\n\n"),
+        },
+      }),
+    );
+
+    // A model that cannot call tools could not use Gmail either way.
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      toolCallingEnabled: false,
+    });
+    await POST(request());
+    expect(JSON.stringify(mocks.agentSettings.at(-1))).not.toContain(
+      "stable gmail reconnect notice",
     );
   });
 

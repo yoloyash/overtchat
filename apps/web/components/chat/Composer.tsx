@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
+import { GmailLogo } from "@/components/GmailLogo";
 import { ModelPicker } from "@/components/ModelPicker";
 import { LibraryPicker } from "@/components/library/LibraryPicker";
 import { Textarea } from "@/components/ui/textarea";
@@ -98,6 +99,15 @@ export interface ComposerCommandActions {
   onSelectModel: (modelId: string) => void;
 }
 
+export interface ComposerGmailState {
+  /** Whether this chat's next message is offered the mail tools. */
+  active: boolean;
+  /** On in every chat by the user's setting, so nothing marks this one. */
+  ambient: boolean;
+  /** Why it cannot be switched here. It still shows whether Gmail is on. */
+  lockedReason?: string;
+}
+
 interface ComposerProps {
   chatQueue: MessageQueueProps;
   configured: boolean;
@@ -108,6 +118,9 @@ interface ComposerProps {
   openuiAvailable: boolean;
   openuiUnavailableReason: string;
   openuiRequested: boolean;
+  /** Present once the user has connected Gmail. */
+  gmail?: ComposerGmailState;
+  onToggleGmail?: () => void;
   imageAvailable?: boolean;
   imageModel?: string | null;
   imageSupportsQuality?: boolean;
@@ -153,6 +166,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   openuiAvailable,
   openuiUnavailableReason,
   openuiRequested,
+  gmail,
+  onToggleGmail,
   imageAvailable, imageModel, imageSupportsQuality, imageConfiguredSize, imageOptions, onImageOptions,
   dropActive,
   models,
@@ -301,6 +316,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         },
         run: onToggleOpenUI,
       },
+      ...(gmail
+        ? [
+            {
+              name: "gmail",
+              title: "Gmail",
+              description: "Use your mail in this chat",
+              group: "actions" as const,
+              icon: GmailLogo,
+              keywords: ["mail", "email", "inbox"],
+              toggle: {
+                active: gmail.active,
+                unavailableReason: gmail.lockedReason,
+              },
+              run: onToggleGmail,
+            },
+          ]
+        : []),
       {
         name: "attach",
         title: "Add photos & files",
@@ -398,6 +430,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     openuiRequested,
     openuiUnavailableReason,
     onToggleOpenUI,
+    gmail,
+    onToggleGmail,
   ]);
 
   const argumentNames = useMemo(
@@ -761,6 +795,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           {openuiRequested ? <Check className="size-3.5" /> : null}
                         </span>
                       </Menu.CheckboxItem>
+                      {gmail && (
+                        <Menu.CheckboxItem
+                          checked={gmail.active}
+                          onCheckedChange={onToggleGmail}
+                          closeOnClick
+                          disabled={Boolean(gmail.lockedReason)}
+                          className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        >
+                          <GmailLogo className="size-4" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium">Gmail</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {gmail.lockedReason ?? "Use your mail in this chat"}
+                            </span>
+                          </span>
+                          <span className="flex size-4 shrink-0 items-center justify-center">
+                            {gmail.active ? <Check className="size-3.5" /> : null}
+                          </span>
+                        </Menu.CheckboxItem>
+                      )}
                     </Menu.Popup>
                   </Menu.Positioner>
                 </Menu.Portal>
@@ -789,6 +843,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   <X className="size-3 max-md:hidden" />
                 </button>
               )}
+              {gmail?.active &&
+                !gmail.ambient &&
+                (gmail.lockedReason ? (
+                  <span
+                    title="Gmail is on for this chat"
+                    className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground max-md:size-10 max-md:justify-center max-md:px-0"
+                  >
+                    <GmailLogo className="size-3.5" />
+                    <span className="max-md:hidden">Gmail</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onToggleGmail}
+                    className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
+                    aria-label="Remove Gmail from this chat"
+                  >
+                    <GmailLogo className="size-3.5" />
+                    <span className="max-md:hidden">Gmail</span>
+                    <X className="size-3 max-md:hidden" />
+                  </button>
+                ))}
               <ModelPicker
                 models={models}
                 selectedId={selectedModelId}

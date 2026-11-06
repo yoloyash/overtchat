@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { isGmailToolPart } from "./gmail";
 import { isMcpToolName } from "./mcp";
 import { isMemoryToolPart, type MemoryToolPart } from "./memory-tools";
 
@@ -43,6 +44,7 @@ const ACTIVITY_TYPES = new Set([
 export function isActivityPart(part: AnyPart): boolean {
   return (
     ACTIVITY_TYPES.has(part.type) ||
+    isGmailToolPart(part) ||
     (part.type === "dynamic-tool" && isMcpToolName(part.toolName))
   );
 }

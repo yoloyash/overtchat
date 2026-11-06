@@ -23,7 +23,11 @@ import {
   type CodeExecutionPart,
   type FetchedImage,
   type FetchUrlPart,
+  describeGmailToolPart,
+  gmailActivityLabel,
+  type GmailToolPart,
   isCodeExecutionPart,
+  isGmailToolPart,
   isReadFilePart,
   isSearchFilesPart,
   isToolSettled,
@@ -40,6 +44,7 @@ import type { DynamicToolUIPart } from "ai";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { useTheme } from "@/lib/theme";
+import { GmailLogo } from "../GmailLogo";
 import { CodeBlock } from "./CodeBlock";
 import { CodeExecutionFiles } from "./CodeExecutionFiles";
 import { MarkdownBody } from "./MarkdownBody";
@@ -51,6 +56,7 @@ export type ActivityPart =
   | ReadFilePart
   | SearchFilesPart
   | CodeExecutionPart
+  | GmailToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -77,6 +83,7 @@ function isTool(
     isFetchUrl(p) ||
     isFileTool(p) ||
     isCodeExecutionPart(p) ||
+    isGmailToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -128,7 +135,9 @@ export function ChainOfThought({
       ? "file"
       : isCodeExecutionPart(lastTool)
         ? "code"
-        : "web"
+        : isGmailToolPart(lastTool)
+          ? "mail"
+          : "web"
     : null;
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
@@ -190,7 +199,7 @@ function StatusIcon({
   color,
 }: {
   active: boolean;
-  toolKind: "web" | "file" | "code" | null;
+  toolKind: "web" | "file" | "code" | "mail" | null;
   failed: boolean;
   color: string;
 }) {
@@ -220,6 +229,13 @@ function StatusIcon({
   if (toolKind === "code") {
     return (
       <Ionicons name="code-slash-outline" size={15} color={color} style={styles.statusIcon} />
+    );
+  }
+  if (toolKind === "mail") {
+    return (
+      <View style={styles.statusIcon}>
+        <GmailLogo size={15} />
+      </View>
     );
   }
   if (toolKind === "web") {
@@ -290,9 +306,11 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
               ? "file-search"
               : isCodeExecutionPart(part)
                 ? "code"
-                : isMcpTool(part)
-                  ? "tool"
-                  : "brain";
+                : isGmailToolPart(part)
+                  ? "mail"
+                  : isMcpTool(part)
+                    ? "tool"
+                    : "brain";
 
   return (
     <View style={styles.step}>
@@ -308,6 +326,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchFilesStep part={part} />
         ) : isCodeExecutionPart(part) ? (
           <CodeStep part={part} />
+        ) : isGmailToolPart(part) ? (
+          <GmailStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -324,6 +344,7 @@ type RailIcon =
   | "file"
   | "file-search"
   | "code"
+  | "mail"
   | "tool"
   | "brain"
   | "failed";
@@ -346,6 +367,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <MaterialCommunityIcons name="file-search-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "code" ? (
           <Ionicons name="code-slash-outline" size={11} color={colors.mutedForeground} />
+        ) : icon === "mail" ? (
+          <GmailLogo size={11} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
@@ -777,6 +800,177 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   );
 }
 
+function gmailShortDate(iso: string | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** A Gmail tool call: senders and subjects, never message bodies. */
+function GmailStep({ part }: { part: GmailToolPart }) {
+  const { colors, fonts } = useTheme();
+  const [showAll, setShowAll] = useLayoutState(false);
+  const display = describeGmailToolPart(part);
+  const visible = showAll
+    ? display.rows
+    : display.rows.slice(0, RESULTS_PREVIEW);
+  const hidden = display.rows.length - visible.length;
+  const href = display.href;
+  const muted = { color: colors.mutedForeground, fontFamily: fonts.sansRegular };
+  const running = display.status === "running";
+
+  // A saved draft is its card; the timeline's heading already names it.
+  if (display.action === "draft" && display.status === "done" && href) {
+    return (
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open drafts in Gmail"
+        onPress={() => Linking.openURL(href).catch(() => {})}
+        style={({ pressed }) => [
+          styles.fetchRow,
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.muted,
+            opacity: pressed ? 0.7 : 1,
+          },
+        ]}
+      >
+        <View style={styles.fetchedImageText}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.stepTitle,
+              { color: colors.foreground, fontFamily: fonts.sansMedium },
+            ]}
+          >
+            {display.detail ?? "(no subject)"}
+          </Text>
+          <Text numberOfLines={1} style={[styles.metaText, muted]}>
+            {`Draft, not sent · ${
+              display.recipient ? `To ${display.recipient}` : "no recipient yet"
+            }`}
+          </Text>
+        </View>
+        <Ionicons name="open-outline" size={14} color={colors.mutedForeground} />
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.searchStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {display.detail ?? (running ? `${display.title}…` : display.title)}
+        </Text>
+        <Text style={[styles.metaText, muted]}>
+          {display.status === "error"
+            ? "Failed"
+            : running
+              ? display.detail
+                ? `${display.title}…`
+                : ""
+              : display.note}
+        </Text>
+      </View>
+      {display.error ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {display.error}
+        </Text>
+      ) : display.rows.length === 0 ? null : (
+        <View
+          style={[
+            styles.resultList,
+            { borderColor: colors.border, backgroundColor: colors.muted },
+          ]}
+        >
+          {visible.map((row, index) => (
+            <View
+              key={index}
+              style={[
+                styles.resultRow,
+                index > 0 && {
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.gmailSender,
+                  {
+                    color: colors.foreground,
+                    fontFamily: row.unread
+                      ? fonts.sansMedium
+                      : fonts.sansRegular,
+                  },
+                ]}
+              >
+                {row.sender || "(unknown sender)"}
+              </Text>
+              {row.attachments ? (
+                <Ionicons
+                  name="attach"
+                  size={13}
+                  color={colors.mutedForeground}
+                />
+              ) : null}
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.resultTitle,
+                  {
+                    color: row.unread
+                      ? colors.foreground
+                      : colors.mutedForeground,
+                    fontFamily: fonts.sansRegular,
+                  },
+                ]}
+              >
+                {row.subject ?? row.attachments?.join(", ")}
+              </Text>
+              <Text style={[styles.metaText, muted]}>
+                {gmailShortDate(row.date)}
+              </Text>
+            </View>
+          ))}
+          {hidden > 0 || showAll ? (
+            <Pressable
+              onPress={() => setShowAll((shown) => !shown)}
+              style={({ pressed }) => [
+                styles.showAllRow,
+                { borderTopColor: colors.border, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.showAllText,
+                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                ]}
+              >
+                {showAll ? "Show less" : `Show ${hidden} more`}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function ReadFileStep({ part }: { part: ReadFilePart }) {
   const { colors, fonts } = useTheme();
   const output = part.output;
@@ -959,6 +1153,7 @@ function activeLabel(last: ActivityPart | undefined): string {
     return query ? `Searching files for "${query}"` : "Searching files…";
   }
   if (isCodeExecutionPart(last)) return "Running code…";
+  if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -1001,6 +1196,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
     // Run files show inside the steps, so the summary says they are there.
     const files = parts.filter(isCodeExecutionPart).flatMap(codeExecutionFiles).length;
     return files ? `${label} · ${files} ${files === 1 ? "file" : "files"}` : label;
+  }
+  if (lastTool && isGmailToolPart(lastTool)) {
+    return gmailActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);
@@ -1051,6 +1249,7 @@ const styles = StyleSheet.create({
   stepTitle: { flexShrink: 1, fontSize: 13 },
   metaText: { fontSize: 12 },
   errorText: { fontSize: 12 },
+  gmailSender: { width: "32%", flexShrink: 0, fontSize: 13 },
   toolValue: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
