@@ -569,9 +569,15 @@ OAuth client, a Desktop app client stored in `integration_oauth_clients`. Its
 loopback redirect, `http://localhost:1`, needs no registration and no public
 address: nothing listens there, and the person pastes the address their browser
 ended on. A sign-in is bound to the user who started it by a stored state and
-PKCE verifier, lasts 15 minutes, and is spent on its first code exchange. A
-grant is stored only when it carries every scope in `INTEGRATIONS` and Gmail
-names its account; anything less is revoked.
+PKCE verifier, lasts 15 minutes, and is spent on its first code exchange.
+
+A person has one sign-in per provider, stored in `integration_accounts` with
+the scopes Google granted. It covers each integration in `INTEGRATIONS` whose
+scopes are all among them, so someone who leaves a permission unticked on
+Google's page connects the rest. A sign-in that covers nothing is not stored.
+Signing in again replaces the stored sign-in; the earlier grant is revoked only
+when it belonged to a different Google account, because revoking one grant of
+an account may end its other grants to the same client.
 
 `getIntegrationAccessToken()` returns a usable token, refreshing it once for
 concurrent callers. Only Google's `invalid_grant` marks a connection

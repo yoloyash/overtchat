@@ -865,7 +865,7 @@ Google Cloud OAuth client, so an administrator creates one first:
    blocks everyone else.
 5. Under **Clients**, create an OAuth client of type **Desktop app** and copy
    its client ID and secret.
-6. In OvertChat, choose **Set up** on the Gmail connector and enter both.
+6. In OvertChat, choose **Set up** on the Google connector and enter both.
 
 Each person then chooses **Connect**, signs in on Google's page, and allows
 access. Google sends their browser to a `http://localhost` address
@@ -915,7 +915,7 @@ where to reconnect.
   browser. **Disconnect** withdraws it at Google. If Google ends a grant, for
   example after a password change, the connector asks that person to reconnect.
 - Entering a different client ID disconnects everyone until they sign in
-  again. Removing Google access deletes every Gmail connection.
+  again. Removing Google access deletes every Google connection.
 
 ## Share with your family
 

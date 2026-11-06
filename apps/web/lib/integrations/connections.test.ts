@@ -61,7 +61,9 @@ const profile = () => ({
 });
 
 function start(userId = "ada") {
-  const { url } = connections.startIntegrationAuthorization(userId, "gmail");
+  const { url } = connections.startIntegrationAuthorization(userId, "google", [
+    "gmail",
+  ]);
   return new URL(url).searchParams.get("state")!;
 }
 const redirect = (state: string, code = "the-code") =>
@@ -88,7 +90,7 @@ describe("signing in", () => {
   it("refuses until an administrator has set up the client", () => {
     repository.deleteIntegrationOauthClient("google");
     expect(() =>
-      connections.startIntegrationAuthorization("ada", "gmail"),
+      connections.startIntegrationAuthorization("ada", "google", ["gmail"]),
     ).toThrow(/administrator/);
   });
 
@@ -96,9 +98,9 @@ describe("signing in", () => {
     const calls = google({ token: grant, profile });
     const state = start();
 
-    const integration = await connections.completeIntegrationAuthorization(
+    const [integration] = await connections.completeIntegrationAuthorization(
       "ada",
-      "gmail",
+      "google",
       redirect(state),
     );
 
@@ -115,7 +117,7 @@ describe("signing in", () => {
       refreshToken: "refresh-1",
       accessToken: "access-1",
     });
-    expect(repository.getIntegrationAuthorization("ada", "gmail")).toBeNull();
+    expect(repository.getIntegrationAuthorization("ada", "google")).toBeNull();
   });
 
   it("keeps the sign-in open when a different address is pasted", async () => {
@@ -125,7 +127,7 @@ describe("signing in", () => {
     await expect(
       connections.completeIntegrationAuthorization(
         "ada",
-        "gmail",
+        "google",
         redirect("someone-elses-state"),
       ),
     ).rejects.toThrow(/different sign-in/);
@@ -133,7 +135,7 @@ describe("signing in", () => {
 
     await connections.completeIntegrationAuthorization(
       "ada",
-      "gmail",
+      "google",
       redirect(state),
     );
     expect(repository.getIntegrationConnection("ada", "gmail")).not.toBeNull();
@@ -146,7 +148,7 @@ describe("signing in", () => {
     await expect(
       connections.completeIntegrationAuthorization(
         "grace",
-        "gmail",
+        "google",
         redirect(state),
       ),
     ).rejects.toThrow(/never started/);
@@ -160,14 +162,14 @@ describe("signing in", () => {
     await expect(
       connections.completeIntegrationAuthorization(
         "ada",
-        "gmail",
+        "google",
         redirect(state),
       ),
     ).rejects.toThrow(/no longer accepts that sign-in code/);
     await expect(
       connections.completeIntegrationAuthorization(
         "ada",
-        "gmail",
+        "google",
         redirect(state),
       ),
     ).rejects.toThrow(/already used/);
@@ -182,7 +184,7 @@ describe("signing in", () => {
     await expect(
       connections.completeIntegrationAuthorization(
         "ada",
-        "gmail",
+        "google",
         redirect(state),
       ),
     ).rejects.toThrow(/expired/);
@@ -200,10 +202,10 @@ describe("signing in", () => {
     await expect(
       connections.completeIntegrationAuthorization(
         "ada",
-        "gmail",
+        "google",
         redirect(state),
       ),
-    ).rejects.toThrow(/allow everything/);
+    ).rejects.toThrow(/keep the checkboxes/);
 
     expect(calls.at(-1)).toEqual({
       endpoint: "revoke",
@@ -212,19 +214,55 @@ describe("signing in", () => {
     expect(repository.getIntegrationConnection("ada", "gmail")).toBeNull();
   });
 
-  it("withdraws the earlier grant when the user signs in again", async () => {
-    const calls = google({ token: grant, profile });
+  it("keeps an earlier sign-in when a new one grants nothing usable", async () => {
+    google({ token: grant, profile });
+    await connections.completeIntegrationAuthorization(
+      "ada",
+      "google",
+      redirect(start()),
+    );
+    vi.restoreAllMocks();
+    const calls = google({
+      token: () =>
+        grant({
+          refresh_token: "refresh-2",
+          scope: "https://www.googleapis.com/auth/gmail.readonly",
+        }),
+      profile,
+    });
+
+    await expect(
+      connections.completeIntegrationAuthorization(
+        "ada",
+        "google",
+        redirect(start()),
+      ),
+    ).rejects.toThrow(/keep the checkboxes/);
+
+    // Withdrawing the new sign-in could take the working one with it.
+    expect(calls.some((call) => call.endpoint === "revoke")).toBe(false);
+    expect(repository.getIntegrationConnection("ada", "gmail")).toMatchObject({
+      refreshToken: "refresh-1",
+      status: "connected",
+    });
+  });
+
+  it("replaces the sign-in when the same account signs in again", async () => {
+    google({ token: grant, profile });
     // A first sign-in has no account to preselect.
-    const first = connections.startIntegrationAuthorization("ada", "gmail");
+    const first = connections.startIntegrationAuthorization("ada", "google", [
+      "gmail",
+    ]);
     expect(new URL(first.url).searchParams.has("login_hint")).toBe(false);
     await connections.completeIntegrationAuthorization(
       "ada",
-      "gmail",
+      "google",
       redirect(new URL(first.url).searchParams.get("state")!),
     );
     expect(
       new URL(
-        connections.startIntegrationAuthorization("ada", "gmail").url,
+        connections.startIntegrationAuthorization("ada", "google", ["gmail"])
+          .url,
       ).searchParams.get("login_hint"),
     ).toBe("ada@example.test");
     vi.restoreAllMocks();
@@ -235,18 +273,57 @@ describe("signing in", () => {
 
     await connections.completeIntegrationAuthorization(
       "ada",
-      "gmail",
+      "google",
       redirect(start()),
     );
 
-    expect(calls.some((call) => call.endpoint === "revoke")).toBe(false);
+    // Both sign-ins are the same account's approval of this client.
+    expect(second.some((call) => call.endpoint === "revoke")).toBe(false);
+    expect(repository.getIntegrationConnection("ada", "gmail")).toMatchObject({
+      refreshToken: "refresh-2",
+    });
+  });
+
+  it("withdraws the earlier grant when a different account signs in", async () => {
+    google({ token: grant, profile });
+    await connections.completeIntegrationAuthorization(
+      "ada",
+      "google",
+      redirect(start()),
+    );
+    vi.restoreAllMocks();
+    const second = google({
+      token: () => grant({ refresh_token: "refresh-2" }),
+      profile: () => ({
+        status: 200,
+        body: { emailAddress: "ada.work@example.test" },
+      }),
+    });
+
+    await connections.completeIntegrationAuthorization(
+      "ada",
+      "google",
+      redirect(start()),
+    );
+
     expect(second.at(-1)).toEqual({
       endpoint: "revoke",
       body: { token: "refresh-1" },
     });
     expect(repository.getIntegrationConnection("ada", "gmail")).toMatchObject({
+      accountEmail: "ada.work@example.test",
       refreshToken: "refresh-2",
     });
+  });
+
+  it("asks only for what the user chose, and refuses an empty choice", () => {
+    const { url } = connections.startIntegrationAuthorization("ada", "google", [
+      "gmail",
+    ]);
+    expect(new URL(url).searchParams.get("scope")).toBe(GMAIL_SCOPES);
+    expect(() =>
+      connections.startIntegrationAuthorization("ada", "google", []),
+    ).toThrow(/at least one/);
   });
 });
 
@@ -255,11 +332,11 @@ describe("disconnecting", () => {
     const calls = google({ token: grant, profile });
     await connections.completeIntegrationAuthorization(
       "ada",
-      "gmail",
+      "google",
       redirect(start()),
     );
 
-    await connections.disconnectIntegration("ada", "gmail");
+    await connections.disconnectIntegrationAccount("ada", "google");
 
     expect(repository.getIntegrationConnection("ada", "gmail")).toBeNull();
     expect(calls.at(-1)).toEqual({
@@ -274,7 +351,7 @@ describe("access tokens", () => {
     google({ token: grant, profile });
     await connections.completeIntegrationAuthorization(
       "ada",
-      "gmail",
+      "google",
       redirect(start()),
     );
     vi.restoreAllMocks();
@@ -282,7 +359,7 @@ describe("access tokens", () => {
 
   function expireAccessToken() {
     database.raw
-      .prepare("UPDATE integration_connections SET access_token_expires_at = ?")
+      .prepare("UPDATE integration_accounts SET access_token_expires_at = ?")
       .run(Date.now() + 30_000);
   }
 

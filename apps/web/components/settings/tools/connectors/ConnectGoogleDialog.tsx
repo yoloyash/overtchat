@@ -4,20 +4,28 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
-import { GmailLogo } from "@/components/GmailLogo";
+import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  providerIntegrations,
+  type IntegrationId,
+} from "@/lib/integrations/schema";
 import { motionClasses } from "@/lib/motion";
 import {
   startIntegrationAuthorization,
-  useConnectIntegration,
+  useConnectIntegrationAccount,
 } from "@/lib/queries/integrations";
 import { integrationKeys } from "@/lib/queries/keys";
 import { cn } from "@/lib/utils";
 import { SettingsActions, SettingsNotice } from "../../SettingsRows";
+import { INTEGRATION_DISPLAY, integrationNames } from "./integration-display";
+
+const SERVICES = providerIntegrations("google");
 
 /** Whether pasted text is already the whole address Google sent the browser to. */
 function isRedirectAddress(text: string): boolean {
@@ -30,20 +38,40 @@ function isRedirectAddress(text: string): boolean {
 }
 
 /**
- * Google sends the browser to an address on the user's own computer, where
- * nothing answers. The user brings that address back here to finish.
+ * One Google sign-in covers whichever of Google's connectors the user picks
+ * here. Google sends the browser to an address on the user's own computer,
+ * where nothing answers. The user brings that address back here to finish.
  */
-export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
-  const connect = useConnectIntegration("gmail");
+export function ConnectGoogleDialog({
+  initial,
+  onClose,
+}: {
+  /** What the sign-in covers unless the user changes it. */
+  initial: readonly IntegrationId[];
+  onClose: () => void;
+}) {
+  const connect = useConnectIntegrationAccount("google");
+  // Kept in the provider's own order, so the same choice is the same sign-in.
+  const [selected, setSelected] = useState(() =>
+    SERVICES.filter((id) => initial.includes(id)),
+  );
   const [attempt, setAttempt] = useState(0);
   const [redirectUrl, setRedirectUrl] = useState("");
   const [error, setError] = useState("");
 
   // Each start replaces the pending sign-in on the server, so it must run
-  // once per attempt and never again when the user returns from Google's tab.
+  // once per choice and attempt, and never again when the user returns from
+  // Google's tab.
   const authorization = useQuery({
-    queryKey: [...integrationKeys.all(), "authorization", "gmail", attempt],
-    queryFn: () => startIntegrationAuthorization("gmail"),
+    queryKey: [
+      ...integrationKeys.all(),
+      "authorization",
+      "google",
+      selected,
+      attempt,
+    ],
+    queryFn: () => startIntegrationAuthorization("google", selected),
+    enabled: selected.length > 0,
     staleTime: Infinity,
     gcTime: 0,
     retry: false,
@@ -55,16 +83,41 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
     if (connect.isPending) return;
     setError("");
     try {
-      const integration = await connect.mutateAsync(address);
-      toast.success({
-        title: "Gmail connected",
-        description: integration.connection?.accountEmail,
-      });
+      const integrations = await connect.mutateAsync(address);
+      const connected = integrations.filter(({ connection }) => connection);
+      const leftOut = selected.filter(
+        (id) => !connected.some((integration) => integration.id === id),
+      );
+      if (leftOut.length > 0) {
+        toast.warning({
+          title: `${integrationNames(connected.map(({ id }) => id))} connected`,
+          description: `${integrationNames(leftOut)} was not allowed on Google's page. Change access to add it.`,
+        });
+      } else {
+        toast.success({
+          title: `${integrationNames(selected)} connected`,
+          description: connected[0]?.connection?.accountEmail,
+        });
+      }
       onClose();
     } catch (error) {
-      setError(getErrorMessage(error, "Could not connect Gmail. Try again."));
+      setError(getErrorMessage(error, "Could not connect Google. Try again."));
     }
   }
+
+  function toggle(id: IntegrationId, on: boolean) {
+    setError("");
+    setRedirectUrl("");
+    setSelected((current) =>
+      SERVICES.filter((service) =>
+        service === id ? on : current.includes(service),
+      ),
+    );
+  }
+
+  // The choice is a step of its own only when there is one to make.
+  const choosing = SERVICES.length > 1;
+  const first = choosing ? 2 : 1;
 
   function startAgain() {
     setError("");
@@ -90,8 +143,8 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
           )}
         >
           <Dialog.Title className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
-            <GmailLogo className="size-5" />
-            Connect Gmail
+            <GoogleLogo className="size-5" />
+            Connect Google
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             Sign in with Google, then bring the result back here.
@@ -104,7 +157,38 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
             }}
             className="mt-5 space-y-5"
           >
-            <Step number={1} title="Sign in with Google">
+            {choosing && (
+              <Step number={1} title="Choose what to connect">
+                <ul className="mt-1 space-y-2">
+                  {SERVICES.map((id) => {
+                    const { name, Logo, description } = INTEGRATION_DISPLAY[id];
+                    return (
+                      <li key={id} className="flex items-start gap-2.5">
+                        <Logo className="mt-1 size-4" />
+                        <div className="min-w-0 flex-1">
+                          <Label
+                            htmlFor={`connect-${id}`}
+                            className="text-sm font-medium text-foreground"
+                          >
+                            {name}
+                          </Label>
+                          <p>{description}</p>
+                        </div>
+                        <Switch
+                          id={`connect-${id}`}
+                          className="mt-1"
+                          checked={selected.includes(id)}
+                          disabled={connect.isPending}
+                          onCheckedChange={(on) => toggle(id, on)}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Step>
+            )}
+
+            <Step number={first} title="Sign in with Google">
               <p>
                 Allow access, ticking any checkbox Google shows. If Google says it
                 hasn&apos;t verified this app, continue anyway. If it says
@@ -117,6 +201,10 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
                     authorization.error,
                     "Could not start the sign-in. Try again.",
                   )}
+                </SettingsNotice>
+              ) : selected.length === 0 ? (
+                <SettingsNotice className="mt-2">
+                  Choose at least one thing to connect.
                 </SettingsNotice>
               ) : (
                 <a
@@ -135,7 +223,10 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
               )}
             </Step>
 
-            <Step number={2} title="Copy the address of the page you land on">
+            <Step
+              number={first + 1}
+              title="Copy the address of the page you land on"
+            >
               <p>
                 Your browser will show a page that can&apos;t be reached. That
                 is expected. Copy its whole address, which starts with{" "}
@@ -146,12 +237,12 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
               </p>
             </Step>
 
-            <Step number={3} title="Paste it here">
-              <Label htmlFor="gmail-redirect-url" className="sr-only">
+            <Step number={first + 2} title="Paste it here">
+              <Label htmlFor="google-redirect-url" className="sr-only">
                 Address from your browser
               </Label>
               <Input
-                id="gmail-redirect-url"
+                id="google-redirect-url"
                 className="mt-1 font-mono"
                 placeholder="http://localhost:1/?state=…&code=…"
                 autoComplete="off"
@@ -196,7 +287,11 @@ export function ConnectGmailDialog({ onClose }: { onClose: () => void }) {
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={connect.isPending || !redirectUrl.trim()}
+                  disabled={
+                    connect.isPending ||
+                    selected.length === 0 ||
+                    !redirectUrl.trim()
+                  }
                 >
                   {connect.isPending ? "Connecting…" : "Connect"}
                 </Button>

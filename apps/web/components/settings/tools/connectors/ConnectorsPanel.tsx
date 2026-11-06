@@ -2,24 +2,25 @@
 
 import { Settings2 } from "lucide-react";
 import { useState } from "react";
-import { GmailLogo } from "@/components/GmailLogo";
+import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
-import type { Integration } from "@/lib/integrations/schema";
+import type { Integration, IntegrationId } from "@/lib/integrations/schema";
 import {
-  useDisconnectIntegration,
+  useDisconnectIntegrationAccount,
   useIntegrations,
   useSetIntegrationAlwaysOn,
 } from "@/lib/queries/integrations";
 import { SettingsNotice, SettingsSection } from "../../SettingsRows";
-import { ConnectGmailDialog } from "./ConnectGmailDialog";
+import { ConnectGoogleDialog } from "./ConnectGoogleDialog";
 import { GoogleAccessDialog } from "./GoogleAccessDialog";
+import { INTEGRATION_DISPLAY, integrationNames } from "./integration-display";
 
 export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
   const { data: integrations, isPending, error } = useIntegrations();
-  const gmail = integrations?.find((integration) => integration.id === "gmail");
+  const google = integrations?.filter(({ provider }) => provider === "google");
 
   return (
     <SettingsSection
@@ -28,12 +29,12 @@ export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
     >
       {isPending ? (
         <SettingsNotice className="py-6">Loading connectors…</SettingsNotice>
-      ) : error || !gmail ? (
+      ) : error || !google?.length ? (
         <SettingsNotice tone="error" className="py-6">
           {getErrorMessage(error, "Unable to load connectors.")}
         </SettingsNotice>
       ) : (
-        <GmailRow integration={gmail} isAdmin={isAdmin} />
+        <GoogleAccount integrations={google} isAdmin={isAdmin} />
       )}
     </SettingsSection>
   );
@@ -55,132 +56,210 @@ function StatusPill({ needsReconnect }: { needsReconnect: boolean }) {
   );
 }
 
-function GmailRow({
-  integration,
+/** One Google sign-in, and the connectors it does and does not cover. */
+function GoogleAccount({
+  integrations,
   isAdmin,
 }: {
-  integration: Integration;
+  integrations: Integration[];
   isAdmin: boolean;
 }) {
-  const disconnect = useDisconnectIntegration("gmail");
-  const setAlwaysOn = useSetIntegrationAlwaysOn("gmail");
-  const [connecting, setConnecting] = useState(false);
+  const disconnect = useDisconnectIntegrationAccount("google");
+  // What the sign-in dialog starts with, while it is open.
+  const [connecting, setConnecting] = useState<IntegrationId[] | null>(null);
   const [settingUp, setSettingUp] = useState(false);
-  const { configured, connection } = integration;
-  const needsReconnect = connection?.status === "needs_reconnect";
 
-  async function onAlwaysOn(alwaysOn: boolean) {
-    try {
-      await setAlwaysOn.mutateAsync(alwaysOn);
-    } catch (error) {
-      toast.error({
-        title: "Failed to change Gmail",
-        description: getErrorMessage(error, "The setting was not saved."),
-      });
-    }
-  }
+  const all = integrations.map(({ id }) => id);
+  const covered = integrations.filter(({ connection }) => connection);
+  const coveredIds = covered.map(({ id }) => id);
+  const account = covered[0]?.connection ?? null;
+  const configured = integrations[0].configured;
+  const needsReconnect = account?.status === "needs_reconnect";
 
   async function onDisconnect() {
     try {
       await disconnect.mutateAsync();
-      toast.success({ title: "Gmail disconnected" });
+      toast.success({ title: "Google disconnected" });
     } catch (error) {
       toast.error({
-        title: "Failed to disconnect Gmail",
+        title: "Failed to disconnect Google",
         description: getErrorMessage(error, "The account is still connected."),
       });
     }
   }
 
   return (
-    <div className="grid gap-3 py-4 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
-          <GmailLogo className="size-5" />
+    <div className="py-4">
+      <div className="grid gap-3 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+            <GoogleLogo className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              Google
+              {configured && account && (
+                <StatusPill needsReconnect={needsReconnect} />
+              )}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {!configured
+                ? isAdmin
+                  ? "Set up Google access for this server before anyone can connect."
+                  : "Not set up on this server. Ask an administrator to set up Google access."
+                : needsReconnect
+                  ? `Google ended access for ${account.accountEmail}. Reconnect to keep using it.`
+                  : account
+                    ? account.accountEmail
+                    : `Sign in once to connect ${integrationNames(all)}.`}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            Gmail
-            {configured && connection && (
-              <StatusPill needsReconnect={needsReconnect} />
-            )}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            {!configured
-              ? isAdmin
-                ? "Set up Google access for this server before anyone can connect."
-                : "Not set up on this server. Ask an administrator to set up Google access."
-              : needsReconnect
-                ? `Google ended access for ${connection.accountEmail}. Reconnect to keep using it.`
-                : connection
-                  ? connection.accountEmail
-                  : "Let models search, read and organize your mail, and write drafts for you to send."}
-          </p>
-        </div>
-      </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {configured && connection && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            disabled={disconnect.isPending}
-            onClick={() => void onDisconnect()}
-          >
-            {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
-          </Button>
-        )}
-        {configured && (!connection || needsReconnect) && (
-          <Button type="button" size="sm" onClick={() => setConnecting(true)}>
-            {needsReconnect ? "Reconnect" : "Connect"}
-          </Button>
-        )}
-        {isAdmin &&
-          (configured ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {configured && account && (
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
-              aria-label="Google access settings"
-              title="Google access settings"
-              onClick={() => setSettingUp(true)}
+              size="sm"
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              disabled={disconnect.isPending}
+              onClick={() => void onDisconnect()}
             >
-              <Settings2 />
+              {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
             </Button>
-          ) : (
-            <Button type="button" size="sm" onClick={() => setSettingUp(true)}>
-              Set up
+          )}
+          {configured && account && !needsReconnect && all.length > 1 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setConnecting(coveredIds)}
+            >
+              Change access
             </Button>
-          ))}
+          )}
+          {configured && (!account || needsReconnect) && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setConnecting(account ? coveredIds : all)}
+            >
+              {needsReconnect ? "Reconnect" : "Connect"}
+            </Button>
+          )}
+          {isAdmin &&
+            (configured ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Google access settings"
+                title="Google access settings"
+                onClick={() => setSettingUp(true)}
+              >
+                <Settings2 />
+              </Button>
+            ) : (
+              <Button type="button" size="sm" onClick={() => setSettingUp(true)}>
+                Set up
+              </Button>
+            ))}
+        </div>
       </div>
 
-      {configured && connection && !needsReconnect && (
+      {configured && (
+        <ul className="mt-3 space-y-3 pl-12">
+          {integrations.map((integration) => (
+            <IntegrationRow
+              key={integration.id}
+              integration={integration}
+              // A sign-in that leaves one out can be widened to include it.
+              onAdd={
+                account && !needsReconnect
+                  ? () => setConnecting([...coveredIds, integration.id])
+                  : undefined
+              }
+            />
+          ))}
+        </ul>
+      )}
+
+      {connecting && (
+        <ConnectGoogleDialog
+          initial={connecting}
+          onClose={() => setConnecting(null)}
+        />
+      )}
+      {settingUp && <GoogleAccessDialog onClose={() => setSettingUp(false)} />}
+    </div>
+  );
+}
+
+function IntegrationRow({
+  integration,
+  onAdd,
+}: {
+  integration: Integration;
+  onAdd?: () => void;
+}) {
+  const { name, Logo, description, everyChat } =
+    INTEGRATION_DISPLAY[integration.id];
+  const setAlwaysOn = useSetIntegrationAlwaysOn(integration.id);
+  const { connection } = integration;
+  const left = !connection && onAdd;
+  const usable = connection?.status === "connected";
+  const switchId = `${integration.id}-always-on`;
+
+  async function onAlwaysOn(alwaysOn: boolean) {
+    try {
+      await setAlwaysOn.mutateAsync(alwaysOn);
+    } catch (error) {
+      toast.error({
+        title: `Failed to change ${name}`,
+        description: getErrorMessage(error, "The setting was not saved."),
+      });
+    }
+  }
+
+  return (
+    <li
+      aria-label={name}
+      className="grid gap-2 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center"
+    >
+      <div className="flex min-w-0 items-start gap-2.5">
+        <Logo className="mt-1 size-4" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{name}</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {left
+              ? "Not part of this sign-in."
+              : usable
+                ? everyChat
+                : description}
+          </p>
+        </div>
+      </div>
+      {usable && (
         <label
-          htmlFor="gmail-always-on"
-          className="flex items-center justify-between gap-4 @xl:col-span-2 @xl:pl-12"
+          htmlFor={switchId}
+          className="flex items-center justify-end gap-2 text-xs text-muted-foreground"
         >
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">Use in every chat</span>
-            <span className="block text-xs leading-5 text-muted-foreground">
-              Offers the mail tools in every chat, which adds about 1,100 tokens
-              to each request. When off, type /gmail in a chat to use your mail
-              there.
-            </span>
-          </span>
+          Use in every chat
           <Switch
-            id="gmail-always-on"
+            id={switchId}
             checked={connection.alwaysOn}
             disabled={setAlwaysOn.isPending}
             onCheckedChange={(checked) => void onAlwaysOn(checked)}
-            aria-label="Use Gmail in every chat"
+            aria-label={`Use ${name} in every chat`}
           />
         </label>
       )}
-
-      {connecting && <ConnectGmailDialog onClose={() => setConnecting(false)} />}
-      {settingUp && <GoogleAccessDialog onClose={() => setSettingUp(false)} />}
-    </div>
+      {left && (
+        <Button type="button" variant="outline" size="sm" onClick={onAdd}>
+          Add
+        </Button>
+      )}
+    </li>
   );
 }

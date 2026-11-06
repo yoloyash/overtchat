@@ -119,7 +119,7 @@ function GoogleAccessForm({
     return (
       <div className="mt-5 space-y-4">
         <p className="text-sm">
-          Remove Google access? Everyone&apos;s Gmail connection on this server
+          Remove Google access? Everyone&apos;s Google connection on this server
           will be deleted, and nobody can connect until it is set up again.
         </p>
         {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
