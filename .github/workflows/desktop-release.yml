@@ -20,6 +20,10 @@ on:
     tags: ["desktop-v*"]
   workflow_dispatch:
     inputs:
+      tag:
+        description: Existing desktop-v* release tag to publish
+        required: false
+        type: string
       qualification_baseline_run:
         description: Private loopback baseline build run ID (qualification only)
         required: false
@@ -32,7 +36,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: desktop-release-${{ github.ref }}
+  group: desktop-release-${{ inputs.tag || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -54,6 +58,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.x
@@ -121,6 +127,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.x
@@ -219,6 +227,8 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.x
@@ -287,6 +297,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.x
@@ -399,7 +411,7 @@ jobs:
           retention-days: 7
 
   draft-release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.tag != ''
     needs: [build, build-linux, smoke-linux-ubuntu24, build-windows]
     runs-on: ubuntu-latest
     permissions:
@@ -422,7 +434,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           version="${TAG#desktop-v}"
           expected=$(printf '%s\n' \

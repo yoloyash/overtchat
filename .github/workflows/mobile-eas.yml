@@ -5,6 +5,10 @@ on:
     tags: ["mobile-v*"]
   workflow_dispatch:
     inputs:
+      tag:
+        description: Existing mobile-v* release tag to publish
+        required: false
+        type: string
       platform:
         description: Build and validate, or explicitly build and upload iOS with ios-release
         type: choice
@@ -14,7 +18,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: mobile-release-${{ github.ref }}
+  group: mobile-release-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -33,6 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          ref: ${{ inputs.tag || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -51,6 +56,8 @@ jobs:
 
       - name: Check mobile version
         id: version
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
           VERSION="$(node -p "require('./apps/mobile/app.json').expo.version")"
           PACKAGE_VERSION="$(node -p "require('./apps/mobile/package.json').version")"
@@ -60,7 +67,9 @@ jobs:
           test "$PACKAGE_VERSION" = "$VERSION"
           test "$VERSION_CODE" != "undefined"
 
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+          if [[ -n "${TAG_INPUT:-}" ]]; then
+            test "$TAG_INPUT" = "$EXPECTED_TAG"
+          elif [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             test "${GITHUB_REF_NAME}" = "$EXPECTED_TAG"
           fi
 
@@ -181,6 +190,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
 
       - name: Download signed Android artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -223,7 +234,7 @@ jobs:
           retention-days: 14
 
   publish-android:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.tag != ''
     needs: [build-android, smoke-android]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -234,6 +245,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -292,6 +305,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          ref: ${{ inputs.tag || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -309,7 +323,7 @@ jobs:
           xcodebuild -version
 
       - name: Check Apple upload credentials
-        if: github.event_name == 'push' || inputs.platform == 'ios-release'
+        if: github.event_name == 'push' || inputs.platform == 'ios-release' || inputs.tag != ''
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
@@ -325,6 +339,8 @@ jobs:
 
       - name: Check mobile version
         id: version
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
           node <<'NODE'
           const fs = require('node:fs');
@@ -334,7 +350,9 @@ jobs:
           assert.match(expo.version, /^\d+\.\d+\.\d+$/);
           assert.match(expo.ios.buildNumber, /^[1-9]\d*$/);
           assert.equal(expo.ios.buildNumber, String(expo.android.versionCode));
-          if (process.env.GITHUB_REF_TYPE === 'tag') {
+          if (process.env.TAG_INPUT) {
+            assert.equal(process.env.TAG_INPUT, `mobile-v${expo.version}`);
+          } else if (process.env.GITHUB_REF_TYPE === 'tag') {
             assert.equal(process.env.GITHUB_REF_NAME, `mobile-v${expo.version}`);
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${expo.version}\n`);
@@ -387,7 +405,7 @@ jobs:
 
       # Upload only. App Review submission remains an App Store Connect action.
       - name: Upload IPA to App Store Connect
-        if: github.event_name == 'push' || inputs.platform == 'ios-release'
+        if: github.event_name == 'push' || inputs.platform == 'ios-release' || inputs.tag != ''
         timeout-minutes: 30
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
