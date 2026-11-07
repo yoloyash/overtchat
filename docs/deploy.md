@@ -830,7 +830,7 @@ spreadsheets, make charts, edit images, and create documents such as Word or
 PDF files. Each run happens in a separate sandbox container without internet
 access and returns the files it writes as downloads. Choose one image:
 
-- Standard (`sandbox`): Python data, chart, image and document libraries (about 500 MB).
+- Standard (`sandbox`): Python data, chart, image and document libraries, with CJK fonts (about 600 MB).
 - Full (`sandbox-full`): also pandoc, LibreOffice, OCR and ffmpeg (about 2 GB).
 
 Guided installations choose this in `overtchat setup`, which also generates the

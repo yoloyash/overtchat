@@ -314,6 +314,7 @@ def run(payload: dict) -> dict:
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONUNBUFFERED": "1",
             "MPLBACKEND": "module://overtchat_matplotlib",
+            "MATPLOTLIBRC": os.path.join(LIB_DIR, "matplotlibrc"),
             "MPLCONFIGDIR": str(root / "tmp" / "matplotlib"),
             "XDG_CACHE_HOME": str(root / "tmp" / "cache"),
             "XDG_CONFIG_HOME": str(root / "tmp" / "config"),
