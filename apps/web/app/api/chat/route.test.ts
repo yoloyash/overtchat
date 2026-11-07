@@ -88,12 +88,9 @@ const mocks = vi.hoisted(() => {
     },
     gmailToolOrder: ["gmail_search", "gmail_read_thread", "gmail_create_draft"],
     gmailPrompt: "stable gmail instruction",
-    gmailOffPrompt: "stable gmail off hint",
     calendarTools: { calendar_list_events: { description: "events" } },
     calendarToolOrder: ["calendar_list_events"],
     calendarPrompt: "stable calendar instruction",
-    calendarOffPrompt: "stable calendar off hint",
-    bothOffPrompt: "stable gmail and calendar off hint",
     citationPrompt: "stable web citation instruction",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
@@ -142,7 +139,6 @@ vi.mock("@/lib/integrations/gmail-tools", () => ({
   gmailReconnectPrompt: mocks.gmailReconnectPrompt,
   GMAIL_TOOL_ORDER: mocks.gmailToolOrder,
   GMAIL_TOOL_PROMPT: mocks.gmailPrompt,
-  GMAIL_OFF_PROMPT: mocks.gmailOffPrompt,
 }));
 vi.mock("@/lib/integrations/calendar-tools", () => ({
   createCalendarTools: mocks.createCalendarTools,
@@ -150,8 +146,6 @@ vi.mock("@/lib/integrations/calendar-tools", () => ({
   calendarReconnectPrompt: mocks.calendarReconnectPrompt,
   CALENDAR_TOOL_ORDER: mocks.calendarToolOrder,
   CALENDAR_TOOL_PROMPT: mocks.calendarPrompt,
-  CALENDAR_OFF_PROMPT: mocks.calendarOffPrompt,
-  GMAIL_AND_CALENDAR_OFF_PROMPT: mocks.bothOffPrompt,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
@@ -567,7 +561,15 @@ describe("chat route setup boundary", () => {
         openuiEnabled: false,
       });
       expect((await POST(request())).status).toBe(200);
-      expect(mocks.agentSettings[0].tools).not.toHaveProperty("present_openui");
+      // The tool is offered wherever a client renders it; the language
+      // arrives only with the skill, which nothing here loaded.
+      if (supported) {
+        expect(mocks.agentSettings[0].tools).toHaveProperty("present_openui");
+      } else {
+        expect(mocks.agentSettings[0].tools ?? {}).not.toHaveProperty(
+          "present_openui",
+        );
+      }
       expect(mocks.agentSettings[0].instructions).not.toEqual(
         expect.objectContaining({
           content: expect.stringContaining("Interactive UI (OpenUI)"),
@@ -2000,7 +2002,24 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("offers the Gmail tools and their warning to a user with a connected mailbox", async () => {
+  type Settings = Record<string, unknown>;
+  const content = (settings: Settings) =>
+    (settings.instructions as { content: string }).content;
+  const toolsOf = (settings: Settings) =>
+    settings.tools as Record<
+      string,
+      { execute: (input: unknown, options: unknown) => Promise<unknown> }
+    >;
+  type ReplayedMessage = {
+    role: string;
+    parts: { type: string; text?: string; input?: unknown }[];
+  };
+  const replayed = () =>
+    mocks.convertToModelMessages.mock.calls.at(-1)![0] as ReplayedMessage[];
+  const textsOf = (message: ReplayedMessage) =>
+    message.parts.flatMap((part) => (part.type === "text" ? [part.text] : []));
+
+  it("loads a connector's skill into every chat when the user chose that", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
       webSearchEnabled: false,
@@ -2011,19 +2030,21 @@ describe("chat route setup boundary", () => {
 
     expect(mocks.gmailAccess).toHaveBeenCalledWith("user");
     expect(mocks.createGmailTools).toHaveBeenCalledWith("user");
-    expect(mocks.agentSettings[0]).toEqual(
-      expect.objectContaining({
-        tools: mocks.gmailTools,
-        toolOrder: mocks.gmailToolOrder,
-        instructions: {
-          role: "system",
-          content: [mocks.gmailPrompt, mocks.currentDatePrompt].join("\n\n"),
-        },
-      }),
-    );
+    const settings = mocks.agentSettings[0];
+    expect(Object.keys(toolsOf(settings))).toEqual(["view_skill", "call_tool"]);
+    expect(settings.toolOrder).toEqual(["view_skill", "call_tool"]);
+    const system = content(settings);
+    expect(
+      system.startsWith(
+        '<skill id="gmail" name="Gmail">\nstable gmail instruction\n\nTools of this skill.',
+      ),
+    ).toBe(true);
+    expect(system).toContain('{"name":"gmail_search","description":"search mail"');
+    expect(system).not.toContain("<available_skills>");
+    expect(system.endsWith(`</skill>\n\n${mocks.currentDatePrompt}`)).toBe(true);
   });
 
-  it("keeps Gmail from a model that cannot call tools and from an unconnected user", async () => {
+  it("keeps skills from a model that cannot call tools and from an unconnected user", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
       webSearchEnabled: false,
@@ -2033,6 +2054,7 @@ describe("chat route setup boundary", () => {
 
     expect(mocks.createGmailTools).not.toHaveBeenCalled();
     expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(content(mocks.agentSettings[0])).not.toContain("skill");
 
     mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: true });
     mocks.getModelConfig.mockResolvedValue({
@@ -2044,44 +2066,54 @@ describe("chat route setup boundary", () => {
 
     expect(mocks.createGmailTools).not.toHaveBeenCalled();
     expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
+    expect(content(mocks.agentSettings.at(-1)!)).not.toContain("skill");
   });
 
-  it("keeps Gmail out of a chat until the user turns it on there, and says how", async () => {
+  it("lists a connected connector as a skill, and loads it where a message asks", async () => {
     const off = { ...parsedRequest, webSearchEnabled: false };
     mocks.parseChatRequest.mockResolvedValue(off);
     mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: false });
+    mocks.inlineUploads.mockImplementation(async (messages: unknown) => messages);
 
     await POST(request());
 
-    expect(mocks.createGmailTools).not.toHaveBeenCalled();
-    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
-    expect(mocks.agentSettings[0]).toEqual(
-      expect.objectContaining({
-        instructions: {
-          role: "system",
-          content: [mocks.gmailOffPrompt, mocks.currentDatePrompt].join("\n\n"),
-        },
-      }),
+    const settings = mocks.agentSettings[0];
+    expect(Object.keys(toolsOf(settings))).toEqual(["view_skill", "call_tool"]);
+    const system = content(settings);
+    expect(system).toContain(
+      "<available_skills>\n<skill>\n<id>gmail</id>\n<name>Gmail</name>",
+    );
+    expect(system).not.toContain("stable gmail instruction");
+    expect(system).not.toContain("/gmail");
+    expect(textsOf(replayed().at(-1)!)).toEqual(["Hello"]);
+    // A model loads the skill by viewing it.
+    expect(await toolsOf(settings).view_skill.execute({ id: "gmail" }, {})).toContain(
+      '<skill id="gmail" name="Gmail">\nstable gmail instruction',
     );
 
-    // The user asked for Gmail in this chat.
+    // The user asked for Gmail with this message: the message records it,
+    // and the skill's text travels beside it, not in the system prompt.
     mocks.parseChatRequest.mockResolvedValue({ ...off, gmailEnabled: true });
     await POST(request());
-    expect(mocks.agentSettings.at(-1)).toEqual(
+    expect(mocks.commitChatTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        tools: mocks.gmailTools,
-        instructions: {
-          role: "system",
-          content: [mocks.gmailPrompt, mocks.currentDatePrompt].join("\n\n"),
-        },
+        userMessage: expect.objectContaining({
+          metadata: expect.objectContaining({ skills: ["gmail"] }),
+        }),
       }),
     );
+    expect(textsOf(replayed().at(-1)!)).toEqual([
+      "Hello",
+      expect.stringContaining('<skill id="gmail" name="Gmail">\nstable gmail instruction'),
+    ]);
+    expect(content(mocks.agentSettings.at(-1)!)).toBe(system);
 
-    // A chat that has used Gmail keeps it, whatever the client sends.
+    // A chat that used Gmail replays its calls as the call_tool calls the
+    // model made, and attaches nothing again.
     mocks.parseChatRequest.mockResolvedValue({
       ...off,
       messages: [
-        { id: "m1", role: "user", parts: [{ type: "text", text: "Any mail?" }] },
+        { id: "m1", role: "user", parts: [{ type: "text", text: "/gmail any mail?" }] },
         {
           id: "m2",
           role: "assistant",
@@ -2096,86 +2128,52 @@ describe("chat route setup boundary", () => {
             { type: "text", text: "Nothing new." },
           ],
         },
-        { id: "m3", role: "user", parts: [{ type: "text", text: "And from Grace?" }] },
+        { id: "m3", role: "user", parts: [{ type: "text", text: "/gmail and from Grace?" }] },
       ],
     });
     await POST(request());
-    expect(mocks.agentSettings.at(-1)).toEqual(
-      expect.objectContaining({ tools: mocks.gmailTools }),
+    const history = replayed();
+    expect(textsOf(history[0])).toEqual([
+      "/gmail any mail?",
+      expect.stringContaining('<skill id="gmail"'),
+    ]);
+    expect(history[1].parts[0]).toEqual(
+      expect.objectContaining({
+        type: "tool-call_tool",
+        input: { tool_name: "gmail_search", params: { query: "in:inbox" } },
+      }),
     );
+    expect(textsOf(history[2])).toEqual(["/gmail and from Grace?"]);
   });
 
-  it("turns Gmail on for a client that can only type the command", async () => {
-    mocks.parseChatRequest.mockResolvedValue({
-      ...parsedRequest,
-      webSearchEnabled: false,
-      messages: [
-        { id: "m1", role: "user", parts: [{ type: "text", text: "/gmail any mail from Grace?" }] },
-      ],
-    });
-    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: false });
-
-    await POST(request());
-
-    expect(mocks.agentSettings[0]).toEqual(
-      expect.objectContaining({ tools: mocks.gmailTools }),
-    );
-  });
-
-  it("explains an ended sign-in only where Gmail is on", async () => {
+  it("explains an ended sign-in through the skill, with no tools to run", async () => {
     const off = { ...parsedRequest, webSearchEnabled: false };
     mocks.parseChatRequest.mockResolvedValue(off);
-    mocks.gmailAccess.mockReturnValue({ status: "needs_reconnect", alwaysOn: false });
-
-    await POST(request());
-    expect(mocks.agentSettings[0]).toEqual(
-      expect.objectContaining({
-        instructions: {
-          role: "system",
-          content: [mocks.gmailOffPrompt, mocks.currentDatePrompt].join("\n\n"),
-        },
-      }),
-    );
-
-    mocks.parseChatRequest.mockResolvedValue({ ...off, gmailEnabled: true });
-    await POST(request());
-    expect(mocks.createGmailTools).not.toHaveBeenCalled();
-    expect(mocks.agentSettings.at(-1)).toEqual(
-      expect.objectContaining({
-        instructions: {
-          role: "system",
-          content: [
-            "stable gmail reconnect notice",
-            mocks.currentDatePrompt,
-          ].join("\n\n"),
-        },
-      }),
-    );
-  });
-
-  it("tells the model how the user restores a Gmail sign-in Google has ended", async () => {
-    mocks.parseChatRequest.mockResolvedValue({
-      ...parsedRequest,
-      webSearchEnabled: false,
-    });
     mocks.gmailAccess.mockReturnValue({ status: "needs_reconnect", alwaysOn: true });
 
     await POST(request());
-
     expect(mocks.gmailReconnectPrompt).toHaveBeenCalled();
     expect(mocks.createGmailTools).not.toHaveBeenCalled();
-    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
-    expect(mocks.agentSettings[0]).toEqual(
-      expect.objectContaining({
-        instructions: {
-          role: "system",
-          content: [
-            "stable gmail reconnect notice",
-            mocks.currentDatePrompt,
-          ].join("\n\n"),
-        },
-      }),
+    const system = content(mocks.agentSettings[0]);
+    expect(system).toContain(
+      '<skill id="gmail" name="Gmail">\nstable gmail reconnect notice\n</skill>',
     );
+    expect(system).not.toContain("Tools of this skill");
+
+    mocks.gmailAccess.mockReturnValue({ status: "needs_reconnect", alwaysOn: false });
+    await POST(request());
+    const settings = mocks.agentSettings.at(-1)!;
+    expect(content(settings)).toContain("<id>gmail</id>");
+    expect(content(settings)).not.toContain("reconnect notice");
+    expect(await toolsOf(settings).view_skill.execute({ id: "gmail" }, {})).toContain(
+      "stable gmail reconnect notice",
+    );
+    expect(
+      await toolsOf(settings).call_tool.execute(
+        { tool_name: "gmail_search", params: { query: "x" } },
+        {},
+      ),
+    ).toContain('Tool "gmail_search" is not available');
 
     // A model that cannot call tools could not use Gmail either way.
     mocks.getModelConfig.mockResolvedValue({
@@ -2183,120 +2181,106 @@ describe("chat route setup boundary", () => {
       toolCallingEnabled: false,
     });
     await POST(request());
-    expect(JSON.stringify(mocks.agentSettings.at(-1))).not.toContain(
-      "stable gmail reconnect notice",
-    );
+    expect(JSON.stringify(mocks.agentSettings.at(-1))).not.toContain("gmail");
   });
 
-  it("offers the calendar tools beside Gmail's, each only where it is on", async () => {
+  it("offers the calendar beside Gmail, each as the user set it", async () => {
     const off = { ...parsedRequest, webSearchEnabled: false };
     mocks.parseChatRequest.mockResolvedValue(off);
     mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: false });
     mocks.calendarAccess.mockReturnValue({ status: "available", alwaysOn: false });
+    mocks.inlineUploads.mockImplementation(async (messages: unknown) => messages);
 
-    // Both connected and off: one hint names both commands.
+    // Both listed, Gmail first.
     await POST(request());
     expect(mocks.calendarAccess).toHaveBeenCalledWith("user");
-    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
-    expect(mocks.agentSettings[0]).toEqual(
-      expect.objectContaining({
-        instructions: {
-          role: "system",
-          content: [mocks.bothOffPrompt, mocks.currentDatePrompt].join("\n\n"),
-        },
-      }),
-    );
+    let system = content(mocks.agentSettings[0]);
+    expect(system.indexOf("<id>gmail</id>")).toBeGreaterThan(-1);
+    expect(system.indexOf("<id>calendar</id>")).toBeGreaterThan(system.indexOf("<id>gmail</id>"));
+    expect(Object.keys(toolsOf(mocks.agentSettings[0]))).toEqual(["view_skill", "call_tool"]);
 
-    // The user asked for the calendar here; Gmail stays off and says how.
+    // The calendar in every chat: its text in the system prompt, Gmail still listed.
+    mocks.calendarAccess.mockReturnValue({ status: "available", alwaysOn: true });
+    await POST(request());
+    system = content(mocks.agentSettings.at(-1)!);
+    expect(system).toContain('<skill id="calendar" name="Google Calendar">\nstable calendar instruction');
+    expect(system).toContain('{"name":"calendar_list_events"');
+    expect(system).toContain("<id>gmail</id>");
+    expect(system).not.toContain("<id>calendar</id>");
+    expect(system.indexOf("<skill id=")).toBeLessThan(system.indexOf("<available_skills>"));
+
+    // Both in every chat: two blocks, Gmail's first, and nothing left to list.
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: true });
+    await POST(request());
+    system = content(mocks.agentSettings.at(-1)!);
+    expect(system.indexOf('<skill id="gmail"')).toBeLessThan(system.indexOf('<skill id="calendar"'));
+    expect(system).not.toContain("<available_skills>");
+
+    // The user asked for the calendar with this message.
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: false });
+    mocks.calendarAccess.mockReturnValue({ status: "available", alwaysOn: false });
     mocks.parseChatRequest.mockResolvedValue({ ...off, calendarEnabled: true });
     await POST(request());
-    expect(mocks.createCalendarTools).toHaveBeenCalledWith("user");
-    expect(mocks.createGmailTools).not.toHaveBeenCalled();
-    expect(mocks.agentSettings.at(-1)).toEqual(
+    expect(mocks.commitChatTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        tools: mocks.calendarTools,
-        toolOrder: mocks.calendarToolOrder,
-        instructions: {
-          role: "system",
-          content: [
-            mocks.calendarPrompt,
-            mocks.gmailOffPrompt,
-            mocks.currentDatePrompt,
-          ].join("\n\n"),
-        },
+        userMessage: expect.objectContaining({
+          metadata: expect.objectContaining({ skills: ["calendar"] }),
+        }),
       }),
     );
-
-    // Both on: Gmail's tools come first, and no hint is left to give.
-    mocks.parseChatRequest.mockResolvedValue({
-      ...off,
-      gmailEnabled: true,
-      messages: [
-        { id: "m1", role: "user", parts: [{ type: "text", text: "/calendar am I free?" }] },
-      ],
-    });
-    await POST(request());
-    expect(mocks.agentSettings.at(-1)).toEqual(
-      expect.objectContaining({
-        tools: { ...mocks.gmailTools, ...mocks.calendarTools },
-        toolOrder: [...mocks.gmailToolOrder, ...mocks.calendarToolOrder],
-        instructions: {
-          role: "system",
-          content: [
-            mocks.gmailPrompt,
-            mocks.calendarPrompt,
-            mocks.currentDatePrompt,
-          ].join("\n\n"),
-        },
-      }),
-    );
+    expect(textsOf(replayed().at(-1)!)).toEqual([
+      "Hello",
+      expect.stringContaining('<skill id="calendar" name="Google Calendar">'),
+    ]);
   });
 
-  it("keeps the calendar in a chat that has used it, and explains an ended sign-in there", async () => {
-    const used = {
-      ...parsedRequest,
-      webSearchEnabled: false,
-      messages: [
-        { id: "m1", role: "user", parts: [{ type: "text", text: "Am I free?" }] },
-        {
-          id: "m2",
-          role: "assistant",
-          parts: [
-            {
-              type: "tool-calendar_list_events",
-              toolCallId: "call-1",
-              state: "output-available",
-              input: {},
-              output: { events: [], hasMore: false },
-            },
-            { type: "text", text: "You are free." },
-          ],
-        },
-        { id: "m3", role: "user", parts: [{ type: "text", text: "And Monday?" }] },
-      ],
-    };
-    mocks.parseChatRequest.mockResolvedValue(used);
-    mocks.calendarAccess.mockReturnValue({ status: "available", alwaysOn: false });
+  it("offers present_openui and the Interactive UI skill wherever a client renders it", async () => {
+    const supported = { ...parsedRequest, webSearchEnabled: false, openuiSupported: true };
+    mocks.parseChatRequest.mockResolvedValue(supported);
+    mocks.inlineUploads.mockImplementation(async (messages: unknown) => messages);
 
     await POST(request());
-    expect(mocks.agentSettings[0]).toEqual(
-      expect.objectContaining({ tools: mocks.calendarTools }),
+    let settings = mocks.agentSettings[0];
+    expect(Object.keys(toolsOf(settings))).toEqual(["present_openui", "view_skill", "call_tool"]);
+    expect(settings.toolOrder).toEqual(["view_skill", "call_tool", "present_openui"]);
+    expect(settings.stopWhen).toEqual(["stop-at-50", expect.any(Function)]);
+    expect(content(settings)).toContain("<id>interactive_ui</id>");
+    expect(content(settings)).not.toContain("Interactive UI (OpenUI):");
+    expect(await toolsOf(settings).view_skill.execute({ id: "interactive_ui" }, {})).toContain(
+      '<skill id="interactive_ui" name="Interactive UI">\nInteractive UI (OpenUI):',
     );
 
-    mocks.calendarAccess.mockReturnValue({ status: "needs_reconnect", alwaysOn: false });
+    // The switch loads it into every chat.
+    mocks.parseChatRequest.mockResolvedValue({ ...supported, openuiEnabled: true });
     await POST(request());
-    expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
-    expect(mocks.agentSettings.at(-1)).toEqual(
+    settings = mocks.agentSettings.at(-1)!;
+    expect(content(settings)).toContain('<skill id="interactive_ui" name="Interactive UI">\nInteractive UI (OpenUI):');
+    expect(content(settings)).not.toContain("<available_skills>");
+
+    // A one-message request loads it for that message and asks for an interface.
+    mocks.parseChatRequest.mockResolvedValue({ ...supported, forceOpenUI: true });
+    await POST(request());
+    expect(mocks.commitChatTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        instructions: {
-          role: "system",
-          content: [
-            "stable calendar reconnect notice",
-            mocks.currentDatePrompt,
-          ].join("\n\n"),
-        },
+        userMessage: expect.objectContaining({
+          metadata: expect.objectContaining({ skills: ["interactive_ui"] }),
+        }),
       }),
     );
+    expect(textsOf(replayed().at(-1)!)).toEqual([
+      "Hello",
+      expect.stringContaining('<skill id="interactive_ui"'),
+      expect.stringContaining("The user selected Interactive UI for this message"),
+    ]);
+
+    // Without a renderer, or spoken, there is nothing to offer.
+    mocks.parseChatRequest.mockResolvedValue({ ...supported, openuiSupported: false });
+    await POST(request());
+    expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
+    expect(content(mocks.agentSettings.at(-1)!)).not.toContain("interactive_ui");
+    mocks.parseChatRequest.mockResolvedValue({ ...supported, responseStyle: "voice" });
+    await POST(request());
+    expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
   });
 
   it("does not load or expose personalization in temporary chats", async () => {

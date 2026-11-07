@@ -10,7 +10,7 @@ export const INTEGRATION_DISPLAY: Record<
     name: string;
     Logo: ComponentType<{ className?: string }>;
     description: string;
-    /** What turning on "Use in every chat" costs, and the alternative. */
+    /** What turning on "Use in every chat" costs, and what happens otherwise. */
     everyChat: string;
   }
 > = {
@@ -20,7 +20,7 @@ export const INTEGRATION_DISPLAY: Record<
     description:
       "Let models search, read and organize your mail, and write drafts for you to send.",
     everyChat:
-      "Offers the mail tools in every chat, which adds about 1,100 tokens to each request. When off, type /gmail in a chat to use your mail there.",
+      "Loads the mail skill into every chat from the start, which adds about 1,100 tokens to each request. When off, models load it when a message needs your mail, or when you type /gmail in a chat.",
   },
   calendar: {
     name: "Google Calendar",
@@ -28,7 +28,7 @@ export const INTEGRATION_DISPLAY: Record<
     description:
       "Let models check your schedule and add, change or delete events.",
     everyChat:
-      "Offers the calendar tools in every chat, which adds about 1,000 tokens to each request. When off, type /calendar in a chat to use your calendar there.",
+      "Loads the calendar skill into every chat from the start, which adds about 900 tokens to each request. When off, models load it when a message needs your schedule, or when you type /calendar in a chat.",
   },
 };
 

@@ -62,7 +62,7 @@ export default function ChatSettings() {
         />
         <Toggle
           title="Interactive UI (OpenUI)"
-          detail="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI. You can also request it per message from the + menu. When active, it adds about 6,800 tokens to the system prompt, so responses may start a little slower and use more context."
+          detail="Load the OpenUI instructions into every chat, so supported models render interactive charts, tables, forms and cards without loading them first. That adds about 6,800 tokens to every request. When off, models load the instructions when a message calls for an interactive interface, or when you ask for one from the + menu."
           value={openui}
           onChange={setOpenUIEnabled}
         />

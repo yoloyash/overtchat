@@ -880,12 +880,14 @@ unticked on Google's page is left out and the rest connects. **Change access**,
 or **Add** beside a connector that was left out, signs in again with a new
 choice; Google has no way to widen or narrow a sign-in in place.
 
-A connector is off in chats until its owner turns it on, so mail, events and
-the roughly 1,000 tokens each connector's tools add to a request stay out of
-chats that do not need them. Typing `/gmail` or `/calendar` turns that
-connector on for one chat, which then keeps it; **Use in every chat** beside
-it turns it on everywhere. While a connector is off, a model asked about mail
-or the calendar tells the person which command to type.
+A connected connector costs a chat one line until a message needs it: a model
+asked about mail or the calendar loads the connector's instructions and tools
+itself, roughly 1,000 tokens, once per chat, and the chat keeps them. Typing
+`/gmail` or `/calendar` loads a connector straight away for one chat;
+**Use in every chat** beside it loads it into every chat from the start,
+which skips that step at the cost of those tokens in every request. The tools
+a model is given never change during a chat, so a slow local model does not
+reprocess the conversation when a connector joins.
 
 Where Gmail is on, tool-calling models can work with that person's mail on
 web, desktop and mobile:
