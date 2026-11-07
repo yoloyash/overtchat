@@ -9,6 +9,7 @@ import { filePreview } from "@/lib/chat/file-preview";
 import { cn } from "@/lib/utils";
 import { MediaIcon } from "./attachment-icons";
 import { useFilePanel } from "./FilePanelContext";
+import { SaveToProjectButton } from "@/components/projects/SaveToProjectButton";
 
 const CodeFilesContext = createContext<ReadonlyMap<string, CodeExecutionFile>>(new Map());
 
@@ -201,6 +202,10 @@ function CodeFileCard({ file }: { file: CodeExecutionFile }) {
       >
         <Download aria-hidden className="size-4" />
       </a>
+      <SaveToProjectButton
+        source={{ kind: "file", file }}
+        className="h-auto self-stretch rounded-none px-3 text-muted-foreground"
+      />
     </span>
   );
 }

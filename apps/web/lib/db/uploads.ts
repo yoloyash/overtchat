@@ -5,7 +5,7 @@ import path from "node:path";
 import { and, eq, lt, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
-import { messages, uploads, chatShareUploads } from "@/lib/db/schema";
+import { messages, uploads, chatShareUploads, projectFiles } from "@/lib/db/schema";
 import { MAX_BYTES_IMAGE } from "@/lib/extract";
 import { allocateTokenBudget } from "@/lib/chat/chat-files";
 import { measureTokens, rangeEnd } from "@/lib/chat/document-text";
@@ -111,9 +111,9 @@ export async function readFetchedImage(
 }
 
 /**
- * Deletes upload rows (and their disk bytes) older than 24h that no message
- * references. Composer-abandoned uploads never get persisted into a message, so
- * they'd otherwise leak forever.
+ * Deletes upload rows (and their disk bytes) older than 24h that no message,
+ * share, or project references. Composer-abandoned uploads never get persisted
+ * into a message, so they'd otherwise leak forever.
  */
 export async function sweepOrphanedUploads(): Promise<void> {
   const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS);
@@ -131,7 +131,9 @@ export async function sweepOrphanedUploads(): Promise<void> {
         .where(sql`${messages.parts} LIKE ${needle}`).get();
       const shared = tx.select({ id: chatShareUploads.uploadId }).from(chatShareUploads)
         .where(eq(chatShareUploads.uploadId, id)).get();
-      if (referenced || shared) return false;
+      const inProject = tx.select({ id: projectFiles.uploadId }).from(projectFiles)
+        .where(eq(projectFiles.uploadId, id)).get();
+      if (referenced || shared || inProject) return false;
       return tx.delete(uploads).where(eq(uploads.id, id)).run().changes > 0;
     }, { behavior: "immediate" });
     if (deleted) await fsp.rm(uploadPath(id), { force: true });

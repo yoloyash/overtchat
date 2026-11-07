@@ -813,6 +813,45 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
   }),
 }));
 
+/**
+ * Reference files every chat in a project can read. Each row links an
+ * existing upload; the bytes and extracted text stay in `uploads`. Removing a
+ * row never touches messages that attached the same upload.
+ */
+export const projectFiles = sqliteTable(
+  "project_files",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    uploadId: text("upload_id")
+      .notNull()
+      .references(() => uploads.id, { onDelete: "cascade" }),
+    /** The chat whose output was saved into the project, when there was one. */
+    sourceChatId: text("source_chat_id").references(() => chats.id, {
+      onDelete: "set null",
+    }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.uploadId] }),
+    index("project_files_upload_idx").on(table.uploadId),
+  ],
+);
+
+export const projectFilesRelations = relations(projectFiles, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectFiles.projectId],
+    references: [projects.id],
+  }),
+  upload: one(uploads, {
+    fields: [projectFiles.uploadId],
+    references: [uploads.id],
+  }),
+}));
+
 export const userModelPreferences = sqliteTable("user_model_preferences", {
   userId: text("user_id")
     .primaryKey()
