@@ -29,7 +29,8 @@ a run, and the image holds no credentials.
 The working directory contains `uploads/` (read-only inputs), `outputs/`
 (returned files) and `tmp/`. `/mnt/data` is a symlink to `/proc/self/cwd`, so
 `/mnt/data/uploads/...` works in every run without mount namespaces.
-`plt.show()` saves figures to `outputs/` through `lib/overtchat_matplotlib.py`.
+`plt.show()` saves figures to `outputs/` through `lib/overtchat_matplotlib.py`,
+and `lib/matplotlibrc` sets font fallback so CJK labels render in both tiers.
 Skills under `skills/*/SKILL.md` are listed by `GET /healthz`.
 
 ## Changes

@@ -103,6 +103,51 @@ class SandboxTests(unittest.TestCase):
         )
         self.assertEqual(sorted(outputs(result)), ["outputs/bar.png", "outputs/line.png"])
 
+    def test_renders_cjk_text_in_charts(self):
+        # Matplotlib warns on stderr about every glyph a font lacks, so a
+        # silent run with the CJK face resolved is a rendered title, not boxes.
+        result = run(
+            "import matplotlib\n"
+            "from matplotlib import font_manager\n"
+            "import matplotlib.pyplot as plt\n"
+            "plt.plot([-2, -1, 0, 1], [3, 1, 2, 4]); plt.title('销售额 売上 매출'); plt.show()\n"
+            "print(matplotlib.rcParams['font.family'])\n"
+            "print(matplotlib.rcParams['axes.unicode_minus'])\n"
+            "print(font_manager.findfont('Noto Sans CJK SC', fallback_to_default=False))\n"
+        )
+        self.assertEqual(result["exit_code"], 0, result["stderr"])
+        self.assertEqual(result["stderr"], "")
+        lines = result["stdout"].splitlines()
+        self.assertEqual(lines[0], "['DejaVu Sans', 'Noto Sans CJK SC']")
+        self.assertEqual(lines[1], "False")
+        self.assertIn("NotoSansCJK", lines[2])
+        self.assertTrue(outputs(result)["outputs/figure-1.png"].startswith(b"\x89PNG"))
+
+    def test_reads_cjk_pdfs_with_cid_fonts(self):
+        # A non-embedded CID font with the Adobe-GB1 ordering needs the poppler
+        # CMaps; without them pdftotext and pdftoppm report a missing language
+        # pack and return no text.
+        result = run(
+            "import subprocess\n"
+            "from reportlab.pdfbase import pdfmetrics\n"
+            "from reportlab.pdfbase.cidfonts import UnicodeCIDFont\n"
+            "from reportlab.pdfgen import canvas\n"
+            "pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))\n"
+            "page = canvas.Canvas('tmp/report.pdf')\n"
+            "page.setFont('STSong-Light', 24); page.drawString(72, 700, '销售额')\n"
+            "page.save()\n"
+            "text = subprocess.run(['pdftotext', 'tmp/report.pdf', '-'], check=True,\n"
+            "                      capture_output=True, text=True)\n"
+            "print(text.stdout.strip()); print(text.stderr.strip())\n"
+            "image = subprocess.run(['pdftoppm', '-r', '72', '-png', '-singlefile', 'tmp/report.pdf',\n"
+            "                        'outputs/page'], check=True, capture_output=True, text=True)\n"
+            "print(image.stderr.strip())\n"
+        )
+        self.assertEqual(result["exit_code"], 0, result["stderr"])
+        # The text, then an empty stderr from each tool.
+        self.assertEqual(result["stdout"], "销售额\n\n\n")
+        self.assertTrue(outputs(result)["outputs/page.png"].startswith(b"\x89PNG"))
+
     def test_builds_documents_with_the_bundled_libraries(self):
         result = run(
             "import docx, openpyxl, pptx, pypdf, pdfplumber, reportlab, PIL, yaml, bs4, markdown\n"

@@ -483,7 +483,7 @@ links in an HTML document.
 ## Code sandbox validation
 
 `sandbox/` builds the optional code execution image in two tiers: `slim`
-(Python data, chart, image and document libraries, and poppler) and `full`
+(Python data, chart, image and document libraries, poppler and CJK fonts) and `full`
 (adds pandoc, LibreOffice, Tesseract, ffmpeg and scientific libraries).
 `POST /run` takes Python code and input files and returns output and the files
 written to `outputs/`. Each run is a fresh user from a pool, with resource
