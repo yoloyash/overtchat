@@ -190,7 +190,7 @@ export function ProjectFilesCard({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Remove ${file.filename}`}
+                  aria-label={`Remove ${file.filename} from project`}
                   title="Remove from project"
                   className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                   disabled={removeMut.isPending}

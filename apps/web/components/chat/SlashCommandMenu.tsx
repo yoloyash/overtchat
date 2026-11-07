@@ -114,7 +114,7 @@ export function SlashCommandMenu({
         {models?.map((model) => {
           const index = rowIndexes.get(`model:${model.id}`) ?? 0;
           return (
-            <Row
+            <MenuRow
               key={model.id}
               id={`${optionIdPrefix}-${index}`}
               index={index}
@@ -152,7 +152,7 @@ export function SlashCommandMenu({
               const available = isSlashCommandAvailable(command);
               const Icon = command.icon;
               return (
-                <Row
+                <MenuRow
                   key={command.name}
                   id={`${optionIdPrefix}-${index}`}
                   index={index}
@@ -184,7 +184,8 @@ export function SlashCommandMenu({
   );
 }
 
-function Row({
+/** One option row; shared with the file mention menu. */
+export function MenuRow({
   id,
   index,
   active,
