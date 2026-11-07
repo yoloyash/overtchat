@@ -65,16 +65,18 @@ export function useAddProjectFile(projectId: string) {
   });
 }
 
+/** Removes a file from the project; the upload itself stays. */
+export async function unlinkProjectFile(projectId: string, uploadId: string): Promise<void> {
+  const r = await fetch(apiUrl(`/api/projects/${projectId}/files/${uploadId}`), {
+    method: "DELETE",
+  });
+  if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+}
+
 export function useRemoveProjectFile(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (uploadId: string) => {
-      const r = await fetch(
-        apiUrl(`/api/projects/${projectId}/files/${uploadId}`),
-        { method: "DELETE" },
-      );
-      if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
-    },
+    mutationFn: (uploadId: string) => unlinkProjectFile(projectId, uploadId),
     onSuccess: (_, uploadId) => {
       qc.setQueryData<ProjectFileItem[]>(projectKeys.files(projectId), (prev) =>
         prev?.filter((item) => item.uploadId !== uploadId),

@@ -449,15 +449,23 @@ pays only for what the model reads. Names join the conversation's file list
 ahead of attachments, so an attachment with a project file's name is the
 numbered one. Project files also appear in the library for re-attaching.
 
+A chat in a project can file its own output: the document panel and the file
+panel offer "Save to project" beside Download. A document uploads as a text
+file named like its download; a conversation file links its existing upload.
+Either records the chat as the file's source, shown on the Files card. Saving a
+name the project already has asks whether to replace the link or keep both.
+Images are not offered, since the file tools read text.
+
 ```sh
 npm run test -w apps/web -- lib/db/project-files.test.ts "app/api/projects/[id]/files" lib/chat/project-prompt.test.ts lib/chat/chat-files.test.ts lib/db/library.test.ts app/api/chat/route.test.ts
 E2E_PORT=4791 npm run test:e2e -w apps/web -- project-files.spec.ts project-home.spec.ts
 ```
 
-The browser test adds a file on the project page, checks the prompt lists it
-without carrying its text, has a scripted model search then read then answer,
-reuses the file from a second chat, finds it in the library, and removes it
-without touching past messages.
+The browser tests add a file on the project page, check the prompt lists it
+without carrying its text, have a scripted model search then read then answer,
+reuse the file from a second chat, find it in the library, remove it without
+touching past messages, and save a scripted document and an attached file into
+the project with replace and keep-both.
 
 ## Model-created documents validation
 

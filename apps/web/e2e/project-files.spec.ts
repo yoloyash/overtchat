@@ -18,6 +18,7 @@ const secret = "The zebra protocol access code is ZX-41.";
 const filler =
   "Routine operational notes about logistics, staffing, and quarterly scheduling.\n";
 const handbook = `${filler.repeat(400)}${secret}\n${filler.repeat(20)}`;
+const plan = "# Launch plan\n\n- Kickoff in May\n- Launch in September\n";
 
 let provider: Server;
 let baseUrl: string;
@@ -85,7 +86,12 @@ test.beforeAll(async () => {
     };
 
     const last = payload.messages.at(-1)!;
-    if (last.role === "tool" && last.tool_call_id === "search-1") {
+    const prompt = text(payload.messages.filter((message) => message.role === "user").at(-1)).toLowerCase();
+    if (last.role === "tool" && last.tool_call_id === "document-1") {
+      reply("I created the launch plan.");
+    } else if (prompt.includes("launch plan") && toolNames(payload).includes("create_document")) {
+      call("document-1", "create_document", { title: "Launch plan", type: "markdown", content: plan });
+    } else if (last.role === "tool" && last.tool_call_id === "search-1") {
       const offset = Number(/at offset (\d+)/.exec(text(last))?.[1] ?? -1);
       call("read-1", "read_file", { file: "handbook.txt", offset });
     } else if (last.role === "tool" && last.tool_call_id === "read-1") {
@@ -226,4 +232,86 @@ test("project files refuse images and other users' uploads", async ({ page }) =>
   const missing = await page.request.post("/api/projects/ops/files", { data: { uploadId: "nope" } });
   expect(missing.status()).toBe(400);
   expect(await missing.json()).toEqual({ error: "That file is not available." });
+});
+
+test("a chat saves its documents and files into the project", async ({ page }) => {
+  await page.goto("/projects/ops");
+  await page.getByPlaceholder("Message…").fill("Write a launch plan");
+  await page.getByLabel("Send message").click();
+  await expect(page.getByText("I created the launch plan.", { exact: true })).toBeVisible();
+  await page.waitForURL("**/chat/**");
+  const chatId = new URL(page.url()).pathname.split("/").at(-1)!;
+
+  // The project page hands off to the chat route, so open the document from its card.
+  await page.getByRole("button", { name: /Launch plan.*Created · Version 1/ }).click();
+  const documentPanel = page.locator("aside[data-document-panel]");
+  await expect(documentPanel.getByRole("heading", { name: "Launch plan", level: 2 })).toBeVisible();
+  await documentPanel.getByRole("button", { name: "Save to project" }).click();
+  await expect(page.getByText("Saved to Operations").first()).toBeVisible();
+  let files = (await (await page.request.get("/api/projects/ops/files")).json()).files;
+  expect(files).toHaveLength(1);
+  expect(files[0]).toMatchObject({
+    filename: "Launch plan.md",
+    category: "text",
+    sourceChat: { id: chatId, title: "Handbook question" },
+  });
+  const saved = await page.request.get(files[0].url);
+  expect(await saved.text()).toBe(plan);
+
+  // Saving the same name again asks whether to replace or keep both.
+  await documentPanel.getByRole("button", { name: "Save to project" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Replace Launch plan.md?" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Replace" }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => {
+    const replaced = (await (await page.request.get("/api/projects/ops/files")).json()).files;
+    return replaced.length === 1 && replaced[0].uploadId !== files[0].uploadId;
+  }).toBe(true);
+
+  await documentPanel.getByRole("button", { name: "Save to project" }).click();
+  await dialog.getByRole("button", { name: "Keep both" }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () =>
+    (await (await page.request.get("/api/projects/ops/files")).json()).files.length,
+  ).toBe(2);
+
+  // A file attached to a project chat can be filed from the file panel too.
+  await documentPanel.getByRole("button", { name: "Close document" }).click();
+  await expect(documentPanel).toHaveCount(0);
+  await page.locator('input[type="file"]').first().setInputFiles({
+    name: "handbook.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(handbook),
+  });
+  await expect(page.getByLabel("Remove handbook.txt", { exact: true })).toBeVisible();
+  await page.locator("textarea").fill("Keep this handy");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("No project files here.", { exact: true })).toBeVisible();
+  // A saved document can reopen by itself on the next reply (pre-existing);
+  // the files toggle must start from no panel.
+  if (await documentPanel.count()) {
+    await documentPanel.getByRole("button", { name: "Close document" }).click();
+    await expect(documentPanel).toHaveCount(0);
+  }
+  await page.getByRole("button", { name: "2 files" }).click();
+  const filesPanel = page.locator("[data-files-panel]");
+  await filesPanel.getByRole("button", { name: /handbook\.txt/ }).click();
+  const filePanel = page.locator("aside[data-file-panel]");
+  await filePanel.getByRole("button", { name: "Save to project" }).click();
+  await expect.poll(async () =>
+    (await (await page.request.get("/api/projects/ops/files")).json()).files.length,
+  ).toBe(3);
+  files = (await (await page.request.get("/api/projects/ops/files")).json()).files;
+  expect(files.map((file: { filename: string }) => file.filename)).toEqual([
+    "Launch plan.md",
+    "Launch plan.md",
+    "handbook.txt",
+  ]);
+
+  // The project page shows where each file came from.
+  await page.goto("/projects/ops");
+  const card = page.getByRole("region", { name: "Project files" });
+  await expect(card).toContainText("3 of 50 files");
+  await expect(card.getByRole("link", { name: "Handbook question" }).first()).toBeVisible();
 });
