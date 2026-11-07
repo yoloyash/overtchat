@@ -8,6 +8,7 @@ import {
   type ComponentType,
 } from "react";
 import {
+  BookOpen,
   Brain,
   ChevronDown,
   CircleAlert,
@@ -39,9 +40,12 @@ import {
   isReadFilePart,
   isSearchFilesPart,
   isToolSettled,
+  isViewSkillToolPart,
   readFileRangeLabel,
   type ReadFilePart,
   type SearchFilesPart,
+  viewSkillActivityLabel,
+  type ViewSkillToolPart,
   webSearchProviderLabel,
   webSearchResults,
   type WebSearchPart,
@@ -66,6 +70,7 @@ export type ActivityPart =
   | CodeExecutionPart
   | GmailToolPart
   | CalendarToolPart
+  | ViewSkillToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -94,6 +99,7 @@ function isTool(
     isCodeExecutionPart(p) ||
     isGmailToolPart(p) ||
     isCalendarToolPart(p) ||
+    isViewSkillToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -155,7 +161,9 @@ export function ChainOfThought({
               ? GmailLogo
               : isCalendarToolPart(lastTool)
                 ? CalendarLogo
-                : Globe
+                : isViewSkillToolPart(lastTool)
+                  ? BookOpen
+                  : Globe
         : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
@@ -229,9 +237,11 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
                   ? GmailLogo
                   : isCalendarToolPart(part)
                     ? CalendarLogo
-                    : isMcpTool(part)
-                      ? Wrench
-                      : Brain;
+                    : isViewSkillToolPart(part)
+                      ? BookOpen
+                      : isMcpTool(part)
+                        ? Wrench
+                        : Brain;
 
   return (
     <div className="flex gap-2.5">
@@ -251,12 +261,33 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <GmailStep part={part} />
         ) : isCalendarToolPart(part) ? (
           <CalendarStep part={part} />
+        ) : isViewSkillToolPart(part) ? (
+          <SkillStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
           <ThinkingContent content={part.text} />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** A model reading a skill's instructions before using it. */
+function SkillStep({ part }: { part: ViewSkillToolPart }) {
+  const settled = isToolSettled(part);
+  return (
+    <div className="space-y-1.5">
+      <span className="block font-medium text-foreground">
+        {viewSkillActivityLabel(part, !settled)}
+      </span>
+      {part.state === "output-error" && (
+        <p className="text-destructive">{part.errorText}</p>
+      )}
+      {part.state === "output-available" && typeof part.output === "string" &&
+        part.output.startsWith("Error:") && (
+          <p className="text-muted-foreground">{part.output.slice(7)}</p>
+        )}
     </div>
   );
 }
@@ -649,6 +680,7 @@ function activeLabel(last: ActivityPart | undefined): string {
   if (isCodeExecutionPart(last)) return "Running code…";
   if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
   if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
+  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true);
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -697,6 +729,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool && isCalendarToolPart(lastTool)) {
     return calendarActivityLabel(lastTool, false);
+  }
+  if (lastTool && isViewSkillToolPart(lastTool)) {
+    return viewSkillActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);
