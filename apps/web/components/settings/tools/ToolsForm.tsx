@@ -63,7 +63,7 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
       >
         <SettingsRow
           title="Tool access"
-          description="Always available loads the OpenUI instructions into every chat from the start, which adds about 6,800 tokens to every request. On demand, the recommended choice, loads them when a message calls for an interactive interface, or when you ask for one from the + menu or /openui, at the cost of one extra step."
+          description="Always available loads the OpenUI instructions into every chat from the start, which adds about 6,800 tokens to every request. On demand loads them when a message calls for an interactive interface, or when you ask for one from the + menu or /openui, at the cost of one extra step."
           align="center"
           controlAlign="end"
         >

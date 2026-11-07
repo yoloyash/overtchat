@@ -9,8 +9,21 @@ import { SettingsChoiceGroup } from "../SettingsChoiceGroup";
  * boolean (`alwaysOn`); the words are the choice people make.
  */
 export const TOOL_ACCESS_OPTIONS = [
-  { value: "always", label: "Always available" },
-  { value: "on-demand", label: "On demand" },
+  {
+    value: "always",
+    label: <span className="whitespace-nowrap">Always available</span>,
+  },
+  {
+    value: "on-demand",
+    label: (
+      <>
+        <span className="whitespace-nowrap">On demand</span>
+        <span className="text-[10px] font-normal tracking-wide text-muted-foreground uppercase">
+          Recommended
+        </span>
+      </>
+    ),
+  },
 ] as const;
 
 export function ToolAccessChoice({
@@ -32,7 +45,7 @@ export function ToolAccessChoice({
       onValueChange={(value) => onChange(value === "always")}
       options={TOOL_ACCESS_OPTIONS}
       disabled={disabled}
-      className="w-auto"
+      className="w-auto auto-cols-auto"
     />
   );
 }
