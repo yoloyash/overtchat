@@ -59,11 +59,11 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
 
       <SettingsSection
         title="Interactive UI"
-        description="Supported models render interactive charts, tables, forms and cards with OpenUI."
+        description="Supported models render interactive charts, tables, forms and cards with OpenUI. On demand tool access is recommended."
       >
         <SettingsRow
           title="Tool access"
-          description="Always available loads the OpenUI instructions into every chat from the start, which adds about 6,800 tokens to every request. On demand loads them when a message calls for an interactive interface, or when you ask for one from the + menu or /openui, at the cost of one extra step."
+          description="On demand loads the OpenUI instructions when a message calls for an interface, or when you ask for one from the + menu or /openui. Always available adds about 6,800 tokens to every request."
           align="center"
           controlAlign="end"
         >

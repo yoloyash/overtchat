@@ -4,9 +4,10 @@ import { SettingsChoiceGroup } from "../SettingsChoiceGroup";
 
 /**
  * When a skill's instructions reach a model. "Always available" loads them
- * into every chat from the start; "On demand" loads them once a message needs
- * them, which costs the model one extra step. The stored setting stays a
- * boolean (`alwaysOn`); the words are the choice people make.
+ * into every chat from the start; "On demand", the recommended choice, loads
+ * them once a message needs them, which costs the model one extra step. The
+ * stored setting stays a boolean (`alwaysOn`); the words are the choice
+ * people make.
  */
 export const TOOL_ACCESS_OPTIONS = [
   {
@@ -15,14 +16,7 @@ export const TOOL_ACCESS_OPTIONS = [
   },
   {
     value: "on-demand",
-    label: (
-      <>
-        <span className="whitespace-nowrap">On demand</span>
-        <span className="text-[10px] font-normal tracking-wide text-muted-foreground uppercase">
-          Recommended
-        </span>
-      </>
-    ),
+    label: <span className="whitespace-nowrap">On demand</span>,
   },
 ] as const;
 

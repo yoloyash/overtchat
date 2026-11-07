@@ -25,7 +25,7 @@ export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
   return (
     <SettingsSection
       title="Connectors"
-      description="Connect your own accounts so models can work with them in your chats."
+      description="Connect your own accounts so models can work with them in your chats. On demand tool access is recommended."
     >
       {isPending ? (
         <SettingsNotice className="py-6">Loading connectors…</SettingsNotice>
