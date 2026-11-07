@@ -25,15 +25,21 @@ export function uploadIdFromUrl(url: string): string | null {
 }
 
 /**
- * Lists the conversation's files in order of appearance: attachments, files
- * written by code runs, and generated images. Names come from the filename;
- * repeated names get a numbered suffix so the model can refer to every file
- * unambiguously. A run that saves a name an earlier run saved replaces that
- * file, as saving over a file does, and the newer file moves to the end. The
- * same history always yields the same names, which keeps tool references and
- * prompts stable across turns.
+ * Lists the conversation's files in order of appearance: project files, then
+ * attachments, files written by code runs, and generated images. Names come
+ * from the filename; repeated names get a numbered suffix so the model can
+ * refer to every file unambiguously. A run that saves a name an earlier run
+ * saved replaces that file, as saving over a file does, and the newer file
+ * moves to the end. The same history always yields the same names, which
+ * keeps tool references and prompts stable across turns.
+ *
+ * `projectFiles` come first so a chat attachment with a project file's name is
+ * the numbered one, and project names stay stable across the project's chats.
  */
-export function listChatFiles(messages: readonly UIMessage[]): ChatFile[] {
+export function listChatFiles(
+  messages: readonly UIMessage[],
+  projectFiles: readonly ChatFile[] = [],
+): ChatFile[] {
   const files: ChatFile[] = [];
   const seenIds = new Set<string>();
   const holders = new Map<string, ChatFile>();
@@ -59,6 +65,9 @@ export function listChatFiles(messages: readonly UIMessage[]): ChatFile[] {
     holders.set(name.toLowerCase(), file);
     files.push(file);
   };
+  for (const file of projectFiles) {
+    add(file.uploadId, file.name, file.mediaType);
+  }
   for (const message of messages) {
     for (const part of message.parts) {
       if (part.type === "file") {

@@ -435,6 +435,30 @@ ATTACHMENT_READING_LIVE_URL=http://127.0.0.1:8000/v1 E2E_PORT=4791 npm run test:
 On Android and iOS, expand a message's activity and check the file read and
 search steps.
 
+## Project files validation
+
+A project holds up to 50 reference files, linked from `project_files` to
+existing `uploads` rows. Files upload through `POST /api/uploads` and link
+with `POST /api/projects/:id/files`; removing a link leaves messages that
+attached the same upload untouched, and the orphan sweep keeps any upload a
+project still references. Images are refused: the file tools read text.
+
+Project files are not inlined. Every chat in the project lists them by name in
+the project system prompt and gets `read_file` and `search_files`, so a turn
+pays only for what the model reads. Names join the conversation's file list
+ahead of attachments, so an attachment with a project file's name is the
+numbered one. Project files also appear in the library for re-attaching.
+
+```sh
+npm run test -w apps/web -- lib/db/project-files.test.ts "app/api/projects/[id]/files" lib/chat/project-prompt.test.ts lib/chat/chat-files.test.ts lib/db/library.test.ts app/api/chat/route.test.ts
+E2E_PORT=4791 npm run test:e2e -w apps/web -- project-files.spec.ts project-home.spec.ts
+```
+
+The browser test adds a file on the project page, checks the prompt lists it
+without carrying its text, has a scripted model search then read then answer,
+reuses the file from a second chat, finds it in the library, and removes it
+without touching past messages.
+
 ## Model-created documents validation
 
 Tool-calling models can create documents (Markdown, code, HTML, SVG, Mermaid)

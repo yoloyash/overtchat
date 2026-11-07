@@ -12,7 +12,12 @@ import {
   type DocumentOutput,
   type DocumentType,
 } from "@overtchat/shared";
-import { findChatFile, isDocumentFile, listChatFiles } from "@/lib/chat/chat-files";
+import {
+  type ChatFile,
+  findChatFile,
+  isDocumentFile,
+  listChatFiles,
+} from "@/lib/chat/chat-files";
 import { getUpload } from "@/lib/db/uploads";
 
 /** Exhaustive document-tool names in deterministic provider order. */
@@ -46,9 +51,12 @@ const titleSchema = z
 export function createDocumentTools({
   userId,
   messages,
+  files = listChatFiles(messages),
 }: {
   userId: string;
   messages: readonly UIMessage[];
+  /** The conversation's files when the caller already listed them. */
+  files?: readonly ChatFile[];
 }) {
   const latest = new Map<string, DocumentOutput>();
   for (const [id, versions] of collectDocumentVersions(messages)) {
@@ -62,7 +70,6 @@ export function createDocumentTools({
       content,
     });
   }
-  const files = listChatFiles(messages);
   // Parallel calls in one step apply in order instead of racing on a version.
   let queue: Promise<unknown> = Promise.resolve();
   function serialized<T>(operation: () => Promise<T> | T): Promise<T> {

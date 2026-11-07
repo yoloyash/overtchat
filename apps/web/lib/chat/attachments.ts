@@ -38,6 +38,12 @@ const EXTENSION_ACCEPT = [
 
 export const ATTACH_ACCEPT = [...MIME_ACCEPT, ...EXTENSION_ACCEPT].join(",");
 
+/** Attachments the model reads as text: everything but images. */
+export const DOCUMENT_ACCEPT = [
+  ...MIME_ACCEPT.filter((item) => !item.startsWith("image/")),
+  ...EXTENSION_ACCEPT,
+].join(",");
+
 const EXACT_MIME_ACCEPT = new Set(MIME_ACCEPT.filter((item) => !item.endsWith("/*")));
 const EXTENSION_ACCEPT_SET = new Set(EXTENSION_ACCEPT);
 
@@ -60,6 +66,10 @@ export function isSupportedAttachment(file: File): boolean {
   if (dot >= 0 && EXTENSION_ACCEPT_SET.has(filename.slice(dot))) return true;
 
   return false;
+}
+
+export function isSupportedDocument(file: File): boolean {
+  return isSupportedAttachment(file) && !file.type.toLowerCase().startsWith("image/");
 }
 
 export function unsupportedAttachmentMessage(file: File): string {
