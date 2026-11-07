@@ -72,6 +72,9 @@ import {
   toSlashCommandRows,
   type SlashCommandRow,
 } from "./SlashCommandMenu";
+import { FileMentionMenu } from "./FileMentionMenu";
+import { filterFileMentions, parseFileMention } from "@/lib/chat/file-mentions";
+import type { ProjectFileItem } from "@/lib/project-files";
 import {
   type ChatAttachment,
   useChatAttachments,
@@ -100,6 +103,7 @@ export interface ComposerCommandActions {
 }
 
 const NO_CONNECTORS: readonly ComposerConnector[] = [];
+const NO_PROJECT_FILES: readonly ProjectFileItem[] = [];
 
 interface ComposerProps {
   chatQueue: MessageQueueProps;
@@ -131,6 +135,8 @@ interface ComposerProps {
   voiceActive: boolean;
   voiceUnavailableReason: string;
   attachmentsEnabled: boolean;
+  /** The chat's project files, offered by `#` in the draft. */
+  projectFiles?: readonly ProjectFileItem[];
   textInputDisabled: boolean;
   commandActions: ComposerCommandActions;
   onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
@@ -173,6 +179,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   voiceActive,
   voiceUnavailableReason,
   attachmentsEnabled,
+  projectFiles = NO_PROJECT_FILES,
   textInputDisabled,
   commandActions,
   onSelectReasoningLevel,
@@ -459,9 +466,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     input !== dismissedQuery &&
     (submenu !== null || !query.hasArgument) &&
     (!query.inline || rows.length > 0);
+  // A `#` word at the caret offers the project's files not yet attached. A
+  // token with no match stays closed, like a slash token: "#5" is prose.
+  const mention =
+    query === null && attachmentsEnabled && projectFiles.length > 0
+      ? parseFileMention(input, caret)
+      : null;
+  const mentionRows = useMemo(() => {
+    if (!mention) return [];
+    const attached = new Set(readyParts.map((part) => part.url));
+    return filterFileMentions(projectFiles, mention.query).filter(
+      (file) => !attached.has(file.url),
+    );
+  }, [mention, projectFiles, readyParts]);
+  const mentionOpen =
+    mention !== null && input !== dismissedQuery && mentionRows.length > 0;
   // Filtering shrinks the list under the cursor, so clamp on read rather than
   // syncing an effect against the row count.
-  const activeRow = Math.min(activeIndex, Math.max(0, rows.length - 1));
+  const activeRow = Math.min(
+    activeIndex,
+    Math.max(0, (mentionOpen ? mentionRows.length : rows.length) - 1),
+  );
 
   function closeMenu() {
     setDismissedQuery(input);
@@ -496,6 +521,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (command.action === "attach") fileInputRef.current?.click();
     else if (command.action === "dictate") startDictation();
     else command.run?.();
+  }
+
+  /** Attaches the file and drops the `#` token, keeping the rest of the draft. */
+  function attachMention(file: ProjectFileItem) {
+    if (!mention) return;
+    const next = replaceSlashCommandSpan(input, mention, "");
+    replaceDraft(next.value, next.caret);
+    addReadyParts(
+      [{ type: "file", url: file.url, filename: file.filename, mediaType: file.mediaType }],
+      new Map([[file.url, file]]),
+    );
+  }
+
+  function handleMentionKeyDown(
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ): boolean {
+    if (!mentionOpen) return false;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeMenu();
+      return true;
+    }
+    if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) {
+      e.preventDefault();
+      attachMention(mentionRows[activeRow]);
+      return true;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const delta = e.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((activeRow + delta + mentionRows.length) % mentionRows.length);
+      return true;
+    }
+    return false;
   }
 
   function selectRow(row: SlashCommandRow) {
@@ -583,6 +642,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.nativeEvent.isComposing) return;
+    if (handleMentionKeyDown(e)) return;
     if (handleMenuKeyDown(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -611,6 +671,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       />
       <MessageQueue {...chatQueue} />
       <div className="relative">
+        {mentionOpen && (
+          <FileMentionMenu
+            id={listboxId}
+            optionIdPrefix={optionIdPrefix}
+            files={mentionRows}
+            activeIndex={activeRow}
+            onActiveIndexChange={setActiveIndex}
+            onSelect={attachMention}
+          />
+        )}
         {menuOpen && query && (
           <SlashCommandMenu
             id={listboxId}
@@ -649,7 +719,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               textInputDisabled
                 ? "Resume voice to continue"
                 : configured
-                  ? "Message… or / for commands"
+                  ? projectFiles.length > 0
+                    ? "Message… / for commands, # for project files"
+                    : "Message… or / for commands"
                   : models === null || models.length > 0
                     ? "Loading model…"
                     : "No models configured"
@@ -668,10 +740,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // The textarea stays focused and owns the keyboard; the menu below is
             // the listbox it controls.
             role="combobox"
-            aria-expanded={menuOpen}
-            aria-controls={menuOpen ? listboxId : undefined}
+            aria-expanded={menuOpen || mentionOpen}
+            aria-controls={menuOpen || mentionOpen ? listboxId : undefined}
             aria-activedescendant={
-              menuOpen && rows.length > 0
+              mentionOpen || (menuOpen && rows.length > 0)
                 ? `${optionIdPrefix}-${activeRow}`
                 : undefined
             }

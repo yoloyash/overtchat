@@ -32,6 +32,7 @@ import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useOptionalProject } from "@/lib/queries/projects";
 import { ProjectSaveProvider } from "@/components/projects/ProjectSaveContext";
+import { useProjectFiles } from "@/lib/queries/project-files";
 import {
   activityKeys,
   chatKeys,
@@ -165,6 +166,7 @@ export function ChatArea({
   const { openPalette } = useSidebar();
   const { data: chats } = useChats();
   const { data: project } = useOptionalProject(projectId);
+  const { data: projectFiles } = useProjectFiles(project?.id);
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : (modelsData ?? null);
@@ -916,6 +918,7 @@ export function ChatArea({
                 : "Realtime voice is unavailable"
       }
       attachmentsEnabled={!voiceActive}
+      projectFiles={projectFiles}
       textInputDisabled={voiceEnding}
       commandActions={{
         compact:

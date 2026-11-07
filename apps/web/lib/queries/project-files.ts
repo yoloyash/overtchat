@@ -12,9 +12,11 @@ async function readError(r: Response, fallback: string): Promise<string> {
   return j.error ?? fallback;
 }
 
-export function useProjectFiles(projectId: string) {
+/** Idle without a project, such as for a chat outside any project. */
+export function useProjectFiles(projectId: string | null | undefined) {
   return useQuery({
-    queryKey: projectKeys.files(projectId),
+    queryKey: projectKeys.files(projectId ?? ""),
+    enabled: Boolean(projectId),
     queryFn: async (): Promise<ProjectFileItem[]> => {
       const r = await fetch(apiUrl(`/api/projects/${projectId}/files`));
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
