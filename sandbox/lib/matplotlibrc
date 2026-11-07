@@ -1,0 +1,10 @@
+# Defaults for sandbox runs, loaded through MATPLOTLIBRC before user code runs.
+# Code that sets its own rcParams still wins.
+
+# A list of concrete families enables glyph fallback: Latin text keeps DejaVu
+# Sans and CJK text falls through to Noto. A generic family such as sans-serif
+# resolves to its first installed entry only, so it would leave CJK as boxes.
+font.family: DejaVu Sans, Noto Sans CJK SC
+
+# The Unicode minus sign is missing from many fonts; use the ASCII hyphen.
+axes.unicode_minus: False
