@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
+import { SaveToProjectButton } from "@/components/projects/SaveToProjectButton";
 import { useDocumentPanel } from "./DocumentPanelContext";
 
 export const DOCUMENT_ICONS: Record<DocumentType, LucideIcon> = {
@@ -86,39 +87,54 @@ export function DocumentCard({
   const active = panel?.activeToolCallId === part.toolCallId;
   const Icon = DOCUMENT_ICONS[type];
 
+  // Opening the panel and saving to the project are separate controls, so the
+  // card is a frame around the opener rather than one button.
   return (
-    <button
-      type="button"
-      data-document-card=""
-      disabled={!openable}
-      aria-pressed={active}
-      onClick={() => panel?.open(part.toolCallId)}
+    <div
+      data-document-card-frame=""
       className={cn(
-        "group flex w-full max-w-md items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-left motion-colors",
-        openable && "hover:bg-muted/60",
+        "flex w-full max-w-md items-stretch overflow-hidden rounded-xl border bg-card motion-colors",
         active && "border-ring/60 bg-muted/60",
-        !openable && "cursor-default",
       )}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-        {live ? (
-          <Loader2 className={cn("size-4", motionClasses.spinner)} />
-        ) : (
-          <Icon className="size-4" />
+      <button
+        type="button"
+        data-document-card=""
+        disabled={!openable}
+        aria-pressed={active}
+        onClick={() => panel?.open(part.toolCallId)}
+        className={cn(
+          "group flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left motion-colors",
+          openable && "hover:bg-muted/60",
+          !openable && "cursor-default",
         )}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-foreground">
-          {title}
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          {live ? (
+            <Loader2 className={cn("size-4", motionClasses.spinner)} />
+          ) : (
+            <Icon className="size-4" />
+          )}
         </span>
-        <span className="block truncate text-xs text-muted-foreground">
-          {status}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {title}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {status}
+          </span>
         </span>
-      </span>
-      {openable && (
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground motion-transform group-hover:translate-x-0.5" />
+        {openable && (
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground motion-transform group-hover:translate-x-0.5" />
+        )}
+      </button>
+      {output && !pending && (
+        <SaveToProjectButton
+          source={{ kind: "document", document: output }}
+          className="h-auto self-stretch rounded-none px-3 text-muted-foreground"
+        />
       )}
-    </button>
+    </div>
   );
 }
 

@@ -9,7 +9,7 @@ import {
   documentMediaType,
   type DocumentOutput,
 } from "@overtchat/shared";
-import { FolderPlus, Loader2 } from "lucide-react";
+import { FolderCheck, FolderPlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { apiUrl } from "@/lib/api-url";
@@ -41,9 +41,11 @@ const UPLOAD_URL = /^\/api\/uploads\/([a-zA-Z0-9_-]+)$/;
 export function SaveToProjectButton({
   source,
   disabled,
+  className,
 }: {
   source: SaveToProjectSource;
   disabled?: boolean;
+  className?: string;
 }) {
   const target = useProjectSaveTarget();
   if (!target) return null;
@@ -51,7 +53,14 @@ export function SaveToProjectButton({
     if (source.file.mediaType.startsWith("image/")) return null;
     if (!UPLOAD_URL.test(source.file.url)) return null;
   }
-  return <SaveButton source={source} target={target} disabled={disabled} />;
+  return (
+    <SaveButton
+      source={source}
+      target={target}
+      disabled={disabled}
+      className={className}
+    />
+  );
 }
 
 function sourceFilename(source: SaveToProjectSource): string {
@@ -64,10 +73,12 @@ function SaveButton({
   source,
   target,
   disabled,
+  className,
 }: {
   source: SaveToProjectSource;
   target: ProjectSaveTarget;
   disabled?: boolean;
+  className?: string;
 }) {
   const { data: files } = useProjectFiles(target.project.id);
   const qc = useQueryClient();
@@ -78,6 +89,12 @@ function SaveButton({
   const existing = files?.find(
     (file) => file.filename.toLowerCase() === filename.toLowerCase(),
   );
+  // A conversation file is in the project when its upload is linked; a
+  // document, which uploads on save, when a file carries its name.
+  const inProject =
+    source.kind === "file"
+      ? files?.some((file) => file.url === source.file.url) ?? false
+      : existing !== undefined;
 
   async function uploadId(): Promise<string> {
     if (source.kind === "file") return UPLOAD_URL.exec(source.file.url)![1];
@@ -134,8 +151,13 @@ function SaveButton({
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Save to project"
-        title={`Save to ${target.project.name}`}
+        aria-label={inProject ? "In project" : "Save to project"}
+        title={
+          inProject
+            ? `In ${target.project.name}. Save again to replace or keep both.`
+            : `Save to ${target.project.name}`
+        }
+        className={className}
         disabled={disabled || saving || !files}
         onClick={() => {
           if (existing && !(source.kind === "file" && existing.url === source.file.url)) {
@@ -145,7 +167,13 @@ function SaveButton({
           }
         }}
       >
-        {saving ? <Loader2 className={motionClasses.spinner} /> : <FolderPlus />}
+        {saving ? (
+          <Loader2 className={motionClasses.spinner} />
+        ) : inProject ? (
+          <FolderCheck />
+        ) : (
+          <FolderPlus />
+        )}
       </Button>
       <AlertDialog.Root open={conflictOpen} onOpenChange={setConflictOpen}>
         <AlertDialog.Portal>

@@ -242,12 +242,11 @@ test("a chat saves its documents and files into the project", async ({ page }) =
   await page.waitForURL("**/chat/**");
   const chatId = new URL(page.url()).pathname.split("/").at(-1)!;
 
-  // The project page hands off to the chat route, so open the document from its card.
-  await page.getByRole("button", { name: /Launch plan.*Created · Version 1/ }).click();
-  const documentPanel = page.locator("aside[data-document-panel]");
-  await expect(documentPanel.getByRole("heading", { name: "Launch plan", level: 2 })).toBeVisible();
-  await documentPanel.getByRole("button", { name: "Save to project" }).click();
+  // The card in the transcript saves without opening the panel.
+  const frame = page.locator("[data-document-card-frame]");
+  await frame.getByRole("button", { name: "Save to project" }).click();
   await expect(page.getByText("Saved to Operations").first()).toBeVisible();
+  await expect(frame.getByRole("button", { name: "In project" })).toBeVisible();
   let files = (await (await page.request.get("/api/projects/ops/files")).json()).files;
   expect(files).toHaveLength(1);
   expect(files[0]).toMatchObject({
@@ -258,8 +257,13 @@ test("a chat saves its documents and files into the project", async ({ page }) =
   const saved = await page.request.get(files[0].url);
   expect(await saved.text()).toBe(plan);
 
-  // Saving the same name again asks whether to replace or keep both.
-  await documentPanel.getByRole("button", { name: "Save to project" }).click();
+  // The panel shows the same state, and saving again asks whether to replace
+  // or keep both. The project page hands off to the chat route, so the
+  // document opens from its card.
+  await page.getByRole("button", { name: /Launch plan.*Created · Version 1/ }).click();
+  const documentPanel = page.locator("aside[data-document-panel]");
+  await expect(documentPanel.getByRole("heading", { name: "Launch plan", level: 2 })).toBeVisible();
+  await documentPanel.getByRole("button", { name: "In project" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Replace Launch plan.md?" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Replace" }).click();
@@ -269,7 +273,7 @@ test("a chat saves its documents and files into the project", async ({ page }) =
     return replaced.length === 1 && replaced[0].uploadId !== files[0].uploadId;
   }).toBe(true);
 
-  await documentPanel.getByRole("button", { name: "Save to project" }).click();
+  await documentPanel.getByRole("button", { name: "In project" }).click();
   await dialog.getByRole("button", { name: "Keep both" }).click();
   await expect(dialog).toBeHidden();
   await expect.poll(async () =>
@@ -302,6 +306,7 @@ test("a chat saves its documents and files into the project", async ({ page }) =
   await expect.poll(async () =>
     (await (await page.request.get("/api/projects/ops/files")).json()).files.length,
   ).toBe(3);
+  await expect(filePanel.getByRole("button", { name: "In project" })).toBeVisible();
   files = (await (await page.request.get("/api/projects/ops/files")).json()).files;
   expect(files.map((file: { filename: string }) => file.filename)).toEqual([
     "Launch plan.md",

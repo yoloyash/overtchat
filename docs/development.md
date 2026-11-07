@@ -449,12 +449,14 @@ pays only for what the model reads. Names join the conversation's file list
 ahead of attachments, so an attachment with a project file's name is the
 numbered one. Project files also appear in the library for re-attaching.
 
-A chat in a project can file its own output: the document panel and the file
-panel offer "Save to project" beside Download. A document uploads as a text
-file named like its download; a conversation file links its existing upload.
-Either records the chat as the file's source, shown on the Files card. Saving a
-name the project already has asks whether to replace the link or keep both.
-Images are not offered, since the file tools read text.
+A chat in a project can file its own output: document cards and sandbox file
+cards in the transcript, and the document and file panels, offer "Save to
+project" (a folder icon that turns into a check once the file is in the
+project). A document uploads as a text file named like its download; a
+conversation file links its existing upload. Either records the chat as the
+file's source, shown on the Files card. Saving a name the project already has
+asks whether to replace the link or keep both. Images are not offered, since
+the file tools read text.
 
 ```sh
 npm run test -w apps/web -- lib/db/project-files.test.ts "app/api/projects/[id]/files" lib/chat/project-prompt.test.ts lib/chat/chat-files.test.ts lib/db/library.test.ts app/api/chat/route.test.ts
