@@ -2,6 +2,7 @@ import { useChatPreferences, setChatPreferences } from "@/lib/chatPreferences";
 import {
   SettingsPage,
   Section,
+  Choice,
   Toggle,
   Row,
   QueryState,
@@ -18,6 +19,11 @@ import {
 } from "@/lib/toolPreferences";
 import { useSettingsQuery, useSettingsMutation } from "@/lib/queries/settings";
 import type { AvailableMcpServer } from "@overtchat/shared/admin-settings";
+const TOOL_ACCESS_OPTIONS = [
+  { value: "always", label: "Always available" },
+  { value: "on-demand", label: "On demand" },
+] as const;
+
 export default function ChatSettings() {
   const prefs = useChatPreferences();
   const web = useWebSearchEnabled();
@@ -60,11 +66,17 @@ export default function ChatSettings() {
           value={web}
           onChange={setWebSearchEnabled}
         />
-        <Toggle
-          title="Interactive UI (OpenUI)"
-          detail="Load the OpenUI instructions into every chat, so supported models render interactive charts, tables, forms and cards without loading them first. That adds about 6,800 tokens to every request. When off, models load the instructions when a message calls for an interactive interface, or when you ask for one from the + menu."
-          value={openui}
-          onChange={setOpenUIEnabled}
+      </Section>
+      <Section
+        title="Interactive UI"
+        description="Supported models render interactive charts, tables, forms and cards with OpenUI. Saved on this device."
+      >
+        <Choice
+          title="Tool access"
+          detail="Always available loads the OpenUI instructions into every chat from the start, about 6,800 tokens in every request. On demand, the recommended choice, loads them when a message calls for an interactive interface, or when you ask for one from the + menu, at the cost of one extra step."
+          value={openui ? "always" : "on-demand"}
+          options={TOOL_ACCESS_OPTIONS}
+          onChange={(value) => setOpenUIEnabled(value === "always")}
         />
       </Section>
       <Section

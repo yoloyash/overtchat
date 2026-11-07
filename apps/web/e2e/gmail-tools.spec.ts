@@ -569,15 +569,17 @@ test("Gmail is one line in a chat until a message needs it, then stays", async (
   await expect(page.getByTitle("Gmail is on for this chat")).toBeVisible();
 });
 
-test("the switch in Settings offers Gmail in every chat", async ({ page }) => {
+test("Always available in Settings puts Gmail in every chat", async ({ page }) => {
   connectGmail("access-live", false);
   await page.goto("/settings/tools");
-  const everyChat = page.getByRole("switch", { name: "Use Gmail in every chat" });
-  await expect(everyChat).not.toBeChecked();
-  await everyChat.click();
-  await expect(everyChat).toBeChecked();
+  const access = page.getByRole("radiogroup", { name: "Gmail tool access" });
+  const always = access.getByRole("radio", { name: "Always available" });
+  const onDemand = access.getByRole("radio", { name: "On demand" });
+  await expect(onDemand).toBeChecked();
+  await always.click();
+  await expect(always).toBeChecked();
   await page.reload();
-  await expect(everyChat).toBeChecked();
+  await expect(always).toBeChecked();
 
   await page.goto("/");
   // Nothing marks one chat when every chat has it.
@@ -589,10 +591,11 @@ test("the switch in Settings offers Gmail in every chat", async ({ page }) => {
   expect(system).toContain('<skill id="gmail" name="Gmail">');
   expect(system).not.toContain("<id>gmail</id>");
 
-  // Switching it back off is saved too.
+  // Back to on demand is saved too.
   await page.goto("/settings/tools");
-  await everyChat.click();
-  await expect(everyChat).not.toBeChecked();
+  await onDemand.click();
+  await expect(onDemand).toBeChecked();
+  await expect(always).not.toBeChecked();
   const db = openE2eDatabase();
   try {
     expect(

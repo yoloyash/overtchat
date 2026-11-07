@@ -629,8 +629,9 @@ description (`availableSkillsPrompt()`). `view_skill` returns
 `skillDocument()`: the skill's instructions followed by the JSON definitions
 of its tools, which the model runs through `call_tool(tool_name, params)`;
 `params` is validated against the tool's own schema before it runs. A skill
-the user loads in every chat (**Use in every chat**, or the Interactive UI
-switch) sits in the system prompt as a `<skill>` block instead of in the
+whose **Tool access** the user set to **Always available** (per connector, and
+for Interactive UI, in Settings → Tools) sits in the system prompt as a
+`<skill>` block instead of in the manifest; the default, **On demand**, is the
 manifest. One a chat loads sits in the conversation and stays there: in the
 `view_skill` result, or beside the first user message that asked for it
 (`withSkillDocuments()`). The composer's `/gmail`, `/calendar` and Interactive
@@ -1880,10 +1881,10 @@ OpenUI uses the upstream component library and a `present_openui` tool. Clients
 explicitly advertise renderer support; the tool is offered wherever a client
 renders it and the model calls tools, and voice turns do not offer it. The
 component/action prompt is the `interactive_ui` skill: a model loads it with
-`view_skill` when a message calls for an interface, the **Interactive UI**
-switch in Settings loads it into every chat, and a one-message request (the +
-menu or `/openui`) loads it for that message and asks for an interactive
-answer. The prompt costs approximately 6,800 tokens, so `view_skill` refuses it
+`view_skill` when a message calls for an interface, **Always available** under
+**Interactive UI** in Settings loads it into every chat, and a one-message
+request (the + menu or `/openui`) loads it for that message and asks for an
+interactive answer. The prompt costs approximately 6,800 tokens, so `view_skill` refuses it
 when it does not fit the model's context, and a one-message request is
 rejected with an error. The prompt
 omits the built-in data functions (`@Count`, `@Sum`, `@Each`, ...) because

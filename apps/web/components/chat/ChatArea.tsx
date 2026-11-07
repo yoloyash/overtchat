@@ -511,7 +511,7 @@ export function ChatArea({
                 : !modelSupportsSearch
                   ? `${connector.title} is unavailable for this model`
                   : connection.alwaysOn
-                    ? "On in every chat"
+                    ? "Always available"
                     : usedHere
                       ? "On for this chat"
                       : undefined,

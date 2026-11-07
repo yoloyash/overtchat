@@ -10,8 +10,8 @@ export const INTEGRATION_DISPLAY: Record<
     name: string;
     Logo: ComponentType<{ className?: string }>;
     description: string;
-    /** What turning on "Use in every chat" costs, and what happens otherwise. */
-    everyChat: string;
+    /** What each tool access choice does: always available, or on demand. */
+    toolAccess: string;
   }
 > = {
   gmail: {
@@ -19,16 +19,16 @@ export const INTEGRATION_DISPLAY: Record<
     Logo: GmailLogo,
     description:
       "Let models search, read and organize your mail, and write drafts for you to send.",
-    everyChat:
-      "Loads the mail skill into every chat from the start, which adds about 1,100 tokens to each request. When off, models load it when a message needs your mail, or when you type /gmail in a chat.",
+    toolAccess:
+      "Always available loads the mail skill into every chat from the start, which adds about 1,100 tokens to each request. On demand loads it when a message needs your mail, or when you type /gmail in a chat.",
   },
   calendar: {
     name: "Google Calendar",
     Logo: CalendarLogo,
     description:
       "Let models check your schedule and add, change or delete events.",
-    everyChat:
-      "Loads the calendar skill into every chat from the start, which adds about 900 tokens to each request. When off, models load it when a message needs your schedule, or when you type /calendar in a chat.",
+    toolAccess:
+      "Always available loads the calendar skill into every chat from the start, which adds about 900 tokens to each request. On demand loads it when a message needs your schedule, or when you type /calendar in a chat.",
   },
 };
 

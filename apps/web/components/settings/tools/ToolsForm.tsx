@@ -17,6 +17,7 @@ import {
 import { AvailableMcpServersPanel } from "./AvailableMcpServersPanel";
 import { ConnectorsPanel } from "./connectors/ConnectorsPanel";
 import { McpServersPanel } from "./McpServersPanel";
+import { ToolAccessChoice } from "./ToolAccessChoice";
 
 export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
   const [webSearchEnabled, setWebSearchEnabled] = useLocalStorage<boolean>(
@@ -54,19 +55,22 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
             aria-label="Enable web search"
           />
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Interactive UI"
+        description="Supported models render interactive charts, tables, forms and cards with OpenUI."
+      >
         <SettingsRow
-          title="Interactive UI (OpenUI)"
-          description="Load the OpenUI instructions into every chat, so supported models render interactive charts, tables, forms and cards without loading them first. That adds about 6,800 tokens to every request. When off, models load the instructions when a message calls for an interactive interface, or when you ask for one from the + menu or /openui."
-          htmlFor="openui-enabled"
+          title="Tool access"
+          description="Always available loads the OpenUI instructions into every chat from the start, which adds about 6,800 tokens to every request. On demand, the recommended choice, loads them when a message calls for an interactive interface, or when you ask for one from the + menu or /openui, at the cost of one extra step."
           align="center"
           controlAlign="end"
-          layout="toggle"
         >
-          <Switch
-            id="openui-enabled"
-            checked={openuiEnabled}
-            onCheckedChange={setOpenuiEnabled}
-            aria-label="Enable interactive UI"
+          <ToolAccessChoice
+            label="Interactive UI tool access"
+            alwaysOn={openuiEnabled}
+            onChange={setOpenuiEnabled}
           />
         </SettingsRow>
       </SettingsSection>

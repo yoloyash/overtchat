@@ -883,11 +883,12 @@ choice; Google has no way to widen or narrow a sign-in in place.
 A connected connector costs a chat one line until a message needs it: a model
 asked about mail or the calendar loads the connector's instructions and tools
 itself, roughly 1,000 tokens, once per chat, and the chat keeps them. Typing
-`/gmail` or `/calendar` loads a connector straight away for one chat;
-**Use in every chat** beside it loads it into every chat from the start,
-which skips that step at the cost of those tokens in every request. The tools
-a model is given never change during a chat, so a slow local model does not
-reprocess the conversation when a connector joins.
+`/gmail` or `/calendar` loads a connector straight away for one chat. Each
+connector's **Tool access** choice in Settings is **On demand** by default;
+**Always available** loads it into every chat from the start, which skips that
+step at the cost of those tokens in every request. The tools a model is given
+never change during a chat, so a slow local model does not reprocess the
+conversation when a connector joins.
 
 Where Gmail is on, tool-calling models can work with that person's mail on
 web, desktop and mobile:
