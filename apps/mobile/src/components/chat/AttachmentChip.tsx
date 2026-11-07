@@ -17,7 +17,7 @@ import { useTheme } from "@/lib/theme";
 
 const IMAGE_SIZE = 64;
 
-function categoryIcon(
+export function categoryIcon(
   category: AttachmentCategory | undefined,
 ): keyof typeof Ionicons.glyphMap {
   switch (category) {
