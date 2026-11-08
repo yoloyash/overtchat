@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
   // Hosts allowed to load `next dev` assets cross-origin. Only used in dev
   // (Next.js ignores this at build time). Phone-on-LAN testing needs the
   // host's LAN IP listed here.
-  allowedDevOrigins: ["10.0.0.200", "10.0.0.26", "10.0.0.176", "100.118.139.87"],
+  allowedDevOrigins: ["10.0.0.200", "10.0.0.26"],
   async rewrites() {
     return {
       beforeFiles: [
