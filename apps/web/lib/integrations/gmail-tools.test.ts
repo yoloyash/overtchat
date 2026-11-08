@@ -65,12 +65,7 @@ describe("availability", () => {
     expect(tools.gmailReconnectPrompt()).toContain("Settings → Tools → Connectors");
   });
 
-  it("tells a model whose chat has Gmail off how the user turns it on", () => {
-    expect(tools.GMAIL_OFF_PROMPT).toContain("type /gmail");
-    expect(tools.GMAIL_OFF_PROMPT).toContain("Do not bring it up otherwise.");
-  });
-
-  it("treats a chat as using Gmail once a model has, or once the command is typed", () => {
+  it("treats a chat as using Gmail once a model has, or once the user asked", () => {
     const user = (text: string) => ({ role: "user", parts: [{ type: "text", text }] });
     const assistant = (type: string) => ({
       role: "assistant",
@@ -89,6 +84,21 @@ describe("availability", () => {
     expect(conversationUsesGmail([user("  /GMAIL")])).toBe(true);
     expect(conversationUsesGmail([user("what does /gmail do?")])).toBe(false);
     expect(conversationUsesGmail([user("/gmailer")])).toBe(false);
+    // The composer records its choice on the message; a model viewing the
+    // skill counts too, a failed view does not.
+    expect(
+      conversationUsesGmail([{ ...user("Any mail?"), metadata: { skills: ["gmail"] } }]),
+    ).toBe(true);
+    expect(
+      conversationUsesGmail([{ ...user("Any mail?"), metadata: { skills: ["calendar"] } }]),
+    ).toBe(false);
+    const viewed = (id: string, output: unknown) => ({
+      role: "assistant",
+      parts: [{ type: "tool-view_skill", state: "output-available", input: { id }, output }],
+    });
+    expect(conversationUsesGmail([user("Any mail?"), viewed("gmail", "<skill id=\"gmail\" name=\"Gmail\">…</skill>")])).toBe(true);
+    expect(conversationUsesGmail([user("Any mail?"), viewed("gmail", "Error: not now")])).toBe(false);
+    expect(conversationUsesGmail([user("Any mail?"), viewed("calendar", "<skill id=\"calendar\" name=\"Google Calendar\">…</skill>")])).toBe(false);
     // Only the user turns it on: a model writing the command does not.
     expect(
       conversationUsesGmail([{ role: "assistant", parts: [{ type: "text", text: "/gmail" }] }]),

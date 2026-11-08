@@ -4,7 +4,6 @@ import { Settings2 } from "lucide-react";
 import { useState } from "react";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
 import type { Integration, IntegrationId } from "@/lib/integrations/schema";
@@ -16,6 +15,7 @@ import {
 import { SettingsNotice, SettingsSection } from "../../SettingsRows";
 import { ConnectGoogleDialog } from "./ConnectGoogleDialog";
 import { GoogleAccessDialog } from "./GoogleAccessDialog";
+import { ToolAccessChoice } from "../ToolAccessChoice";
 import { INTEGRATION_DISPLAY, integrationNames } from "./integration-display";
 
 export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
@@ -25,7 +25,7 @@ export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
   return (
     <SettingsSection
       title="Connectors"
-      description="Connect your own accounts so models can work with them in your chats."
+      description="Connect your own accounts so models can work with them in your chats. On demand tool access is recommended."
     >
       {isPending ? (
         <SettingsNotice className="py-6">Loading connectors…</SettingsNotice>
@@ -203,13 +203,12 @@ function IntegrationRow({
   integration: Integration;
   onAdd?: () => void;
 }) {
-  const { name, Logo, description, everyChat } =
+  const { name, Logo, description, toolAccess } =
     INTEGRATION_DISPLAY[integration.id];
   const setAlwaysOn = useSetIntegrationAlwaysOn(integration.id);
   const { connection } = integration;
   const left = !connection && onAdd;
   const usable = connection?.status === "connected";
-  const switchId = `${integration.id}-always-on`;
 
   async function onAlwaysOn(alwaysOn: boolean) {
     try {
@@ -235,25 +234,18 @@ function IntegrationRow({
             {left
               ? "Not part of this sign-in."
               : usable
-                ? everyChat
+                ? toolAccess
                 : description}
           </p>
         </div>
       </div>
       {usable && (
-        <label
-          htmlFor={switchId}
-          className="flex items-center justify-end gap-2 text-xs text-muted-foreground"
-        >
-          Use in every chat
-          <Switch
-            id={switchId}
-            checked={connection.alwaysOn}
-            disabled={setAlwaysOn.isPending}
-            onCheckedChange={(checked) => void onAlwaysOn(checked)}
-            aria-label={`Use ${name} in every chat`}
-          />
-        </label>
+        <ToolAccessChoice
+          label={`${name} tool access`}
+          alwaysOn={connection.alwaysOn}
+          disabled={setAlwaysOn.isPending}
+          onChange={(alwaysOn) => void onAlwaysOn(alwaysOn)}
+        />
       )}
       {left && (
         <Button type="button" variant="outline" size="sm" onClick={onAdd}>

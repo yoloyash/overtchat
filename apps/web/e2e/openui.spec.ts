@@ -103,8 +103,14 @@ test("submits a saved form through the chat API, delivers context and restores i
     expect(modelRequests).toHaveLength(1);
     expect(JSON.stringify(modelRequests[0].messages)).toContain("T-42");
     expect(JSON.stringify(modelRequests[0].messages)).toContain("Kyoto");
-    expect(JSON.stringify(modelRequests[0].tools)).not.toContain(
-      "present_openui",
+    // The tool is offered to a client that renders it; the language comes
+    // with the Interactive UI skill, which this model did not load.
+    expect(JSON.stringify(modelRequests[0].tools)).toContain("present_openui");
+    expect(JSON.stringify(modelRequests[0].messages)).toContain(
+      "<id>interactive_ui</id>",
+    );
+    expect(JSON.stringify(modelRequests[0].messages)).not.toContain(
+      "Interactive UI (OpenUI):",
     );
     await expect
       .poll(async () => {

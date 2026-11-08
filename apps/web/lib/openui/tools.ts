@@ -102,7 +102,7 @@ export function createOpenUITools() {
       Record<string, never>
     >({
       description:
-        "Render a complete OpenUI Lang interface (charts, tables, forms, cards, tabs, steps, follow-up actions) inline in the chat.",
+        "Render a complete OpenUI Lang interface (charts, tables, forms, cards, tabs, steps, follow-up actions) inline in the chat. The interactive_ui skill defines the language; load it first unless it is already loaded.",
       inputSchema: z.object({
         ui: z
           .string()

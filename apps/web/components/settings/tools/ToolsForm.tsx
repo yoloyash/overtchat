@@ -17,6 +17,7 @@ import {
 import { AvailableMcpServersPanel } from "./AvailableMcpServersPanel";
 import { ConnectorsPanel } from "./connectors/ConnectorsPanel";
 import { McpServersPanel } from "./McpServersPanel";
+import { ToolAccessChoice } from "./ToolAccessChoice";
 
 export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
   const [webSearchEnabled, setWebSearchEnabled] = useLocalStorage<boolean>(
@@ -54,19 +55,22 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
             aria-label="Enable web search"
           />
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Interactive UI"
+        description="Supported models render interactive charts, tables, forms and cards with OpenUI. On demand tool access is recommended."
+      >
         <SettingsRow
-          title="Interactive UI (OpenUI)"
-          description="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI Lang. You can also request it for a single message from the + menu or /openui. When active, it adds about 6,800 tokens to the system prompt, so responses may start a little slower and use more context."
-          htmlFor="openui-enabled"
+          title="Tool access"
+          description="On demand loads the OpenUI instructions when a message calls for an interface, or when you ask for one from the + menu or /openui. Always available adds about 6,800 tokens to every request."
           align="center"
           controlAlign="end"
-          layout="toggle"
         >
-          <Switch
-            id="openui-enabled"
-            checked={openuiEnabled}
-            onCheckedChange={setOpenuiEnabled}
-            aria-label="Enable interactive UI"
+          <ToolAccessChoice
+            label="Interactive UI tool access"
+            alwaysOn={openuiEnabled}
+            onChange={setOpenuiEnabled}
           />
         </SettingsRow>
       </SettingsSection>

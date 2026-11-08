@@ -26,8 +26,6 @@ import {
 } from "@/lib/chat/context-checkpoint";
 import {
   CONTEXT_STATUS_DATA_TYPE,
-  conversationUsesCalendar,
-  conversationUsesGmail,
   isManualCompactionMessage,
   canContinueMessage,
   joinContinuationTextParts,
@@ -62,7 +60,6 @@ import {
   createOpenUITools,
   hasSuccessfulOpenUI,
   OPENUI_TOOL_ORDER,
-  OPENUI_TOOL_PROMPT,
 } from "@/lib/openui/tools";
 import {
   withOpenUIActionContext,
@@ -131,23 +128,20 @@ import {
 import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
+import { resolveChatSkills, type ChatSkill } from "@/lib/skills/registry";
+import { availableSkillsPrompt, skillDocument } from "@/lib/skills/prompt";
 import {
-  CALENDAR_OFF_PROMPT,
-  CALENDAR_TOOL_ORDER,
-  CALENDAR_TOOL_PROMPT,
-  GMAIL_AND_CALENDAR_OFF_PROMPT,
-  calendarAccess,
-  calendarReconnectPrompt,
-  createCalendarTools,
-} from "@/lib/integrations/calendar-tools";
+  createSkillTools,
+  SKILL_TOOL_ORDER,
+  toolsOfSkills,
+} from "@/lib/skills/tools";
+import { bridgeToolStream, withBridgedToolCalls } from "@/lib/skills/bridge";
 import {
-  createGmailTools,
-  GMAIL_TOOL_ORDER,
-  GMAIL_OFF_PROMPT,
-  GMAIL_TOOL_PROMPT,
-  gmailAccess,
-  gmailReconnectPrompt,
-} from "@/lib/integrations/gmail-tools";
+  ensureSkillDocuments,
+  loadedSkills,
+  withSkillDocuments,
+  withSkillRequests,
+} from "@/lib/skills/context";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
 import { acquireMcpBinding } from "@/lib/mcp/manager";
 import { ensureChatTitle } from "@/lib/title";
@@ -303,8 +297,32 @@ export async function runChat(
     );
   }
 
+  const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
+  // Clients advertise a renderer for interactive UI; voice answers stay spoken.
+  const interactiveUiOffered =
+    parsedRequest.openuiSupported === true &&
+    toolCallingEnabled &&
+    parsedRequest.responseStyle !== "voice";
+  const skills = toolCallingEnabled
+    ? await resolveChatSkills({
+        userId,
+        interactiveUi: { offered: interactiveUiOffered, alwaysOn: openuiEnabled },
+      })
+    : [];
+  // What the composer asked for with this message: a connector, or an
+  // interactive answer. The message remembers it, so the chat keeps it.
+  const requestedSkills = (
+    [
+      [gmailEnabled, "gmail"],
+      [calendarEnabled, "calendar"],
+      [forceOpenUI, "interactive_ui"],
+    ] as const
+  ).flatMap(([requested, id]) =>
+    requested && skills.some((skill) => skill.id === id) ? [id] : [],
+  );
   if (persistUserMessage) {
     messages = withSubmittedOpenUIAction(messages, parsedRequest.openuiAction);
+    messages = withSkillRequests(messages, requestedSkills);
     messages = messages.map((message, index) => index === messages.length - 1
       ? withTurnResponseStyle(message, parsedRequest.responseStyle ?? "text")
       : message);
@@ -416,26 +434,42 @@ export async function runChat(
     );
   }
   let contextCheckpoint = restoredContext.checkpoint;
-  const openuiEligible =
-    parsedRequest.openuiSupported === true &&
-    modelConfig.toolCallingEnabled !== false &&
-    (openuiEnabled || forceOpenUI) &&
-    parsedRequest.responseStyle !== "voice";
-  const openuiPromptFits = !openuiEligible || !contextBudget || (
-    countTextTokens(OPENUI_TOOL_PROMPT) +
-    countTextTokens(modelConfig.systemPrompt ?? "") +
-    countTextTokens(JSON.stringify(restoredContext.messages.at(-1)?.parts ?? [])) +
-    2048 < contextBudget.inputTokens
+  // A skill the user loads in every chat sits in the system prompt. One this
+  // chat loaded sits in the conversation, beside the message that asked for
+  // it or in the tool result that read it, and stays there.
+  const conversationSkills = loadedSkills(messages, skills).filter(
+    (skill) => !skill.alwaysOn,
   );
-  if (forceOpenUI && openuiEligible && !openuiPromptFits) {
+  const skillFits = (skill: ChatSkill) =>
+    !contextBudget ||
+    countTextTokens(skillDocument(skill)) +
+      countTextTokens(modelConfig.systemPrompt ?? "") +
+      countTextTokens(
+        JSON.stringify(restoredContext.messages.at(-1)?.parts ?? []),
+      ) +
+      2048 <
+      contextBudget.inputTokens;
+  const interactiveUiSkill = skills.find(
+    (skill) => skill.id === "interactive_ui",
+  );
+  if (
+    forceOpenUI &&
+    interactiveUiSkill &&
+    !interactiveUiSkill.alwaysOn &&
+    !skillFits(interactiveUiSkill)
+  ) {
     throw new ChatRequestError(
       "Interactive UI instructions and this message exceed the model's available context. Choose a larger-context model or shorten the message.",
     );
   }
-  const openuiToolsEnabled = openuiEligible && openuiPromptFits;
   // History decoding is independent of whether this turn offers the tool.
   const openuiTools = createOpenUITools();
-  const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
+  const skillTools = skills.length
+    ? createSkillTools({ skills, fits: skillFits })
+    : {};
+  // A model runs these through call_tool; the chat and the store see them
+  // by their own names.
+  const bridgedToolNames = new Set(Object.keys(toolsOfSkills(skills)));
   // Names come from the whole conversation, so they stay stable when a
   // checkpoint hides the message that attached a file.
   const chatFiles = listChatFiles(messages);
@@ -495,23 +529,38 @@ export async function runChat(
     outputTokens: readChunkTokens(contextBudget?.inputTokens),
     info: sandboxInfo,
   });
-  const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withRecentOpenUIPrograms(withResponseStyle(inlined))).map((message) =>
-    message.role === "assistant"
-      ? { ...message, parts: joinContinuationTextParts(message.parts) }
-      : message,
-  ), {
-    tools: {
-      ...chatTools,
-      ...imageTools,
-      ...openuiTools,
-      ...fileTools,
-      ...documentTools,
-      ...codeTools,
-    },
-    // An intentional stop can persist a tool call before its result arrives.
-    // Keep partial text/reasoning, but do not replay an unmatched call.
-    ignoreIncompleteToolCalls: true,
-  });
+  const convertedMessages = ensureSkillDocuments(
+    await convertToModelMessages(
+      withBridgedToolCalls(
+        withSkillDocuments(
+          withOpenUIActionContext(
+            withRecentOpenUIPrograms(withResponseStyle(inlined)),
+          ),
+          skills,
+        ),
+        bridgedToolNames,
+      ).map((message) =>
+        message.role === "assistant"
+          ? { ...message, parts: joinContinuationTextParts(message.parts) }
+          : message,
+      ),
+      {
+        tools: {
+          ...chatTools,
+          ...imageTools,
+          ...openuiTools,
+          ...fileTools,
+          ...documentTools,
+          ...codeTools,
+          ...skillTools,
+        },
+        // An intentional stop can persist a tool call before its result arrives.
+        // Keep partial text/reasoning, but do not replay an unmatched call.
+        ignoreIncompleteToolCalls: true,
+      },
+    ),
+    conversationSkills,
+  );
   // A checkpoint remains useful if the next model has an unknown window.
   // Include it once here when automatic budget management is unavailable.
   if (!contextBudget && restoredContext.checkpoint) {
@@ -538,25 +587,6 @@ export async function runChat(
     getServerCapability("search").provider !== "disabled";
   const webToolsEnabled =
     toolCallingEnabled && webSearchEnabled && webSearchAvailable;
-  const gmail = toolCallingEnabled ? gmailAccess(userId) : null;
-  const gmailConnected = gmail !== null && gmail.status !== "unavailable";
-  // A chat keeps Gmail once it has it, so the tools a model was given never
-  // disappear partway through a conversation.
-  const gmailOn =
-    gmailConnected &&
-    (gmail.alwaysOn || gmailEnabled || conversationUsesGmail(messages));
-  const gmailToolsEnabled = gmailOn && gmail.status === "available";
-  const calendar = toolCallingEnabled ? calendarAccess(userId) : null;
-  const calendarConnected =
-    calendar !== null && calendar.status !== "unavailable";
-  const calendarOn =
-    calendarConnected &&
-    (calendar.alwaysOn ||
-      calendarEnabled ||
-      conversationUsesCalendar(messages));
-  const calendarToolsEnabled = calendarOn && calendar.status === "available";
-  const gmailOff = gmailConnected && !gmailOn;
-  const calendarOff = calendarConnected && !calendarOn;
   const systemParts = [
     modelConfig.systemPrompt,
     activePersonalization
@@ -570,31 +600,12 @@ export async function runChat(
     documentsEnabled ? DOCUMENT_TOOL_PROMPT : null,
     sandboxInfo ? codeExecutionPrompt(sandboxInfo) : null,
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
-    gmailToolsEnabled
-      ? GMAIL_TOOL_PROMPT
-      : gmailOn
-        ? gmailReconnectPrompt()
-        : null,
-    calendarToolsEnabled
-      ? CALENDAR_TOOL_PROMPT
-      : calendarOn
-        ? calendarReconnectPrompt()
-        : null,
-    // One hint covers whichever connectors are off in this chat.
-    gmailOff && calendarOff
-      ? GMAIL_AND_CALENDAR_OFF_PROMPT
-      : gmailOff
-        ? GMAIL_OFF_PROMPT
-        : calendarOff
-          ? CALENDAR_OFF_PROMPT
-          : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
       : null,
-    openuiToolsEnabled ? OPENUI_TOOL_PROMPT : null,
-    forceOpenUI && openuiToolsEnabled
-      ? `The user selected Interactive UI for this turn. Present your answer as an interactive OpenUI interface by calling ${OPENUI_PRESENT_TOOL_NAME}. You may use other available tools first when needed, then call ${OPENUI_PRESENT_TOOL_NAME} for your final response.`
-      : null,
+    // Skills the user loads everywhere, then the manifest of the rest.
+    ...skills.filter((skill) => skill.alwaysOn).map(skillDocument),
+    availableSkillsPrompt(skills),
     currentDateSystemPrompt(timeZone),
   ].filter((value): value is string => Boolean(value && value.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
@@ -712,10 +723,9 @@ export async function runChat(
       ...(documentsEnabled ? [documentTools] : []),
       ...(codeExecutionEnabled ? [codeTools] : []),
       ...(imageToolsEnabled ? [imageTools] : []),
-      ...(openuiToolsEnabled ? [openuiTools] : []),
+      ...(interactiveUiOffered ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
-      ...(gmailToolsEnabled ? [createGmailTools(userId)] : []),
-      ...(calendarToolsEnabled ? [createCalendarTools(userId)] : []),
+      ...(skills.length ? [skillTools] : []),
       ...(hasMcpTools ? [mcpTools] : []),
     ];
     const agentTools: ToolSet =
@@ -730,9 +740,8 @@ export async function runChat(
       ...(documentsEnabled ? DOCUMENT_TOOL_ORDER : []),
       ...(codeExecutionEnabled ? CODE_EXECUTION_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
-      ...(gmailToolsEnabled ? GMAIL_TOOL_ORDER : []),
-      ...(calendarToolsEnabled ? CALENDAR_TOOL_ORDER : []),
-      ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
+      ...(skills.length ? SKILL_TOOL_ORDER : []),
+      ...(interactiveUiOffered ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
         (name) =>
           !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
@@ -740,8 +749,7 @@ export async function runChat(
           !(DOCUMENT_TOOL_ORDER as readonly string[]).includes(name) &&
           !(CODE_EXECUTION_TOOL_ORDER as readonly string[]).includes(name) &&
           !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
-          !(GMAIL_TOOL_ORDER as readonly string[]).includes(name) &&
-          !(CALENDAR_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(SKILL_TOOL_ORDER as readonly string[]).includes(name) &&
           !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];
@@ -807,9 +815,13 @@ export async function runChat(
       steps,
       stepNumber,
     }) => {
-      const prepared = contextManager
-        ? await contextManager.prepare(stepMessages, steps)
-        : stepMessages;
+      // Compaction may have summarized away the text of a loaded skill.
+      const prepared = ensureSkillDocuments(
+        contextManager
+          ? await contextManager.prepare(stepMessages, steps)
+          : stepMessages,
+        conversationSkills,
+      );
       return {
         // Subsequent tool-loop steps must start a fresh assistant turn. Never
         // apply prefill flags to summary generation or ordinary requests.
@@ -831,7 +843,7 @@ export async function runChat(
         ...(forceSearch && webToolsEnabled && stepNumber === 0
           ? { activeTools: WEB_TOOL_NAMES, toolChoice: "required" as const }
           : {}),
-        ...(openuiToolsEnabled && steps.flatMap((step) => step.toolCalls)
+        ...(interactiveUiOffered && steps.flatMap((step) => step.toolCalls)
           .filter((call) => call.toolName === OPENUI_PRESENT_TOOL_NAME).length >= 2
           ? {
               activeTools: agentToolNames.filter((name) => name !== OPENUI_PRESENT_TOOL_NAME),
@@ -883,7 +895,7 @@ export async function runChat(
             instructions,
             tools: agentTools,
             toolOrder,
-            stopWhen: openuiToolsEnabled
+            stopWhen: interactiveUiOffered
               ? [isStepCount(50), hasSuccessfulOpenUI]
               : isStepCount(50),
             toolChoice: "auto",
@@ -917,7 +929,7 @@ export async function runChat(
     streamHeaders.set("Content-Encoding", "none");
     let emitInferenceActivity:
       ((activity: InferenceActivity) => void) | undefined;
-    const observedStream = observeChatStream(
+    const observedStream = bridgeToolStream(observeChatStream(
       result.stream as ReadableStream<TextStreamPart<ToolSet>>,
       {
         onFirstToken() {
@@ -954,7 +966,7 @@ export async function runChat(
           void mcpBinding?.release();
         },
       },
-    );
+    ), bridgedToolNames);
     const convertedUiStream = toUIMessageStream({
       stream: observedStream,
       tools: toolsEnabled ? agentTools : undefined,
