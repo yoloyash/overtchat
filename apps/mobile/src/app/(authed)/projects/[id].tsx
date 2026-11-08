@@ -22,6 +22,7 @@ import {
   ProjectModelSheet,
   type ProjectModelSheetRef,
 } from "@/components/projects/ProjectModelSheet";
+import { ProjectFilesSection } from "@/components/projects/ProjectFilesSection";
 import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { useChatSession } from "@/lib/chat/session";
@@ -364,6 +365,11 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
               </View>
             </View>
 
+            <ProjectFilesSection
+              projectId={project.id}
+              onOpenChat={handleOpenChat}
+            />
+
             <View style={styles.section}>
               <Text style={sectionLabel}>
                 CHATS{projectChats.length > 0 ? ` · ${projectChats.length}` : ""}
@@ -394,8 +400,8 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                       { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                     ]}
                   >
-                    Chats here share this project&apos;s instructions and
-                    default model.
+                    Chats here share this project&apos;s instructions, files,
+                    and default model.
                   </Text>
                 </View>
               ) : (
