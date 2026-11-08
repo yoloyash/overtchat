@@ -458,6 +458,12 @@ file's source, shown on the Files card. Saving a name the project already has
 asks whether to replace the link or keep both. Images are not offered, since
 the file tools read text.
 
+Typing `#` at a word boundary in a project chat lists the project's files not
+yet attached, filtered by the rest of the word without regard to case or
+spaces. Choosing one removes the token and attaches the file to the message
+like any attachment, so its text is inlined under the message budget. A `#`
+inside a word, or a token matching no file, is plain text.
+
 ```sh
 npm run test -w apps/web -- lib/db/project-files.test.ts "app/api/projects/[id]/files" lib/chat/project-prompt.test.ts lib/chat/chat-files.test.ts lib/db/library.test.ts app/api/chat/route.test.ts
 E2E_PORT=4791 npm run test:e2e -w apps/web -- project-files.spec.ts project-home.spec.ts
@@ -466,8 +472,8 @@ E2E_PORT=4791 npm run test:e2e -w apps/web -- project-files.spec.ts project-home
 The browser tests add a file on the project page, check the prompt lists it
 without carrying its text, have a scripted model search then read then answer,
 reuse the file from a second chat, find it in the library, remove it without
-touching past messages, and save a scripted document and an attached file into
-the project with replace and keep-both.
+touching past messages, save a scripted document and an attached file into the
+project with replace and keep-both, and attach a project file by `#` mention.
 
 ## Model-created documents validation
 

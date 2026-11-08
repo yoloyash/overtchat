@@ -201,7 +201,7 @@ test("project files are listed in the prompt and read through the file tools", a
 
   // Removing it leaves past chats intact and takes it out of new turns.
   await page.goto("/projects/ops");
-  await card.getByRole("button", { name: "Remove handbook.txt" }).click();
+  await card.getByRole("button", { name: "Remove handbook.txt from project" }).click();
   await expect(card.getByRole("button", { name: "Add files" })).toBeVisible();
   await page.getByPlaceholder("Message…").fill("Find the zebra protocol code");
   await page.getByLabel("Send message").click();
@@ -319,4 +319,61 @@ test("a chat saves its documents and files into the project", async ({ page }) =
   const card = page.getByRole("region", { name: "Project files" });
   await expect(card).toContainText("3 of 50 files");
   await expect(card.getByRole("link", { name: "Handbook question" }).first()).toBeVisible();
+});
+
+test("# in the composer attaches one project file to the message", async ({ page }) => {
+  await page.goto("/projects/ops");
+  const input = page.getByPlaceholder("Message…");
+  const menu = page.getByRole("listbox", { name: "Project files" });
+
+  // Without project files, # is plain text.
+  await input.pressSequentially("Ticket #5");
+  await expect(menu).toHaveCount(0);
+  await input.fill("");
+
+  await addProjectFile(page, "handbook.txt", handbook);
+  await addProjectFile(page, "Launch plan.md", plan);
+  await expect(page.getByRole("region", { name: "Project files" })).toContainText("2 of 50 files");
+  await expect(input).toHaveAttribute("placeholder", /# for project files/);
+
+  // A # inside a word is not a mention; a # word lists matching files.
+  await input.pressSequentially("I like C#");
+  await expect(menu).toHaveCount(0);
+  await input.fill("");
+  await input.pressSequentially("Summarize #launchpl");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("option")).toHaveText([/Launch plan\.md/]);
+  await input.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await input.fill("");
+
+  await input.pressSequentially("Summarize #");
+  await expect(menu.getByRole("option")).toHaveText([/handbook\.txt/, /Launch plan\.md/]);
+  await input.pressSequentially("hand");
+  await expect(menu.getByRole("option")).toHaveText([/handbook\.txt/]);
+  await input.press("Enter");
+  await expect(menu).toHaveCount(0);
+  await expect(input).toHaveValue("Summarize ");
+  await expect(page.getByLabel("Remove handbook.txt", { exact: true })).toBeVisible();
+
+  // An attached file is not offered again.
+  await input.pressSequentially("#");
+  await expect(menu.getByRole("option")).toHaveText([/Launch plan\.md/]);
+  await input.press("Escape");
+  await input.press("Backspace");
+  await input.pressSequentially("this");
+  await page.getByLabel("Send message").click();
+  await expect(page.getByText("No project files here.", { exact: true })).toBeVisible();
+
+  // The mentioned file rides along as an attachment, inlined under the usual
+  // budget, while the project list still names both files.
+  const request = chatRequests.at(-1)!;
+  const user = text(request.messages.find((message) => message.role === "user"));
+  expect(user).toContain("<source>handbook.txt</source>");
+  expect(user).toContain("Included the first");
+  expect(user).toMatch(/Summarize this$/);
+  const system = text(request.messages.find((message) => message.role === "system"));
+  expect(system).toContain("- handbook.txt\n- Launch plan.md");
+  await page.waitForURL("**/chat/**");
+  await expect(page.getByRole("button", { name: "1 file" })).toBeVisible();
 });
