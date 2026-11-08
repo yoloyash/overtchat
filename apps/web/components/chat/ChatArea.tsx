@@ -31,6 +31,7 @@ import {
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useOptionalProject } from "@/lib/queries/projects";
+import { ProjectSaveProvider } from "@/components/projects/ProjectSaveContext";
 import {
   activityKeys,
   chatKeys,
@@ -572,6 +573,14 @@ export function ChatArea({
     () => ({ activeFileId: fileTarget?.id ?? null, open: openFile }),
     [fileTarget, openFile],
   );
+  // Panels offer "Save to project" for documents and files of a project chat.
+  const projectSaveTarget = useMemo(
+    () =>
+      project && !temporary
+        ? { chatId, project: { id: project.id, name: project.name } }
+        : null,
+    [chatId, project, temporary],
+  );
   // Calls already saved when the chat opens never open the panel by themselves.
   const handledDocumentCalls = useRef<Set<string> | null>(null);
   useEffect(() => {
@@ -972,6 +981,7 @@ export function ChatArea({
   return (
     <DocumentPanelProvider value={documentPanel}>
     <FilePanelProvider value={filePanel}>
+    <ProjectSaveProvider value={projectSaveTarget}>
     <div className="relative flex min-w-0 flex-1 overflow-hidden">
     <div
       data-titlebar-interior={panel ? "" : undefined}
@@ -1113,6 +1123,7 @@ export function ChatArea({
     )}
     {fileTarget && <FilePanel file={fileTarget} onBack={showFiles} onClose={closePanel} />}
     </div>
+    </ProjectSaveProvider>
     </FilePanelProvider>
     </DocumentPanelProvider>
   );

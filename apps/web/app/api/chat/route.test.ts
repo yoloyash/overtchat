@@ -200,6 +200,9 @@ vi.mock("@/lib/mcp/manager", () => ({
   acquireMcpBinding: mocks.acquireMcpBinding,
 }));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
+vi.mock("@/lib/db/project-files", () => ({
+  listProjectChatFiles: async () => [],
+}));
 vi.mock("@/lib/db/personalization", () => ({
   getActivePersonalization: mocks.getActivePersonalization,
 }));

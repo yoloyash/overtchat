@@ -27,10 +27,17 @@ raw.exec(`
     page_count INTEGER, extracted_text TEXT, truncated INTEGER NOT NULL,
     created_at INTEGER NOT NULL
   );
+  CREATE TABLE projects (id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
+  CREATE TABLE project_files (
+    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    upload_id TEXT REFERENCES uploads(id) ON DELETE CASCADE,
+    source_chat_id TEXT, created_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (project_id, upload_id)
+  );
 `);
 afterAll(() => raw.close());
 beforeEach(() => {
-  raw.exec("DELETE FROM messages; DELETE FROM chats; DELETE FROM uploads;");
+  raw.exec("DELETE FROM project_files; DELETE FROM projects; DELETE FROM messages; DELETE FROM chats; DELETE FROM uploads;");
   raw.prepare("INSERT INTO chats VALUES (?, ?)").run("chat-a", "alice");
   raw.prepare("INSERT INTO chats VALUES (?, ?)").run("chat-b", "alice");
   raw.prepare("INSERT INTO chats VALUES (?, ?)").run("bob-chat", "bob");

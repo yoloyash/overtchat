@@ -39,6 +39,7 @@ import { DiagramViewport } from "./DiagramViewport";
 import { DOCUMENT_ICONS } from "./DocumentCard";
 import { BackToFilesButton } from "./ChatFiles";
 import { SidePanel, SidePanelHeader } from "./SidePanel";
+import { SaveToProjectButton } from "@/components/projects/SaveToProjectButton";
 
 type ShownDocument = DocumentDraft & { version?: number };
 
@@ -277,6 +278,10 @@ export function DocumentPanel({
                 <Download />
               </Button>
             )}
+            <SaveToProjectButton
+              source={{ kind: "document", document }}
+              disabled={writing}
+            />
           </div>
         </div>
         <Button

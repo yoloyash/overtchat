@@ -127,6 +127,7 @@ import {
 } from "@/lib/sandbox/tools";
 import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
+import { listProjectChatFiles } from "@/lib/db/project-files";
 import { getActivePersonalization } from "@/lib/db/personalization";
 import { resolveChatSkills, type ChatSkill } from "@/lib/skills/registry";
 import { availableSkillsPrompt, skillDocument } from "@/lib/skills/prompt";
@@ -259,6 +260,10 @@ export async function runChat(
   if (resolvedProjectId && !project) {
     return new Response("Project not found", { status: 404 });
   }
+  // Reference files every chat in the project can read with the file tools.
+  const projectFiles = project
+    ? await listProjectChatFiles(project.id, userId)
+    : [];
 
   const activePersonalization = temporary
     ? null
@@ -471,8 +476,14 @@ export async function runChat(
   // by their own names.
   const bridgedToolNames = new Set(Object.keys(toolsOfSkills(skills)));
   // Names come from the whole conversation, so they stay stable when a
-  // checkpoint hides the message that attached a file.
-  const chatFiles = listChatFiles(messages);
+  // checkpoint hides the message that attached a file. Project files are
+  // never in context, so having any turns the file tools on.
+  const chatFiles = listChatFiles(messages, projectFiles);
+  const projectUploadIds = new Set(projectFiles.map((file) => file.uploadId));
+  // Prompt names match the tool names, which may carry a numbered suffix.
+  const projectChatFiles = chatFiles.filter((file) =>
+    projectUploadIds.has(file.uploadId),
+  );
   const partialUploadIds = new Set<string>();
   // Clients advertise a renderer for runs and their files; voice answers stay
   // spoken. The sandbox must also be healthy.
@@ -521,7 +532,7 @@ export async function runChat(
     parsedRequest.documentsSupported === true &&
     toolCallingEnabled &&
     parsedRequest.responseStyle !== "voice";
-  const documentTools = createDocumentTools({ userId, messages });
+  const documentTools = createDocumentTools({ userId, messages, files: chatFiles });
   const codeTools = createCodeExecutionTools({
     userId,
     files: chatFiles,
@@ -595,7 +606,7 @@ export async function runChat(
     activePersonalization
       ? memorySystemPrompt(activePersonalization.memories)
       : null,
-    projectSystemPrompt(project),
+    projectSystemPrompt(project, projectChatFiles),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
     documentsEnabled ? DOCUMENT_TOOL_PROMPT : null,
     sandboxInfo ? codeExecutionPrompt(sandboxInfo) : null,

@@ -435,6 +435,40 @@ ATTACHMENT_READING_LIVE_URL=http://127.0.0.1:8000/v1 E2E_PORT=4791 npm run test:
 On Android and iOS, expand a message's activity and check the file read and
 search steps.
 
+## Project files validation
+
+A project holds up to 50 reference files, linked from `project_files` to
+existing `uploads` rows. Files upload through `POST /api/uploads` and link
+with `POST /api/projects/:id/files`; removing a link leaves messages that
+attached the same upload untouched, and the orphan sweep keeps any upload a
+project still references. Images are refused: the file tools read text.
+
+Project files are not inlined. Every chat in the project lists them by name in
+the project system prompt and gets `read_file` and `search_files`, so a turn
+pays only for what the model reads. Names join the conversation's file list
+ahead of attachments, so an attachment with a project file's name is the
+numbered one. Project files also appear in the library for re-attaching.
+
+A chat in a project can file its own output: document cards and sandbox file
+cards in the transcript, and the document and file panels, offer "Save to
+project" (a folder icon that turns into a check once the file is in the
+project). A document uploads as a text file named like its download; a
+conversation file links its existing upload. Either records the chat as the
+file's source, shown on the Files card. Saving a name the project already has
+asks whether to replace the link or keep both. Images are not offered, since
+the file tools read text.
+
+```sh
+npm run test -w apps/web -- lib/db/project-files.test.ts "app/api/projects/[id]/files" lib/chat/project-prompt.test.ts lib/chat/chat-files.test.ts lib/db/library.test.ts app/api/chat/route.test.ts
+E2E_PORT=4791 npm run test:e2e -w apps/web -- project-files.spec.ts project-home.spec.ts
+```
+
+The browser tests add a file on the project page, check the prompt lists it
+without carrying its text, have a scripted model search then read then answer,
+reuse the file from a second chat, find it in the library, remove it without
+touching past messages, and save a scripted document and an attached file into
+the project with replace and keep-both.
+
 ## Model-created documents validation
 
 Tool-calling models can create documents (Markdown, code, HTML, SVG, Mermaid)

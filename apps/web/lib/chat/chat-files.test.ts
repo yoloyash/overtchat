@@ -35,6 +35,25 @@ function runOutput(id: string, name: string, mediaType = "text/csv", url = `/api
 }
 
 describe("conversation files", () => {
+  it("lists project files first and numbers attachments that reuse their names", () => {
+    const project = [
+      { uploadId: "spec", name: "spec.pdf", mediaType: "application/pdf" },
+      { uploadId: "guide", name: "guide.md", mediaType: "text/markdown" },
+    ];
+    const messages = [
+      user("m1", [file("spec", "spec.pdf"), file("notes", "notes.txt", "text/plain")]),
+      user("m2", [file("other", "spec.pdf")]),
+    ];
+    expect(listChatFiles(messages, project)).toEqual([
+      { uploadId: "spec", name: "spec.pdf", mediaType: "application/pdf" },
+      { uploadId: "guide", name: "guide.md", mediaType: "text/markdown" },
+      { uploadId: "notes", name: "notes.txt", mediaType: "text/plain" },
+      { uploadId: "other", name: "spec (2).pdf", mediaType: "application/pdf" },
+    ]);
+    // Names do not depend on which chat the project file is read from.
+    expect(listChatFiles([], project)).toEqual(project);
+  });
+
   it("names uploads uniquely in order of first attachment", () => {
     const messages = [
       user("1", [file("a", "report.pdf"), { type: "text", text: "hi" }]),
