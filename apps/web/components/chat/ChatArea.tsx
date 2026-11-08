@@ -585,7 +585,14 @@ export function ChatArea({
   );
   // Calls already saved when the chat opens never open the panel by themselves.
   const handledDocumentCalls = useRef<Set<string> | null>(null);
+  // Message updates are throttled but status is not, so a call that arrives
+  // in one chunk can first render together with the finished status. Look at
+  // the reply once more when the stream ends so it is followed then rather
+  // than on the next send, when the previous reply is briefly still last.
+  const wasStreaming = useRef(false);
   useEffect(() => {
+    const finished = wasStreaming.current && !streaming;
+    wasStreaming.current = streaming;
     if (handledDocumentCalls.current === null) {
       handledDocumentCalls.current = new Set(
         messages.flatMap((message) =>
@@ -596,7 +603,7 @@ export function ChatArea({
       );
       return;
     }
-    if (!streaming) return;
+    if (!streaming && !finished) return;
     const openPart = documentTarget
       ? findDocumentPart(messages, documentTarget)
       : undefined;

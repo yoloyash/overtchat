@@ -111,9 +111,11 @@ test.beforeAll(async () => {
       event({ role: "assistant", content: scripted?.reply ?? "No document tools." }, null);
       event({}, "stop");
     } else {
-      // Stream the arguments in pieces, as models do.
+      // Stream the arguments in pieces, as models do, unless the prompt asks
+      // for the whole call at once.
       const args = JSON.stringify(scripted.args);
-      const third = Math.ceil(args.length / 3);
+      const whole = prompt.includes("in one go");
+      const third = whole ? args.length : Math.ceil(args.length / 3);
       event(
         {
           role: "assistant",
@@ -128,9 +130,11 @@ test.beforeAll(async () => {
         },
         null,
       );
-      for (const piece of [args.slice(third, third * 2), args.slice(third * 2)]) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        event({ tool_calls: [{ index: 0, function: { arguments: piece } }] }, null);
+      if (!whole) {
+        for (const piece of [args.slice(third, third * 2), args.slice(third * 2)]) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          event({ tool_calls: [{ index: 0, function: { arguments: piece } }] }, null);
+        }
       }
       event({}, "tool_calls");
     }
@@ -358,6 +362,19 @@ test("previews web pages, diagrams, SVG and code in the panel", async ({ page },
   // Every card reopens its own document.
   await page.getByRole("button", { name: /Welcome page.*Web page · Created/ }).click();
   await expect(panel(page).getByRole("heading", { name: "Welcome page", level: 2 })).toBeVisible();
+});
+
+test("a call that arrives in one chunk opens its panel during that reply", async ({ page }) => {
+  await send(page, "Write a launch plan in one go");
+  await expect(page.getByText("I created the launch plan.", { exact: true })).toBeVisible();
+  await expect(panel(page).getByRole("heading", { name: "Launch plan", level: 2 })).toBeVisible();
+
+  // Once closed, the document does not come back on the next reply.
+  await panel(page).getByRole("button", { name: "Close document" }).click();
+  await expect(panel(page)).toHaveCount(0);
+  await send(page, "Thanks");
+  await expect(page.getByText("No document tools.", { exact: true })).toBeVisible();
+  await expect(panel(page)).toHaveCount(0);
 });
 
 test("does not offer documents to clients that cannot render them", async ({ page }) => {
