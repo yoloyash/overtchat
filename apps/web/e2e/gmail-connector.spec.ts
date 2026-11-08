@@ -402,9 +402,11 @@ test("one sign-in covers what the person chooses, and is widened by signing in a
   await expectConnected(page, "calendar-1@example.test");
   await expect(gmailRow).toContainText("Not part of this sign-in.");
   await expect(
-    calendarRow.getByRole("switch", { name: "Use Google Calendar in every chat" }),
-  ).not.toBeChecked();
-  await expect(connectors(page).getByRole("switch")).toHaveCount(1);
+    calendarRow
+      .getByRole("radiogroup", { name: "Google Calendar tool access" })
+      .getByRole("radio", { name: "On demand" }),
+  ).toBeChecked();
+  await expect(connectors(page).getByRole("radiogroup")).toHaveCount(1);
 
   // Adding Gmail signs in again for both, with the same account preselected.
   await gmailRow.getByRole("button", { name: "Add" }).click();
@@ -423,16 +425,18 @@ test("one sign-in covers what the person chooses, and is widened by signing in a
   ).toBe(ALL_SCOPES.join(" "));
   grantedScopes = ALL_SCOPES;
   await finish(second);
-  await expect(connectors(page).getByRole("switch")).toHaveCount(2);
+  await expect(connectors(page).getByRole("radiogroup")).toHaveCount(2);
 
-  // Each connector has its own switch for every chat.
-  const everyChat = calendarRow.getByRole("switch", {
-    name: "Use Google Calendar in every chat",
-  });
-  await everyChat.click();
-  await expect(everyChat).toBeChecked();
+  // Each connector has its own tool access choice.
+  const calendarAlways = calendarRow
+    .getByRole("radiogroup", { name: "Google Calendar tool access" })
+    .getByRole("radio", { name: "Always available" });
+  await calendarAlways.click();
+  await expect(calendarAlways).toBeChecked();
   await expect(
-    gmailRow.getByRole("switch", { name: "Use Gmail in every chat" }),
+    gmailRow
+      .getByRole("radiogroup", { name: "Gmail tool access" })
+      .getByRole("radio", { name: "Always available" }),
   ).not.toBeChecked();
   const db = openE2eDatabase();
   try {
@@ -455,6 +459,6 @@ test("one sign-in covers what the person chooses, and is widened by signing in a
   ).toBeVisible();
   await expect(calendarRow).toContainText("Not part of this sign-in.");
   await expect(
-    gmailRow.getByRole("switch", { name: "Use Gmail in every chat" }),
+    gmailRow.getByRole("radiogroup", { name: "Gmail tool access" }),
   ).toBeVisible();
 });

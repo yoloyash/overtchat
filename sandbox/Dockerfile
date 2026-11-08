@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # Two published tiers share this file:
-#   slim (default): Python data, chart, image and document libraries, and
-#                   poppler.
+#   slim (default): Python data, chart, image and document libraries,
+#                   poppler with its CJK CMaps, and Noto CJK fonts.
 #   full:           slim plus pandoc, LibreOffice, Tesseract OCR, ffmpeg and
 #                   scientific libraries.
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
@@ -21,7 +21,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libseccomp2 poppler-utils \
+ && apt-get install -y --no-install-recommends \
+      libseccomp2 poppler-utils poppler-data fonts-noto-cjk \
  && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv /opt/overtchat/venv
@@ -70,7 +71,7 @@ RUN apt-get update \
       pandoc \
       libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui \
       tesseract-ocr tesseract-ocr-eng ffmpeg \
-      fonts-liberation fonts-dejavu-core fonts-noto-cjk \
+      fonts-liberation fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-full.txt /tmp/requirements-full.txt

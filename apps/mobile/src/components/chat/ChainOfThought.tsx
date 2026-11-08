@@ -36,10 +36,13 @@ import {
   isReadFilePart,
   isSearchFilesPart,
   isToolSettled,
+  isViewSkillToolPart,
   parseMcpToolName,
   readFileRangeLabel,
   type ReadFilePart,
   type SearchFilesPart,
+  viewSkillActivityLabel,
+  type ViewSkillToolPart,
   webSearchProviderLabel,
   webSearchResults,
   type WebSearchPart,
@@ -64,6 +67,7 @@ export type ActivityPart =
   | CodeExecutionPart
   | GmailToolPart
   | CalendarToolPart
+  | ViewSkillToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -92,6 +96,7 @@ function isTool(
     isCodeExecutionPart(p) ||
     isGmailToolPart(p) ||
     isCalendarToolPart(p) ||
+    isViewSkillToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -349,6 +354,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <GmailStep part={part} />
         ) : isCalendarToolPart(part) ? (
           <CalendarStep part={part} />
+        ) : isViewSkillToolPart(part) ? (
+          <SkillStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -1085,6 +1092,45 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
   );
 }
 
+/** A model reading a skill's instructions before using it. */
+function SkillStep({ part }: { part: ViewSkillToolPart }) {
+  const { colors, fonts } = useTheme();
+  const note =
+    part.state === "output-error"
+      ? part.errorText
+      : typeof part.output === "string" && part.output.startsWith("Error:")
+        ? part.output.slice(7)
+        : undefined;
+  return (
+    <View style={styles.searchStep}>
+      <Text
+        style={[
+          styles.stepTitle,
+          { color: colors.foreground, fontFamily: fonts.sansMedium },
+        ]}
+      >
+        {viewSkillActivityLabel(part, !isToolSettled(part))}
+      </Text>
+      {note ? (
+        <Text
+          style={[
+            styles.metaText,
+            {
+              color:
+                part.state === "output-error"
+                  ? colors.destructive
+                  : colors.mutedForeground,
+              fontFamily: fonts.sansRegular,
+            },
+          ]}
+        >
+          {note}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function ReadFileStep({ part }: { part: ReadFilePart }) {
   const { colors, fonts } = useTheme();
   const output = part.output;
@@ -1269,6 +1315,7 @@ function activeLabel(last: ActivityPart | undefined): string {
   if (isCodeExecutionPart(last)) return "Running code…";
   if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
   if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
+  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true);
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -1317,6 +1364,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool && isCalendarToolPart(lastTool)) {
     return calendarActivityLabel(lastTool, false);
+  }
+  if (lastTool && isViewSkillToolPart(lastTool)) {
+    return viewSkillActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

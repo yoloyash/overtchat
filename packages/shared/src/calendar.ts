@@ -1,3 +1,4 @@
+import { conversationUsesSkill } from "./skills";
 import type { ToolState } from "./tools";
 
 /** Google Calendar tool names in deterministic provider order. */
@@ -98,29 +99,25 @@ export function isCalendarToolPart(part: {
 /** What the user types to turn Google Calendar on in one chat. */
 export const CALENDAR_COMMAND = "/calendar";
 
-const CALENDAR_COMMAND_PATTERN = /^\s*\/calendar(?:\s|$)/i;
+export const CALENDAR_COMMAND_PATTERN = /^\s*\/calendar(?:\s|$)/i;
 
 /**
- * Whether a conversation has turned Google Calendar on: a model already used
- * the calendar tools in it, or a message opens with the command typed out,
- * which is how a client without a command menu asks.
+ * Whether a conversation has loaded Google Calendar: the user asked for it,
+ * a message opens with the command typed out, a model viewed the skill, or
+ * a model already used the calendar tools. A chat keeps it once it has it.
  */
 export function conversationUsesCalendar(
   messages: readonly {
     role: string;
+    metadata?: unknown;
     parts: readonly { type: string; text?: unknown }[];
   }[],
 ): boolean {
-  return messages.some((message) =>
-    message.role === "user"
-      ? message.parts.some(
-          (part) =>
-            part.type === "text" &&
-            typeof part.text === "string" &&
-            CALENDAR_COMMAND_PATTERN.test(part.text),
-        )
-      : message.parts.some(isCalendarToolPart),
-  );
+  return conversationUsesSkill(messages, {
+    id: "calendar",
+    command: CALENDAR_COMMAND_PATTERN,
+    isToolPart: isCalendarToolPart,
+  });
 }
 
 /** One event in a calendar step. */

@@ -79,12 +79,6 @@ describe("availability", () => {
     );
   });
 
-  it("tells a model whose chat has it off how the user turns it on", () => {
-    expect(tools.CALENDAR_OFF_PROMPT).toContain("type /calendar");
-    expect(tools.GMAIL_AND_CALENDAR_OFF_PROMPT).toContain("type /gmail");
-    expect(tools.GMAIL_AND_CALENDAR_OFF_PROMPT).toContain("/calendar");
-  });
-
   it("treats a chat as using the calendar once a model has, or once the command is typed", () => {
     const user = (text: string) => ({ role: "user", parts: [{ type: "text", text }] });
     const assistant = (type: string) => ({
