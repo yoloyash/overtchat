@@ -435,6 +435,40 @@ ATTACHMENT_READING_LIVE_URL=http://127.0.0.1:8000/v1 E2E_PORT=4791 npm run test:
 On Android and iOS, expand a message's activity and check the file read and
 search steps.
 
+## Project files validation
+
+A project holds up to 50 reference files, linked from `project_files` to
+existing `uploads` rows. Files upload through `POST /api/uploads` and link
+with `POST /api/projects/:id/files`; removing a link leaves messages that
+attached the same upload untouched, and the orphan sweep keeps any upload a
+project still references. Images are refused: the file tools read text.
+
+Project files are not inlined. Every chat in the project lists them by name in
+the project system prompt and gets `read_file` and `search_files`, so a turn
+pays only for what the model reads. Names join the conversation's file list
+ahead of attachments, so an attachment with a project file's name is the
+numbered one. Project files also appear in the library for re-attaching.
+
+A chat in a project can file its own output: document cards and sandbox file
+cards in the transcript, and the document and file panels, offer "Save to
+project" (a folder icon that turns into a check once the file is in the
+project). A document uploads as a text file named like its download; a
+conversation file links its existing upload. Either records the chat as the
+file's source, shown on the Files card. Saving a name the project already has
+asks whether to replace the link or keep both. Images are not offered, since
+the file tools read text.
+
+```sh
+npm run test -w apps/web -- lib/db/project-files.test.ts "app/api/projects/[id]/files" lib/chat/project-prompt.test.ts lib/chat/chat-files.test.ts lib/db/library.test.ts app/api/chat/route.test.ts
+E2E_PORT=4791 npm run test:e2e -w apps/web -- project-files.spec.ts project-home.spec.ts
+```
+
+The browser tests add a file on the project page, check the prompt lists it
+without carrying its text, have a scripted model search then read then answer,
+reuse the file from a second chat, find it in the library, remove it without
+touching past messages, and save a scripted document and an attached file into
+the project with replace and keep-both.
+
 ## Model-created documents validation
 
 Tool-calling models can create documents (Markdown, code, HTML, SVG, Mermaid)
@@ -483,7 +517,7 @@ links in an HTML document.
 ## Code sandbox validation
 
 `sandbox/` builds the optional code execution image in two tiers: `slim`
-(Python data, chart, image and document libraries, and poppler) and `full`
+(Python data, chart, image and document libraries, poppler and CJK fonts) and `full`
 (adds pandoc, LibreOffice, Tesseract, ffmpeg and scientific libraries).
 `POST /run` takes Python code and input files and returns output and the files
 written to `outputs/`. Each run is a fresh user from a pool, with resource
@@ -618,20 +652,36 @@ first so the step can name it. Gmail and Calendar share
 `googleRequest()` (`lib/integrations/google/request.ts`) for the token, the
 single retry after a 401, and error wording.
 
-Each connector joins a chat on its own. A chat is offered a connector's tools
-when its `alwaysOn` is set, when the request carries `gmailEnabled` or
-`calendarEnabled` (the composer's `/gmail` and `/calendar`), or when
-`conversationUsesGmail()` or `conversationUsesCalendar()` finds that the
-conversation already used one of its tools or has a user message opening with
-the command, which is how a client without the command menu asks. A chat
-never loses the tools once it has them, so the tool list a model was given
-does not change partway through. Other chats of a connected user get one line
-telling the model which command to pass on: `GMAIL_OFF_PROMPT`,
-`CALENDAR_OFF_PROMPT`, or `GMAIL_AND_CALENDAR_OFF_PROMPT` when both are off.
-Where a connector is on but the sign-in has ended, `gmailReconnectPrompt()` or
-`calendarReconnectPrompt()` tells the model where the user reconnects. The
-composer reads its connectors from `CHAT_CONNECTORS`
-(`components/chat/chat-connectors.tsx`).
+Connectors and Interactive UI reach a model as skills (`lib/skills/`), so a
+chat carries their instructions and tool definitions only once a message
+needs them, and the tool list a model is given never changes during a
+conversation: a prompt cache, or a local engine's prefix, survives a connector
+joining. Every chat with tool calling gets the same two tools, `view_skill`
+and `call_tool` (`createSkillTools()`), and an `<available_skills>` manifest
+near the end of the system prompt with each skill's id, name and one-line
+description (`availableSkillsPrompt()`). `view_skill` returns
+`skillDocument()`: the skill's instructions followed by the JSON definitions
+of its tools, which the model runs through `call_tool(tool_name, params)`;
+`params` is validated against the tool's own schema before it runs. A skill
+whose **Tool access** the user set to **Always available** (per connector, and
+for Interactive UI, in Settings → Tools) sits in the system prompt as a
+`<skill>` block instead of in the manifest; the default, **On demand**, is the
+manifest. One a chat loads sits in the conversation and stays there: in the
+`view_skill` result, or beside the first user message that asked for it
+(`withSkillDocuments()`). The composer's `/gmail`, `/calendar` and Interactive
+UI choices travel as `gmailEnabled`, `calendarEnabled` and `forceOpenUI`, and
+the server records them in that message's `metadata.skills`
+(`withSkillRequests()`); a message opening with `/gmail` or `/calendar` typed
+out asks the same way, for clients without the command menu. `loadedSkills()`
+and the shared `conversationUsesSkill()` decide what a chat has loaded, and
+`ensureSkillDocuments()` puts a loaded skill's text back into the first
+retained user message when compaction summarized it away. A model's
+`call_tool` calls are rewritten in the stream (`bridgeToolStream()`) so the
+chat and the store see `tool-gmail_search` and the other parts as before, and
+rewritten back for replay (`withBridgedToolCalls()`). Where a sign-in has
+ended, the skill's text is `gmailReconnectPrompt()` or
+`calendarReconnectPrompt()` and it provides no tools. The composer reads its
+connectors from `CHAT_CONNECTORS` (`components/chat/chat-connectors.tsx`).
 
 A saved draft is not a timeline step: `groupMessageParts()` gives it its own
 segment, and the web and mobile cards show its subject, recipients and body.
@@ -1862,10 +1912,15 @@ synthetic history, without model requests or credentials.
 ## Interactive UI validation
 
 OpenUI uses the upstream component library and a `present_openui` tool. Clients
-explicitly advertise renderer support; automatic generation defaults off. A
-one-message request can opt in. Voice turns do not offer the tool. The full
-component/action prompt costs approximately 6,800 tokens, so small-context
-models may decline an explicit request or skip automatic generation. The prompt
+explicitly advertise renderer support; the tool is offered wherever a client
+renders it and the model calls tools, and voice turns do not offer it. The
+component/action prompt is the `interactive_ui` skill: a model loads it with
+`view_skill` when a message calls for an interface, **Always available** under
+**Interactive UI** in Settings loads it into every chat, and a one-message
+request (the + menu or `/openui`) loads it for that message and asks for an
+interactive answer. The prompt costs approximately 6,800 tokens, so `view_skill` refuses it
+when it does not fit the model's context, and a one-message request is
+rejected with an error. The prompt
 omits the built-in data functions (`@Count`, `@Sum`, `@Each`, ...) because
 programs carry static data from the conversation; `$variable` bindings, `@Set`,
 and `@Reset` remain available.

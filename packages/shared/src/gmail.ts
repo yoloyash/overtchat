@@ -1,3 +1,4 @@
+import { conversationUsesSkill } from "./skills";
 import type { ToolState } from "./tools";
 
 /** Gmail tool names in deterministic provider order. */
@@ -184,29 +185,25 @@ export function describeGmailDraft(part: GmailToolPart): GmailDraftDisplay {
 /** What the user types to turn Gmail on in one chat. */
 export const GMAIL_COMMAND = "/gmail";
 
-const GMAIL_COMMAND_PATTERN = /^\s*\/gmail(?:\s|$)/i;
+export const GMAIL_COMMAND_PATTERN = /^\s*\/gmail(?:\s|$)/i;
 
 /**
- * Whether a conversation has turned Gmail on: a model already used the mail
- * tools in it, or a message opens with the command typed out, which is how a
- * client without a command menu asks.
+ * Whether a conversation has loaded Gmail: the user asked for it, a message
+ * opens with the command typed out, a model viewed the skill, or a model
+ * already used the mail tools. A chat keeps Gmail once it has it.
  */
 export function conversationUsesGmail(
   messages: readonly {
     role: string;
+    metadata?: unknown;
     parts: readonly { type: string; text?: unknown }[];
   }[],
 ): boolean {
-  return messages.some((message) =>
-    message.role === "user"
-      ? message.parts.some(
-          (part) =>
-            part.type === "text" &&
-            typeof part.text === "string" &&
-            GMAIL_COMMAND_PATTERN.test(part.text),
-        )
-      : message.parts.some(isGmailToolPart),
-  );
+  return conversationUsesSkill(messages, {
+    id: "gmail",
+    command: GMAIL_COMMAND_PATTERN,
+    isToolPart: isGmailToolPart,
+  });
 }
 
 /** One message in a Gmail step: a search result, or a message of a thread. */

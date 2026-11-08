@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { MediaIcon } from "./attachment-icons";
 import { BackToFilesButton } from "./ChatFiles";
 import { SidePanel, SidePanelHeader } from "./SidePanel";
+import { SaveToProjectButton } from "@/components/projects/SaveToProjectButton";
 
 type TextPreview = Extract<FilePreview, { kind: "table" | "markdown" | "html" | "text" }>;
 
@@ -81,6 +82,7 @@ export function FilePanel({
         >
           <Download />
         </Button>
+        <SaveToProjectButton source={{ kind: "file", file }} />
         <Button
           variant="ghost"
           size="icon-sm"

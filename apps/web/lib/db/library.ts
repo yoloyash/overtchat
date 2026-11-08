@@ -1,12 +1,12 @@
 import "server-only";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chats, messages, uploads } from "@/lib/db/schema";
+import { chats, messages, projectFiles, projects, uploads } from "@/lib/db/schema";
 import type { LibraryCursor, LibraryPage } from "@/lib/library";
 
 const PAGE_SIZE = 40;
 
-/** Library membership follows saved user attachments and generated images. */
+/** Library membership follows saved attachments, generated files, and project files. */
 export async function listLibrary(
   userId: string,
   query = "",
@@ -27,9 +27,9 @@ export async function listLibrary(
     .where(and(
       eq(uploads.userId, userId),
       cursor ? sql`(${uploads.createdAt}, ${uploads.id}) < (${cursor.createdAt}, ${cursor.id})` : undefined,
-      // Match user attachments, image-generation outputs and files returned
-      // by code runs. Both sides are scoped: imported references never grant
-      // ownership.
+      // Match user attachments, image-generation outputs, files returned by
+      // code runs, and project reference files. Both sides are scoped:
+      // imported references never grant ownership.
       inArray(sql`'/api/uploads/' || ${uploads.id}`, sql`(
         SELECT json_extract(part.value, '$.url')
         FROM ${messages}
@@ -63,6 +63,11 @@ export async function listLibrary(
           AND part.type = 'object' AND file.type = 'object'
           AND json_extract(part.value, '$.type') = 'tool-run_python'
           AND json_extract(part.value, '$.state') = 'output-available'
+        UNION ALL
+        SELECT '/api/uploads/' || ${projectFiles.uploadId}
+        FROM ${projectFiles}
+        INNER JOIN ${projects} ON ${projects.id} = ${projectFiles.projectId}
+        WHERE ${projects.userId} = ${userId}
       )`),
       // Treat search as a literal substring (including %, _ and quotes).
       query ? sql`instr(unicode_lower(${uploads.filename}), unicode_lower(${query})) > 0` : undefined,

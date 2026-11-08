@@ -2,24 +2,33 @@
 
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
 
 export function SettingsChoiceGroup({
   label,
   value,
   onValueChange,
   options,
+  disabled,
+  className,
 }: {
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   options: ReadonlyArray<{ value: string; label: React.ReactNode }>;
+  disabled?: boolean;
+  className?: string;
 }) {
   return (
     <RadioGroup
       aria-label={label}
       value={value}
       onValueChange={onValueChange}
-      className="grid min-h-10 w-full auto-cols-fr grid-flow-col gap-1 rounded-lg border bg-muted/30 p-1"
+      disabled={disabled}
+      className={cn(
+        "grid min-h-10 w-full auto-cols-fr grid-flow-col gap-1 rounded-lg border bg-muted/30 p-1 data-disabled:opacity-60",
+        className,
+      )}
     >
       {options.map((option) => (
         <Radio.Root

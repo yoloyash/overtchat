@@ -17,11 +17,12 @@ import {
   useUpdateProject,
 } from "@/lib/queries/projects";
 import { ProjectChatList } from "./ProjectChatList";
+import { ProjectFilesCard } from "./ProjectFiles";
 import { ProjectInstructionsCard, ProjectModelCard } from "./ProjectSettings";
 
 /**
  * A project's page: start a chat in it, browse its chats, and edit the
- * instructions and default model they share.
+ * instructions, files, and default model they share.
  */
 export function ProjectHome({
   projectId,
@@ -61,6 +62,7 @@ export function ProjectHome({
             className="flex flex-col gap-3 [grid-area:settings] lg:self-start"
           >
             <ProjectInstructionsCard key={project.id} project={project} />
+            <ProjectFilesCard projectId={project.id} />
             <ProjectModelCard
               project={project}
               onDefaultModelChange={onDefaultModelChange}

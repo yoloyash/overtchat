@@ -830,7 +830,7 @@ spreadsheets, make charts, edit images, and create documents such as Word or
 PDF files. Each run happens in a separate sandbox container without internet
 access and returns the files it writes as downloads. Choose one image:
 
-- Standard (`sandbox`): Python data, chart, image and document libraries (about 500 MB).
+- Standard (`sandbox`): Python data, chart, image and document libraries, with CJK fonts (about 600 MB).
 - Full (`sandbox-full`): also pandoc, LibreOffice, OCR and ffmpeg (about 2 GB).
 
 Guided installations choose this in `overtchat setup`, which also generates the
@@ -880,12 +880,15 @@ unticked on Google's page is left out and the rest connects. **Change access**,
 or **Add** beside a connector that was left out, signs in again with a new
 choice; Google has no way to widen or narrow a sign-in in place.
 
-A connector is off in chats until its owner turns it on, so mail, events and
-the roughly 1,000 tokens each connector's tools add to a request stay out of
-chats that do not need them. Typing `/gmail` or `/calendar` turns that
-connector on for one chat, which then keeps it; **Use in every chat** beside
-it turns it on everywhere. While a connector is off, a model asked about mail
-or the calendar tells the person which command to type.
+A connected connector costs a chat one line until a message needs it: a model
+asked about mail or the calendar loads the connector's instructions and tools
+itself, roughly 1,000 tokens, once per chat, and the chat keeps them. Typing
+`/gmail` or `/calendar` loads a connector straight away for one chat. Each
+connector's **Tool access** choice in Settings is **On demand** by default;
+**Always available** loads it into every chat from the start, which skips that
+step at the cost of those tokens in every request. The tools a model is given
+never change during a chat, so a slow local model does not reprocess the
+conversation when a connector joins.
 
 Where Gmail is on, tool-calling models can work with that person's mail on
 web, desktop and mobile:

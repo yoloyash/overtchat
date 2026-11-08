@@ -301,12 +301,14 @@ export function Toggle({
 }
 export function Choice<T extends string>({
   title,
+  detail,
   value,
   options,
   onChange,
   disabled,
 }: {
   title: string;
+  detail?: string;
   value: T;
   options: readonly { value: T; label: string; leading?: ReactNode }[];
   onChange: (value: T) => void;
@@ -317,6 +319,7 @@ export function Choice<T extends string>({
     <>
       <Row
         title={title}
+        detail={detail}
         value={options.find((o) => o.value === value)?.label ?? value}
         leading={options.find((o) => o.value === value)?.leading}
         navigation
