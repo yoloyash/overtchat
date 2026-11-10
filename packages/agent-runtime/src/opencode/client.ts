@@ -1201,52 +1201,42 @@ export async function fetchOpenCodeCatalog(
   }
 }
 
+// The stable session list has no cursor and returns only its newest 100 rows
+// unless told otherwise. A row is about half a kilobyte, so one request can
+// carry every session a folder has.
+const SESSION_LIST_LIMIT = 10_000;
+
+/**
+ * Root sessions started in exactly this folder.
+ *
+ * OpenCode's project scope is not a folder scope: a project is a git
+ * repository with at least one commit, and every other folder on the machine
+ * shares one catch-all project. Listing by project therefore hands a new
+ * folder the sessions of every unrelated folder, and hands a repository the
+ * sessions of its subfolders and other worktrees.
+ */
 export async function listOpenCodeSessions(
   target: HostTarget,
   executable: string,
   cwd: string,
-): Promise<Array<{ session: Session; messages: OpenCodeMessageWithParts[] }>> {
+): Promise<Session[]> {
   const lease = await openCodeServerPool.acquire(target, executable);
   try {
     const client = createOpencodeClient({ baseUrl: lease.baseUrl, directory: cwd });
-    const sessions = resultData(
-      await client.session.list({
+    const [location, sessions] = await Promise.all([
+      client.path.get({ directory: cwd }),
+      client.session.list({
         directory: cwd,
-        scope: "project",
         roots: true,
-        limit: 200,
+        limit: SESSION_LIST_LIMIT,
       }),
-      "OpenCode session list",
+    ]);
+    // OpenCode stores the folder in its own canonical form (symlinks resolved,
+    // no trailing separator), so compare against what it resolved, not `cwd`.
+    const directory = resultData(location, "OpenCode workspace path").directory;
+    return resultData(sessions, "OpenCode session list").filter(
+      (session) => session.directory === directory,
     );
-    const results: Array<{
-      session: Session;
-      messages: OpenCodeMessageWithParts[];
-    }> = new Array(sessions.length);
-    let nextIndex = 0;
-    await Promise.all(
-      Array.from({ length: Math.min(8, sessions.length) }, async () => {
-        while (nextIndex < sessions.length) {
-          const index = nextIndex++;
-          const session = sessions[index]!;
-          let messages: OpenCodeMessageWithParts[] = [];
-          try {
-            messages = resultData(
-              await client.session.messages({
-                sessionID: session.id,
-                directory: cwd,
-              }),
-              `OpenCode messages for ${session.id}`,
-            );
-          } catch {
-            // Session identity and timestamps come from the authoritative list.
-            // Message-derived metadata is optional enrichment and one corrupt or
-            // transiently unavailable history must not hide every other session.
-          }
-          results[index] = { session, messages };
-        }
-      }),
-    );
-    return results;
   } finally {
     await lease.release();
   }

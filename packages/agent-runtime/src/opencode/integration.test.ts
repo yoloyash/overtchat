@@ -7,6 +7,7 @@ import {
   startOpenCodeRuntime,
 } from "./client";
 import { probeOpenCodeTarget } from "./probe";
+import { openCodeServerPool } from "./server";
 import { configureLocalTestProcessSpawner } from "../runtime/local-process.test-helper";
 
 const runIntegration = process.env.RUN_OPENCODE_INTEGRATION === "1";
@@ -169,11 +170,19 @@ describe.runIf(runIntegration)("installed OpenCode integration", () => {
         const resumed = await client.getMessages();
         expect(resumed.messages.some((message) => messageText(message).includes("OPENCODE_STEER_OK"))).toBe(true);
       } finally {
-        await client.stop();
-        if (sessionId) {
-          await deleteOpenCodeSession(target, executable, root, sessionId).catch(() => {});
+        // Hold the server open across the stop: one restarted on the same
+        // port resets the first request sent to it, and the delete is that
+        // request.
+        const server = await openCodeServerPool.acquire(target, executable);
+        try {
+          await client.stop();
+          if (sessionId) {
+            await deleteOpenCodeSession(target, executable, root, sessionId);
+          }
+        } finally {
+          await server.release();
+          fs.rmSync(root, { recursive: true, force: true });
         }
-        fs.rmSync(root, { recursive: true, force: true });
       }
     },
     240_000,

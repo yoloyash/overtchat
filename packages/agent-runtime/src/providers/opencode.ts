@@ -103,9 +103,7 @@ export const openCodeProviderAdapter: AgentProviderAdapter = {
       executable,
       workspacePath,
     );
-    return sessions.map(({ session, messages }) =>
-      openCodeSessionMetadata(session, messages),
-    );
+    return sessions.map(openCodeSessionMetadata);
   },
   fetchCatalog,
   sessionIdentity,

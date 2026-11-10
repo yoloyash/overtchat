@@ -478,6 +478,47 @@ describe("agent connection persistence", () => {
     });
   });
 
+  it("keeps a recorded first prompt when the provider's list has none", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/overtchat", name: "overtchat" },
+    );
+    const listed = {
+      providerSessionId: "ses-1",
+      providerSessionPath: "ses-1",
+      name: "Repair the build",
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: new Date(1_000),
+    };
+    const [row] = repository.syncAgentWorkspaceSessions(workspace!.id, [listed]);
+    expect(row).toMatchObject({ firstMessage: null });
+
+    // The open session reports the first prompt from its transcript.
+    await repository.updateAgentSessionMetadata(row!.id, {
+      firstMessage: "Why does the build fail?",
+    });
+    expect(
+      repository.syncAgentWorkspaceSessions(workspace!.id, [
+        { ...listed, modifiedAt: new Date(2_000) },
+      ]),
+    ).toMatchObject([
+      { id: row!.id, firstMessage: "Why does the build fail?" },
+    ]);
+
+    // A list that does report one stays authoritative.
+    expect(
+      repository.syncAgentWorkspaceSessions(workspace!.id, [
+        { ...listed, firstMessage: "Why does the build fail on CI?" },
+      ]),
+    ).toMatchObject([
+      { id: row!.id, firstMessage: "Why does the build fail on CI?" },
+    ]);
+  });
+
   it("replaces a session's provider identity without changing its OvertChat id", async () => {
     const owned = createAliceConnection();
     const workspace = await repository.createAgentWorkspace(

@@ -1425,6 +1425,21 @@ each remote login environment must provide `opencode`. These tests create and
 remove disposable workspaces, sessions, and process records. They run a native
 shell tool without making model requests and only terminate helpers they own.
 
+## OpenCode session listing validation
+
+A workspace lists the OpenCode sessions started in its own folder. OpenCode
+groups sessions by project, and every folder outside a git repository shares
+one project, so the list is checked against a real server:
+
+```sh
+RUN_OPENCODE_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/opencode/sessions.integration.test.ts
+```
+
+The test gives OpenCode a private data directory, creates empty sessions in
+plain folders, repositories, a subfolder, a worktree, and a symlinked folder,
+and makes no model requests. Run it after changing the session list call or
+the pinned `@opencode-ai/sdk`.
+
 ## Hermes ACP validation
 
 Hermes uses `@agentclientprotocol/sdk` 0.17.1, which retains the ACP model
