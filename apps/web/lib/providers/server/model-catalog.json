@@ -1728,6 +1728,40 @@
         ]
       }
     },
+    "claude-fable-5-2": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.2,
+        "cache_write": 10,
+        "input": 8,
+        "output": 40
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    },
     "claude-haiku-4-5": {
       "context": 200000,
       "output": 64000,
@@ -2165,7 +2199,7 @@
   },
   "google": {
     "deep-research-max-preview-04-2026": {
-      "context": 131072,
+      "context": 1048576,
       "output": 65536,
       "cost": {
         "cache_read": 0.2,
@@ -2205,7 +2239,7 @@
       "temperature": true
     },
     "deep-research-preview-04-2026": {
-      "context": 131072,
+      "context": 1048576,
       "output": 65536,
       "cost": {
         "cache_read": 0.2,
@@ -3509,6 +3543,29 @@
       "structured_output": true,
       "temperature": false
     },
+    "anthropic.claude-fable-5-2": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.2,
+        "cache_write": 10,
+        "input": 8,
+        "output": 40
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
     "anthropic.claude-haiku-4-5-20251001-v1:0": {
       "context": 200000,
       "output": 64000,
@@ -4771,6 +4828,29 @@
       "structured_output": true,
       "temperature": false
     },
+    "global.anthropic.claude-fable-5-2": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.2,
+        "cache_write": 10,
+        "input": 8,
+        "output": 40
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
     "global.anthropic.claude-haiku-4-5-20251001-v1:0": {
       "context": 200000,
       "output": 64000,
@@ -5089,6 +5169,28 @@
         "cache_write": 3.75,
         "input": 3,
         "output": 15
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
+    "global.moonshotai.kimi-k3.1": {
+      "context": 1048576,
+      "output": 1048576,
+      "cost": {
+        "cache_read": 0.2,
+        "cache_write": 5,
+        "input": 4,
+        "output": 20
       },
       "input_modalities": [
         "text",
@@ -7293,6 +7395,29 @@
       "structured_output": true,
       "temperature": false
     },
+    "us.anthropic.claude-fable-5-2": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.22,
+        "cache_write": 11,
+        "input": 8.8,
+        "output": 44
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
       "context": 200000,
       "output": 64000,
@@ -7769,6 +7894,28 @@
         "cache_write": 4.125,
         "input": 3.3,
         "output": 16.5
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
+    "us.moonshotai.kimi-k3.1": {
+      "context": 1048576,
+      "output": 1048576,
+      "cost": {
+        "cache_read": 0.22,
+        "cache_write": 5.5,
+        "input": 4.4,
+        "output": 22
       },
       "input_modalities": [
         "text",
