@@ -1410,6 +1410,15 @@ recovery after killing a test connector, run:
 RUN_OPENCODE_LIFECYCLE_INTEGRATION=1 npm run test -w apps/connector -- src/opencode-lifecycle.integration.test.ts
 ```
 
+A stopped server's connections must end with it: the next server reuses the
+same port, and a connection left over from the old one resets the first
+request. To check that against a real server, with a private OpenCode data
+directory and no model requests, run:
+
+```sh
+RUN_OPENCODE_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/opencode/server.integration.test.ts
+```
+
 Set `OPENCODE_COMMAND` if the local executable is not `opencode`. Set
 `OPENCODE_SSH_ALIASES=linux-host,mac-host` to include configured OpenSSH aliases;
 each remote login environment must provide `opencode`. These tests create and

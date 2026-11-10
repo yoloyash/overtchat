@@ -1,3 +1,5 @@
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { PassThrough, Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentProcess } from "../runtime/process";
@@ -74,6 +76,67 @@ describe("OpenCode server pool", () => {
     expect(process.kill).not.toHaveBeenCalled();
     await second.release();
     expect(process.kill).toHaveBeenCalledWith("SIGTERM");
+  });
+
+  it("ends a server's connections when its final lease is released", async () => {
+    const requests: string[] = [];
+    const sockets = new Set<import("node:net").Socket>();
+    const backend = http.createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => (body += chunk));
+      request.on("end", () => {
+        requests.push(
+          `${request.method} ${request.url} ${request.headers["content-length"] ?? "-"} ${body}`,
+        );
+        response.end("ok");
+      });
+    });
+    backend.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    await new Promise<void>((resolve) => backend.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${(backend.address() as AddressInfo).port}`;
+    const process = serverProcess();
+    mocks.spawnManagedOnHost.mockImplementation(() => {
+      setTimeout(() =>
+        process.stdout.emit(
+          "data",
+          "opencode server listening on http://127.0.0.1:4096\n",
+        ),
+      );
+      return process;
+    });
+    mocks.openTcpTunnel.mockResolvedValue({
+      url,
+      close: vi.fn().mockResolvedValue(undefined),
+    });
+
+    try {
+      const lease = await new OpenCodeServerPool().acquire(
+        { transport: "local" },
+        "opencode",
+      );
+      // The SDK hands its fetch one prepared Request.
+      const read = await lease.fetch(new Request(`${url}/session?roots=true`));
+      expect(await read.text()).toBe("ok");
+      const write = await lease.fetch(
+        new Request(`${url}/session`, { method: "POST", body: '{"title":"x"}' }),
+      );
+      expect(write.status).toBe(200);
+      expect(requests).toEqual([
+        "GET /session?roots=true - ",
+        'POST /session 13 {"title":"x"}',
+      ]);
+      // Connections are kept for later requests while the server lives.
+      expect(sockets.size).toBeGreaterThan(0);
+
+      await lease.release();
+      await vi.waitFor(() => expect(sockets.size).toBe(0));
+      await expect(lease.fetch(new Request(`${url}/session`))).rejects.toThrow();
+    } finally {
+      await new Promise((resolve) => backend.close(resolve));
+    }
   });
 
   it.each(["startup timeout", "tunnel failure"])(

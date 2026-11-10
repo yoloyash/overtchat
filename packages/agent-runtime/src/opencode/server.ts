@@ -8,6 +8,7 @@ import {
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
 import { isAbsoluteAgentPath } from "@overtchat/agent-bridge";
+import { Agent, fetch as fetchOver } from "undici";
 
 const STARTUP_TIMEOUT_MS = 30_000;
 const LISTENING_URL =
@@ -22,6 +23,8 @@ process.stdout.write(fs.realpathSync(directory));
 
 export type OpenCodeServerLease = {
   baseUrl: string;
+  /** Sends a request over connections that end with this server. */
+  fetch: typeof fetch;
   exit: Promise<Error>;
   release(): Promise<void>;
 };
@@ -30,8 +33,46 @@ type StartedServer = {
   process: AgentProcess;
   tunnel: AgentTcpTunnel;
   baseUrl: string;
+  connections: Agent;
+  fetch: typeof fetch;
   exit: Promise<Error>;
 };
+
+/**
+ * A fetch whose connections belong to one server.
+ *
+ * The pool behind the global fetch outlives a server. OpenCode accepts a
+ * connection only once data arrives on it, so a connection the pool opened
+ * but had not used yet hears nothing when the server exits. The next server
+ * takes the same port, and the first request to it rides that dead connection
+ * and is reset. Closing a server's connections with it leaves none to reuse.
+ */
+function serverFetch(connections: Agent): typeof fetch {
+  return async (input, init) => {
+    const request = new Request(input, init);
+    const headers: Array<[string, string]> = [];
+    request.headers.forEach((value, name) => headers.push([name, value]));
+    const response = await fetchOver(request.url, {
+      method: request.method,
+      headers,
+      // Buffered so the request keeps a Content-Length, as it has with the
+      // global fetch.
+      body: request.body ? await request.arrayBuffer() : undefined,
+      signal: request.signal,
+      dispatcher: connections,
+    });
+    return response as unknown as Response;
+  };
+}
+
+async function stopServer(server: StartedServer): Promise<void> {
+  try {
+    await terminateAgentProcess(server.process);
+  } finally {
+    await server.connections.destroy().catch(() => {});
+    await server.tunnel.close().catch(() => {});
+  }
+}
 
 type PoolEntry = {
   references: number;
@@ -145,7 +186,15 @@ async function startServer(
             `OpenCode server exited (code ${result.code ?? "unknown"}, signal ${result.signal ?? "none"}).`,
         ),
     );
-    return { process, tunnel, baseUrl: tunnel.url, exit };
+    const connections = new Agent();
+    return {
+      process,
+      tunnel,
+      baseUrl: tunnel.url,
+      connections,
+      fetch: serverFetch(connections),
+      exit,
+    };
   } catch (error) {
     await terminateAgentProcess(process).catch((cleanupError) => {
       console.error(
@@ -175,12 +224,11 @@ export class OpenCodeServerPool {
           if (this.entries.get(key) === entry) this.entries.delete(key);
           const server = await entry!.start.catch(() => null);
           if (server) {
-            await terminateAgentProcess(server.process).catch((error) => {
+            await stopServer(server).catch((error) => {
               console.error(
                 `Unable to clean up exited OpenCode server: ${errorMessage(error)}`,
               );
             });
-            await server.tunnel.close().catch(() => {});
           }
         })
         .catch(() => {});
@@ -197,6 +245,7 @@ export class OpenCodeServerPool {
     let releasePromise: Promise<void> | null = null;
     return {
       baseUrl: server.baseUrl,
+      fetch: server.fetch,
       exit: server.exit,
       release: () => {
         if (releasePromise) return releasePromise;
@@ -214,11 +263,7 @@ export class OpenCodeServerPool {
     entry.references = Math.max(0, entry.references - 1);
     if (entry.references > 0 || this.entries.get(key) !== entry) return;
     this.entries.delete(key);
-    try {
-      await terminateAgentProcess(server.process);
-    } finally {
-      await server.tunnel.close().catch(() => {});
-    }
+    await stopServer(server);
   }
 }
 

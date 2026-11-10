@@ -516,6 +516,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     this.lease = await openCodeServerPool.acquire(this.target, this.launch.executable);
     this.client = createOpencodeClient({
       baseUrl: this.lease.baseUrl,
+      fetch: this.lease.fetch,
       directory: this.launch.cwd,
       signal: this.abortEvents.signal,
     });
@@ -1166,6 +1167,7 @@ export async function fetchOpenCodeCatalog(
   try {
     const client = createOpencodeClient({
       baseUrl: lease.baseUrl,
+      fetch: lease.fetch,
       ...(cwd ? { directory: cwd } : {}),
     });
     const directory = cwd ? { directory: cwd } : {};
@@ -1208,7 +1210,11 @@ export async function listOpenCodeSessions(
 ): Promise<Array<{ session: Session; messages: OpenCodeMessageWithParts[] }>> {
   const lease = await openCodeServerPool.acquire(target, executable);
   try {
-    const client = createOpencodeClient({ baseUrl: lease.baseUrl, directory: cwd });
+    const client = createOpencodeClient({
+      baseUrl: lease.baseUrl,
+      fetch: lease.fetch,
+      directory: cwd,
+    });
     const sessions = resultData(
       await client.session.list({
         directory: cwd,
@@ -1260,7 +1266,11 @@ export async function deleteOpenCodeSession(
 ): Promise<void> {
   const lease = await openCodeServerPool.acquire(target, executable);
   try {
-    const client = createOpencodeClient({ baseUrl: lease.baseUrl, directory: cwd });
+    const client = createOpencodeClient({
+      baseUrl: lease.baseUrl,
+      fetch: lease.fetch,
+      directory: cwd,
+    });
     assertResult(
       await client.session.delete({
         sessionID: sessionId,

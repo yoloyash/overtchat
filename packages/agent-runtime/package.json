@@ -19,6 +19,7 @@
     "@opencode-ai/sdk": "1.18.23",
     "@overtchat/agent-bridge": "*",
     "@overtchat/shared": "*",
+    "undici": "7.30.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
