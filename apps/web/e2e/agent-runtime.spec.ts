@@ -1032,6 +1032,18 @@ test("shows durable turn activity without changing completed tool status", async
                       symlink: false,
                     },
                     {
+                      name: "rows.csv",
+                      path: "rows.csv",
+                      kind: "file",
+                      symlink: false,
+                    },
+                    {
+                      name: "logo.svg",
+                      path: "logo.svg",
+                      kind: "file",
+                      symlink: false,
+                    },
+                    {
                       name: "generated.log",
                       path: "generated.log",
                       kind: "file",
@@ -1051,6 +1063,15 @@ test("shows durable turn activity without changing completed tool status", async
       const filePath =
         new URL(route.request().url()).searchParams.get("path") ?? "README.md";
       workspaceFileRequests.push(filePath);
+      const content =
+        {
+          "README.md":
+            "# Runtime guide\n\nRead [the entry point](src/index.ts) and [the site](https://example.com).\n\n- one\n- two\n",
+          "rows.csv": 'name,total\n"Ada, Countess",3\nGrace,5\n',
+          "logo.svg":
+            '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="teal"/></svg>',
+        }[filePath] ??
+        `export function AgentSessionView() {\n  return "${"long line ".repeat(40)}";\n}\n`;
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -1058,8 +1079,8 @@ test("shows durable turn activity without changing completed tool status", async
             kind: "text",
             encoding: "utf-8",
             path: filePath,
-            content: "export function AgentSessionView() {\n  return null;\n}\n",
-            size: 56,
+            content,
+            size: content.length,
             modifiedAt: 100,
           },
         }),
@@ -1322,6 +1343,90 @@ test("shows durable turn activity without changing completed tool status", async
     .getByRole("button", { name: "Close src/index.ts" })
     .click();
   await expect(indexTab).toHaveCount(0);
+  await expect(
+    workspacePane.getByRole("tab", {
+      name: "Open apps/web/components/agents/AgentSessionView.tsx",
+    }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  // Documents open rendered, and their links to workspace files open here.
+  await workspacePane.getByRole("tab", { name: "Files" }).click();
+  await workspacePane
+    .getByRole("button", { name: "README.md", exact: true })
+    .click();
+  const renderedMarkdown = workspacePane.getByTestId("agent-workspace-markdown");
+  await expect(
+    renderedMarkdown.getByRole("heading", { name: "Runtime guide" }),
+  ).toBeVisible();
+  await expect(renderedMarkdown.getByRole("listitem")).toHaveCount(2);
+  await expect(workspacePane.locator("[data-workspace-code-token]")).toHaveCount(0);
+  // Links that leave the workspace keep the app's usual confirmation.
+  await expect(
+    renderedMarkdown.getByRole("button", { name: "the site" }),
+  ).toHaveAttribute("data-streamdown", "link");
+  await renderedMarkdown
+    .getByRole("button", { name: "the entry point" })
+    .click();
+  await expect(
+    workspacePane.getByRole("tab", { name: "Open src/index.ts" }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  // Long lines scroll sideways until wrapping is turned on.
+  const wrapToggle = workspacePane.getByRole("button", {
+    name: "Wrap long lines",
+  });
+  const sourceLine = workspacePane.locator('[data-line="2"]');
+  await expect(wrapToggle).toHaveAttribute("aria-pressed", "false");
+  const unwrappedHeight = (await sourceLine.boundingBox())!.height;
+  await wrapToggle.click();
+  await expect(wrapToggle).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(async () => (await sourceLine.boundingBox())!.height)
+    .toBeGreaterThan(unwrappedHeight);
+  await wrapToggle.click();
+  await workspacePane
+    .getByRole("button", { name: "Close src/index.ts" })
+    .click();
+
+  // The source stays one click away, and the choice survives a tab switch.
+  await workspacePane.getByRole("tab", { name: "Open README.md" }).click();
+  await expect(renderedMarkdown).toBeVisible();
+  await expect(wrapToggle).toHaveCount(0);
+  await workspacePane.getByRole("button", { name: "Show source" }).click();
+  await expect(renderedMarkdown).toHaveCount(0);
+  await expect(workspacePane).toContainText("# Runtime guide");
+  await workspacePane.getByRole("tab", { name: "Files" }).click();
+  await workspacePane
+    .getByRole("button", { name: "rows.csv", exact: true })
+    .click();
+  await expect(
+    workspacePane.getByRole("columnheader", { name: "total" }),
+  ).toBeVisible();
+  await expect(
+    workspacePane.getByRole("cell", { name: "Ada, Countess" }),
+  ).toBeVisible();
+  await workspacePane.getByRole("tab", { name: "Open README.md" }).click();
+  await expect(workspacePane).toContainText("# Runtime guide");
+  await expect(
+    workspacePane.getByRole("button", { name: "Show preview" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await workspacePane.getByRole("tab", { name: "Files" }).click();
+  await workspacePane
+    .getByRole("button", { name: "logo.svg", exact: true })
+    .click();
+  await expect(workspacePane.getByRole("img", { name: "logo.svg" })).toHaveJSProperty(
+    "naturalWidth",
+    40,
+  );
+
+  await workspacePane.getByRole("button", { name: "Copy", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Copy path" }).click();
+  await expect(page.getByText("File path copied")).toBeVisible();
+
+  for (const path of ["README.md", "rows.csv", "logo.svg"]) {
+    await workspacePane.getByRole("button", { name: `Close ${path}` }).click();
+  }
   await expect(
     workspacePane.getByRole("tab", {
       name: "Open apps/web/components/agents/AgentSessionView.tsx",
