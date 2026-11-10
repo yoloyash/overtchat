@@ -241,6 +241,11 @@ test("a chat saves its documents and files into the project", async ({ page }) =
   await expect(page.getByText("I created the launch plan.", { exact: true })).toBeVisible();
   await page.waitForURL("**/chat/**");
   const chatId = new URL(page.url()).pathname.split("/").at(-1)!;
+  // The whole call arrived in one chunk; the panel still opens on it.
+  const documentPanel = page.locator("aside[data-document-panel]");
+  await expect(documentPanel.getByRole("heading", { name: "Launch plan", level: 2 })).toBeVisible();
+  await documentPanel.getByRole("button", { name: "Close document" }).click();
+  await expect(documentPanel).toHaveCount(0);
 
   // The card in the transcript saves without opening the panel.
   const frame = page.locator("[data-document-card-frame]");
@@ -258,10 +263,9 @@ test("a chat saves its documents and files into the project", async ({ page }) =
   expect(await saved.text()).toBe(plan);
 
   // The panel shows the same state, and saving again asks whether to replace
-  // or keep both. The project page hands off to the chat route, so the
-  // document opens from its card.
+  // or keep both.
+  await expect(documentPanel).toHaveCount(0);
   await page.getByRole("button", { name: /Launch plan.*Created · Version 1/ }).click();
-  const documentPanel = page.locator("aside[data-document-panel]");
   await expect(documentPanel.getByRole("heading", { name: "Launch plan", level: 2 })).toBeVisible();
   await documentPanel.getByRole("button", { name: "In project" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Replace Launch plan.md?" });
@@ -292,12 +296,8 @@ test("a chat saves its documents and files into the project", async ({ page }) =
   await page.locator("textarea").fill("Keep this handy");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText("No project files here.", { exact: true })).toBeVisible();
-  // A saved document can reopen by itself on the next reply (pre-existing);
-  // the files toggle must start from no panel.
-  if (await documentPanel.count()) {
-    await documentPanel.getByRole("button", { name: "Close document" }).click();
-    await expect(documentPanel).toHaveCount(0);
-  }
+  // The closed document stays closed through the next reply.
+  await expect(documentPanel).toHaveCount(0);
   await page.getByRole("button", { name: "2 files" }).click();
   const filesPanel = page.locator("[data-files-panel]");
   await filesPanel.getByRole("button", { name: /handbook\.txt/ }).click();
