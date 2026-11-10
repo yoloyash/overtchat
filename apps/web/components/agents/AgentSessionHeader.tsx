@@ -10,10 +10,10 @@ import {
   GitBranch,
   Hash,
   MoreHorizontal,
+  PanelBottom,
   PanelRight,
   Pencil,
   Sparkles,
-  SquareTerminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentBranchPicker } from "@/components/agents/AgentBranchPicker";
@@ -28,6 +28,9 @@ import { motionClasses } from "@/lib/motion";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
+
+const PANE_TOGGLE_CLASS =
+  "aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:hover:bg-accent";
 
 export function AgentSessionHeader({
   provider,
@@ -133,24 +136,6 @@ export function AgentSessionHeader({
         onShowChanges={onShowWorkspaceChanges}
       />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={
-            terminalOpen
-              ? "Close workspace terminal"
-              : "Open workspace terminal"
-          }
-          title={
-            terminalOpen
-              ? "Close workspace terminal"
-              : "Open workspace terminal"
-          }
-          aria-pressed={terminalOpen}
-          onClick={onToggleTerminal}
-        >
-          <SquareTerminal />
-        </Button>
         {accountUsageAvailable && (
           <Button
             variant="ghost"
@@ -249,12 +234,34 @@ export function AgentSessionHeader({
             </Menu.Positioner>
           </Menu.Portal>
         </Menu.Root>
+        {/* The two pane toggles stay last, in a fixed order, and each icon shows
+            where its pane opens. */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          title={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          aria-pressed={terminalOpen}
+          className={PANE_TOGGLE_CLASS}
+          onClick={onToggleTerminal}
+        >
+          <PanelBottom />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label={filesOpen ? "Close workspace files" : "Open workspace files"}
           title={filesOpen ? "Close workspace files" : "Open workspace files"}
           aria-pressed={filesOpen}
+          className={PANE_TOGGLE_CLASS}
           onClick={onToggleFiles}
         >
           <PanelRight />
