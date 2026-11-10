@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.33.0}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.34.0}
     build: .
     container_name: overtchat-app
     restart: unless-stopped
@@ -150,7 +150,7 @@ services:
   # no volumes, secrets or internet access, and is reachable as
   # `http://sandbox:8080` only on the internal `sandbox` network.
   sandbox: &sandbox
-    image: ghcr.io/yoloyash/overtchat-sandbox:${SANDBOX_VERSION:-0.1.1}
+    image: ghcr.io/yoloyash/overtchat-sandbox:${SANDBOX_VERSION:-0.1.2}
     build:
       context: ./sandbox
       target: slim
@@ -175,7 +175,7 @@ services:
 
   sandbox-full:
     <<: *sandbox
-    image: ghcr.io/yoloyash/overtchat-sandbox-full:${SANDBOX_VERSION:-0.1.1}
+    image: ghcr.io/yoloyash/overtchat-sandbox-full:${SANDBOX_VERSION:-0.1.2}
     build:
       context: ./sandbox
       target: full
