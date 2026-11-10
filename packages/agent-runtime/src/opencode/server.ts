@@ -8,23 +8,26 @@ import {
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
 import { isAbsoluteAgentPath } from "@overtchat/agent-bridge";
-import { Agent, fetch as fetchOver } from "undici";
 
 const STARTUP_TIMEOUT_MS = 30_000;
 const LISTENING_URL =
   /opencode server listening on http:\/\/127\.0\.0\.1:(\d{1,5})/iu;
-const PREPARE_SERVER_DIRECTORY = `
-const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+// Runs on the host: a private working directory for the server, and a port
+// that is free there right now.
+const PREPARE_SERVER = `
+const fs = require("node:fs"), path = require("node:path"), os = require("node:os"), net = require("node:net");
 const base = process.env.XDG_STATE_HOME || (process.platform === "win32" ? process.env.LOCALAPPDATA : null) || path.join(os.homedir(), ".local", "state");
 const directory = path.join(base, "overtchat", "opencode-home");
 fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-process.stdout.write(fs.realpathSync(directory));
+const probe = net.createServer();
+probe.listen(0, "127.0.0.1", () => {
+  const { port } = probe.address();
+  probe.close(() => process.stdout.write(JSON.stringify({ directory: fs.realpathSync(directory), port })));
+});
 `.trim();
 
 export type OpenCodeServerLease = {
   baseUrl: string;
-  /** Sends a request over connections that end with this server. */
-  fetch: typeof fetch;
   exit: Promise<Error>;
   release(): Promise<void>;
 };
@@ -33,46 +36,8 @@ type StartedServer = {
   process: AgentProcess;
   tunnel: AgentTcpTunnel;
   baseUrl: string;
-  connections: Agent;
-  fetch: typeof fetch;
   exit: Promise<Error>;
 };
-
-/**
- * A fetch whose connections belong to one server.
- *
- * The pool behind the global fetch outlives a server. OpenCode accepts a
- * connection only once data arrives on it, so a connection the pool opened
- * but had not used yet hears nothing when the server exits. The next server
- * takes the same port, and the first request to it rides that dead connection
- * and is reset. Closing a server's connections with it leaves none to reuse.
- */
-function serverFetch(connections: Agent): typeof fetch {
-  return async (input, init) => {
-    const request = new Request(input, init);
-    const headers: Array<[string, string]> = [];
-    request.headers.forEach((value, name) => headers.push([name, value]));
-    const response = await fetchOver(request.url, {
-      method: request.method,
-      headers,
-      // Buffered so the request keeps a Content-Length, as it has with the
-      // global fetch.
-      body: request.body ? await request.arrayBuffer() : undefined,
-      signal: request.signal,
-      dispatcher: connections,
-    });
-    return response as unknown as Response;
-  };
-}
-
-async function stopServer(server: StartedServer): Promise<void> {
-  try {
-    await terminateAgentProcess(server.process);
-  } finally {
-    await server.connections.destroy().catch(() => {});
-    await server.tunnel.close().catch(() => {});
-  }
-}
 
 type PoolEntry = {
   references: number;
@@ -92,23 +57,51 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function prepareServerDirectory(target: HostTarget): Promise<string> {
+/**
+ * Where the server runs and which port it listens on.
+ *
+ * Left to choose, OpenCode takes port 4096 whenever it is free, so a server
+ * started after another stopped has the same address. A connection the HTTP
+ * client opened to the old server but had not used yet survives its exit,
+ * because OpenCode accepts a connection only once data arrives on it, and the
+ * first request to the new server is sent down that dead connection and
+ * reset. A port of its own gives every server a different address.
+ */
+async function prepareServer(
+  target: HostTarget,
+): Promise<{ directory: string; port: number }> {
   const result = await executeOnHost(target, {
     command: "node",
-    args: ["-e", PREPARE_SERVER_DIRECTORY],
+    args: ["-e", PREPARE_SERVER],
   });
-  const directory = result.stdout.trim();
-  if (!isAbsoluteAgentPath(directory)) {
+  let prepared: unknown;
+  try {
+    prepared = JSON.parse(result.stdout);
+  } catch {
+    prepared = null;
+  }
+  const directory =
+    prepared && typeof prepared === "object"
+      ? Reflect.get(prepared, "directory")
+      : undefined;
+  const port =
+    prepared && typeof prepared === "object"
+      ? Reflect.get(prepared, "port")
+      : undefined;
+  if (typeof directory !== "string" || !isAbsoluteAgentPath(directory)) {
     throw new Error("Unable to prepare a neutral OpenCode server directory.");
   }
-  return directory;
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error("Unable to reserve a port for the OpenCode server.");
+  }
+  return { directory, port };
 }
 
 async function startServer(
   target: HostTarget,
   executable: string,
 ): Promise<StartedServer> {
-  const cwd = await prepareServerDirectory(target);
+  const { directory: cwd, port } = await prepareServer(target);
   const process = await spawnManagedOnHost(target, {
     command: executable,
     args: [
@@ -116,7 +109,7 @@ async function startServer(
       "--hostname",
       "127.0.0.1",
       "--port",
-      "0",
+      String(port),
       "--print-logs",
       "--log-level",
       "INFO",
@@ -186,15 +179,7 @@ async function startServer(
             `OpenCode server exited (code ${result.code ?? "unknown"}, signal ${result.signal ?? "none"}).`,
         ),
     );
-    const connections = new Agent();
-    return {
-      process,
-      tunnel,
-      baseUrl: tunnel.url,
-      connections,
-      fetch: serverFetch(connections),
-      exit,
-    };
+    return { process, tunnel, baseUrl: tunnel.url, exit };
   } catch (error) {
     await terminateAgentProcess(process).catch((cleanupError) => {
       console.error(
@@ -224,11 +209,12 @@ export class OpenCodeServerPool {
           if (this.entries.get(key) === entry) this.entries.delete(key);
           const server = await entry!.start.catch(() => null);
           if (server) {
-            await stopServer(server).catch((error) => {
+            await terminateAgentProcess(server.process).catch((error) => {
               console.error(
                 `Unable to clean up exited OpenCode server: ${errorMessage(error)}`,
               );
             });
+            await server.tunnel.close().catch(() => {});
           }
         })
         .catch(() => {});
@@ -245,7 +231,6 @@ export class OpenCodeServerPool {
     let releasePromise: Promise<void> | null = null;
     return {
       baseUrl: server.baseUrl,
-      fetch: server.fetch,
       exit: server.exit,
       release: () => {
         if (releasePromise) return releasePromise;
@@ -263,7 +248,11 @@ export class OpenCodeServerPool {
     entry.references = Math.max(0, entry.references - 1);
     if (entry.references > 0 || this.entries.get(key) !== entry) return;
     this.entries.delete(key);
-    await stopServer(server);
+    try {
+      await terminateAgentProcess(server.process);
+    } finally {
+      await server.tunnel.close().catch(() => {});
+    }
   }
 }
 
