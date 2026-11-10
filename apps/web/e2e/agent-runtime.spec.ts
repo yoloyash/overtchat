@@ -1362,7 +1362,17 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     agentHeader.getByRole("button", { name: "Open workspace files" }),
   ).toHaveAttribute("aria-pressed", "false");
+  // The pane toggles end the header in a fixed order: terminal, then files.
+  await expect(agentHeader.getByRole("button").nth(-2)).toHaveAccessibleName(
+    "Open workspace terminal",
+  );
+  await expect(agentHeader.getByRole("button").last()).toHaveAccessibleName(
+    "Open workspace files",
+  );
   await agentHeader.getByRole("button", { name: "Open workspace files" }).click();
+  await expect(
+    agentHeader.getByRole("button", { name: "Close workspace files" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect
     .poll(() =>
       workspacePane.evaluate((element) => element.getBoundingClientRect().width),
