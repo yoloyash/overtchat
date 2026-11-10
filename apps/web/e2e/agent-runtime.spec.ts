@@ -780,6 +780,7 @@ test("shows durable turn activity without changing completed tool status", async
   const submittedCommands: Array<Record<string, unknown>> = [];
   const workspaceDirectoryRequests: string[] = [];
   const workspaceFileRequests: string[] = [];
+  const workspaceDiffRequests: string[] = [];
   await page.exposeFunction(
     "__setAgentRuntimeAvailable",
     (available: boolean) => {
@@ -987,6 +988,12 @@ test("shows durable turn activity without changing completed tool status", async
                 indexStatus: null,
                 worktreeStatus: "M",
               },
+              {
+                path: "removed.ts",
+                originalPath: null,
+                indexStatus: null,
+                worktreeStatus: "D",
+              },
             ],
           },
         }),
@@ -1044,6 +1051,12 @@ test("shows durable turn activity without changing completed tool status", async
                       symlink: false,
                     },
                     {
+                      name: "shot.png",
+                      path: "shot.png",
+                      kind: "file",
+                      symlink: false,
+                    },
+                    {
                       name: "generated.log",
                       path: "generated.log",
                       kind: "file",
@@ -1063,10 +1076,40 @@ test("shows durable turn activity without changing completed tool status", async
       const filePath =
         new URL(route.request().url()).searchParams.get("path") ?? "README.md";
       workspaceFileRequests.push(filePath);
+      if (filePath === "shot.png") {
+        // Images are only sent to a client that asked for them.
+        const images =
+          new URL(route.request().url()).searchParams.get("images") === "1";
+        await route.fulfill(
+          images
+            ? {
+                contentType: "application/json",
+                body: JSON.stringify({
+                  file: {
+                    kind: "image",
+                    encoding: "base64",
+                    mediaType: "image/png",
+                    path: filePath,
+                    content: TEST_PNG.toString("base64"),
+                    size: TEST_PNG.length,
+                    modifiedAt: 100,
+                  },
+                }),
+              }
+            : {
+                status: 400,
+                contentType: "application/json",
+                body: JSON.stringify({
+                  error: "Binary files cannot be previewed.",
+                }),
+              },
+        );
+        return;
+      }
       const content =
         {
           "README.md":
-            "# Runtime guide\n\nRead [the entry point](src/index.ts) and [the site](https://example.com).\n\n- one\n- two\n",
+            "# Runtime guide\n\nRead [the entry point](src/index.ts) and [the site](https://example.com).\n\n![Screenshot](./shot.png)\n\n- one\n- two\n",
           "rows.csv": 'name,total\n"Ada, Countess",3\nGrace,5\n',
           "logo.svg":
             '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="teal"/></svg>',
@@ -1082,6 +1125,28 @@ test("shows durable turn activity without changing completed tool status", async
             content,
             size: content.length,
             modifiedAt: 100,
+          },
+        }),
+      });
+    },
+  );
+  await page.route(
+    new RegExp("/api/agent-workspaces/workspace/file-diff(?:\\?.*)?$"),
+    async (route) => {
+      const filePath =
+        new URL(route.request().url()).searchParams.get("path") ?? "";
+      workspaceDiffRequests.push(filePath);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          diff: {
+            path: filePath,
+            patch:
+              filePath === "removed.ts"
+                ? "diff --git a/removed.ts b/removed.ts\ndeleted file mode 100644\n--- a/removed.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-export const removed = true;\n"
+                : "diff --git a/src/index.ts b/src/index.ts\nindex 1111111..2222222 100644\n--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1,2 +1,2 @@\n export function AgentSessionView() {\n-  return undefined;\n+  return null;\n",
+            truncated: false,
+            binary: false,
           },
         }),
       });
@@ -1359,6 +1424,10 @@ test("shows durable turn activity without changing completed tool status", async
     renderedMarkdown.getByRole("heading", { name: "Runtime guide" }),
   ).toBeVisible();
   await expect(renderedMarkdown.getByRole("listitem")).toHaveCount(2);
+  // A picture the document embeds loads from the workspace.
+  await expect(
+    renderedMarkdown.getByRole("img", { name: "Screenshot" }),
+  ).toHaveJSProperty("naturalWidth", 1);
   await expect(workspacePane.locator("[data-workspace-code-token]")).toHaveCount(0);
   // Links that leave the workspace keep the app's usual confirmation.
   await expect(
@@ -1420,11 +1489,58 @@ test("shows durable turn activity without changing completed tool status", async
     40,
   );
 
+  await workspacePane.getByRole("tab", { name: "Files" }).click();
+  await workspacePane
+    .getByRole("button", { name: "shot.png", exact: true })
+    .click();
+  await expect(workspacePane.getByRole("img", { name: "shot.png" })).toHaveJSProperty(
+    "naturalWidth",
+    1,
+  );
+  await expect(wrapToggle).toHaveCount(0);
+
+  // A changed file opens on its changes, with its contents one click away.
+  expect(workspaceDiffRequests).toEqual([]);
+  await workspacePane.getByRole("tab", { name: "Files" }).click();
+  await workspacePane
+    .getByRole("button", { name: "src/index.ts Modified", exact: true })
+    .click();
+  const fileDiff = workspacePane.getByTestId("agent-workspace-diff");
+  await expect(fileDiff).toContainText("+  return null;");
+  await expect(fileDiff).toContainText("@@ -1,2 +1,2 @@");
+  await expect(fileDiff).not.toContainText("diff --git");
+  const changesToggle = workspacePane.getByRole("button", {
+    name: "Show changes",
+  });
+  await expect(changesToggle).toHaveAttribute("aria-pressed", "true");
+  await changesToggle.click();
+  await expect(fileDiff).toHaveCount(0);
+  await expect(
+    workspacePane.locator("[data-workspace-code-token]").first(),
+  ).toBeVisible();
+  await expect(changesToggle).toHaveAttribute("aria-pressed", "false");
+
+  // A deleted file has only its changes to show.
+  await workspacePane.getByRole("tab", { name: "Files" }).click();
+  await workspacePane
+    .getByRole("button", { name: "removed.ts Deleted", exact: true })
+    .click();
+  await expect(fileDiff).toContainText("-export const removed = true;");
+  await expect(changesToggle).toHaveCount(0);
+  expect(workspaceFileRequests).not.toContain("removed.ts");
+
   await workspacePane.getByRole("button", { name: "Copy", exact: true }).click();
   await page.getByRole("menuitem", { name: "Copy path" }).click();
   await expect(page.getByText("File path copied")).toBeVisible();
 
-  for (const path of ["README.md", "rows.csv", "logo.svg"]) {
+  for (const path of [
+    "README.md",
+    "rows.csv",
+    "logo.svg",
+    "shot.png",
+    "src/index.ts",
+    "removed.ts",
+  ]) {
     await workspacePane.getByRole("button", { name: `Close ${path}` }).click();
   }
   await expect(
