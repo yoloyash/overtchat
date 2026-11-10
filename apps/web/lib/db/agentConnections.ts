@@ -679,7 +679,12 @@ function syncAgentWorkspaceSessionsInTransaction(
                 name: sql`coalesce(nullif(trim(${agentSessions.name}), ''), ${initialTitle})`,
               }
             : {}),
-          firstMessage: session.firstMessage,
+          // Some providers cannot list a session's first prompt. An open
+          // session reports it from its transcript, and a list without one
+          // must not erase that.
+          ...(session.firstMessage !== null
+            ? { firstMessage: session.firstMessage }
+            : {}),
           messageCount: session.messageCount,
           providerCreatedAt: session.createdAt,
           providerModifiedAt: session.modifiedAt,
