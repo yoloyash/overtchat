@@ -190,12 +190,12 @@ describe("OpenCode protocol projection", () => {
       model: { providerID: "openai", id: "gpt-test", variant: "high" },
       agent: "build",
     } as Session;
-    expect(openCodeSessionMetadata(session, messages)).toEqual({
+    expect(openCodeSessionMetadata(session)).toEqual({
       providerSessionId: "ses-1",
       providerSessionPath: "ses-1",
       name: "Repair",
-      firstMessage: "Fix the test",
-      messageCount: 2,
+      firstMessage: null,
+      messageCount: 0,
       createdAt: new Date(100),
       modifiedAt: new Date(300),
       launchConfig: {

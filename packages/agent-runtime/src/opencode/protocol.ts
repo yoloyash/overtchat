@@ -287,29 +287,21 @@ export function parseOpenCodeStats(
   };
 }
 
-function firstUserText(messages: OpenCodeMessageWithParts[]): string | null {
-  for (const message of messages) {
-    if (message.info.role !== "user") continue;
-    const text = message.parts
-      .map(textContent)
-      .filter((value): value is string => Boolean(value))
-      .join("\n")
-      .trim();
-    if (text) return text;
-  }
-  return null;
-}
-
+/**
+ * Metadata for a listed session. OpenCode can only return a transcript whole
+ * or newest-first, so the first prompt and the message count would cost a full
+ * history per session. The list reports neither; an open session publishes
+ * both from the transcript it has already loaded.
+ */
 export function openCodeSessionMetadata(
   session: Session,
-  messages: OpenCodeMessageWithParts[],
 ): AgentProviderSessionMetadata {
   return {
     providerSessionId: session.id,
     providerSessionPath: session.id,
     name: session.title.trim() || null,
-    firstMessage: firstUserText(messages),
-    messageCount: messages.length,
+    firstMessage: null,
+    messageCount: 0,
     createdAt: new Date(session.time.created),
     modifiedAt: new Date(session.time.updated),
     launchConfig: {
