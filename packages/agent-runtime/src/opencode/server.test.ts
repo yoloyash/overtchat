@@ -40,7 +40,10 @@ describe("OpenCode server pool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.executeOnHost.mockResolvedValue({
-      stdout: "/tmp/overtchat-opencode-home\n",
+      stdout: JSON.stringify({
+        directory: "/tmp/overtchat-opencode-home",
+        port: 4096,
+      }),
       stderr: "",
     });
     mocks.openTcpTunnel.mockResolvedValue({
@@ -111,18 +114,21 @@ describe("OpenCode server pool", () => {
     },
   );
 
-  it("starts from a private neutral host directory and releases its tunnel", async () => {
+  it("starts from a private neutral host directory on a port of its own and releases its tunnel", async () => {
     const process = serverProcess();
     const close = vi.fn().mockResolvedValue(undefined);
     mocks.executeOnHost.mockResolvedValue({
-      stdout: "/home/dev/.local/state/overtchat/opencode-home\n",
+      stdout: JSON.stringify({
+        directory: "/home/dev/.local/state/overtchat/opencode-home",
+        port: 40_123,
+      }),
       stderr: "",
     });
     mocks.spawnManagedOnHost.mockImplementation(() => {
       setTimeout(() => {
         process.stdout.emit(
           "data",
-          Buffer.from("opencode server listening on http://127.0.0.1:4096\n"),
+          Buffer.from("opencode server listening on http://127.0.0.1:40123\n"),
         );
       });
       return process;
@@ -148,12 +154,27 @@ describe("OpenCode server pool", () => {
       expect.objectContaining({
         command: "opencode",
         cwd: "/home/dev/.local/state/overtchat/opencode-home",
+        // Never port 0: OpenCode would take the same port for every server.
+        args: expect.arrayContaining(["--port", "40123"]),
       }),
     );
+    expect(mocks.openTcpTunnel).toHaveBeenCalledWith(target, 40_123);
     expect(lease.baseUrl).toBe("http://127.0.0.1:51234");
 
     await lease.release();
     expect(close).toHaveBeenCalled();
     expect(process.kill).toHaveBeenCalledWith("SIGTERM");
+  });
+
+  it.each([
+    ["no port", JSON.stringify({ directory: "/tmp/overtchat-opencode-home" })],
+    ["a relative directory", JSON.stringify({ directory: "opencode-home", port: 40_123 })],
+    ["unparseable output", "/tmp/overtchat-opencode-home\n"],
+  ])("does not start a server when the host reports %s", async (_case, stdout) => {
+    mocks.executeOnHost.mockResolvedValue({ stdout, stderr: "" });
+    await expect(
+      new OpenCodeServerPool().acquire({ transport: "local" }, "opencode"),
+    ).rejects.toThrow(/Unable to (prepare|reserve)/u);
+    expect(mocks.spawnManagedOnHost).not.toHaveBeenCalled();
   });
 });

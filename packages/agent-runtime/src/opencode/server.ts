@@ -12,12 +12,18 @@ import { isAbsoluteAgentPath } from "@overtchat/agent-bridge";
 const STARTUP_TIMEOUT_MS = 30_000;
 const LISTENING_URL =
   /opencode server listening on http:\/\/127\.0\.0\.1:(\d{1,5})/iu;
-const PREPARE_SERVER_DIRECTORY = `
-const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+// Runs on the host: a private working directory for the server, and a port
+// that is free there right now.
+const PREPARE_SERVER = `
+const fs = require("node:fs"), path = require("node:path"), os = require("node:os"), net = require("node:net");
 const base = process.env.XDG_STATE_HOME || (process.platform === "win32" ? process.env.LOCALAPPDATA : null) || path.join(os.homedir(), ".local", "state");
 const directory = path.join(base, "overtchat", "opencode-home");
 fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-process.stdout.write(fs.realpathSync(directory));
+const probe = net.createServer();
+probe.listen(0, "127.0.0.1", () => {
+  const { port } = probe.address();
+  probe.close(() => process.stdout.write(JSON.stringify({ directory: fs.realpathSync(directory), port })));
+});
 `.trim();
 
 export type OpenCodeServerLease = {
@@ -51,23 +57,51 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function prepareServerDirectory(target: HostTarget): Promise<string> {
+/**
+ * Where the server runs and which port it listens on.
+ *
+ * Left to choose, OpenCode takes port 4096 whenever it is free, so a server
+ * started after another stopped has the same address. A connection the HTTP
+ * client opened to the old server but had not used yet survives its exit,
+ * because OpenCode accepts a connection only once data arrives on it, and the
+ * first request to the new server is sent down that dead connection and
+ * reset. A port of its own gives every server a different address.
+ */
+async function prepareServer(
+  target: HostTarget,
+): Promise<{ directory: string; port: number }> {
   const result = await executeOnHost(target, {
     command: "node",
-    args: ["-e", PREPARE_SERVER_DIRECTORY],
+    args: ["-e", PREPARE_SERVER],
   });
-  const directory = result.stdout.trim();
-  if (!isAbsoluteAgentPath(directory)) {
+  let prepared: unknown;
+  try {
+    prepared = JSON.parse(result.stdout);
+  } catch {
+    prepared = null;
+  }
+  const directory =
+    prepared && typeof prepared === "object"
+      ? Reflect.get(prepared, "directory")
+      : undefined;
+  const port =
+    prepared && typeof prepared === "object"
+      ? Reflect.get(prepared, "port")
+      : undefined;
+  if (typeof directory !== "string" || !isAbsoluteAgentPath(directory)) {
     throw new Error("Unable to prepare a neutral OpenCode server directory.");
   }
-  return directory;
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error("Unable to reserve a port for the OpenCode server.");
+  }
+  return { directory, port };
 }
 
 async function startServer(
   target: HostTarget,
   executable: string,
 ): Promise<StartedServer> {
-  const cwd = await prepareServerDirectory(target);
+  const { directory: cwd, port } = await prepareServer(target);
   const process = await spawnManagedOnHost(target, {
     command: executable,
     args: [
@@ -75,7 +109,7 @@ async function startServer(
       "--hostname",
       "127.0.0.1",
       "--port",
-      "0",
+      String(port),
       "--print-logs",
       "--log-level",
       "INFO",
