@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { AGENT_PROVIDER_IDS } from "@overtchat/agent-bridge";
+import { deleteOpenCodeSession } from "../opencode/client";
+import { openCodeServerPool } from "../opencode/server";
 import { agentProviderAdapter } from "../providers/registry";
 import type { AgentRuntimeClient } from "../providers/types";
 import { configureLocalTestProcessSpawner } from "./local-process.test-helper";
@@ -34,6 +36,33 @@ function allowTestTools(client: AgentRuntimeClient): () => void {
       });
     }
   });
+}
+
+/**
+ * Stops a test session and removes its disposable workspace. OpenCode keeps
+ * sessions in the developer's own store rather than under the workspace, so
+ * the session is deleted too. The server is held open across the stop: one
+ * restarted on the same port resets the first request sent to it.
+ */
+async function stopAndDiscard(
+  client: AgentRuntimeClient,
+  executable: string,
+  cwd: string,
+  openCodeSessionId: string | undefined,
+): Promise<void> {
+  const target = { transport: "local" as const };
+  const server = openCodeSessionId
+    ? await openCodeServerPool.acquire(target, executable)
+    : undefined;
+  try {
+    await client.stop();
+    if (openCodeSessionId) {
+      await deleteOpenCodeSession(target, executable, cwd, openCodeSessionId);
+    }
+  } finally {
+    await server?.release();
+    rmSync(cwd, { recursive: true, force: true });
+  }
 }
 
 async function prompt(client: AgentRuntimeClient, text: string) {
@@ -86,8 +115,12 @@ for (const provider of AGENT_PROVIDER_IDS) {
             },
           );
           const stopApprovals = allowTestTools(client);
+          let openCodeSessionId: string | undefined;
           try {
-            await client.getState();
+            const state = await client.getState();
+            if (provider === "opencode") {
+              openCodeSessionId = adapter.sessionIdentity(state).providerSessionId;
+            }
             await prompt(
               client,
               "Use the Write tool to create checkpoint.txt containing exactly FIRST. Do not use shell commands. Then reply DONE.",
@@ -124,8 +157,7 @@ for (const provider of AGENT_PROVIDER_IDS) {
             ).toBe(false);
           } finally {
             stopApprovals();
-            await client.stop();
-            rmSync(cwd, { recursive: true, force: true });
+            await stopAndDiscard(client, executable, cwd, openCodeSessionId);
           }
         },
         300_000,
@@ -149,8 +181,12 @@ for (const provider of AGENT_PROVIDER_IDS) {
         };
         let client = adapter.startSession({ transport: "local" }, launch);
         const token = `KEEP_${randomUUID().slice(0, 8)}`;
+        let openCodeSessionId: string | undefined;
         try {
-          await client.getState();
+          const state = await client.getState();
+          if (provider === "opencode") {
+            openCodeSessionId = adapter.sessionIdentity(state).providerSessionId;
+          }
           await prompt(
             client,
             `Remember the token ${token}. Reply with only that token. Do not use tools.`,
@@ -220,8 +256,7 @@ for (const provider of AGENT_PROVIDER_IDS) {
             ),
           ).toHaveLength(0);
         } finally {
-          await client.stop();
-          rmSync(cwd, { recursive: true, force: true });
+          await stopAndDiscard(client, executable, cwd, openCodeSessionId);
         }
       }, 420_000);
     },

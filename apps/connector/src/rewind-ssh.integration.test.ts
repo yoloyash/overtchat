@@ -10,6 +10,8 @@ import {
   executeOnHost,
   type HostTarget,
 } from "@overtchat/agent-runtime";
+import { deleteOpenCodeSession } from "@overtchat/agent-runtime/opencode/client";
+import { openCodeServerPool } from "@overtchat/agent-runtime/opencode/server";
 import { agentProviderAdapter } from "@overtchat/agent-runtime/providers/registry";
 import type { AgentRuntimeClient } from "@overtchat/agent-runtime/providers/types";
 import { ConnectorProcessHost } from "./runtime.js";
@@ -93,6 +95,7 @@ for (const alias of aliases.length ? aliases : [""]) {
         };
         let client: AgentRuntimeClient | undefined;
         let stopApprovals = () => {};
+        let openCodeSessionId: string | undefined;
         try {
           await executeOnHost(target, {
             command: "git",
@@ -110,7 +113,10 @@ for (const alias of aliases.length ? aliases : [""]) {
                 confirmed: true,
               });
           });
-          await client.getState();
+          const state = await client.getState();
+          if (provider === "opencode") {
+            openCodeSessionId = adapter.sessionIdentity(state).providerSessionId;
+          }
           const token = `KEEP_${randomUUID().slice(0, 8)}`;
           const files = provider === "claude" || provider === "opencode";
           await prompt(
@@ -198,13 +204,31 @@ for (const alias of aliases.length ? aliases : [""]) {
           ).toEqual([]);
         } finally {
           stopApprovals();
-          await client?.stop();
-          await executeOnHost(target, {
-            command: "rm",
-            args: ["-rf", "--", cwd],
-          });
-          await host.stop();
-          await rm(directory, { recursive: true, force: true });
+          // OpenCode keeps the session in the remote user's own store, not
+          // under the disposable workspace. Hold its server open across the
+          // stop so the delete does not wait for a new one.
+          const server = openCodeSessionId
+            ? await openCodeServerPool.acquire(target, launch.executable)
+            : undefined;
+          try {
+            await client?.stop();
+            if (openCodeSessionId) {
+              await deleteOpenCodeSession(
+                target,
+                launch.executable,
+                cwd,
+                openCodeSessionId,
+              );
+            }
+          } finally {
+            await server?.release();
+            await executeOnHost(target, {
+              command: "rm",
+              args: ["-rf", "--", cwd],
+            });
+            await host.stop();
+            await rm(directory, { recursive: true, force: true });
+          }
         }
       }, 300_000);
     }
