@@ -245,37 +245,63 @@ describe("OpenCode runtime client", () => {
     }
   });
 
-  it("keeps listed sessions when one message history cannot be enriched", async () => {
+  it("lists the root sessions of exactly the workspace folder", async () => {
     const release = vi.fn().mockResolvedValue(undefined);
     mocks.acquire.mockResolvedValueOnce({
       baseUrl: "http://127.0.0.1:4096",
       exit: new Promise(() => {}),
       release,
     });
-    const sessions = [
-      { id: "ses-1", title: "First", time: { created: 1, updated: 2 } },
-      { id: "ses-2", title: "Second", time: { created: 3, updated: 4 } },
-    ];
-    const messages = vi
-      .fn()
-      .mockResolvedValueOnce({ error: new Error("fetch failed") })
-      .mockResolvedValueOnce({ data: [{ info: { id: "msg-1" }, parts: [] }] });
+    const own = {
+      id: "ses-1",
+      title: "First",
+      directory: "/real/workspace",
+      time: { created: 1, updated: 2 },
+    };
+    const list = vi.fn().mockResolvedValue({
+      data: [
+        own,
+        // A list wider than the folder must not leak into the workspace.
+        { ...own, id: "ses-2", directory: "/real/workspace/packages/app" },
+        { ...own, id: "ses-3", directory: "/somewhere/else" },
+      ],
+    });
+    const messages = vi.fn();
     mocks.createOpencodeClient.mockReturnValue({
+      // The workspace is reached through a symlink; OpenCode resolves it.
+      path: { get: vi.fn().mockResolvedValue({ data: { directory: "/real/workspace" } }) },
+      session: { list, messages },
+    });
+
+    await expect(
+      listOpenCodeSessions({ transport: "local" }, "opencode", "/link/workspace"),
+    ).resolves.toEqual([own]);
+    expect(list).toHaveBeenCalledExactlyOnceWith({
+      directory: "/link/workspace",
+      roots: true,
+      limit: 10_000,
+    });
+    expect(messages).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("releases the server when the session list fails", async () => {
+    const release = vi.fn().mockResolvedValue(undefined);
+    mocks.acquire.mockResolvedValueOnce({
+      baseUrl: "http://127.0.0.1:4096",
+      exit: new Promise(() => {}),
+      release,
+    });
+    mocks.createOpencodeClient.mockReturnValue({
+      path: { get: vi.fn().mockResolvedValue({ data: { directory: "/workspace" } }) },
       session: {
-        list: vi.fn().mockResolvedValue({ data: sessions }),
-        messages,
+        list: vi.fn().mockResolvedValue({ error: { data: { message: "database is locked" } } }),
       },
     });
 
     await expect(
       listOpenCodeSessions({ transport: "local" }, "opencode", "/workspace"),
-    ).resolves.toEqual([
-      { session: sessions[0], messages: [] },
-      {
-        session: sessions[1],
-        messages: [{ info: { id: "msg-1" }, parts: [] }],
-      },
-    ]);
+    ).rejects.toThrow("database is locked");
     expect(release).toHaveBeenCalledOnce();
   });
 
