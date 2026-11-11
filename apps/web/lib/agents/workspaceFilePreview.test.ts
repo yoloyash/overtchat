@@ -94,4 +94,31 @@ describe("remarkWorkspaceFileLinks", () => {
     });
     expect(external.data).toBeUndefined();
   });
+
+  it("loads a document's pictures from the workspace", () => {
+    const tree = {
+      type: "root",
+      children: [
+        { type: "image", url: "../assets/shot.png", alt: "Screenshot" },
+        { type: "image", url: "logo.svg" },
+        { type: "image", url: "https://example.com/badge.png", alt: "Badge" },
+        { type: "image", url: "notes.txt", alt: "Not a picture" },
+      ],
+    };
+    remarkWorkspaceFileLinks("docs/guide.md")()(tree);
+    expect(
+      (tree.children as Array<{ data?: unknown }>).map((node) => node.data),
+    ).toEqual([
+      {
+        hName: "agent-workspace-image",
+        hProperties: { path: "assets/shot.png", alt: "Screenshot" },
+      },
+      {
+        hName: "agent-workspace-image",
+        hProperties: { path: "docs/logo.svg", alt: "" },
+      },
+      undefined,
+      undefined,
+    ]);
+  });
 });

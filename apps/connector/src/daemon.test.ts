@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   acquireLease: vi.fn(),
   listWorkspaceDirectory: vi.fn(),
   readWorkspaceFile: vi.fn(),
+  readWorkspaceFileDiff: vi.fn(),
   switchGitBranch: vi.fn(),
   createGitWorktree: vi.fn(),
   removeGitWorktree: vi.fn(),
@@ -55,6 +56,7 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
     workspaceFilesService: {
       listDirectory: mocks.listWorkspaceDirectory,
       readFile: mocks.readWorkspaceFile,
+      readFileDiff: mocks.readWorkspaceFileDiff,
     },
     AgentRuntimeRegistry: class {
       constructor(options: NonNullable<typeof mocks.registryOptions>) {
@@ -245,6 +247,12 @@ beforeEach(() => {
     size: 8,
     modifiedAt: 1,
   });
+  mocks.readWorkspaceFileDiff.mockResolvedValue({
+    path: "src/new.ts",
+    patch: "@@ -1 +1 @@\n-a\n+b\n",
+    truncated: false,
+    binary: false,
+  });
   mocks.registryOptions = null;
 });
 
@@ -383,23 +391,53 @@ describe("connector daemon command identity", () => {
       "/srv/project",
       "src",
     );
-    expect(mocks.readWorkspaceFile).toHaveBeenCalledWith(
+    await daemon.handle({
+      type: "request",
+      requestId: "read-image",
+      request: {
+        type: "read_workspace_file",
+        target: { transport: "local" },
+        root: "/srv/project",
+        path: "shot.png",
+        images: true,
+      },
+    });
+    await daemon.handle({
+      type: "request",
+      requestId: "read-diff",
+      request: {
+        type: "read_workspace_file_diff",
+        target: { transport: "local" },
+        root: "/srv/project",
+        path: "src/new.ts",
+        originalPath: "src/old.ts",
+      },
+    });
+
+    expect(mocks.readWorkspaceFile).toHaveBeenNthCalledWith(
+      1,
       { transport: "local" },
       "/srv/project",
       "README.md",
     );
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "response",
-        requestId: "list-files",
-        success: true,
-      }),
-      expect.objectContaining({
-        type: "response",
-        requestId: "read-file",
-        success: true,
-      }),
-    ]);
+    expect(mocks.readWorkspaceFile).toHaveBeenNthCalledWith(
+      2,
+      { transport: "local" },
+      "/srv/project",
+      "shot.png",
+      { images: true },
+    );
+    expect(mocks.readWorkspaceFileDiff).toHaveBeenCalledWith(
+      { transport: "local" },
+      "/srv/project",
+      "src/new.ts",
+      "src/old.ts",
+    );
+    expect(events).toEqual(
+      ["list-files", "read-file", "read-image", "read-diff"].map((requestId) =>
+        expect.objectContaining({ type: "response", requestId, success: true }),
+      ),
+    );
     await daemon.stop();
     await timelines.close();
     await journal.close();

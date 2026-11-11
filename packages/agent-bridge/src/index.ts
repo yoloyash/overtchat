@@ -47,6 +47,8 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
   "command-wal-v1",
   "workspace-files-v1",
+  /** Image previews and per-file diffs. */
+  "workspace-files-v2",
   "workspace-terminal-v1",
   "workspace-git-watch-v1",
   "workspace-git-branch-v1",
@@ -176,6 +178,17 @@ export type AgentDaemonRequest =
       target: AgentDaemonTarget;
       root: string;
       path: string;
+      /** Also read image files, as base64. Requires `workspace-files-v2`. */
+      images?: boolean;
+    }
+  /** Responds with an `AgentWorkspaceFileDiff`. Requires `workspace-files-v2`. */
+  | {
+      type: "read_workspace_file_diff";
+      target: AgentDaemonTarget;
+      root: string;
+      path: string;
+      /** The path a renamed file had in the last commit. */
+      originalPath?: string;
     }
   | {
       type: "create_session";
@@ -514,12 +527,24 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
     case "remove_git_worktree":
       return isAgentDaemonTarget(value.target) && isNonEmptyString(value.path);
     case "list_workspace_directory":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        isNonEmptyString(value.root) &&
+        typeof value.path === "string"
+      );
     case "read_workspace_file":
       return (
         isAgentDaemonTarget(value.target) &&
-        typeof value.root === "string" &&
-        value.root.length > 0 &&
-        typeof value.path === "string"
+        isNonEmptyString(value.root) &&
+        typeof value.path === "string" &&
+        (value.images === undefined || typeof value.images === "boolean")
+      );
+    case "read_workspace_file_diff":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        isNonEmptyString(value.root) &&
+        isNonEmptyString(value.path) &&
+        (value.originalPath === undefined || isNonEmptyString(value.originalPath))
       );
     case "create_session":
       return (

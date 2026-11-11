@@ -1,3 +1,5 @@
+import { agentWorkspaceImageMediaType } from "@overtchat/agent-bridge";
+
 /** How a workspace text file can be shown besides its source. */
 export type WorkspaceFileRendering =
   | { kind: "markdown" }
@@ -8,6 +10,7 @@ export type WorkspaceFileRendering =
 type MarkdownNode = {
   type?: string;
   url?: unknown;
+  alt?: unknown;
   children?: MarkdownNode[];
   data?: {
     hName?: string;
@@ -70,9 +73,18 @@ export function resolveWorkspaceFileLink(
   return segments.length > 0 ? segments.join("/") : null;
 }
 
+/** Whether a workspace path is a picture a document can embed. */
+export function isWorkspaceImagePath(filePath: string): boolean {
+  return (
+    agentWorkspaceImageMediaType(filePath) !== null ||
+    workspaceFileRendering(filePath)?.kind === "svg"
+  );
+}
+
 /**
- * Turns links between workspace files into workspace links, so they open in
- * the files pane instead of navigating the browser.
+ * Turns a document's references to other workspace files into workspace
+ * elements: links open in the files pane instead of navigating the browser,
+ * and pictures load from the workspace instead of the app's own address.
  */
 export function remarkWorkspaceFileLinks(filePath: string) {
   function decorate(node: MarkdownNode): void {
@@ -82,6 +94,17 @@ export function remarkWorkspaceFileLinks(filePath: string) {
         node.data = {
           hName: "agent-workspace-link",
           hProperties: { path },
+        };
+      }
+    } else if (node.type === "image" && typeof node.url === "string") {
+      const path = resolveWorkspaceFileLink(filePath, node.url);
+      if (path && isWorkspaceImagePath(path)) {
+        node.data = {
+          hName: "agent-workspace-image",
+          hProperties: {
+            path,
+            alt: typeof node.alt === "string" ? node.alt : "",
+          },
         };
       }
     }

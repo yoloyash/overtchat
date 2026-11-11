@@ -3,14 +3,16 @@
 import { apiError } from "@overtchat/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
-import type {
-  AgentWorkspaceDirectoryListing,
-  AgentWorkspaceFilePreview,
-  AgentWorkspaceGitBranches,
-  AgentWorkspaceGitStatus,
-  AgentWorkspaceGitSwitchResult,
-  AgentWorkspaceGitSwitchTarget,
-  AgentWorkspaceGitWorktreeInspection,
+import {
+  agentWorkspaceImageMediaType,
+  type AgentWorkspaceDirectoryListing,
+  type AgentWorkspaceFileDiff,
+  type AgentWorkspaceFilePreview,
+  type AgentWorkspaceGitBranches,
+  type AgentWorkspaceGitStatus,
+  type AgentWorkspaceGitSwitchResult,
+  type AgentWorkspaceGitSwitchTarget,
+  type AgentWorkspaceGitWorktreeInspection,
 } from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
 import { apiUrl } from "@/lib/api-url";
@@ -193,7 +195,10 @@ async function fetchAgentWorkspaceFile(
   id: string,
   path: string,
 ): Promise<AgentWorkspaceFilePreview> {
-  const params = new URLSearchParams({ path });
+  const params = new URLSearchParams({
+    path,
+    ...(agentWorkspaceImageMediaType(path) ? { images: "1" } : {}),
+  });
   const response = await fetch(
     apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/file?${params}`),
   );
@@ -201,17 +206,52 @@ async function fetchAgentWorkspaceFile(
   return ((await response.json()) as { file: AgentWorkspaceFilePreview }).file;
 }
 
+async function fetchAgentWorkspaceFileDiff(
+  id: string,
+  path: string,
+  originalPath: string | null,
+): Promise<AgentWorkspaceFileDiff> {
+  const params = new URLSearchParams({
+    path,
+    ...(originalPath ? { originalPath } : {}),
+  });
+  const response = await fetch(
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/file-diff?${params}`),
+  );
+  if (!response.ok) throw await responseError(response);
+  return ((await response.json()) as { diff: AgentWorkspaceFileDiff }).diff;
+}
+
+/** One file's uncommitted changes, refreshed while the agent is working. */
+export function useAgentWorkspaceFileDiff(
+  id: string,
+  path: string,
+  originalPath: string | null,
+  { enabled = true, running = false } = {},
+) {
+  return useQuery({
+    queryKey: agentWorkspaceKeys.fileDiff(id, path),
+    queryFn: () => fetchAgentWorkspaceFileDiff(id, path, originalPath),
+    enabled: Boolean(id && path) && enabled,
+    retry: false,
+    staleTime: running ? 1_000 : 4_000,
+    refetchInterval: enabled && running ? 2_000 : false,
+  });
+}
+
 export function useAgentWorkspaceFile(
   id: string,
   path: string | null,
   { enabled = true, running = false } = {},
 ) {
+  const image = path !== null && agentWorkspaceImageMediaType(path) !== null;
   return useQuery({
     queryKey: agentWorkspaceKeys.file(id, path ?? ""),
     queryFn: () => fetchAgentWorkspaceFile(id, path!),
     enabled: Boolean(id && path) && enabled,
     retry: false,
-    staleTime: running ? 1_000 : 4_000,
-    refetchInterval: enabled && running && path ? 2_000 : false,
+    // An image is megabytes over the connector; it reloads on request only.
+    staleTime: image ? 60_000 : running ? 1_000 : 4_000,
+    refetchInterval: enabled && running && path && !image ? 2_000 : false,
   });
 }
