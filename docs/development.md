@@ -638,7 +638,15 @@ Gmail. A client says it can show such an email with `gmailComposeSupported`
 in the chat request. One that does not, or a voice turn, is offered
 `gmail_create_draft` instead, which saves a draft in Gmail. That tool is left
 out of the definitions a composing client's model reads but still runs, since
-a chat that loaded Gmail earlier keeps the instructions that name it. Thread bodies are capped per message and per thread, newest kept.
+a chat that loaded Gmail earlier keeps the instructions that name it.
+
+`gmail_send` exists only for a user who chose **Without asking** under
+**Sending** (`integration_accounts.send_without_asking`, set through
+`PATCH /api/integrations/gmail`). `createGmailTools()` leaves the tool out
+otherwise, so no prompt or stale instruction can reach a send. It sends at
+once through `sendGmailEmail()`, the same code the card's **Send** uses, and
+its finished call shows as a sent card. `saveIntegrationAccount()` clears the
+choice when the sign-in is for a different address. Thread bodies are capped per message and per thread, newest kept.
 An attachment is named by its part's position in the message, because Gmail's
 own attachment IDs change with every request; its text comes from
 `extractFile()`, the same extraction uploads use, in parts of 60,000

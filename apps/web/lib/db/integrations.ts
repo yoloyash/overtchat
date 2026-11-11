@@ -157,6 +157,7 @@ function toIntegration(
           status: account.status,
           connectedAt: account.createdAt.toISOString(),
           alwaysOn: account.alwaysOn.includes(id),
+          sendWithoutAsking: account.sendWithoutAsking.includes(id),
         }
       : null,
   };
@@ -199,27 +200,59 @@ export function saveIntegrationAccount(input: {
     createdAt: now,
     updatedAt: now,
   };
-  db.insert(integrationAccounts)
-    .values({ userId: input.userId, provider: input.provider, ...grant })
-    .onConflictDoUpdate({
-      target: [integrationAccounts.userId, integrationAccounts.provider],
-      set: grant,
-    })
-    .run();
+  db.transaction((tx) => {
+    const previous = tx
+      .select({ accountEmail: integrationAccounts.accountEmail })
+      .from(integrationAccounts)
+      .where(
+        and(
+          eq(integrationAccounts.userId, input.userId),
+          eq(integrationAccounts.provider, input.provider),
+        ),
+      )
+      .get();
+    tx.insert(integrationAccounts)
+      .values({ userId: input.userId, provider: input.provider, ...grant })
+      .onConflictDoUpdate({
+        target: [integrationAccounts.userId, integrationAccounts.provider],
+        set: {
+          ...grant,
+          // Leave to send was given for one mailbox, not for whichever
+          // account signs in next.
+          ...(previous && previous.accountEmail !== input.accountEmail
+            ? { sendWithoutAsking: [] }
+            : {}),
+        },
+      })
+      .run();
+  });
 }
 
-/** Returns false when the user's sign-in does not cover the integration. */
-export function setIntegrationAlwaysOn(
+/**
+ * Changes how the user's own connection is used. Returns false when their
+ * sign-in does not cover the integration.
+ */
+export function setIntegrationSettings(
   userId: string,
   integrationId: IntegrationId,
-  alwaysOn: boolean,
+  settings: { alwaysOn?: boolean; sendWithoutAsking?: boolean },
 ): boolean {
   const account = getIntegrationConnection(userId, integrationId);
   if (!account) return false;
-  const others = account.alwaysOn.filter((id) => id !== integrationId);
+  const withChoice = (list: IntegrationId[], on: boolean | undefined) =>
+    on === undefined
+      ? list
+      : [
+          ...list.filter((id) => id !== integrationId),
+          ...(on ? [integrationId] : []),
+        ];
   db.update(integrationAccounts)
     .set({
-      alwaysOn: alwaysOn ? [...others, integrationId] : others,
+      alwaysOn: withChoice(account.alwaysOn, settings.alwaysOn),
+      sendWithoutAsking: withChoice(
+        account.sendWithoutAsking,
+        settings.sendWithoutAsking,
+      ),
       updatedAt: new Date(),
     })
     .where(
@@ -230,6 +263,15 @@ export function setIntegrationAlwaysOn(
     )
     .run();
   return true;
+}
+
+/** Returns false when the user's sign-in does not cover the integration. */
+export function setIntegrationAlwaysOn(
+  userId: string,
+  integrationId: IntegrationId,
+  alwaysOn: boolean,
+): boolean {
+  return setIntegrationSettings(userId, integrationId, { alwaysOn });
 }
 
 /**

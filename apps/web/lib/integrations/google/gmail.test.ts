@@ -647,7 +647,28 @@ describe("drafts", () => {
       replyToMessageId: "m1",
     });
 
-    expect(sentEmail).toEqual({ threadId: "t1" });
+    expect(sentEmail).toEqual({
+      threadId: "t1",
+      to: "grace@example.test",
+      subject: "Re: Quarterly numbers",
+    });
+
+    // The same send, as the tool a model calls reports it.
+    const forModel = await gmail.sendGmailEmailForModel("ada", {
+      to: ["grace@example.test"],
+      cc: [],
+      bcc: [],
+      subject: "Lunch",
+      body: "Thursday?",
+    });
+    expect(forModel).toEqual({
+      threadId: "t1",
+      account: "ada@example.test",
+      to: "grace@example.test",
+      subject: "Lunch",
+      status: "sent",
+      sentAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
     const send = requests.find((r) => r.path === "/messages/send")!;
     expect(send.method).toBe("POST");
     expect(send.body!.threadId).toBe("t1");

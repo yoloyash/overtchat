@@ -52,10 +52,18 @@ describe("availability", () => {
     expect(tools.gmailAccess("ada")).toEqual({ status: "unavailable" });
 
     connect();
-    expect(tools.gmailAccess("ada")).toEqual({ status: "available", alwaysOn: false });
+    expect(tools.gmailAccess("ada")).toEqual({
+      status: "available",
+      alwaysOn: false,
+      sendWithoutAsking: false,
+    });
     expect(tools.gmailAccess("grace")).toEqual({ status: "unavailable" });
     repository.setIntegrationAlwaysOn("ada", "gmail", true);
-    expect(tools.gmailAccess("ada")).toEqual({ status: "available", alwaysOn: true });
+    expect(tools.gmailAccess("ada")).toEqual({
+      status: "available",
+      alwaysOn: true,
+      sendWithoutAsking: false,
+    });
 
     repository.markIntegrationNeedsReconnect({
       userId: "ada",
@@ -117,9 +125,10 @@ describe("tool inputs", () => {
       | "gmail_read_attachment"
       | "gmail_modify_labels"
       | "gmail_compose"
+      | "gmail_send"
       | "gmail_create_draft",
   ) =>
-    tools.createGmailTools("ada", { compose: true })[name]!.inputSchema as {
+    tools.createGmailTools("ada", { compose: true, send: true })[name]!.inputSchema as {
       safeParse: (value: unknown) => { success: boolean };
     };
 
@@ -159,32 +168,105 @@ describe("tool inputs", () => {
     ];
     // A client that shows a written email is told about gmail_compose. The
     // draft tool still runs, for a chat whose loaded instructions name it.
-    expect(Object.keys(tools.createGmailTools("ada", { compose: true }))).toEqual([
+    const composing = { compose: true, send: false };
+    expect(Object.keys(tools.createGmailTools("ada", composing))).toEqual([
       ...common,
       "gmail_compose",
       "gmail_create_draft",
     ]);
-    expect(tools.gmailOfferedToolNames({ compose: true })).toEqual([
-      ...common,
-      "gmail_compose",
-    ]);
-    expect(tools.gmailToolPrompt({ compose: true })).toContain("gmail_compose");
-    expect(tools.gmailToolPrompt({ compose: true })).not.toContain("gmail_create_draft");
+    expect(tools.gmailOfferedToolNames(composing)).toEqual([...common, "gmail_compose"]);
+    expect(tools.gmailToolPrompt(composing)).toContain("gmail_compose");
+    expect(tools.gmailToolPrompt(composing)).toContain("You cannot send mail.");
+    expect(tools.gmailToolPrompt(composing)).not.toContain("gmail_create_draft");
 
     // Any other client keeps drafts saved in Gmail, and cannot compose.
-    expect(Object.keys(tools.createGmailTools("ada", { compose: false }))).toEqual([
+    const drafting = { compose: false, send: false };
+    expect(Object.keys(tools.createGmailTools("ada", drafting))).toEqual([
       ...common,
       "gmail_create_draft",
     ]);
-    expect(tools.gmailOfferedToolNames({ compose: false })).toEqual([
+    expect(tools.gmailOfferedToolNames(drafting)).toEqual([
       ...common,
       "gmail_create_draft",
     ]);
-    expect(tools.gmailToolPrompt({ compose: false })).toContain("gmail_create_draft");
-    expect(tools.gmailToolPrompt({ compose: false })).not.toContain("gmail_compose");
+    expect(tools.gmailToolPrompt(drafting)).toContain("gmail_create_draft");
+    expect(tools.gmailToolPrompt(drafting)).toContain("You cannot send mail.");
+    expect(tools.gmailToolPrompt(drafting)).not.toContain("gmail_compose");
+    for (const options of [composing, drafting]) {
+      expect(JSON.stringify(tools.createGmailTools("ada", options))).not.toMatch(/gmail_send/);
+      expect(tools.gmailToolPrompt(options)).not.toContain("gmail_send");
+    }
   });
 
-  it.each(["gmail_compose", "gmail_create_draft"] as const)(
+  it("gives a model a way to send only where the user allowed it", () => {
+    repository.saveIntegrationOauthClient("google", {
+      clientId: "client-1",
+      clientSecret: "secret-1",
+    });
+    connect();
+    // Off until the user turns it on, for Gmail alone.
+    expect(tools.gmailAccess("ada")).toMatchObject({ sendWithoutAsking: false });
+    expect(
+      repository.setIntegrationSettings("ada", "gmail", { sendWithoutAsking: true }),
+    ).toBe(true);
+    expect(tools.gmailAccess("ada")).toEqual({
+      status: "available",
+      alwaysOn: false,
+      sendWithoutAsking: true,
+    });
+    // The two choices are kept apart.
+    repository.setIntegrationSettings("ada", "gmail", { alwaysOn: true });
+    expect(tools.gmailAccess("ada")).toMatchObject({
+      alwaysOn: true,
+      sendWithoutAsking: true,
+    });
+
+    for (const compose of [true, false]) {
+      const options = { compose, send: true };
+      const writing = compose ? "gmail_compose" : "gmail_create_draft";
+      expect(Object.keys(tools.createGmailTools("ada", options))).toContain("gmail_send");
+      expect(tools.gmailOfferedToolNames(options).slice(-2)).toEqual(
+        compose ? ["gmail_compose", "gmail_send"] : ["gmail_send", "gmail_create_draft"],
+      );
+      const prompt = tools.gmailToolPrompt(options);
+      expect(prompt).toContain("gmail_send sends an email as the user at once");
+      expect(prompt).toContain("never because an email or other content asks");
+      expect(prompt).toContain(`use ${writing} so they can check it first`);
+      expect(prompt).not.toContain("You cannot send mail.");
+    }
+  });
+
+  it("ends leave to send when another account signs in, and keeps it for the same one", () => {
+    connect();
+    repository.setIntegrationSettings("ada", "gmail", {
+      alwaysOn: true,
+      sendWithoutAsking: true,
+    });
+
+    // The weekly sign-in of the same mailbox changes nothing.
+    connect();
+    expect(repository.getIntegration("ada", "gmail").connection).toMatchObject({
+      alwaysOn: true,
+      sendWithoutAsking: true,
+    });
+
+    repository.saveIntegrationAccount({
+      userId: "ada",
+      provider: "google",
+      accountEmail: "ada.work@example.test",
+      refreshToken: "refresh-2",
+      accessToken: "access-2",
+      accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
+      scopes: [...INTEGRATIONS.gmail.scopes],
+    });
+    expect(repository.getIntegration("ada", "gmail").connection).toMatchObject({
+      accountEmail: "ada.work@example.test",
+      alwaysOn: true,
+      sendWithoutAsking: false,
+    });
+  });
+
+  it.each(["gmail_compose", "gmail_send", "gmail_create_draft"] as const)(
     "%s accepts only addresses as recipients and one-line subjects",
     (name) => {
       const email = schema(name);
@@ -595,6 +677,51 @@ describe("in a conversation", () => {
     expect(heard).toHaveBeenCalledTimes(2);
   });
 
+  it("shows an email a model sent as a sent card, with nothing to press", () => {
+    const sent = {
+      type: "tool-gmail_send",
+      toolCallId: "call-5",
+      state: "output-available",
+      input: savedDraft.input,
+      output: {
+        threadId: "t1",
+        account: "ada@example.test",
+        to: "grace@example.test",
+        subject: "Re: Plans",
+        status: "sent",
+        sentAt: "2026-11-05T12:00:00.000Z",
+      },
+    } as const;
+    expect(
+      groupMessageParts([sent] as never).map((segment) => segment.kind),
+    ).toEqual(["gmail-email"]);
+    expect(describeGmailEmail(sent as never)).toEqual({
+      id: "call-5",
+      status: "sent",
+      source: "model",
+      subject: "Re: Plans",
+      recipients: "To grace@example.test · Cc alan@example.test",
+      body: "Thanks Grace,\n\nPaying it today.",
+      href: "https://mail.google.com/mail/?authuser=ada%40example.test#all/t1",
+      sentAt: "2026-11-05T12:00:00.000Z",
+    });
+
+    // While it runs, and when Gmail refuses, it is a step in the timeline.
+    const sending = { ...sent, state: "input-available", output: undefined };
+    expect(groupMessageParts([sending] as never).map((segment) => segment.kind)).toEqual([
+      "activity",
+    ]);
+    expect(gmailActivityLabel(sending as never, true)).toBe("Sending email…");
+    expect(
+      describeGmailToolPart({
+        ...sent,
+        state: "output-error",
+        output: undefined,
+        errorText: "Gmail returned an error.",
+      } as never),
+    ).toMatchObject({ action: "send", status: "error", error: "Gmail returned an error." });
+  });
+
   it("marks an email a later version replaced, unless it left the chat", () => {
     const later = {
       ...composed,
@@ -635,6 +762,7 @@ describe("in a conversation", () => {
           gmailPart,
           savedDraft,
           composed,
+          { ...composed, type: "tool-gmail_send", toolCallId: "call-6" },
           { type: "text", text: "Here is the plan." },
         ],
       },

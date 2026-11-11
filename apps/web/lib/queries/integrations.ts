@@ -146,14 +146,18 @@ export function useConnectIntegrationAccount(provider: IntegrationProvider) {
   });
 }
 
-export function useSetIntegrationAlwaysOn(id: IntegrationId) {
+/** Changes how the user's own connection is used. */
+export function useSetIntegrationSettings(id: IntegrationId) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (alwaysOn: boolean): Promise<Integration> => {
+    mutationFn: async (settings: {
+      alwaysOn?: boolean;
+      sendWithoutAsking?: boolean;
+    }): Promise<Integration> => {
       const response = await fetch(apiUrl(`/api/integrations/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ alwaysOn }),
+        body: JSON.stringify(settings),
       });
       if (!response.ok) throw await responseError(response);
       return ((await response.json()) as { integration: Integration })

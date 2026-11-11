@@ -9,6 +9,8 @@ export const GMAIL_TOOL_NAMES = [
   "gmail_list_labels",
   "gmail_modify_labels",
   "gmail_compose",
+  // Exists only for a user who let models send without asking.
+  "gmail_send",
   // Offered only to clients that cannot show a composed email. It still runs
   // for chats whose loaded instructions name it.
   "gmail_create_draft",
@@ -146,6 +148,19 @@ export interface GmailEmailOutput {
   sent?: { at: string; threadId: string | null };
 }
 
+/** What gmail_send returns: the email went out when a model called it. */
+export interface GmailSentOutput {
+  /** The sent message's thread. */
+  threadId: string | null;
+  /** The mailbox it was sent from. */
+  account: string;
+  to: string;
+  subject: string;
+  status: "sent";
+  /** ISO 8601. */
+  sentAt: string;
+}
+
 export type GmailToolPart = {
   type: `tool-${GmailToolName}`;
   toolCallId: string;
@@ -187,12 +202,28 @@ export function isComposedGmailEmailPart(
   return part.type === "tool-gmail_compose" && outputId(part, "emailId") !== null;
 }
 
+/** An email a model sent itself with gmail_send, where the user allowed that. */
+export function isModelSentGmailEmailPart(
+  part: AnyToolPart,
+): part is GmailToolPart {
+  return (
+    part.type === "tool-gmail_send" &&
+    part.state === "output-available" &&
+    (part.output as { status?: unknown } | null)?.status === "sent"
+  );
+}
+
 /**
  * An email a model finished writing. It shows as its own card, outside the
- * activity timeline, because the user reads it and sends it from there.
+ * activity timeline, because the user reads it there, and sends it from
+ * there unless a model already did.
  */
 export function isGmailEmailPart(part: AnyToolPart): part is GmailToolPart {
-  return isSavedGmailDraftPart(part) || isComposedGmailEmailPart(part);
+  return (
+    isSavedGmailDraftPart(part) ||
+    isComposedGmailEmailPart(part) ||
+    isModelSentGmailEmailPart(part)
+  );
 }
 
 /**
@@ -258,8 +289,9 @@ export interface GmailEmailDisplay {
   /**
    * How the card sends it. A draft a model saved is sent by its Gmail ID. A
    * composed email is sent with `content`, and saved to Gmail the same way.
+   * One a model sent is not the card's to send.
    */
-  source: "draft" | "composed";
+  source: "draft" | "composed" | "model";
   subject: string;
   /** Everyone the email is addressed to, as one line. */
   recipients: string;
@@ -270,6 +302,18 @@ export interface GmailEmailDisplay {
   href?: string;
   /** When the user sent it from a chat. */
   sentAt?: string;
+}
+
+/** Everyone an email is addressed to, as one line. */
+function recipientLine(
+  to: string | undefined,
+  input: Record<string, unknown> | undefined,
+): string {
+  return [
+    ...(to ? [`To ${to}`] : []),
+    ...names(input?.cc).map((address) => `Cc ${address}`),
+    ...names(input?.bcc).map((address) => `Bcc ${address}`),
+  ].join(" · ");
 }
 
 /** What a card says about where its email is. */
@@ -290,12 +334,23 @@ export function describeGmailEmail(
   const sent = record(output?.sent);
   const account = text(output?.account);
   const composed = part.type === "tool-gmail_compose";
+  if (part.type === "tool-gmail_send") {
+    const to = text(output?.to);
+    return {
+      id: part.toolCallId,
+      status: "sent",
+      source: "model",
+      subject: text(output?.subject) ?? "(no subject)",
+      recipients: recipientLine(to, input),
+      body: typeof input?.body === "string" ? input.body.trim() : "",
+      href:
+        gmailThreadUrl(account, text(output?.threadId)) ??
+        gmailUrl(account, "sent"),
+      sentAt: text(output?.sentAt),
+    };
+  }
   const id = text(composed ? output?.emailId : output?.draftId) ?? "";
   const inDrafts = !composed || text(record(output?.saved)?.draftId) !== undefined;
-  const copied = [
-    ...names(input?.cc).map((address) => `Cc ${address}`),
-    ...names(input?.bcc).map((address) => `Bcc ${address}`),
-  ];
   const to = text(output?.to);
   const body = typeof input?.body === "string" ? input.body : "";
   return {
@@ -309,7 +364,7 @@ export function describeGmailEmail(
           : "unsent",
     source: composed ? "composed" : "draft",
     subject: text(output?.subject) ?? "(no subject)",
-    recipients: [...(to ? [`To ${to}`] : []), ...copied].join(" · "),
+    recipients: recipientLine(to, input),
     body: body.trim(),
     content:
       composed && body
@@ -379,6 +434,7 @@ export interface GmailToolDisplay {
     | "labels"
     | "sort"
     | "compose"
+    | "send"
     | "draft";
   status: "running" | "done" | "error";
   title: string;
@@ -493,7 +549,9 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
               ? "sort"
               : part.type === "tool-gmail_compose"
                 ? "compose"
-                : "draft";
+                : part.type === "tool-gmail_send"
+                  ? "send"
+                  : "draft";
   const status =
     part.state === "output-error"
       ? "error"
@@ -609,13 +667,17 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
     action,
     status,
     title:
-      action === "compose"
+      action === "send"
         ? status === "running"
-          ? "Writing email"
-          : "Wrote email"
-        : status === "running"
-          ? "Writing draft"
-          : "Saved draft in Gmail",
+          ? "Sending email"
+          : "Sent email"
+        : action === "compose"
+          ? status === "running"
+            ? "Writing email"
+            : "Wrote email"
+          : status === "running"
+            ? "Writing draft"
+            : "Saved draft in Gmail",
     detail: text(output?.subject) ?? text(input?.subject),
     rows: [],
     error,
@@ -629,6 +691,7 @@ const ACTIVE_LABELS: Record<GmailToolDisplay["action"], string> = {
   labels: "Listing Gmail labels…",
   sort: "Sorting mail…",
   compose: "Writing email…",
+  send: "Sending email…",
   draft: "Writing draft…",
 };
 

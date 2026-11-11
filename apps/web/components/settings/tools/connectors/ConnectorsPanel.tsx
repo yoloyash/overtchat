@@ -6,17 +6,38 @@ import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
-import type { Integration, IntegrationId } from "@/lib/integrations/schema";
+import {
+  SENDING_INTEGRATION_IDS,
+  type Integration,
+  type IntegrationId,
+} from "@/lib/integrations/schema";
 import {
   useDisconnectIntegrationAccount,
   useIntegrations,
-  useSetIntegrationAlwaysOn,
+  useSetIntegrationSettings,
 } from "@/lib/queries/integrations";
+import { SettingsChoiceGroup } from "../../SettingsChoiceGroup";
 import { SettingsNotice, SettingsSection } from "../../SettingsRows";
 import { ConnectGoogleDialog } from "./ConnectGoogleDialog";
 import { GoogleAccessDialog } from "./GoogleAccessDialog";
 import { ToolAccessChoice } from "../ToolAccessChoice";
 import { INTEGRATION_DISPLAY, integrationNames } from "./integration-display";
+
+/**
+ * Who sends an email a model wrote. "Ask first", the default, leaves it to
+ * the user and the email's Send button; "Without asking" also gives a model a
+ * tool that sends. The stored setting is a boolean (`sendWithoutAsking`).
+ */
+const SENDING_OPTIONS = [
+  {
+    value: "ask",
+    label: <span className="whitespace-nowrap">Ask first</span>,
+  },
+  {
+    value: "without-asking",
+    label: <span className="whitespace-nowrap">Without asking</span>,
+  },
+] as const;
 
 export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
   const { data: integrations, isPending, error } = useIntegrations();
@@ -205,14 +226,17 @@ function IntegrationRow({
 }) {
   const { name, Logo, description, toolAccess } =
     INTEGRATION_DISPLAY[integration.id];
-  const setAlwaysOn = useSetIntegrationAlwaysOn(integration.id);
+  const setSettings = useSetIntegrationSettings(integration.id);
   const { connection } = integration;
   const left = !connection && onAdd;
   const usable = connection?.status === "connected";
 
-  async function onAlwaysOn(alwaysOn: boolean) {
+  async function onSettings(settings: {
+    alwaysOn?: boolean;
+    sendWithoutAsking?: boolean;
+  }) {
     try {
-      await setAlwaysOn.mutateAsync(alwaysOn);
+      await setSettings.mutateAsync(settings);
     } catch (error) {
       toast.error({
         title: `Failed to change ${name}`,
@@ -243,14 +267,36 @@ function IntegrationRow({
         <ToolAccessChoice
           label={`${name} tool access`}
           alwaysOn={connection.alwaysOn}
-          disabled={setAlwaysOn.isPending}
-          onChange={(alwaysOn) => void onAlwaysOn(alwaysOn)}
+          disabled={setSettings.isPending}
+          onChange={(alwaysOn) => void onSettings({ alwaysOn })}
         />
       )}
       {left && (
         <Button type="button" variant="outline" size="sm" onClick={onAdd}>
           Add
         </Button>
+      )}
+      {usable && SENDING_INTEGRATION_IDS.includes(integration.id) && (
+        <>
+          <div className="min-w-0 pl-[26px]">
+            <p className="text-sm font-medium">Sending</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              {connection.sendWithoutAsking
+                ? "A model can send email as you without asking. Mail it reads can try to trick it into sending."
+                : "A model writes an email and you send it."}
+            </p>
+          </div>
+          <SettingsChoiceGroup
+            label={`${name} sending`}
+            value={connection.sendWithoutAsking ? "without-asking" : "ask"}
+            onValueChange={(value) =>
+              void onSettings({ sendWithoutAsking: value === "without-asking" })
+            }
+            options={SENDING_OPTIONS}
+            disabled={setSettings.isPending}
+            className="w-auto auto-cols-auto"
+          />
+        </>
       )}
     </li>
   );

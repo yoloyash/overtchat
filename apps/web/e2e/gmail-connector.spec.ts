@@ -425,7 +425,9 @@ test("one sign-in covers what the person chooses, and is widened by signing in a
   ).toBe(ALL_SCOPES.join(" "));
   grantedScopes = ALL_SCOPES;
   await finish(second);
-  await expect(connectors(page).getByRole("radiogroup")).toHaveCount(2);
+  await expect(
+    connectors(page).getByRole("radiogroup", { name: /tool access/ }),
+  ).toHaveCount(2);
 
   // Each connector has its own tool access choice.
   const calendarAlways = calendarRow

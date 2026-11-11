@@ -82,7 +82,10 @@ export async function resolveChatSkills({
 
   const gmail = gmailAccess(userId);
   if (gmail.status !== "unavailable") {
-    const options = { compose: gmailCompose };
+    const options = {
+      compose: gmailCompose,
+      send: gmail.status === "available" && gmail.sendWithoutAsking === true,
+    };
     const tools: Record<string, Tool> =
       gmail.status === "available" ? createGmailTools(userId, options) : {};
     const offered = gmailOfferedToolNames(options);

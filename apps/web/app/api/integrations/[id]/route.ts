@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth/server";
-import { getIntegration, setIntegrationAlwaysOn } from "@/lib/db/integrations";
+import { getIntegration, setIntegrationSettings } from "@/lib/db/integrations";
 import {
   IntegrationSettingsInputSchema,
+  SENDING_INTEGRATION_IDS,
   isIntegrationId,
 } from "@/lib/integrations/schema";
 
@@ -18,10 +19,14 @@ export async function PATCH(
   const parsed = IntegrationSettingsInputSchema.safeParse(
     await request.json().catch(() => null),
   );
-  if (!parsed.success) {
+  if (
+    !parsed.success ||
+    (parsed.data.sendWithoutAsking !== undefined &&
+      !SENDING_INTEGRATION_IDS.includes(id))
+  ) {
     return Response.json({ error: "Invalid input" }, { status: 400 });
   }
-  if (!setIntegrationAlwaysOn(session.user.id, id, parsed.data.alwaysOn)) {
+  if (!setIntegrationSettings(session.user.id, id, parsed.data)) {
     return Response.json(
       { error: "This account is not connected." },
       { status: 409 },

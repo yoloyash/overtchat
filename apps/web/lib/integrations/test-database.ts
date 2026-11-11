@@ -15,7 +15,11 @@ export function createIntegrationTestDatabase(name: string) {
   process.env.DATABASE_URL = databasePath;
   const raw = new Database(databasePath);
   raw.exec("CREATE TABLE user (id TEXT PRIMARY KEY NOT NULL);");
-  for (const name of ["0030_integrations", "0032_gmail_emails"]) {
+  for (const name of [
+    "0030_integrations",
+    "0032_gmail_emails",
+    "0033_gmail_send_without_asking",
+  ]) {
     const migration = fs.readFileSync(
       path.resolve(__dirname, `../../drizzle/${name}.sql`),
       "utf8",

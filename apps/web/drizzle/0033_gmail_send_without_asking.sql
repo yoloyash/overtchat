@@ -1,0 +1,1 @@
+ALTER TABLE `integration_accounts` ADD `send_without_asking` text DEFAULT '[]' NOT NULL;
