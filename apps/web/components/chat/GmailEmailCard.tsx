@@ -1,10 +1,12 @@
 "use client";
 
 import { Check, ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   GMAIL_EMAIL_STATUS_LABELS,
   describeGmailEmail,
+  gmailEmailResult,
+  subscribeGmailEmailResults,
   type GmailToolPart,
 } from "@overtchat/shared";
 import { GmailLogo } from "@/components/GmailLogo";
@@ -35,23 +37,20 @@ export function GmailEmailCard({
 }) {
   const send = useSendGmailEmail();
   const save = useSaveGmailEmail();
-  // What this page did, until the chat is loaded again and says so itself.
-  const [sent, setSent] = useState<{ at: string; threadId: string | null }>();
-  const [saved, setSaved] = useState<{ draftId: string }>();
   const [expanded, setExpanded] = useState(false);
-  const email = describeGmailEmail(
-    sent || saved
-      ? {
-          ...part,
-          output: {
-            ...(part.output as object),
-            ...(saved ? { saved } : {}),
-            ...(sent ? { sent } : {}),
-          },
-        }
-      : part,
-    replaced,
+  const loaded = describeGmailEmail(part, replaced);
+  // What this page did since, which outlives the card scrolling out of view.
+  const done = useSyncExternalStore(
+    subscribeGmailEmailResults,
+    () => gmailEmailResult(loaded.id),
+    () => undefined,
   );
+  const email = done
+    ? describeGmailEmail(
+        { ...part, output: { ...(part.output as object), ...done } },
+        replaced,
+      )
+    : loaded;
   const long =
     email.body.length > FOLDED_CHARS ||
     email.body.split("\n").length > FOLDED_LINES;
@@ -108,7 +107,7 @@ export function GmailEmailCard({
                   disabled={busy}
                   onClick={() => {
                     send.reset();
-                    save.mutate(email, { onSuccess: setSaved });
+                    save.mutate(email);
                   }}
                 >
                   {save.isPending ? "Saving…" : "Save to Gmail"}
@@ -120,7 +119,7 @@ export function GmailEmailCard({
                 disabled={busy}
                 onClick={() => {
                   save.reset();
-                  send.mutate(email, { onSuccess: setSent });
+                  send.mutate(email);
                 }}
               >
                 {send.isPending ? "Sending…" : "Send"}

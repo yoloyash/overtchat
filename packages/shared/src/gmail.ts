@@ -213,6 +213,40 @@ export function replacedGmailEmailIds(
   return replaced;
 }
 
+/** What a card's own Send or Save came back with. */
+export interface GmailEmailResult {
+  saved?: { draftId: string };
+  sent?: { at: string; threadId: string | null };
+}
+
+const emailResults = new Map<string, GmailEmailResult>();
+const emailResultListeners = new Set<() => void>();
+
+/**
+ * Keeps what a card's Send or Save came back with until the chat is loaded
+ * again and says so itself. A chat's list drops cards that scroll out of
+ * view, so a card cannot hold this in its own state.
+ */
+export function rememberGmailEmailResult(
+  id: string,
+  result: GmailEmailResult,
+): void {
+  emailResults.set(id, { ...emailResults.get(id), ...result });
+  for (const listener of emailResultListeners) listener();
+}
+
+/** What a card with this `GmailEmailDisplay.id` has done since the chat was loaded. */
+export function gmailEmailResult(id: string): GmailEmailResult | undefined {
+  return emailResults.get(id);
+}
+
+export function subscribeGmailEmailResults(listener: () => void): () => void {
+  emailResultListeners.add(listener);
+  return () => {
+    emailResultListeners.delete(listener);
+  };
+}
+
 export interface GmailEmailDisplay {
   /** The Gmail draft's ID for a saved draft, the email's own otherwise. */
   id: string;

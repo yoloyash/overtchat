@@ -4,8 +4,11 @@ import {
   describeGmailEmail,
   describeGmailToolPart,
   gmailActivityLabel,
+  gmailEmailResult,
   groupMessageParts,
+  rememberGmailEmailResult,
   replacedGmailEmailIds,
+  subscribeGmailEmailResults,
   type GmailToolPart,
 } from "@overtchat/shared";
 import { z } from "zod";
@@ -567,6 +570,29 @@ describe("in a conversation", () => {
       status: "sent",
       href: "https://mail.google.com/mail/?authuser=ada%40example.test#all/t9",
     });
+  });
+
+  it("remembers what a card did for as long as the page lives", () => {
+    const heard = vi.fn();
+    const stop = subscribeGmailEmailResults(heard);
+    expect(gmailEmailResult("e-9")).toBeUndefined();
+
+    rememberGmailEmailResult("e-9", { saved: { draftId: "r-7" } });
+    const saved = gmailEmailResult("e-9");
+    expect(saved).toEqual({ saved: { draftId: "r-7" } });
+    // The same object until it changes, as a store's readers need.
+    expect(gmailEmailResult("e-9")).toBe(saved);
+
+    rememberGmailEmailResult("e-9", { sent: { at: "2026-11-05T12:00:00.000Z", threadId: "t9" } });
+    expect(gmailEmailResult("e-9")).toEqual({
+      saved: { draftId: "r-7" },
+      sent: { at: "2026-11-05T12:00:00.000Z", threadId: "t9" },
+    });
+    expect(heard).toHaveBeenCalledTimes(2);
+
+    stop();
+    rememberGmailEmailResult("e-9", { saved: { draftId: "r-8" } });
+    expect(heard).toHaveBeenCalledTimes(2);
   });
 
   it("marks an email a later version replaced, unless it left the chat", () => {

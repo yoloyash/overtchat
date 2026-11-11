@@ -2,6 +2,7 @@
 
 import {
   apiError,
+  rememberGmailEmailResult,
   type GmailEmailContent,
   type GmailEmailDisplay,
 } from "@overtchat/shared";
@@ -204,6 +205,8 @@ export function useSendGmailEmail() {
           source === "draft" ? undefined : content,
         )
       ).sent,
+    // Kept outside the card, which may have scrolled out of view by now.
+    onSuccess: (sent, { id }) => rememberGmailEmailResult(id, { sent }),
   });
 }
 
@@ -217,6 +220,7 @@ export function useSaveGmailEmail() {
           content,
         )
       ).saved,
+    onSuccess: (saved, { id }) => rememberGmailEmailResult(id, { saved }),
   });
 }
 
