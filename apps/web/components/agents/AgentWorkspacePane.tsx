@@ -8,11 +8,16 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { Menu } from "@base-ui/react/menu";
 import { code, type HighlightResult } from "@streamdown/code";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
+import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import {
   ChevronDown,
   ChevronRight,
+  Code,
+  Copy,
+  Eye,
   File,
   FileCode2,
   FileDiff,
@@ -21,6 +26,7 @@ import {
   Link,
   Loader2,
   RefreshCw,
+  WrapText,
   X,
 } from "lucide-react";
 import type {
@@ -29,6 +35,7 @@ import type {
   AgentWorkspaceGitFile,
 } from "@overtchat/agent-bridge";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import {
   useAgentWorkspaceDirectory,
   useAgentWorkspaceFile,
@@ -41,11 +48,18 @@ import {
   ignoredGitDecoration,
   type AgentWorkspaceGitDecoration,
 } from "@/lib/agents/workspaceGitDecorations";
+import { workspaceFileRendering } from "@/lib/agents/workspaceFilePreview";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
+import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import type { AgentWorkspaceFileSelection } from "./AgentWorkspaceNavigationContext";
+import { AgentWorkspaceRenderedFile } from "./AgentWorkspaceRenderedFile";
 
 const EMPTY_CHANGED_FILES: AgentWorkspaceGitFile[] = [];
+const WRAP_LINES_KEY = "overtchat:agent-workspace-wrap-lines";
+
+/** A file's chosen view, kept until a link asks for a different line. */
+type FileViewChoice = { source: boolean; lineStart: number | undefined };
 
 export function AgentWorkspacePane({
   workspaceId,
@@ -81,6 +95,15 @@ export function AgentWorkspacePane({
     () => agentWorkspaceGitDecorationMap(changedFiles),
     [changedFiles],
   );
+  const [viewChoices, setViewChoices] = useState<Record<string, FileViewChoice>>(
+    {},
+  );
+  const viewChoice = selection ? viewChoices[selection.path] : undefined;
+  // A link to a line opens the source, where that line can be shown.
+  const showSource =
+    viewChoice && viewChoice.lineStart === selection?.lineStart
+      ? viewChoice.source
+      : selection?.lineStart !== undefined;
 
   return (
     <aside
@@ -103,6 +126,13 @@ export function AgentWorkspacePane({
           workspaceName={workspaceName}
           active={active}
           selection={selection}
+          showSource={showSource}
+          onShowSource={(source) =>
+            setViewChoices((current) => ({
+              ...current,
+              [selection.path]: { source, lineStart: selection.lineStart },
+            }))
+          }
           decoration={
             gitDecorations.get(selection.path) ??
             (selection.gitIgnored ? ignoredGitDecoration : undefined)
@@ -611,6 +641,8 @@ function WorkspaceFilePreview({
   workspaceName,
   active,
   selection,
+  showSource,
+  onShowSource,
   decoration,
   running,
 }: {
@@ -618,6 +650,9 @@ function WorkspaceFilePreview({
   workspaceName: string;
   active: boolean;
   selection: AgentWorkspaceFileSelection;
+  /** Whether a file with a rendered view shows its source instead. */
+  showSource: boolean;
+  onShowSource: (source: boolean) => void;
   decoration?: AgentWorkspaceGitDecoration;
   running: boolean;
 }) {
@@ -626,6 +661,25 @@ function WorkspaceFilePreview({
     running,
   });
   const displayPath = file.data?.path ?? selection.path;
+  const rendering = useMemo(
+    () => workspaceFileRendering(displayPath),
+    [displayPath],
+  );
+  const rendered = rendering !== null && !showSource;
+  const [wrapLines, setWrapLines] = useLocalStorage<boolean>(
+    WRAP_LINES_KEY,
+    false,
+  );
+  const content = file.data?.content;
+
+  async function copy(value: string, label: string) {
+    try {
+      await clipboardWriteText(value);
+      toast.success({ title: `${label} copied` });
+    } catch {
+      toast.error({ title: `Could not copy ${label.toLowerCase()}` });
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -672,6 +726,74 @@ function WorkspaceFilePreview({
             </span>
           ))}
         </div>
+        {rendering && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={showSource ? "Show preview" : "Show source"}
+            title={showSource ? "Show preview" : "Show source"}
+            aria-pressed={showSource}
+            onClick={() => onShowSource(!showSource)}
+          >
+            {showSource ? <Eye /> : <Code />}
+          </Button>
+        )}
+        {!rendered && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Wrap long lines"
+            title="Wrap long lines"
+            aria-pressed={wrapLines}
+            className="aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:hover:bg-accent"
+            onClick={() => setWrapLines(!wrapLines)}
+          >
+            <WrapText />
+          </Button>
+        )}
+        <Menu.Root>
+          <Menu.Trigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Copy"
+                title="Copy"
+              />
+            }
+          >
+            <Copy />
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Positioner side="bottom" align="end" sideOffset={6}>
+              <Menu.Popup
+                className={cn(
+                  "z-50 w-40 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                  motionClasses.popup,
+                )}
+              >
+                <Menu.Item
+                  onClick={() => void copy(displayPath, "File path")}
+                  className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
+                >
+                  Copy path
+                </Menu.Item>
+                <Menu.Item
+                  disabled={content === undefined}
+                  onClick={() => {
+                    if (content !== undefined) void copy(content, "File contents");
+                  }}
+                  className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-default data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
+                >
+                  Copy contents
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
         <Button
           type="button"
           variant="ghost"
@@ -693,11 +815,18 @@ function WorkspaceFilePreview({
         <div className="flex flex-1 items-center justify-center p-6 text-center">
           <ErrorNotice className="max-w-xs" title="File cannot be previewed" message={file.error} />
         </div>
+      ) : file.data && rendering && rendered ? (
+        <AgentWorkspaceRenderedFile
+          path={file.data.path}
+          content={file.data.content}
+          rendering={rendering}
+        />
       ) : file.data ? (
         <HighlightedFile
           file={file.data}
           lineStart={selection.lineStart}
           lineEnd={selection.lineEnd}
+          wrap={wrapLines}
         />
       ) : null}
     </div>
@@ -736,10 +865,12 @@ function HighlightedFile({
   file,
   lineStart,
   lineEnd,
+  wrap,
 }: {
   file: AgentWorkspaceFilePreview;
   lineStart?: number;
   lineEnd?: number;
+  wrap: boolean;
 }) {
   const [highlighted, setHighlighted] = useState<HighlightResult | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -778,7 +909,12 @@ function HighlightedFile({
 
   return (
     <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto bg-muted/10">
-      <pre className="min-w-max py-3 font-mono text-xs leading-5 text-foreground tab-size-4">
+      <pre
+        className={cn(
+          "py-3 font-mono text-xs leading-5 text-foreground tab-size-4",
+          !wrap && "min-w-max",
+        )}
+      >
         <code>
           {lines.map((tokens, index) => {
             const line = index + 1;
@@ -801,7 +937,13 @@ function HighlightedFile({
                 >
                   {line}
                 </span>
-                <span className="whitespace-pre">
+                <span
+                  className={
+                    wrap
+                      ? "min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]"
+                      : "whitespace-pre"
+                  }
+                >
                   {tokens.map((token, tokenIndex) => {
                     const {
                       color: htmlColor,

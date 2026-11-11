@@ -1,18 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { CodeBlock, Streamdown } from "streamdown";
 import { Code, Download, Eye, Loader2, X } from "lucide-react";
 import type { PanelFile } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { serverUrl } from "@/lib/api-url";
 import { formatSize, humanMediaLabel } from "@/lib/chat/attachments";
-import { htmlPreviewDocument } from "@/lib/chat/code-preview";
 import {
   filePreview,
-  MAX_TABLE_ROWS,
   MAX_TEXT_PREVIEW_BYTES,
-  parseDelimited,
   type FilePreview,
 } from "@/lib/chat/file-preview";
 import { MESSAGE_MARKDOWN_PLUGINS } from "@/lib/chat/markdown";
@@ -20,6 +17,7 @@ import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { MediaIcon } from "./attachment-icons";
 import { BackToFilesButton } from "./ChatFiles";
+import { DelimitedTable, HtmlFilePreview } from "./FilePreviewBodies";
 import { SidePanel, SidePanelHeader } from "./SidePanel";
 import { SaveToProjectButton } from "@/components/projects/SaveToProjectButton";
 
@@ -201,7 +199,7 @@ function TextFile({
   }
   switch (preview.kind) {
     case "table":
-      return <Table text={text} delimiter={preview.delimiter} />;
+      return <DelimitedTable text={text} delimiter={preview.delimiter} />;
     case "markdown":
       return (
         <div className="mx-auto max-w-3xl px-6 py-5">
@@ -215,55 +213,8 @@ function TextFile({
         </div>
       );
     case "html":
-      return (
-        <iframe
-          title={`${file.name} preview`}
-          sandbox="allow-scripts"
-          referrerPolicy="no-referrer"
-          srcDoc={htmlPreviewDocument(text)}
-          className="block size-full min-h-[24rem] border-0 bg-white"
-        />
-      );
+      return <HtmlFilePreview name={file.name} html={text} />;
   }
-}
-
-function Table({ text, delimiter }: { text: string; delimiter: string }) {
-  const rows = useMemo(() => parseDelimited(text, delimiter), [text, delimiter]);
-  if (!rows.length) return <Notice>This file is empty.</Notice>;
-  const [header, ...body] = rows;
-  const shown = body.slice(0, MAX_TABLE_ROWS);
-  const columns = Math.max(header.length, ...shown.map((row) => row.length));
-  return (
-    <div>
-      <table className="w-full border-collapse text-xs" data-file-table="">
-        <thead className="sticky top-0 bg-muted">
-          <tr>
-            {Array.from({ length: columns }, (_, column) => (
-              <th key={column} className="border-b px-3 py-2 text-left font-medium whitespace-nowrap">
-                {header[column] ?? ""}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((row, index) => (
-            <tr key={index} className="border-b">
-              {Array.from({ length: columns }, (_, column) => (
-                <td key={column} className="px-3 py-1.5 whitespace-nowrap tabular-nums">
-                  {row[column] ?? ""}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {body.length > shown.length && (
-        <p className="px-3 py-2 text-xs text-muted-foreground">
-          Showing the first {MAX_TABLE_ROWS.toLocaleString()} of {body.length.toLocaleString()} rows.
-        </p>
-      )}
-    </div>
-  );
 }
 
 function Notice({ children }: { children: React.ReactNode }) {
