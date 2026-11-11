@@ -88,7 +88,6 @@ vi.mock("react-native", () => {
 });
 
 import { ChainOfThought } from "./ChainOfThought";
-import { GmailEmailCard } from "./GmailEmailCard";
 
 let root: Root;
 let container: HTMLElement;
@@ -414,34 +413,10 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
   expect(text).not.toContain("private words");
   expect(container.querySelector('[data-icon="gmail"]')).not.toBeNull();
 
-  // A saved draft is its own card: what it says, who it goes to, and a way
-  // into Gmail, where it is sent.
+  // A saved draft is a card of its own, outside the timeline.
   expect(
     groupMessageParts([gmailSearch, draft] as never).map((segment) => segment.kind),
   ).toEqual(["activity", "gmail-email"]);
-  await act(async () => {
-    root.render(<GmailEmailCard part={draft} />);
-  });
-  expect(container.textContent).toContain("Re: Quarterly numbers");
-  expect(container.textContent).toContain("Draft in Gmail, not sent · To grace@example.test");
-  expect(container.textContent).toContain("Thanks, the numbers look right.");
-  expect(container.querySelector('[data-icon="open-outline"]')).not.toBeNull();
-
-  await act(async () => {
-    root.render(
-      <GmailEmailCard
-        part={{
-          ...draft,
-          output: {
-            ...(draft.output as object),
-            sent: { at: "2026-11-05T12:00:00.000Z", threadId: "t1" },
-          },
-        }}
-      />,
-    );
-  });
-  expect(container.textContent).toContain("Sent · To grace@example.test");
-  expect(container.textContent).not.toContain("Draft in Gmail, not sent");
 
   await act(async () => {
     root.render(

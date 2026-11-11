@@ -1,5 +1,6 @@
 import {
   codeExecutionFileIndex,
+  replacedGmailEmailIds,
   collectOpenUIStates,
   isOpenUIToolPart,
   openUIStateKey,
@@ -97,6 +98,7 @@ export function MessageList({
 }) {
   const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
   const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
+  const replacedEmails = useMemo(() => replacedGmailEmailIds(messages), [messages]);
   const liveOpenUI = useMemo(() => recentOpenUICards(messages), [messages]);
   const { colors, fonts } = useTheme();
   const latestMessage = messages.at(-1);
@@ -111,6 +113,7 @@ export function MessageList({
       contextStatus,
       editingId,
       readOnly,
+      replacedEmails,
       speechActiveId: speech.activeId,
       speechStatus: speech.status,
       streaming,
@@ -119,6 +122,7 @@ export function MessageList({
       contextStatus,
       editingId,
       readOnly,
+      replacedEmails,
       speech.activeId,
       speech.status,
       streaming,
@@ -240,6 +244,7 @@ export function MessageList({
                   onOpenUIAction={onOpenUIAction}
                   openuiStates={openuiStates}
                   codeFiles={codeFiles}
+                  replacedEmails={replacedEmails}
                   liveOpenUI={liveOpenUI}
                   readOnly={readOnly}
                 />
