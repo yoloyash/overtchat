@@ -1,7 +1,7 @@
 import { withOpenUIFallback } from "@overtchat/shared";
 import { auth } from "@/lib/auth/server";
 import { getChat, getMessages, getMessagesPage } from "@/lib/db/chats";
-import { withSentGmailDrafts } from "@/lib/integrations/gmail-drafts";
+import { withGmailEmailState } from "@/lib/integrations/gmail-emails";
 
 export async function GET(
   req: Request,
@@ -34,12 +34,12 @@ export async function GET(
       return new Response("Invalid cursor", { status: 400 });
     }
     const page = await getMessagesPage(id, { cursor, limit });
-    page.messages = withSentGmailDrafts(session.user.id, page.messages);
+    page.messages = withGmailEmailState(session.user.id, page.messages);
     return Response.json({ ...page, messages: supportsOpenUI ? page.messages : withOpenUIFallback(page.messages), projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId });
   }
 
   // Compatibility path for existing mobile clients. New clients should use
   // cursor pagination so opening a chat never transfers unbounded history.
-  const messages = withSentGmailDrafts(session.user.id, await getMessages(id));
+  const messages = withGmailEmailState(session.user.id, await getMessages(id));
   return Response.json({ messages: supportsOpenUI ? messages : withOpenUIFallback(messages), projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId });
 }

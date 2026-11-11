@@ -18,7 +18,7 @@ export const INTEGRATION_DISPLAY: Record<
     name: "Gmail",
     Logo: GmailLogo,
     description:
-      "Let models search, read and organize your mail, and write drafts for you to send.",
+      "Let models search, read and organize your mail, and write emails for you to send.",
     toolAccess:
       "On demand loads the mail skill when a message needs your mail, or when you type /gmail. Always available adds about 1,100 tokens to every request.",
   },

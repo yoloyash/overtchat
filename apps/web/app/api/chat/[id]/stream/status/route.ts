@@ -6,6 +6,7 @@ import {
   getChatGeneration,
   getLatestChatGeneration,
 } from "@/lib/db/chatTurns";
+import { withGmailEmailState } from "@/lib/integrations/gmail-emails";
 
 export async function GET(
   req: Request,
@@ -26,8 +27,13 @@ export async function GET(
   const generation = chat.activeStreamId
     ? await getChatGeneration(chat.activeStreamId, session.user.id)
     : await getLatestChatGeneration(id, session.user.id);
-  const responseMessage = generation?.responseMessageId
+  const stored = generation?.responseMessageId
     ? await getChatMessage(id, generation.responseMessageId)
+    : null;
+  // A client puts this in place of the message it loaded, so it carries the
+  // same marks: which emails the user has saved in Gmail or sent.
+  const responseMessage = stored
+    ? withGmailEmailState(session.user.id, [stored])[0]
     : null;
   const body: ChatGenerationState = {
     active,

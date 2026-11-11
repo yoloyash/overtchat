@@ -5,7 +5,7 @@ import path from "node:path";
 
 /**
  * A throwaway SQLite file holding the integration tables from their real
- * migration. Call before importing anything that opens `@/lib/db/client`.
+ * migrations. Call before importing anything that opens `@/lib/db/client`.
  */
 export function createIntegrationTestDatabase(name: string) {
   const databasePath = path.join(
@@ -15,17 +15,20 @@ export function createIntegrationTestDatabase(name: string) {
   process.env.DATABASE_URL = databasePath;
   const raw = new Database(databasePath);
   raw.exec("CREATE TABLE user (id TEXT PRIMARY KEY NOT NULL);");
-  const migration = fs.readFileSync(
-    path.resolve(__dirname, "../../drizzle/0030_integrations.sql"),
-    "utf8",
-  );
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    raw.exec(statement);
+  for (const name of ["0030_integrations", "0032_gmail_emails"]) {
+    const migration = fs.readFileSync(
+      path.resolve(__dirname, `../../drizzle/${name}.sql`),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      raw.exec(statement);
+    }
   }
   return {
     raw,
     reset() {
       raw.exec(`
+        DELETE FROM gmail_emails;
         DELETE FROM gmail_sent_drafts;
         DELETE FROM integration_authorizations;
         DELETE FROM integration_accounts;

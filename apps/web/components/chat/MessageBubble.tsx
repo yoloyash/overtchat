@@ -50,7 +50,7 @@ import { ChainOfThought } from "./ChainOfThought";
 import { CodeFileLink, CodeFilesProvider } from "./CodeExecutionFiles";
 import { DocumentCard } from "./DocumentCard";
 import { GeneratedImageCard } from "./GeneratedImageCard";
-import { GmailDraftCard } from "./GmailDraftCard";
+import { GmailEmailCard } from "./GmailEmailCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { OpenUICard } from "./OpenUICard";
 import { StatsPopover } from "./StatsPopover";
@@ -97,6 +97,7 @@ export function MessageBubble({
   onOpenUIAction,
   openuiStates,
   codeFiles,
+  replacedEmails,
   onEdit,
   speech,
   showStats,
@@ -117,6 +118,8 @@ export function MessageBubble({
   openuiStates?: Map<string, OpenUIFormState>;
   /** Files the conversation's runs returned, which replies link by name. */
   codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
+  /** Emails a model wrote that a later version in the conversation replaced. */
+  replacedEmails?: ReadonlySet<string>;
   onEdit?: (id: string, text: string, files: FileUIPart[]) => void;
   speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
@@ -190,6 +193,7 @@ export function MessageBubble({
       onOpenUIAction={onOpenUIAction}
       openuiStates={openuiStates}
       codeFiles={codeFiles}
+      replacedEmails={replacedEmails}
       speech={speech}
       showStats={showStats}
       stats={stats}
@@ -210,6 +214,7 @@ function AssistantBubble({
   onOpenUIAction,
   openuiStates,
   codeFiles,
+  replacedEmails,
   speech,
   showStats,
   stats,
@@ -226,6 +231,7 @@ function AssistantBubble({
   onOpenUIAction?: (action: OpenUIAction) => void;
   openuiStates?: Map<string, OpenUIFormState>;
   codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
+  replacedEmails?: ReadonlySet<string>;
   speech?: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
@@ -321,11 +327,12 @@ function AssistantBubble({
             if (seg.kind === "memory") {
               return <MemoryArtifact key={seg.startIndex} parts={seg.parts} />;
             }
-            if (seg.kind === "gmail-draft") {
+            if (seg.kind === "gmail-email") {
               return (
-                <GmailDraftCard
+                <GmailEmailCard
                   key={seg.part.toolCallId}
                   part={seg.part}
+                  replaced={replacedEmails}
                   canSend={canAct}
                 />
               );
