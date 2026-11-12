@@ -191,7 +191,7 @@ export function AgentMessageList({
     [projectedTranscript, unsettled, expandedTurns],
   );
   const anchorDisclosure = useAgentDisclosureAnchor();
-  const scrollRelease = useAgentScrollRelease(stopScroll);
+  const scrollRelease = useAgentScrollRelease(scrollRef, stopScroll);
   const holdDisclosure = (control: HTMLElement) => {
     stopScroll();
     anchorDisclosure(control, scrollRef.current);
