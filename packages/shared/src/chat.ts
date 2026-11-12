@@ -46,6 +46,8 @@ export interface ChatRequestBody {
   documentsSupported?: boolean;
   /** The client can render code runs and the files they return. */
   codeExecutionSupported?: boolean;
+  /** The client shows an email a model wrote as a card the user sends from. */
+  gmailComposeSupported?: boolean;
   /** Explicitly request an image on this turn; otherwise image tools remain automatic. */
   imageGeneration?: import("./images").ImageGenerationOptions;
   timeZone?: string;

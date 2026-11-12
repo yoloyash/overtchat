@@ -312,6 +312,10 @@ export async function runChat(
     ? await resolveChatSkills({
         userId,
         interactiveUi: { offered: interactiveUiOffered, alwaysOn: openuiEnabled },
+        // A spoken answer has no card to press Send on.
+        gmailCompose:
+          parsedRequest.gmailComposeSupported === true &&
+          parsedRequest.responseStyle !== "voice",
       })
     : [];
   // What the composer asked for with this message: a connector, or an
@@ -475,6 +479,10 @@ export async function runChat(
   // A model runs these through call_tool; the chat and the store see them
   // by their own names.
   const bridgedToolNames = new Set(Object.keys(toolsOfSkills(skills)));
+  const replayedToolNames = new Set([
+    ...bridgedToolNames,
+    ...skills.flatMap((skill) => skill.replayedToolNames ?? []),
+  ]);
   // Names come from the whole conversation, so they stay stable when a
   // checkpoint hides the message that attached a file. Project files are
   // never in context, so having any turns the file tools on.
@@ -549,7 +557,7 @@ export async function runChat(
           ),
           skills,
         ),
-        bridgedToolNames,
+        replayedToolNames,
       ).map((message) =>
         message.role === "assistant"
           ? { ...message, parts: joinContinuationTextParts(message.parts) }

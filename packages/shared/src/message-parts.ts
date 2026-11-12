@@ -1,8 +1,8 @@
 import type { UIMessage } from "ai";
 import { isCalendarToolPart } from "./calendar";
 import {
+  isGmailEmailPart,
   isGmailToolPart,
-  isSavedGmailDraftPart,
   type GmailToolPart,
 } from "./gmail";
 import { isMcpToolName } from "./mcp";
@@ -61,7 +61,7 @@ export type MessageSegment =
   | { kind: "image"; part: ImageToolPart; index: number }
   | { kind: "document"; part: DocumentToolPart; index: number }
   | { kind: "openui"; part: OpenUIToolPart; index: number }
-  | { kind: "gmail-draft"; part: GmailToolPart; index: number }
+  | { kind: "gmail-email"; part: GmailToolPart; index: number }
   | { kind: "text"; part: AnyPart; index: number }
   | { kind: "activity"; parts: AnyPart[]; startIndex: number }
   | { kind: "memory"; parts: MemoryToolPart[]; startIndex: number };
@@ -136,10 +136,10 @@ export function groupMessageParts(
       appendMemory(part, index);
       return;
     }
-    // Until it is saved, a draft is a step like any other Gmail call.
-    if (isSavedGmailDraftPart(part)) {
+    // Until it is written, an email is a step like any other Gmail call.
+    if (isGmailEmailPart(part)) {
       flush();
-      segments.push({ kind: "gmail-draft", part, index });
+      segments.push({ kind: "gmail-email", part, index });
       return;
     }
     if (isActivityPart(part)) appendActivity(part, index);

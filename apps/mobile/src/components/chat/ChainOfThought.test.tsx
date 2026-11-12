@@ -88,7 +88,7 @@ vi.mock("react-native", () => {
 });
 
 import { ChainOfThought } from "./ChainOfThought";
-import { GmailDraftCard } from "./GmailDraftCard";
+import { GmailEmailCard } from "./GmailEmailCard";
 
 let root: Root;
 let container: HTMLElement;
@@ -418,18 +418,18 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
   // into Gmail, where it is sent.
   expect(
     groupMessageParts([gmailSearch, draft] as never).map((segment) => segment.kind),
-  ).toEqual(["activity", "gmail-draft"]);
+  ).toEqual(["activity", "gmail-email"]);
   await act(async () => {
-    root.render(<GmailDraftCard part={draft} />);
+    root.render(<GmailEmailCard part={draft} />);
   });
   expect(container.textContent).toContain("Re: Quarterly numbers");
-  expect(container.textContent).toContain("Draft, not sent · To grace@example.test");
+  expect(container.textContent).toContain("Draft in Gmail, not sent · To grace@example.test");
   expect(container.textContent).toContain("Thanks, the numbers look right.");
   expect(container.querySelector('[data-icon="open-outline"]')).not.toBeNull();
 
   await act(async () => {
     root.render(
-      <GmailDraftCard
+      <GmailEmailCard
         part={{
           ...draft,
           output: {
@@ -441,7 +441,7 @@ it("shows Gmail steps by sender and subject, never message text", async () => {
     );
   });
   expect(container.textContent).toContain("Sent · To grace@example.test");
-  expect(container.textContent).not.toContain("Draft, not sent");
+  expect(container.textContent).not.toContain("Draft in Gmail, not sent");
 
   await act(async () => {
     root.render(

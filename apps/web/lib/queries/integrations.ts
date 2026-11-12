@@ -1,6 +1,11 @@
 "use client";
 
-import { apiError } from "@overtchat/shared";
+import {
+  apiError,
+  rememberGmailEmailResult,
+  type GmailEmailContent,
+  type GmailEmailDisplay,
+} from "@overtchat/shared";
 import {
   queryOptions,
   useMutation,
@@ -163,23 +168,59 @@ export function useSetIntegrationAlwaysOn(id: IntegrationId) {
   });
 }
 
-/** Sends a draft a model saved in the user's Gmail. */
-export function useSendGmailDraft() {
-  return useMutation({
-    mutationFn: async (
-      draftId: string,
-    ): Promise<{ at: string; threadId: string | null }> => {
-      const response = await fetch(
-        apiUrl(`/api/integrations/gmail/drafts/${encodeURIComponent(draftId)}/send`),
-        { method: "POST" },
-      );
-      if (!response.ok) throw await responseError(response);
-      return (
-        (await response.json()) as {
-          sent: { at: string; threadId: string | null };
+async function postGmailEmail<T>(
+  path: string,
+  content: GmailEmailContent | undefined,
+): Promise<T> {
+  const response = await fetch(apiUrl(`/api/integrations/gmail/${path}`), {
+    method: "POST",
+    ...(content
+      ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(content),
         }
-      ).sent;
-    },
+      : {}),
+  });
+  if (!response.ok) throw await responseError(response);
+  return (await response.json()) as T;
+}
+
+/** What a card needs of its email to send or save it. */
+type GmailEmailRef = Pick<GmailEmailDisplay, "id" | "source" | "content">;
+
+/**
+ * Sends an email a model wrote: a draft it saved in Gmail by that draft's
+ * ID, and an email only the chat holds with what it says.
+ */
+export function useSendGmailEmail() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      source,
+      content,
+    }: GmailEmailRef): Promise<{ at: string; threadId: string | null }> =>
+      (
+        await postGmailEmail<{ sent: { at: string; threadId: string | null } }>(
+          `${source === "draft" ? "drafts" : "emails"}/${encodeURIComponent(id)}/send`,
+          source === "draft" ? undefined : content,
+        )
+      ).sent,
+    // Kept outside the card, which may have scrolled out of view by now.
+    onSuccess: (sent, { id }) => rememberGmailEmailResult(id, { sent }),
+  });
+}
+
+/** Saves an email only the chat holds as a draft in the user's Gmail. */
+export function useSaveGmailEmail() {
+  return useMutation({
+    mutationFn: async ({ id, content }: GmailEmailRef): Promise<{ draftId: string }> =>
+      (
+        await postGmailEmail<{ saved: { draftId: string } }>(
+          `emails/${encodeURIComponent(id)}/draft`,
+          content,
+        )
+      ).saved,
+    onSuccess: (saved, { id }) => rememberGmailEmailResult(id, { saved }),
   });
 }
 

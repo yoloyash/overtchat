@@ -16,10 +16,12 @@ import {
   createCalendarTools,
 } from "@/lib/integrations/calendar-tools";
 import {
-  GMAIL_TOOL_PROMPT,
+  GMAIL_TOOL_ORDER,
   createGmailTools,
   gmailAccess,
+  gmailOfferedToolNames,
   gmailReconnectPrompt,
+  gmailToolPrompt,
 } from "@/lib/integrations/gmail-tools";
 import { OPENUI_TOOL_PROMPT } from "@/lib/openui/tools";
 
@@ -43,8 +45,17 @@ export interface ChatSkill {
   content: string;
   /** Tools the skill provides, run through `call_tool`. */
   tools: Record<string, Tool>;
-  /** The same tools as a model reads them. */
+  /**
+   * The tools as a model reads them. One that an earlier version of the
+   * skill named can be left out here and still run.
+   */
   toolSpecs: SkillToolSpec[];
+  /**
+   * Tools of the skill a stored message can hold a call of although this
+   * request cannot run them. A model made those calls through `call_tool`
+   * too, so they are replayed that way.
+   */
+  replayedToolNames?: readonly string[];
   /** What the user types to load the skill in one chat. */
   command?: string;
   /** Opens a message that asks for the skill by typing its command. */
@@ -57,27 +68,43 @@ export interface ResolveChatSkillsOptions {
   userId: string;
   /** Whether the client renders interactive UI, and whether the user loads it everywhere. */
   interactiveUi: { offered: boolean; alwaysOn: boolean };
+  /** Whether the client shows an email a model wrote as a card to send from. */
+  gmailCompose: boolean;
 }
 
 /** The skills a user's chats may load, with the tools each may run. */
 export async function resolveChatSkills({
   userId,
   interactiveUi,
+  gmailCompose,
 }: ResolveChatSkillsOptions): Promise<ChatSkill[]> {
   const skills: ChatSkill[] = [];
 
   const gmail = gmailAccess(userId);
   if (gmail.status !== "unavailable") {
-    const tools = gmail.status === "available" ? createGmailTools(userId) : {};
+    const options = { compose: gmailCompose };
+    const tools: Record<string, Tool> =
+      gmail.status === "available" ? createGmailTools(userId, options) : {};
+    const offered = gmailOfferedToolNames(options);
     skills.push({
       id: "gmail",
       name: CHAT_SKILL_NAMES.gmail,
       description:
-        "Search, read and organize the user's own Gmail, and save drafts for them to send. Load it when a request needs their mail.",
+        "Search, read and organize the user's own Gmail, and write emails for them to send. Load it when a request needs their mail.",
       content:
-        gmail.status === "available" ? GMAIL_TOOL_PROMPT : gmailReconnectPrompt(),
+        gmail.status === "available"
+          ? gmailToolPrompt(options)
+          : gmailReconnectPrompt(),
       tools,
-      toolSpecs: await describeTools(tools),
+      toolSpecs: await describeTools(
+        Object.fromEntries(
+          Object.entries(tools).filter(([name]) => offered.includes(name)),
+        ),
+      ),
+      // Another client of the same chat may have been given gmail_compose.
+      ...(gmail.status === "available"
+        ? { replayedToolNames: GMAIL_TOOL_ORDER }
+        : {}),
       command: GMAIL_COMMAND,
       commandPattern: GMAIL_COMMAND_PATTERN,
       alwaysOn: gmail.alwaysOn,

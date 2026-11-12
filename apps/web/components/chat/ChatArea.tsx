@@ -540,6 +540,7 @@ export function ChatArea({
     openuiEnabled,
     documentsSupported: true,
     codeExecutionSupported: true,
+    gmailComposeSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
     gmailEnabled: connectorRequested("gmail"),
     calendarEnabled: connectorRequested("calendar"),

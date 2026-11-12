@@ -56,6 +56,8 @@ const mocks = vi.hoisted(() => {
     getImageCapability: vi.fn(),
     createMemoryTools: vi.fn(),
     createGmailTools: vi.fn(),
+    gmailOfferedToolNames: vi.fn(),
+    gmailToolPrompt: vi.fn(),
     gmailAccess: vi.fn(),
     gmailReconnectPrompt: vi.fn(),
     createCalendarTools: vi.fn(),
@@ -86,7 +88,13 @@ const mocks = vi.hoisted(() => {
       gmail_read_thread: { description: "read thread" },
       gmail_create_draft: { description: "create draft" },
     },
-    gmailToolOrder: ["gmail_search", "gmail_read_thread", "gmail_create_draft"],
+    // The last is a tool these chats' client is not given, so it cannot run.
+    gmailToolOrder: [
+      "gmail_search",
+      "gmail_read_thread",
+      "gmail_create_draft",
+      "gmail_compose",
+    ],
     gmailPrompt: "stable gmail instruction",
     calendarTools: { calendar_list_events: { description: "events" } },
     calendarToolOrder: ["calendar_list_events"],
@@ -137,8 +145,9 @@ vi.mock("@/lib/integrations/gmail-tools", () => ({
   createGmailTools: mocks.createGmailTools,
   gmailAccess: mocks.gmailAccess,
   gmailReconnectPrompt: mocks.gmailReconnectPrompt,
+  gmailOfferedToolNames: mocks.gmailOfferedToolNames,
+  gmailToolPrompt: mocks.gmailToolPrompt,
   GMAIL_TOOL_ORDER: mocks.gmailToolOrder,
-  GMAIL_TOOL_PROMPT: mocks.gmailPrompt,
 }));
 vi.mock("@/lib/integrations/calendar-tools", () => ({
   createCalendarTools: mocks.createCalendarTools,
@@ -346,6 +355,8 @@ describe("chat route setup boundary", () => {
     mocks.getImageCapability.mockReturnValue({ available: false, model: null });
     mocks.createMemoryTools.mockReturnValue(mocks.memoryTools);
     mocks.createGmailTools.mockReturnValue(mocks.gmailTools);
+    mocks.gmailOfferedToolNames.mockReturnValue(mocks.gmailToolOrder);
+    mocks.gmailToolPrompt.mockReturnValue(mocks.gmailPrompt);
     mocks.gmailAccess.mockReturnValue({ status: "unavailable" });
     mocks.gmailReconnectPrompt.mockReturnValue("stable gmail reconnect notice");
     mocks.createCalendarTools.mockReturnValue(mocks.calendarTools);
@@ -2032,7 +2043,9 @@ describe("chat route setup boundary", () => {
     await POST(request());
 
     expect(mocks.gmailAccess).toHaveBeenCalledWith("user");
-    expect(mocks.createGmailTools).toHaveBeenCalledWith("user");
+    // This client did not say it shows a written email as a card.
+    expect(mocks.createGmailTools).toHaveBeenCalledWith("user", { compose: false });
+    expect(mocks.gmailToolPrompt).toHaveBeenCalledWith({ compose: false });
     const settings = mocks.agentSettings[0];
     expect(Object.keys(toolsOf(settings))).toEqual(["view_skill", "call_tool"]);
     expect(settings.toolOrder).toEqual(["view_skill", "call_tool"]);
@@ -2045,6 +2058,44 @@ describe("chat route setup boundary", () => {
     expect(system).toContain('{"name":"gmail_search","description":"search mail"');
     expect(system).not.toContain("<available_skills>");
     expect(system.endsWith(`</skill>\n\n${mocks.currentDatePrompt}`)).toBe(true);
+  });
+
+  it("has a model compose emails only for a client that shows them", async () => {
+    const supported = {
+      ...parsedRequest,
+      webSearchEnabled: false,
+      gmailComposeSupported: true,
+    };
+    mocks.gmailAccess.mockReturnValue({ status: "available", alwaysOn: true });
+    // The draft tool still runs, but a model is not told about it.
+    mocks.gmailOfferedToolNames.mockReturnValue(["gmail_search", "gmail_read_thread"]);
+    mocks.createGmailTools.mockReturnValue({
+      ...mocks.gmailTools,
+      gmail_create_draft: {
+        description: "create draft",
+        execute: vi.fn().mockResolvedValue({ draftId: "r-1" }),
+      },
+    });
+
+    mocks.parseChatRequest.mockResolvedValue(supported);
+    await POST(request());
+    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", { compose: true });
+    expect(mocks.gmailToolPrompt).toHaveBeenLastCalledWith({ compose: true });
+    const settings = mocks.agentSettings[0];
+    const system = content(settings);
+    expect(system).toContain('{"name":"gmail_search"');
+    expect(system).not.toContain('"name":"gmail_create_draft"');
+    await expect(
+      toolsOf(settings).call_tool.execute(
+        { tool_name: "gmail_create_draft", params: {} },
+        {},
+      ),
+    ).resolves.toEqual({ draftId: "r-1" });
+
+    // A spoken answer has no card to press Send on.
+    mocks.parseChatRequest.mockResolvedValue({ ...supported, responseStyle: "voice" });
+    await POST(request());
+    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", { compose: false });
   });
 
   it("keeps skills from a model that cannot call tools and from an unconnected user", async () => {
@@ -2128,6 +2179,14 @@ describe("chat route setup boundary", () => {
               input: { query: "in:inbox" },
               output: { messages: [], hasMore: false },
             },
+            // Written where another client of this chat could show it.
+            {
+              type: "tool-gmail_compose",
+              toolCallId: "call-2",
+              state: "output-available",
+              input: { body: "Hello" },
+              output: { emailId: "e-1", status: "not_sent" },
+            },
             { type: "text", text: "Nothing new." },
           ],
         },
@@ -2144,6 +2203,13 @@ describe("chat route setup boundary", () => {
       expect.objectContaining({
         type: "tool-call_tool",
         input: { tool_name: "gmail_search", params: { query: "in:inbox" } },
+      }),
+    );
+    // So is a call of a tool this request cannot run.
+    expect(history[1].parts[1]).toEqual(
+      expect.objectContaining({
+        type: "tool-call_tool",
+        input: { tool_name: "gmail_compose", params: { body: "Hello" } },
       }),
     );
     expect(textsOf(history[2])).toEqual(["/gmail and from Grace?"]);

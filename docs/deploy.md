@@ -898,12 +898,16 @@ web, desktop and mobile:
   15 MB. Images and scanned PDFs cannot be read.
 - Sort mail by adding or removing labels: mark as read, archive, star, apply
   the person's own labels, move to the trash, or report spam.
-- Save a draft, including a reply in its thread.
+- Write an email, including a reply in its thread.
 
-A model cannot send mail. A draft it saves shows in the chat with its text and
-a **Send** button, and goes out only when the person presses that or sends it
-from Gmail. Nothing is deleted for good either: mail moved to the trash stays
-there for 30 days.
+A model cannot send mail. An email it writes shows in the chat with its text
+and a **Send** button, and goes out only when the person presses that. Until
+then it is only in the chat, and nothing is added to Gmail: asking for changes
+gives a new version and marks the earlier one as replaced. **Save to Gmail**
+puts the email in Gmail's drafts to edit there first, and **Send** then sends
+that draft as it stands. The mobile app, and a voice conversation, save a
+draft in Gmail instead, as before. Nothing is deleted for good either: mail
+moved to the trash stays there for 30 days.
 
 Where Google Calendar is on, models can work with that person's calendars:
 

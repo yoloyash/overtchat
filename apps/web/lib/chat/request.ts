@@ -52,6 +52,9 @@ const ChatRequestEnvelopeSchema = z.object({
   calendarEnabled: z.boolean().optional(),
   documentsSupported: z.boolean().optional().default(false),
   codeExecutionSupported: z.boolean().optional().default(false),
+  // The client shows an email a model wrote as a card the user sends from.
+  // One that does not is given a draft saved in Gmail instead.
+  gmailComposeSupported: z.boolean().optional().default(false),
   imageGeneration: z.object({
     size: z.enum(IMAGE_SIZES).default("auto"),
     quality: z.enum(IMAGE_QUALITIES).default("auto"),
@@ -92,6 +95,7 @@ export interface ParsedChatRequest {
   calendarEnabled?: boolean;
   documentsSupported?: boolean;
   codeExecutionSupported?: boolean;
+  gmailComposeSupported?: boolean;
   imageGeneration?: ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
@@ -125,6 +129,7 @@ export function chatRequestFingerprint({
   calendarEnabled = false,
   documentsSupported = false,
   codeExecutionSupported = false,
+  gmailComposeSupported = false,
   imageGeneration,
   timeZone,
   projectId,
@@ -149,6 +154,7 @@ export function chatRequestFingerprint({
         calendarEnabled,
         documentsSupported,
         codeExecutionSupported,
+        gmailComposeSupported,
         imageGeneration,
         timeZone: timeZone ?? null,
         projectId: projectId ?? null,
@@ -238,6 +244,7 @@ export async function parseChatRequest(
     calendarEnabled: Boolean(envelope.data.calendarEnabled),
     documentsSupported: envelope.data.documentsSupported,
     codeExecutionSupported: envelope.data.codeExecutionSupported,
+    gmailComposeSupported: envelope.data.gmailComposeSupported,
     imageGeneration: envelope.data.imageGeneration,
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,

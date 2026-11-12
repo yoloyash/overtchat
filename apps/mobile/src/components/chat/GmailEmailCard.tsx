@@ -1,5 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { describeGmailDraft, type GmailToolPart } from "@overtchat/shared";
+import {
+  GMAIL_EMAIL_STATUS_LABELS,
+  describeGmailEmail,
+  type GmailToolPart,
+} from "@overtchat/shared";
 import { useLayoutState } from "@shopify/flash-list";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { GmailLogo } from "@/components/GmailLogo";
@@ -10,17 +14,18 @@ const FOLDED_LINES = 4;
 const FOLDED_CHARS = 240;
 
 /**
- * A draft a model saved in the user's Gmail: what it says and who it goes
- * to. It opens in Gmail, where the user edits or sends it.
+ * An email a model wrote: what it says and who it goes to. One that is in
+ * Gmail opens there, where the user edits or sends it.
  */
-export function GmailDraftCard({ part }: { part: GmailToolPart }) {
+export function GmailEmailCard({ part }: { part: GmailToolPart }) {
   const { colors, fonts } = useTheme();
   const [expanded, setExpanded] = useLayoutState(false);
-  const draft = describeGmailDraft(part);
-  const sent = draft.sentAt !== undefined;
+  const email = describeGmailEmail(part);
+  const sent = email.status === "sent";
+  const href = email.href;
   const long =
-    draft.body.length > FOLDED_CHARS ||
-    draft.body.split("\n").length > FOLDED_LINES;
+    email.body.length > FOLDED_CHARS ||
+    email.body.split("\n").length > FOLDED_LINES;
   const muted = { color: colors.mutedForeground, fontFamily: fonts.sansRegular };
 
   return (
@@ -31,9 +36,14 @@ export function GmailDraftCard({ part }: { part: GmailToolPart }) {
       ]}
     >
       <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={sent ? "Open in Gmail" : "Open drafts in Gmail"}
-        onPress={() => Linking.openURL(draft.href).catch(() => {})}
+        disabled={!href}
+        accessibilityRole={href ? "link" : undefined}
+        accessibilityLabel={
+          href ? (sent ? "Open in Gmail" : "Open drafts in Gmail") : undefined
+        }
+        onPress={() => {
+          if (href) Linking.openURL(href).catch(() => {});
+        }}
         style={({ pressed }) => [styles.header, { opacity: pressed ? 0.7 : 1 }]}
       >
         <GmailLogo size={16} />
@@ -45,17 +55,19 @@ export function GmailDraftCard({ part }: { part: GmailToolPart }) {
               { color: colors.foreground, fontFamily: fonts.sansMedium },
             ]}
           >
-            {draft.subject}
+            {email.subject}
           </Text>
           <Text numberOfLines={1} style={[styles.meta, muted]}>
-            {[sent ? "Sent" : "Draft, not sent", draft.recipients]
+            {[GMAIL_EMAIL_STATUS_LABELS[email.status], email.recipients]
               .filter(Boolean)
               .join(" · ")}
           </Text>
         </View>
-        <Ionicons name="open-outline" size={14} color={colors.mutedForeground} />
+        {href ? (
+          <Ionicons name="open-outline" size={14} color={colors.mutedForeground} />
+        ) : null}
       </Pressable>
-      {draft.body ? (
+      {email.body ? (
         <View style={[styles.body, { borderTopColor: colors.border }]}>
           <Text
             numberOfLines={long && !expanded ? FOLDED_LINES : undefined}
@@ -64,7 +76,7 @@ export function GmailDraftCard({ part }: { part: GmailToolPart }) {
               { color: colors.foreground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {draft.body}
+            {email.body}
           </Text>
           {long ? (
             <Pressable

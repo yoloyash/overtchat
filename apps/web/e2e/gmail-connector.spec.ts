@@ -171,7 +171,7 @@ test("an administrator sets up Google access, then each person connects their ow
       "Sign in once to connect Gmail and Google Calendar.",
     );
     await expect(connectors(page).getByRole("listitem", { name: "Gmail" })).toContainText(
-      "Let models search, read and organize your mail, and write drafts for you to send.",
+      "Let models search, read and organize your mail, and write emails for you to send.",
     );
 
     // The sign-in asks Google for a lasting grant on the loopback redirect.
