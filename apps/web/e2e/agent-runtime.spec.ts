@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { groupAgentsByWorkspace } from "./helpers/agent-attention";
-import { _electron, expect, test, type ElectronApplication, type Locator } from "@playwright/test";
+import { _electron, expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
@@ -2930,7 +2930,10 @@ test("keeps reasoning inside its tool group, opens steps without nested scrollin
   await page.screenshot({ path: testInfo.outputPath("activity-steps-file-open.png") });
 });
 
-test("stops following on upward input, returns for a new prompt, and holds an opened tool group in place", async ({ page }) => {
+type ScrollSnapshot = ReturnType<typeof runtimeSnapshot>;
+
+/** Opens a session whose reply the test can grow like a stream. */
+async function openScrollSession(page: Page, snapshot: ScrollSnapshot) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(await setupUrl());
   await page.locator("#name").fill("Scroll Tester");
@@ -2939,12 +2942,6 @@ test("stops following on upward input, returns for a new prompt, and holds an op
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
   seedAgentSession();
-  const code = ["```ts", ...Array.from({ length: 30 }, (_, i) => `const value${i} = ${i};`), "```"].join("\n");
-  const snapshot = runtimeSnapshot(Date.now());
-  snapshot.messages = [
-    { role: "user", id: "user", content: "Explain the limiter", timestamp: 100000 },
-    { role: "assistant", id: "answer", timestamp: 101000, content: [{ type: "text", text: `Here is the code.\n\n${code}\n\nLine 0` }] },
-  ];
   await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
   await page.addInitScript(() => {
     const sources: EventTarget[] = [];
@@ -2995,9 +2992,24 @@ test("stops following on upward input, returns for a new prompt, and holds an op
   const viewport = page.getByTestId("agent-message-list").locator("> div").first();
   const gap = () => viewport.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight);
   const toLatest = page.getByRole("button", { name: "Scroll to bottom", exact: true });
+  const stream = (value: ScrollSnapshot) =>
+    page.evaluate((streaming) => (window as unknown as { __scrollStream: (value: unknown) => void }).__scrollStream(streaming), value);
+  const stopStream = () =>
+    page.evaluate(() => (window as unknown as { __scrollStop: () => unknown }).__scrollStop()) as Promise<ScrollSnapshot>;
+  return { viewport, gap, toLatest, stream, stopStream };
+}
+
+test("stops following on upward input, returns for a new prompt, and holds an opened tool group in place", async ({ page }) => {
+  const code = ["```ts", ...Array.from({ length: 30 }, (_, i) => `const value${i} = ${i};`), "```"].join("\n");
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.messages = [
+    { role: "user", id: "user", content: "Explain the limiter", timestamp: 100000 },
+    { role: "assistant", id: "answer", timestamp: 101000, content: [{ type: "text", text: `Here is the code.\n\n${code}\n\nLine 0` }] },
+  ];
+  const { gap, toLatest, stream, stopStream } = await openScrollSession(page, snapshot);
 
   // Upward input over a nested scroller (a code block) must release the view while the reply grows.
-  await page.evaluate((streaming) => (window as unknown as { __scrollStream: (value: unknown) => void }).__scrollStream(streaming), snapshot);
+  await stream(snapshot);
   await expect(page.getByText("Line 12", { exact: true })).toBeVisible();
   await expect.poll(gap).toBeLessThan(40);
   const block = (await page.locator("pre").first().boundingBox())!;
@@ -3009,8 +3021,6 @@ test("stops following on upward input, returns for a new prompt, and holds an op
   await expect(toLatest).toBeVisible();
 
   // A new prompt returns the view to its reply.
-  const stopStream = () =>
-    page.evaluate(() => (window as unknown as { __scrollStop: () => unknown }).__scrollStop()) as Promise<typeof snapshot>;
   const next = await stopStream();
   expect(await gap()).toBeGreaterThan(250);
   next.messages = [
@@ -3046,6 +3056,34 @@ test("stops following on upward input, returns for a new prompt, and holds an op
   await expect(page.getByTestId("agent-tool-activity")).toHaveCount(8);
   await page.waitForTimeout(400);
   expect(Math.abs((await group.boundingBox())!.y - before)).toBeLessThan(2);
+});
+
+test("keeps following when upward input has nowhere to go, and hears scroll keys from the page", async ({ page }) => {
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.messages = [
+    { role: "user", id: "user", content: "Explain the limiter", timestamp: 100000 },
+    { role: "assistant", id: "answer", timestamp: 101000, content: [{ type: "text", text: "Line 0" }] },
+  ];
+  const { viewport, gap, toLatest, stream } = await openScrollSession(page, snapshot);
+
+  // Nothing overflows yet, so scrolling up moves nothing and must not end the follow.
+  expect(await viewport.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThan(2);
+  const box = (await viewport.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 200);
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.press("PageUp");
+  await stream(snapshot);
+  await expect(page.getByText("Line 40", { exact: true })).toBeVisible();
+  await expect.poll(gap).toBeLessThan(40);
+  await expect(toLatest).toHaveCount(0);
+
+  // A press on the reply leaves focus on the page; its scroll keys still release the view.
+  await page.getByText("Line 38", { exact: true }).click();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  await page.keyboard.press("PageUp");
+  await expect(toLatest).toBeVisible();
+  await page.waitForTimeout(600);
+  expect(await gap()).toBeGreaterThan(250);
 });
 
 test("preserves an OMP markdown answer through continuation, abort and reload", async ({
