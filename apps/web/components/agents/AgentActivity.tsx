@@ -123,6 +123,44 @@ export function AgentRunIndicator({
   );
 }
 
+/** The running turn's header. "Worked for …" takes its place when the turn ends. */
+export function AgentRunHeader({
+  startedAt,
+  className,
+}: {
+  startedAt: number | null;
+  className?: string;
+}) {
+  const elapsed = useElapsed(startedAt);
+  return (
+    <div
+      className={cn("flex items-center border-b border-border/60 pb-2 pt-1", className)}
+      data-testid="agent-run-header"
+    >
+      <span className="flex min-h-8 items-center px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+        {elapsed ? `Working for ${elapsed}` : "Working"}
+      </span>
+    </div>
+  );
+}
+
+/** Ends a running turn whenever none of its tool rows is itself live. */
+export function AgentLiveRow({ providerLabel }: { providerLabel: string }) {
+  return (
+    <div
+      className="flex min-h-8 items-center gap-2 py-1 text-xs text-muted-foreground"
+      role="status"
+      aria-label={`${providerLabel}: working`}
+      data-testid="agent-run-activity"
+    >
+      <Brain className="size-3.5 shrink-0" />
+      <span className={cn("font-medium text-foreground", motionClasses.shimmer)}>
+        Thinking
+      </span>
+    </div>
+  );
+}
+
 export function AgentActivityGroup({
   entries,
   active,
