@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { setupAgentAttention } from "./helpers/agent-attention";
+import { agentAttentionFixture, setupAgentAttention } from "./helpers/agent-attention";
 import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
@@ -163,6 +163,118 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   await expect(sidebarView(page).getByRole("button", { name: "Agents, 1 needs you" })).toBeVisible();
   await sidebarView(page).getByRole("button", { name: "Agents, 1 needs you" }).click();
   await page.waitForURL("**/agents/failed");
+});
+
+test("a right click on a session row offers its actions", async ({ page }) => {
+  const connections = agentAttentionFixture();
+  const { reads } = await setupAgentAttention(page, connections);
+  const sessions = connections.flatMap((connection) =>
+    connection.workspaces.flatMap((workspace) => workspace.sessions),
+  );
+  // Renaming goes to the session as a command; the list then carries the name.
+  const commands: Array<{ sessionId: string; command: unknown }> = [];
+  await page.context().route("**/api/agent-sessions/*", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const sessionId = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const command = route.request().postDataJSON() as { type: string; name?: string };
+    commands.push({ sessionId, command });
+    const renamed = sessions.find((item) => item.id === sessionId);
+    if (renamed && command.type === "set_session_name") renamed.name = command.name!;
+    return route.fulfill({ json: { accepted: true } });
+  });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await sidebarView(page).getByRole("button", { name: /^Agents/ }).click();
+  await page.waitForURL("**/agents/new?**");
+
+  const menu = page.getByRole("menu", { name: "Session actions" });
+  const done = section(page, "Done");
+  await done.getByRole("link", { name: /^Old refactor/ }).click({ button: "right" });
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "Mark as unread",
+    "Rename session",
+    "New session in api",
+    "Copy workspace path",
+    "Copy session ID",
+    "Open in new tab",
+  ]);
+  // The menu stays put and the page does not navigate.
+  await expect(page).toHaveURL(/\/agents\/new\?/);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+
+  // A session without a finished turn has no read state to change.
+  await section(page, "Working").getByRole("link").click({ button: "right" });
+  await expect(menu.getByRole("menuitem").first()).toHaveText("Rename session");
+  await expect(menu.getByRole("menuitem", { name: /^Mark as/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Read state changes as it does from the row's own button.
+  await done.getByRole("link", { name: /^Old refactor/ }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Mark as unread" }).click();
+  const ready = section(page, "Ready to review");
+  await expect(ready.getByRole("link", { name: /^Finished: Old refactor/ })).toBeVisible();
+  expect(reads.at(-1)).toEqual({ sessionId: "seen", read: false });
+  await ready.getByRole("link", { name: /Old refactor/ }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Mark as read" }).click();
+  await expect(done.getByRole("link", { name: /^Old refactor/ })).toBeVisible();
+  expect(reads.at(-1)).toEqual({ sessionId: "seen", read: true });
+
+  await done.getByRole("link", { name: /^Old refactor/ }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Copy session ID" }).click();
+  await expect(page.getByText("Session ID copied")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("native-seen");
+  await done.getByRole("link", { name: /^Old refactor/ }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Copy workspace path" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("/srv/api");
+
+  // Renaming does not open the session.
+  await done.getByRole("link", { name: /^Old refactor/ }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Rename session" }).click();
+  const rename = page.getByRole("dialog", { name: "Rename session" });
+  await expect(rename.getByLabel("Name")).toHaveValue("Old refactor");
+  await rename.getByLabel("Name").fill("Parser cleanup");
+  await rename.getByRole("button", { name: "Save" }).click();
+  await expect(rename).toHaveCount(0);
+  expect(commands).toEqual([
+    { sessionId: "seen", command: { type: "set_session_name", name: "Parser cleanup" } },
+  ]);
+  await expect(done.getByRole("link", { name: /^Parser cleanup/ })).toBeVisible();
+  await expect(page).toHaveURL(/\/agents\/new\?/);
+
+  // The link still opens elsewhere, which the browser's own menu no longer offers.
+  await done.getByRole("link", { name: /^Parser cleanup/ }).click({ button: "right" });
+  const opened = page.context().waitForEvent("page");
+  await menu.getByRole("menuitem", { name: "Open in new tab" }).click();
+  const tab = await opened;
+  await tab.waitForURL("**/agents/seen");
+  await tab.close();
+
+  // History rows carry the same menu, and a new session starts in the row's
+  // folder with the row's agent.
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/agents/history");
+  await page
+    .getByRole("main")
+    .getByRole("link")
+    .filter({ hasText: "Parser cleanup" })
+    .click({ button: "right" });
+  await expect(menu.getByRole("menuitem")).toHaveCount(6);
+  await menu.getByRole("menuitem", { name: "New session in api" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=claude-api&provider=claude");
+
+  // The workspace grouping lists the same rows.
+  await page.getByRole("button", { name: "Agent list options", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+  await page.getByRole("button", { name: "Expand api" }).click();
+  await page
+    .getByRole("list", { name: "Agent workspaces", exact: true })
+    .getByRole("link", { name: /^Parser cleanup/ })
+    .click({ button: "right" });
+  await expect(menu.getByRole("menuitem")).toHaveCount(6);
 });
 
 test("the Agents home explains how to start when no folder is connected", async ({

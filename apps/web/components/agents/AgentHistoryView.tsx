@@ -16,6 +16,7 @@ import {
   agentSessionStateLabel,
 } from "@/components/agents/AgentSessionStatus";
 import { agentSessionRowTitle } from "@/components/agents/AgentSessionRow";
+import { AgentSessionRowMenu } from "@/components/agents/AgentSessionRowMenu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -361,11 +362,11 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
       : session.lastTurn?.preview ||
         (session.firstMessage && session.firstMessage !== title ? session.firstMessage : null);
   return (
-    <li>
+    <AgentSessionRowMenu entry={entry} className="group">
       <Link
         to="/agents/$id"
         params={{ id: session.id }}
-        className="flex min-w-0 items-start gap-3 rounded-lg px-3 py-2.5 outline-none motion-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-w-0 items-start gap-3 rounded-lg px-3 py-2.5 outline-none motion-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring group-data-[popup-open]:bg-accent"
       >
         <span className="flex h-5 w-4 shrink-0 items-center justify-center">
           <AgentSessionStatusIcon state={state} />
@@ -404,6 +405,6 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
           )}
         </span>
       </Link>
-    </li>
+    </AgentSessionRowMenu>
   );
 }

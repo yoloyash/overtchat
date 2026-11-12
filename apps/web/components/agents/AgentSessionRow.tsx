@@ -10,6 +10,7 @@ import {
   agentSessionCanToggleRead,
   agentSessionStateLabel,
 } from "@/components/agents/AgentSessionStatus";
+import { AgentSessionRowMenu } from "@/components/agents/AgentSessionRowMenu";
 import { useSidebar } from "@/components/sidebar-context";
 import {
   formatAgentSessionAge,
@@ -72,7 +73,7 @@ export function AgentSessionRow({
   const active = pathname === `/agents/${session.id}`;
   const toggleable = agentSessionCanToggleRead(session, state);
   return (
-    <li className="group relative">
+    <AgentSessionRowMenu entry={entry} className="group relative">
       <Link
         to="/agents/$id"
         params={{ id: session.id }}
@@ -83,7 +84,8 @@ export function AgentSessionRow({
         aria-current={active ? "page" : undefined}
         title={`${title} · ${agentProviderMetadata(provider).label} · ${group.name} · ${agentHostLabel(group.host)}`}
         className={cn(
-          "flex min-w-0 items-start gap-2 rounded-lg py-2 pr-2 pl-4 outline-none motion-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring",
+          // The row stays lit while its menu is open.
+          "flex min-w-0 items-start gap-2 rounded-lg py-2 pr-2 pl-4 outline-none motion-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring group-data-[popup-open]:bg-sidebar-accent",
           active && "bg-sidebar-accent",
         )}
       >
@@ -125,7 +127,7 @@ export function AgentSessionRow({
           <AgentSessionReadToggle session={session} state={state} title={title} />
         </span>
       )}
-    </li>
+    </AgentSessionRowMenu>
   );
 }
 
