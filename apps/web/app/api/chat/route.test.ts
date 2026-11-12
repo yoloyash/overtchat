@@ -2044,8 +2044,11 @@ describe("chat route setup boundary", () => {
 
     expect(mocks.gmailAccess).toHaveBeenCalledWith("user");
     // This client did not say it shows a written email as a card.
-    expect(mocks.createGmailTools).toHaveBeenCalledWith("user", { compose: false });
-    expect(mocks.gmailToolPrompt).toHaveBeenCalledWith({ compose: false });
+    expect(mocks.createGmailTools).toHaveBeenCalledWith("user", {
+      compose: false,
+      send: false,
+    });
+    expect(mocks.gmailToolPrompt).toHaveBeenCalledWith({ compose: false, send: false });
     const settings = mocks.agentSettings[0];
     expect(Object.keys(toolsOf(settings))).toEqual(["view_skill", "call_tool"]);
     expect(settings.toolOrder).toEqual(["view_skill", "call_tool"]);
@@ -2079,8 +2082,11 @@ describe("chat route setup boundary", () => {
 
     mocks.parseChatRequest.mockResolvedValue(supported);
     await POST(request());
-    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", { compose: true });
-    expect(mocks.gmailToolPrompt).toHaveBeenLastCalledWith({ compose: true });
+    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", {
+      compose: true,
+      send: false,
+    });
+    expect(mocks.gmailToolPrompt).toHaveBeenLastCalledWith({ compose: true, send: false });
     const settings = mocks.agentSettings[0];
     const system = content(settings);
     expect(system).toContain('{"name":"gmail_search"');
@@ -2095,7 +2101,23 @@ describe("chat route setup boundary", () => {
     // A spoken answer has no card to press Send on.
     mocks.parseChatRequest.mockResolvedValue({ ...supported, responseStyle: "voice" });
     await POST(request());
-    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", { compose: false });
+    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", {
+      compose: false,
+      send: false,
+    });
+
+    // Sending is the user's choice in Settings, whatever the client shows.
+    mocks.gmailAccess.mockReturnValue({
+      status: "available",
+      alwaysOn: true,
+      sendWithoutAsking: true,
+    });
+    await POST(request());
+    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", {
+      compose: false,
+      send: true,
+    });
+    expect(mocks.gmailToolPrompt).toHaveBeenLastCalledWith({ compose: false, send: true });
   });
 
   it("keeps skills from a model that cannot call tools and from an unconnected user", async () => {

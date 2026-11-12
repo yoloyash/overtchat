@@ -132,6 +132,7 @@ describe("connections", () => {
         status: "connected",
         connectedAt: expect.any(String),
         alwaysOn: false,
+        sendWithoutAsking: false,
       },
     });
     expect(JSON.stringify(gmail)).not.toContain("refresh-ada");

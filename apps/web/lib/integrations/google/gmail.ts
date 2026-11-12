@@ -12,6 +12,7 @@ import type {
   GmailMessageSummary,
   GmailModifyLabelsOutput,
   GmailSearchOutput,
+  GmailSentOutput,
   GmailThreadMessage,
   GmailThreadOutput,
 } from "@overtchat/shared";
@@ -704,14 +705,14 @@ export async function createGmailDraft(
 }
 
 /**
- * Sends an email as it is given. Only the user's own action leads here; no
- * tool calls it.
+ * Sends an email as it is given. The user's own Send leads here, and so does
+ * gmail_send, the tool only a user who allowed it is given.
  */
 export async function sendGmailEmail(
   userId: string,
   input: GmailEmailContent,
   signal?: AbortSignal,
-): Promise<{ threadId: string | null }> {
+): Promise<{ threadId: string | null; to: string; subject: string }> {
   const email = await prepareGmailEmail(userId, input, signal);
   const message = await gmailRequest<{ threadId?: string }>(
     userId,
@@ -724,7 +725,26 @@ export async function sendGmailEmail(
       signal,
     },
   );
-  return { threadId: message.threadId ?? email.threadId ?? null };
+  return {
+    threadId: message.threadId ?? email.threadId ?? null,
+    to: email.to.join(", "),
+    subject: email.subject,
+  };
+}
+
+/** Sends an email at a model's call, and reports what went out. */
+export async function sendGmailEmailForModel(
+  userId: string,
+  input: GmailEmailContent,
+  signal?: AbortSignal,
+): Promise<GmailSentOutput> {
+  const sent = await sendGmailEmail(userId, input, signal);
+  return {
+    ...sent,
+    account: mailbox(userId),
+    status: "sent",
+    sentAt: new Date().toISOString(),
+  };
 }
 
 /**

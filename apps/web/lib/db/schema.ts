@@ -1079,6 +1079,12 @@ export const integrationAccounts = sqliteTable(
       .$type<IntegrationId[]>()
       .default(sql`'[]'`)
       .notNull(),
+    // The integrations whose tools may send as the user without asking them
+    // first. Only Gmail sends; it is off unless the user turns it on.
+    sendWithoutAsking: text("send_without_asking", { mode: "json" })
+      .$type<IntegrationId[]>()
+      .default(sql`'[]'`)
+      .notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

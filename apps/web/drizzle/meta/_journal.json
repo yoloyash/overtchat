@@ -232,6 +232,13 @@
       "when": 1794389690701,
       "tag": "0032_gmail_emails",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794390908344,
+      "tag": "0033_gmail_send_without_asking",
+      "breakpoints": true
     }
   ]
 }

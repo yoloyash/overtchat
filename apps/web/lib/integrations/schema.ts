@@ -76,6 +76,11 @@ export interface IntegrationConnection {
   connectedAt: string;
   /** Whether every chat is offered the tools, or only chats that ask. */
   alwaysOn: boolean;
+  /**
+   * Whether a model may send as the user without asking them first. Only
+   * Gmail sends; without this, the user sends each email themselves.
+   */
+  sendWithoutAsking: boolean;
 }
 
 /** What one user may know about an integration. Never carries tokens. */
@@ -131,9 +136,19 @@ export type IntegrationConnectInput = z.infer<
   typeof IntegrationConnectInputSchema
 >;
 
-export const IntegrationSettingsInputSchema = z.object({
-  alwaysOn: z.boolean(),
-});
+/** The integrations that can send as the user. */
+export const SENDING_INTEGRATION_IDS: readonly IntegrationId[] = ["gmail"];
+
+export const IntegrationSettingsInputSchema = z
+  .object({
+    alwaysOn: z.boolean().optional(),
+    sendWithoutAsking: z.boolean().optional(),
+  })
+  .refine(
+    (input) =>
+      input.alwaysOn !== undefined || input.sendWithoutAsking !== undefined,
+    "Nothing to change",
+  );
 export type IntegrationSettingsInput = z.infer<
   typeof IntegrationSettingsInputSchema
 >;

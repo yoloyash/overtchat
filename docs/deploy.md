@@ -909,6 +909,15 @@ that draft as it stands. The mobile app, and a voice conversation, save a
 draft in Gmail instead, as before. Nothing is deleted for good either: mail
 moved to the trash stays there for 30 days.
 
+A person can let models send for them: **Sending** beside Gmail in Settings →
+Tools is **Ask first** by default, and **Without asking** gives a model a tool
+that sends an email at once, on web, desktop, mobile and by voice. A model is
+told to use it only when the person asked for that email to be sent, but
+nothing checks that it does: mail a model reads is written by other people and
+can try to talk it into sending. Each person chooses for their own mailbox,
+and the choice is switched off when a different Google account signs in. An
+email a model sent shows in the chat as **Sent**, with its text.
+
 Where Google Calendar is on, models can work with that person's calendars:
 
 - List their calendars, and the events on one of them in a range of days.
