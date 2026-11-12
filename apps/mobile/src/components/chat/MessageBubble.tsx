@@ -46,6 +46,7 @@ export function MessageBubble({
   openuiStates,
   liveOpenUI,
   codeFiles,
+  replacedEmails,
   readOnly = false,
 }: {
   message: UIMessage;
@@ -63,6 +64,8 @@ export function MessageBubble({
   liveOpenUI?: ReadonlySet<string>;
   /** Files the conversation's runs returned, which replies link by name. */
   codeFiles?: ReadonlyMap<string, CodeExecutionFile>;
+  /** Emails a model wrote that a later version in the conversation replaced. */
+  replacedEmails?: ReadonlySet<string>;
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -260,7 +263,14 @@ export function MessageBubble({
             );
           }
           if (seg.kind === "gmail-email") {
-            return <GmailEmailCard key={seg.part.toolCallId} part={seg.part} />;
+            return (
+              <GmailEmailCard
+                key={seg.part.toolCallId}
+                part={seg.part}
+                replaced={replacedEmails}
+                canSend={!readOnly && !streaming}
+              />
+            );
           }
           const trailing = seg.parts[seg.parts.length - 1];
           const trailingDone =

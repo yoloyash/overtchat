@@ -905,9 +905,10 @@ and a **Send** button, and goes out only when the person presses that. Until
 then it is only in the chat, and nothing is added to Gmail: asking for changes
 gives a new version and marks the earlier one as replaced. **Save to Gmail**
 puts the email in Gmail's drafts to edit there first, and **Send** then sends
-that draft as it stands. The mobile app, and a voice conversation, save a
-draft in Gmail instead, as before. Nothing is deleted for good either: mail
-moved to the trash stays there for 30 days.
+that draft as it stands. The card works the same on web, desktop and mobile.
+A voice conversation, and a mobile app from before the card had its buttons,
+save a draft in Gmail instead, as before. Nothing is deleted for good either:
+mail moved to the trash stays there for 30 days.
 
 A person can let models send for them: **Sending** beside Gmail in Settings →
 Tools is **Ask first** by default, and **Without asking** gives a model a tool

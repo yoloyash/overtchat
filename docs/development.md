@@ -705,7 +705,7 @@ connectors from `CHAT_CONNECTORS` (`components/chat/chat-connectors.tsx`).
 
 An email a model finished writing is not a timeline step:
 `groupMessageParts()` gives it its own segment, and the web and mobile cards
-show its subject, recipients and body (`describeGmailEmail()`). The web card's
+show its subject, recipients and body (`describeGmailEmail()`). The card's
 **Send** posts the email to `/api/integrations/gmail/emails/[emailId]/send`
 and **Save to Gmail** to `.../emails/[emailId]/draft`; these and the draft
 route below are the only code that sends mail or saves a draft for a card, and
@@ -715,7 +715,10 @@ however often they are asked: requests for one email run one at a time in the
 server process, and the outcome is recorded in `gmail_emails`. An email the
 user saved in Gmail is sent as that draft, so edits made in Gmail go out. A
 later `gmail_compose` call names the version it rewrites in `replaces`, and
-`replacedGmailEmailIds()` lets the earlier card stop offering Send.
+`replacedGmailEmailIds()` lets the earlier card stop offering Send. What a
+card's own request came back with is kept in `rememberGmailEmailResult()`
+rather than in the card, because both chat lists drop or recycle cards that
+scroll out of view.
 
 A draft saved by `gmail_create_draft` has the same card. Its **Send** posts to
 `/api/integrations/gmail/drafts/[draftId]/send`; `sendSavedGmailDraft()`
