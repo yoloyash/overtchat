@@ -7,6 +7,7 @@ import {
   restoreAgentComposer,
   agentActivitySequencePosition,
   agentToolStatus,
+  agentThoughtPreview,
   describeAgentActivity,
   describeAgentTool,
   describeSubagentActivity,
@@ -117,7 +118,7 @@ describe("projectAgentTranscript", () => {
     });
   });
 
-  it("keeps reasoning distinct while grouping consecutive tool activity", () => {
+  it("groups consecutive tool activity together with the reasoning between it", () => {
     const projected = projectAgentTranscript([
       { role: "user", content: "Remove the old image", timestamp: 1 },
       assistant(
@@ -148,18 +149,13 @@ describe("projectAgentTranscript", () => {
     expect(projected.map((item) => item.type)).toEqual([
       "message",
       "activity",
-      "activity",
       "assistant_text",
     ]);
-    expect(projected.slice(1, 3)).toEqual([
+    expect(projected.slice(1, 2)).toEqual([
       expect.objectContaining({
         type: "activity",
-        entries: [expect.objectContaining({ type: "thinking" })],
-      }),
-      expect.objectContaining({
-        type: "activity",
-        key: "activity:tool:inspect",
         entries: [
+          expect.objectContaining({ type: "thinking" }),
           expect.objectContaining({
             type: "tool",
             tool: expect.objectContaining({
@@ -203,7 +199,7 @@ describe("projectAgentTranscript", () => {
     ]);
   });
 
-  it("uses reasoning and subagent activity as tool-group boundaries", () => {
+  it("keeps reasoning in a tool group and uses subagent activity as its boundary", () => {
     const projected = projectAgentTranscript([
       assistant([call("first", "bash", { command: "one" })], 1),
       result("first", "bash", "one"),
@@ -231,7 +227,7 @@ describe("projectAgentTranscript", () => {
           ? item.entries.map((entry) => entry.type)
           : item.type,
       ),
-    ).toEqual([["tool"], ["thinking"], ["subagent"], ["tool"]]);
+    ).toEqual([["tool", "thinking"], ["subagent"], ["tool"]]);
   });
 
   it("keeps commentary inline and puts timing on the turn footer", () => {
@@ -544,7 +540,7 @@ describe("agent activity sequences", () => {
       projected.map((item, index) =>
         agentActivitySequencePosition(projected, index),
       ),
-    ).toEqual(["first", "last", null, "single"]);
+    ).toEqual(["single", null, "single"]);
   });
 });
 
@@ -673,6 +669,35 @@ describe("agent activity presentation", () => {
       secondary: null,
       status: "running",
     });
+  });
+
+  it("leaves reasoning out of the count and keeps the group live while it continues", () => {
+    const shell = tool("shell", "bash", { command: "npm test" });
+    const entries = [
+      { type: "thinking" as const, id: "before", content: "Run the tests." },
+      { type: "tool" as const, id: "shell", tool: shell },
+      { type: "thinking" as const, id: "after", content: "Now read the log." },
+    ];
+
+    expect(describeAgentActivity(entries, true)).toEqual({
+      label: "Ran 1 command",
+      secondary: null,
+      status: "running",
+    });
+    expect(describeAgentActivity(entries, false)).toEqual({
+      label: "Ran 1 command",
+      secondary: null,
+      status: "completed",
+    });
+  });
+
+  it("previews reasoning as its first line without Markdown markers", () => {
+    expect(
+      agentThoughtPreview("\n\n**Checking   the migration**\n\nThen the rest."),
+    ).toBe("Checking the migration");
+    expect(agentThoughtPreview("- `npm test` first")).toBe("npm test first");
+    expect(agentThoughtPreview("x".repeat(200))).toHaveLength(160);
+    expect(agentThoughtPreview("  \n ")).toBe("");
   });
 
   it("counts unique read and edited paths like the collapsed overview", () => {
