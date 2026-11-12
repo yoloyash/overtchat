@@ -93,6 +93,8 @@ export const agentWorkspaceKeys = {
     [...agentWorkspaceKeys.directories(id), path] as const,
   file: (id: string, path: string) =>
     [...agentWorkspaceKeys.all(), "file", id, path] as const,
+  fileDiff: (id: string, path: string) =>
+    [...agentWorkspaceKeys.all(), "file-diff", id, path] as const,
 };
 
 export const modelConfigKeys = {

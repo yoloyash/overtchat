@@ -8,11 +8,16 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { Menu } from "@base-ui/react/menu";
 import { code, type HighlightResult } from "@streamdown/code";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
+import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import {
   ChevronDown,
   ChevronRight,
+  Code,
+  Copy,
+  Eye,
   File,
   FileCode2,
   FileDiff,
@@ -21,17 +26,21 @@ import {
   Link,
   Loader2,
   RefreshCw,
+  WrapText,
   X,
 } from "lucide-react";
 import type {
   AgentWorkspaceDirectoryEntry,
   AgentWorkspaceFilePreview,
   AgentWorkspaceGitFile,
+  AgentWorkspaceTextFilePreview,
 } from "@overtchat/agent-bridge";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import {
   useAgentWorkspaceDirectory,
   useAgentWorkspaceFile,
+  useAgentWorkspaceFileDiff,
   useAgentWorkspaceGitStatus,
 } from "@/lib/queries/agentWorkspaces";
 import { motionClasses } from "@/lib/motion";
@@ -41,11 +50,28 @@ import {
   ignoredGitDecoration,
   type AgentWorkspaceGitDecoration,
 } from "@/lib/agents/workspaceGitDecorations";
+import { workspaceFileRendering } from "@/lib/agents/workspaceFilePreview";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
+import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import type { AgentWorkspaceFileSelection } from "./AgentWorkspaceNavigationContext";
+import { AgentDiffLines } from "./AgentDiffLines";
+import {
+  AgentWorkspaceImage,
+  AgentWorkspaceRenderedFile,
+} from "./AgentWorkspaceRenderedFile";
 
 const EMPTY_CHANGED_FILES: AgentWorkspaceGitFile[] = [];
+const WRAP_LINES_KEY = "overtchat:agent-workspace-wrap-lines";
+
+/**
+ * How an open file is shown: `preview` is its rendered form where it has one
+ * and its source otherwise, `diff` its uncommitted changes.
+ */
+type FileView = "preview" | "source" | "diff";
+
+/** A file's chosen view, kept until a link asks for a different line. */
+type FileViewChoice = { view: FileView; lineStart: number | undefined };
 
 export function AgentWorkspacePane({
   workspaceId,
@@ -81,6 +107,32 @@ export function AgentWorkspacePane({
     () => agentWorkspaceGitDecorationMap(changedFiles),
     [changedFiles],
   );
+  const [viewChoices, setViewChoices] = useState<Record<string, FileViewChoice>>(
+    {},
+  );
+  const viewChoice = selection ? viewChoices[selection.path] : undefined;
+  const changedFile = selection
+    ? changedFiles.find((file) => file.path === selection.path)
+    : undefined;
+  const chosenView =
+    viewChoice && viewChoice.lineStart === selection?.lineStart
+      ? viewChoice.view
+      : undefined;
+  const view: FileView =
+    // A deleted file has nothing left to show but what was removed.
+    changedFile && gitDecorations.get(changedFile.path)?.kind === "deleted"
+      ? "diff"
+      : chosenView && (chosenView !== "diff" || changedFile)
+        ? chosenView
+        : // A link to a line opens the source, where that line can be shown.
+          selection?.lineStart !== undefined
+          ? "source"
+          : "preview";
+  const chooseView = (path: string, next: FileView, lineStart?: number) =>
+    setViewChoices((current) => ({
+      ...current,
+      [path]: { view: next, lineStart },
+    }));
 
   return (
     <aside
@@ -103,6 +155,9 @@ export function AgentWorkspacePane({
           workspaceName={workspaceName}
           active={active}
           selection={selection}
+          view={view}
+          onView={(next) => chooseView(selection.path, next, selection.lineStart)}
+          changedFile={changedFile}
           decoration={
             gitDecorations.get(selection.path) ??
             (selection.gitIgnored ? ignoredGitDecoration : undefined)
@@ -117,6 +172,10 @@ export function AgentWorkspacePane({
           changedFiles={changedFiles}
           gitDecorations={gitDecorations}
           onSelect={onSelect}
+          onSelectChange={(file) => {
+            chooseView(file.path, "diff");
+            onSelect({ path: file.path });
+          }}
         />
       )}
     </aside>
@@ -286,6 +345,7 @@ function WorkspaceExplorer({
   changedFiles,
   gitDecorations,
   onSelect,
+  onSelectChange,
 }: {
   workspaceId: string;
   active: boolean;
@@ -293,6 +353,8 @@ function WorkspaceExplorer({
   changedFiles: AgentWorkspaceGitFile[];
   gitDecorations: Map<string, AgentWorkspaceGitDecoration>;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
+  /** Opens a changed file on its changes instead of its contents. */
+  onSelectChange: (file: AgentWorkspaceGitFile) => void;
 }) {
   const queryClient = useQueryClient();
   const directoryQueries = agentWorkspaceKeys.directories(workspaceId);
@@ -330,7 +392,7 @@ function WorkspaceExplorer({
               <ChangedFileRow
                 key={`${file.originalPath ?? ""}:${file.path}`}
                 file={file}
-                onSelect={() => onSelect({ path: file.path })}
+                onSelect={() => onSelectChange(file)}
               />
             ))}
           </div>
@@ -385,16 +447,14 @@ function ChangedFileRow({
   onSelect: () => void;
 }) {
   const decoration = agentWorkspaceGitFileDecoration(file);
-  const deleted = decoration.kind === "deleted";
 
   return (
     <button
       type="button"
-      disabled={deleted}
       onClick={onSelect}
       title={gitDecoratedTitle(file.path, decoration)}
       data-git-status={decoration.kind}
-      className="group flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs outline-none motion-colors hover:bg-muted disabled:cursor-default disabled:opacity-60"
+      className="group flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs outline-none motion-colors hover:bg-muted"
     >
       <FileCode2
         className={cn("size-3.5 shrink-0", gitDecorationTextClass(decoration))}
@@ -611,6 +671,9 @@ function WorkspaceFilePreview({
   workspaceName,
   active,
   selection,
+  view,
+  onView,
+  changedFile,
   decoration,
   running,
 }: {
@@ -618,14 +681,50 @@ function WorkspaceFilePreview({
   workspaceName: string;
   active: boolean;
   selection: AgentWorkspaceFileSelection;
+  view: FileView;
+  onView: (view: FileView) => void;
+  /** The file's Git change, when it has uncommitted ones to show. */
+  changedFile?: AgentWorkspaceGitFile;
   decoration?: AgentWorkspaceGitDecoration;
   running: boolean;
 }) {
+  const showDiff = view === "diff";
   const file = useAgentWorkspaceFile(workspaceId, selection.path, {
-    enabled: active,
+    enabled: active && !showDiff,
     running,
   });
+  const diff = useAgentWorkspaceFileDiff(
+    workspaceId,
+    selection.path,
+    changedFile?.originalPath ?? null,
+    { enabled: active && showDiff, running },
+  );
+  const shown = showDiff ? diff : file;
   const displayPath = file.data?.path ?? selection.path;
+  const rendering = useMemo(
+    () => workspaceFileRendering(displayPath),
+    [displayPath],
+  );
+  const showSource = view === "source";
+  // Annotated because the query's own result type does not narrow by kind.
+  const loaded: AgentWorkspaceFilePreview | undefined = file.data;
+  const image = loaded?.kind === "image" ? loaded : null;
+  const text = loaded?.kind === "text" ? loaded : null;
+  const rendered = !showDiff && rendering !== null && !showSource;
+  const [wrapLines, setWrapLines] = useLocalStorage<boolean>(
+    WRAP_LINES_KEY,
+    false,
+  );
+  const content = text?.content;
+
+  async function copy(value: string, label: string) {
+    try {
+      await clipboardWriteText(value);
+      toast.success({ title: `${label} copied` });
+    } catch {
+      toast.error({ title: `Could not copy ${label.toLowerCase()}` });
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -672,19 +771,125 @@ function WorkspaceFilePreview({
             </span>
           ))}
         </div>
+        {changedFile && decoration?.kind !== "deleted" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Show changes"
+            title="Show changes"
+            aria-pressed={showDiff}
+            className="aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:hover:bg-accent"
+            onClick={() => onView(showDiff ? "preview" : "diff")}
+          >
+            <FileDiff />
+          </Button>
+        )}
+        {rendering && !showDiff && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={showSource ? "Show preview" : "Show source"}
+            title={showSource ? "Show preview" : "Show source"}
+            aria-pressed={showSource}
+            onClick={() => onView(showSource ? "preview" : "source")}
+          >
+            {showSource ? <Eye /> : <Code />}
+          </Button>
+        )}
+        {!rendered && !image && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Wrap long lines"
+            title="Wrap long lines"
+            aria-pressed={wrapLines}
+            className="aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:hover:bg-accent"
+            onClick={() => setWrapLines(!wrapLines)}
+          >
+            <WrapText />
+          </Button>
+        )}
+        <Menu.Root>
+          <Menu.Trigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Copy"
+                title="Copy"
+              />
+            }
+          >
+            <Copy />
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Positioner side="bottom" align="end" sideOffset={6}>
+              <Menu.Popup
+                className={cn(
+                  "z-50 w-40 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                  motionClasses.popup,
+                )}
+              >
+                <Menu.Item
+                  onClick={() => void copy(displayPath, "File path")}
+                  className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
+                >
+                  Copy path
+                </Menu.Item>
+                <Menu.Item
+                  disabled={content === undefined}
+                  onClick={() => {
+                    if (content !== undefined) void copy(content, "File contents");
+                  }}
+                  className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-default data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
+                >
+                  Copy contents
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
           aria-label="Refresh file"
           title="Refresh file"
-          disabled={file.isFetching}
-          onClick={() => void file.refetch()}
+          disabled={shown.isFetching}
+          onClick={() => void shown.refetch()}
         >
-          <RefreshCw className={file.isFetching ? motionClasses.spinner : undefined} />
+          <RefreshCw className={shown.isFetching ? motionClasses.spinner : undefined} />
         </Button>
       </div>
-      {file.isPending ? (
+      {showDiff ? (
+        diff.isPending ? (
+          <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className={cn("size-4", motionClasses.spinner)} />
+            Loading changes…
+          </div>
+        ) : diff.error ? (
+          <div className="flex flex-1 items-center justify-center p-6 text-center">
+            <ErrorNotice
+              className="max-w-xs"
+              title="Changes cannot be shown"
+              message={diff.error}
+              actions={
+                decoration?.kind !== "deleted" && (
+                  <Button size="sm" variant="outline" onClick={() => onView("preview")}>
+                    Open file
+                  </Button>
+                )
+              }
+            />
+          </div>
+        ) : diff.data ? (
+          <WorkspaceFileDiff diff={diff.data} wrap={wrapLines} />
+        ) : null
+      ) : file.isPending ? (
         <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
           <Loader2 className={cn("size-4", motionClasses.spinner)} />
           Loading file…
@@ -693,13 +898,70 @@ function WorkspaceFilePreview({
         <div className="flex flex-1 items-center justify-center p-6 text-center">
           <ErrorNotice className="max-w-xs" title="File cannot be previewed" message={file.error} />
         </div>
-      ) : file.data ? (
+      ) : image ? (
+        <AgentWorkspaceImage
+          path={image.path}
+          source={`data:${image.mediaType};base64,${image.content}`}
+        />
+      ) : text && rendering && rendered ? (
+        <AgentWorkspaceRenderedFile
+          workspaceId={workspaceId}
+          path={text.path}
+          content={text.content}
+          rendering={rendering}
+        />
+      ) : text ? (
         <HighlightedFile
-          file={file.data}
+          file={text}
           lineStart={selection.lineStart}
           lineEnd={selection.lineEnd}
+          wrap={wrapLines}
         />
       ) : null}
+    </div>
+  );
+}
+
+function WorkspaceFileDiff({
+  diff,
+  wrap,
+}: {
+  diff: { patch: string; truncated: boolean; binary: boolean };
+  wrap: boolean;
+}) {
+  // One file's patch: the lines before its first hunk only repeat its name.
+  const firstHunk = diff.patch.startsWith("@@")
+    ? 0
+    : diff.patch.indexOf("\n@@") + 1;
+  const hunks =
+    firstHunk > 0 || diff.patch.startsWith("@@")
+      ? diff.patch.slice(firstHunk).replace(/\n$/u, "")
+      : "";
+
+  if (!hunks) {
+    return (
+      <p className="p-6 text-center text-xs text-muted-foreground">
+        {diff.binary
+          ? "This is a binary file, so its changes cannot be shown as text."
+          : diff.patch
+            ? "This file was renamed or changed mode; its lines are unchanged."
+            : "This file has no uncommitted changes."}
+      </p>
+    );
+  }
+  return (
+    <div
+      className="min-h-0 flex-1 overflow-auto bg-muted/10"
+      data-testid="agent-workspace-diff"
+    >
+      <pre className="py-3 font-mono text-xs leading-5 text-foreground tab-size-4">
+        <AgentDiffLines value={hunks} wrap={wrap} />
+      </pre>
+      {diff.truncated && (
+        <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+          This diff is long; only its first 512 KB is shown.
+        </p>
+      )}
     </div>
   );
 }
@@ -736,10 +998,12 @@ function HighlightedFile({
   file,
   lineStart,
   lineEnd,
+  wrap,
 }: {
-  file: AgentWorkspaceFilePreview;
+  file: AgentWorkspaceTextFilePreview;
   lineStart?: number;
   lineEnd?: number;
+  wrap: boolean;
 }) {
   const [highlighted, setHighlighted] = useState<HighlightResult | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -778,7 +1042,12 @@ function HighlightedFile({
 
   return (
     <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto bg-muted/10">
-      <pre className="min-w-max py-3 font-mono text-xs leading-5 text-foreground tab-size-4">
+      <pre
+        className={cn(
+          "py-3 font-mono text-xs leading-5 text-foreground tab-size-4",
+          !wrap && "min-w-max",
+        )}
+      >
         <code>
           {lines.map((tokens, index) => {
             const line = index + 1;
@@ -801,7 +1070,13 @@ function HighlightedFile({
                 >
                   {line}
                 </span>
-                <span className="whitespace-pre">
+                <span
+                  className={
+                    wrap
+                      ? "min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]"
+                      : "whitespace-pre"
+                  }
+                >
                   {tokens.map((token, tokenIndex) => {
                     const {
                       color: htmlColor,

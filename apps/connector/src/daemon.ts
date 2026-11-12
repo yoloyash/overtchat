@@ -467,10 +467,24 @@ export class ConnectorDaemon {
           request.path,
         );
       case "read_workspace_file":
-        return workspaceFilesService.readFile(
+        return request.images
+          ? workspaceFilesService.readFile(
+              hostTarget(request.target),
+              request.root,
+              request.path,
+              { images: true },
+            )
+          : workspaceFilesService.readFile(
+              hostTarget(request.target),
+              request.root,
+              request.path,
+            );
+      case "read_workspace_file_diff":
+        return workspaceFilesService.readFileDiff(
           hostTarget(request.target),
           request.root,
           request.path,
+          request.originalPath,
         );
       case "create_session": {
         const workspace = workspaceDescriptor(request.workspace);

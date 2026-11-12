@@ -13,7 +13,10 @@ import {
   isAgentWorkspaceGitWorktreeInspection,
   parseHostConnectorCapabilities,
 } from "./index";
-import { agentProviderCatalogSchema } from "./agents";
+import {
+  agentProviderCatalogSchema,
+  agentWorkspaceImageMediaType,
+} from "./agents";
 
 describe("Host Connector protocol compatibility", () => {
   it.each([undefined, "responding", "waiting"])("accepts the retired response phase %s from older connectors and journals", (phase) => {
@@ -65,6 +68,7 @@ describe("Host Connector protocol compatibility", () => {
     for (const type of [
       "list_workspace_directory",
       "read_workspace_file",
+      "read_workspace_file_diff",
     ] as const) {
       expect(
         isHostConnectorCommand({
@@ -79,6 +83,32 @@ describe("Host Connector protocol compatibility", () => {
         }),
       ).toBe(true);
     }
+  });
+
+  it("validates image reads and file diff requests", () => {
+    const request = (value: Record<string, unknown>) =>
+      isHostConnectorCommand({
+        type: "request",
+        requestId: "request",
+        request: { target: { transport: "local" }, root: "/srv/project", ...value },
+      });
+    const read = { type: "read_workspace_file", path: "shot.png" };
+    expect(request({ ...read, images: true })).toBe(true);
+    expect(request({ ...read, images: "yes" })).toBe(false);
+    const diff = { type: "read_workspace_file_diff", path: "src/new.ts" };
+    expect(request({ ...diff, originalPath: "src/old.ts" })).toBe(true);
+    expect(request({ ...diff, originalPath: "" })).toBe(false);
+    expect(request({ ...diff, path: "" })).toBe(false);
+    expect(request({ ...diff, root: "" })).toBe(false);
+  });
+
+  it("maps workspace paths to the image types the preview shows", () => {
+    expect(agentWorkspaceImageMediaType("docs/Shot.PNG")).toBe("image/png");
+    expect(agentWorkspaceImageMediaType("C:\\repo\\photo.jpeg")).toBe("image/jpeg");
+    expect(agentWorkspaceImageMediaType("logo.svg")).toBeNull();
+    expect(agentWorkspaceImageMediaType("png")).toBeNull();
+    expect(agentWorkspaceImageMediaType(".gif")).toBeNull();
+    expect(agentWorkspaceImageMediaType("a.constructor")).toBeNull();
   });
 
   it("validates Git branch requests and results", () => {

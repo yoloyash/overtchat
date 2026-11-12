@@ -1,6 +1,10 @@
-import type {
-  AgentWorkspaceDirectoryListing,
-  AgentWorkspaceFilePreview,
+import {
+  AGENT_WORKSPACE_FILE_DIFF_MAX_BYTES,
+  AGENT_WORKSPACE_IMAGE_MAX_BYTES,
+  AGENT_WORKSPACE_IMAGE_MEDIA_TYPES,
+  type AgentWorkspaceDirectoryListing,
+  type AgentWorkspaceFileDiff,
+  type AgentWorkspaceFilePreview,
 } from "@overtchat/agent-bridge";
 import {
   executeOnHost,
@@ -11,6 +15,11 @@ const INVALID_DIRECTORY_MESSAGE =
   "The remote machine returned an invalid workspace directory.";
 const INVALID_FILE_MESSAGE =
   "The remote machine returned an invalid workspace file.";
+const INVALID_DIFF_MESSAGE =
+  "The remote machine returned an invalid workspace file diff.";
+// Base64 text of the largest image, plus the JSON around it.
+const IMAGE_CAPTURE_BYTES =
+  Math.ceil(AGENT_WORKSPACE_IMAGE_MAX_BYTES / 3) * 4 + 64 * 1024;
 
 export const AGENT_WORKSPACE_FILES_SCRIPT = `
 const fs = require("node:fs");
@@ -19,6 +28,9 @@ const { spawnSync } = require("node:child_process");
 
 const MAX_DIRECTORY_ENTRIES = 1000;
 const MAX_PREVIEW_BYTES = 512 * 1024;
+const MAX_IMAGE_BYTES = ${AGENT_WORKSPACE_IMAGE_MAX_BYTES};
+const IMAGE_MEDIA_TYPES = ${JSON.stringify(AGENT_WORKSPACE_IMAGE_MEDIA_TYPES)};
+const MAX_DIFF_BYTES = ${AGENT_WORKSPACE_FILE_DIFF_MAX_BYTES};
 const MAX_GIT_OUTPUT_BYTES = 1024 * 1024;
 const READ_FLAGS = process.platform === "win32"
   ? fs.constants.O_RDONLY
@@ -26,6 +38,8 @@ const READ_FLAGS = process.platform === "win32"
 const action = process.argv[1];
 const workspaceRoot = process.argv[2];
 const requestedPath = process.argv[3] || ".";
+// "images" for a read that may return an image; a renamed file's old path for a diff.
+const option = process.argv[4] || "";
 
 function fail(message) {
   throw new Error(message);
@@ -128,7 +142,16 @@ function read(root, target) {
     descriptor = fs.openSync(target.resolved, READ_FLAGS);
     const before = fs.fstatSync(descriptor);
     if (!before.isFile()) fail("Path is not a regular file.");
-    if (before.size > MAX_PREVIEW_BYTES) {
+    const extension = path.extname(target.lexical).slice(1).toLowerCase();
+    const imageType =
+      option === "images" &&
+      Object.prototype.hasOwnProperty.call(IMAGE_MEDIA_TYPES, extension)
+        ? IMAGE_MEDIA_TYPES[extension]
+        : null;
+    if (imageType && before.size > MAX_IMAGE_BYTES) {
+      fail("Image is too large to preview (maximum 5 MB).");
+    }
+    if (!imageType && before.size > MAX_PREVIEW_BYTES) {
       fail("File is too large to preview (maximum 512 KB).");
     }
     const bytes = fs.readFileSync(descriptor);
@@ -139,6 +162,17 @@ function read(root, target) {
       after.mtimeMs !== before.mtimeMs
     ) {
       fail("File changed while it was being read.");
+    }
+    if (imageType) {
+      return {
+        kind: "image",
+        encoding: "base64",
+        mediaType: imageType,
+        path: relativePath(root, target.lexical),
+        content: bytes.toString("base64"),
+        size: after.size,
+        modifiedAt: after.mtimeMs,
+      };
     }
     if (bytes.includes(0)) fail("Binary files cannot be previewed.");
     let content;
@@ -160,14 +194,97 @@ function read(root, target) {
   }
 }
 
+function workspaceRelative(root, value) {
+  const lexical = path.resolve(root, value);
+  if (lexical === root || !inside(root, lexical)) fail("Path is outside the workspace.");
+  return relativePath(root, lexical);
+}
+
+function git(args, cwd) {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: MAX_DIFF_BYTES,
+    // Reading a diff must not take the index lock from the agent's own Git
+    // commands, and a file name is never a pattern.
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_LITERAL_PATHSPECS: "1" },
+    windowsHide: true,
+  });
+  if (result.error && result.error.code === "ENOENT") {
+    fail("Git is not installed on the selected machine.");
+  }
+  return result;
+}
+
+function patchText(result, successStatuses) {
+  const truncated = Boolean(result.error && result.error.code === "ENOBUFS");
+  if (result.error && !truncated) fail(result.error.message);
+  if (!truncated && !successStatuses.includes(result.status)) {
+    fail(String(result.stderr || "").trim() || "Git exited with code " + String(result.status));
+  }
+  const output = String(result.stdout || "");
+  if (!truncated) return { text: output, truncated };
+  // A killed process can hand back slightly more than the limit.
+  const text = Buffer.from(output, "utf8").subarray(0, MAX_DIFF_BYTES).toString("utf8");
+  return { text: text.slice(0, text.lastIndexOf("\\n") + 1), truncated };
+}
+
+// The file's uncommitted changes against the last commit, as git diff HEAD
+// reports them. A file Git does not track yet is all additions.
+function diff(root) {
+  const filePath = workspaceRelative(root, requestedPath);
+  const originalPath = option ? workspaceRelative(root, option) : null;
+  const head = git(["rev-parse", "--verify", "--quiet", "HEAD"], root);
+  if (head.status !== 0 && /not a git repository/i.test(String(head.stderr || ""))) {
+    fail("This workspace is not a Git repository.");
+  }
+  const display = ["--no-color", "--no-ext-diff", "--no-textconv"];
+  let patch = { text: "", truncated: false };
+  if (head.status === 0) {
+    patch = patchText(
+      git(
+        ["diff", ...display, "--relative", "-M", "HEAD", "--"]
+          .concat(originalPath ? [originalPath] : [], [filePath]),
+        root,
+      ),
+      [0],
+    );
+  }
+  if (!patch.text && !patch.truncated) {
+    const tracked =
+      head.status === 0 &&
+      git(["ls-files", "--error-unmatch", "--", filePath], root).status === 0;
+    let stat = null;
+    try {
+      stat = fs.lstatSync(path.resolve(root, filePath));
+    } catch {}
+    // Only a regular file inside the workspace is read from disk.
+    if (!tracked && stat && stat.isFile()) {
+      resolveTarget(root);
+      patch = patchText(
+        git(["diff", ...display, "--no-index", "--", "/dev/null", filePath], root),
+        [0, 1],
+      );
+    }
+  }
+  const binary = /^Binary files .* differ$/m.test(patch.text);
+  return {
+    path: filePath,
+    patch: binary ? "" : patch.text,
+    truncated: patch.truncated,
+    binary,
+  };
+}
+
 try {
   const root = canonicalRoot();
-  const target = resolveTarget(root);
   const result = action === "list"
-    ? list(root, target)
+    ? list(root, resolveTarget(root))
     : action === "read"
-      ? read(root, target)
-      : fail("Unknown workspace file operation.");
+      ? read(root, resolveTarget(root))
+      : action === "diff"
+        ? diff(root)
+        : fail("Unknown workspace file operation.");
   process.stdout.write(JSON.stringify(result));
 } catch (error) {
   process.stderr.write(error instanceof Error ? error.message : String(error));
@@ -202,12 +319,20 @@ function isWorkspaceDirectoryListing(
 
 function isWorkspaceFilePreview(
   value: unknown,
+  images: boolean,
 ): value is AgentWorkspaceFilePreview {
+  if (!value || typeof value !== "object") return false;
+  const kind = Reflect.get(value, "kind");
+  const text = kind === "text" && Reflect.get(value, "encoding") === "utf-8";
+  const image =
+    images &&
+    kind === "image" &&
+    Reflect.get(value, "encoding") === "base64" &&
+    Object.values<unknown>(AGENT_WORKSPACE_IMAGE_MEDIA_TYPES).includes(
+      Reflect.get(value, "mediaType"),
+    );
   return Boolean(
-    value &&
-      typeof value === "object" &&
-      Reflect.get(value, "kind") === "text" &&
-      Reflect.get(value, "encoding") === "utf-8" &&
+    (text || image) &&
       typeof Reflect.get(value, "path") === "string" &&
       typeof Reflect.get(value, "content") === "string" &&
       typeof Reflect.get(value, "size") === "number" &&
@@ -215,13 +340,25 @@ function isWorkspaceFilePreview(
   );
 }
 
+function isWorkspaceFileDiff(value: unknown): value is AgentWorkspaceFileDiff {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof Reflect.get(value, "path") === "string" &&
+      typeof Reflect.get(value, "patch") === "string" &&
+      typeof Reflect.get(value, "truncated") === "boolean" &&
+      typeof Reflect.get(value, "binary") === "boolean",
+  );
+}
+
 async function executeWorkspaceFilesRequest(
   target: HostTarget,
-  action: "list" | "read",
+  action: "list" | "read" | "diff",
   workspaceRoot: string,
   requestedPath: string,
+  option?: string,
 ): Promise<unknown> {
-  const result = await executeOnHost(target, {
+  const launch = {
     command: "node",
     args: [
       "-e",
@@ -229,8 +366,15 @@ async function executeWorkspaceFilesRequest(
       action,
       workspaceRoot,
       requestedPath,
+      ...(option ? [option] : []),
     ],
-  });
+  };
+  const result =
+    option === "images"
+      ? await executeOnHost(target, launch, {
+          maxCaptureBytes: IMAGE_CAPTURE_BYTES,
+        })
+      : await executeOnHost(target, launch);
   return JSON.parse(result.stdout) as unknown;
 }
 
@@ -244,7 +388,15 @@ export interface WorkspaceFilesService {
     target: HostTarget,
     workspaceRoot: string,
     filePath: string,
+    /** `images` also reads image files; without it they fail as binary. */
+    options?: { images?: boolean },
   ): Promise<AgentWorkspaceFilePreview>;
+  readFileDiff(
+    target: HostTarget,
+    workspaceRoot: string,
+    filePath: string,
+    originalPath?: string,
+  ): Promise<AgentWorkspaceFileDiff>;
 }
 
 class HostWorkspaceFilesService implements WorkspaceFilesService {
@@ -269,15 +421,37 @@ class HostWorkspaceFilesService implements WorkspaceFilesService {
     target: HostTarget,
     workspaceRoot: string,
     filePath: string,
+    options: { images?: boolean } = {},
   ): Promise<AgentWorkspaceFilePreview> {
+    const images = options.images === true;
     const parsed = await executeWorkspaceFilesRequest(
       target,
       "read",
       workspaceRoot,
       filePath,
+      images ? "images" : undefined,
     );
-    if (!isWorkspaceFilePreview(parsed)) {
+    if (!isWorkspaceFilePreview(parsed, images)) {
       throw new Error(INVALID_FILE_MESSAGE);
+    }
+    return parsed;
+  }
+
+  async readFileDiff(
+    target: HostTarget,
+    workspaceRoot: string,
+    filePath: string,
+    originalPath?: string,
+  ): Promise<AgentWorkspaceFileDiff> {
+    const parsed = await executeWorkspaceFilesRequest(
+      target,
+      "diff",
+      workspaceRoot,
+      filePath,
+      originalPath,
+    );
+    if (!isWorkspaceFileDiff(parsed)) {
+      throw new Error(INVALID_DIFF_MESSAGE);
     }
     return parsed;
   }

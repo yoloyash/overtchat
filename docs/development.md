@@ -1639,6 +1639,31 @@ reconnects. Report real SSH/network timings separately from local rendering
 latency. Run the [Windows SSH checks](#windows-ssh-validation) for Windows
 workspace targets. Native mobile terminal UI remains outside this feature's scope.
 
+### Workspace file preview validation
+
+The files pane reads through one host script, run under the host's own Node for
+local, SSH and Windows targets. Text previews are capped at 512 KB. Connectors
+with `workspace-files-v2` also read PNG, JPEG, GIF and WebP images up to 5 MB,
+sent as base64 only when the client asks, and return one file's uncommitted
+changes as `git diff HEAD` text capped at 512 KB. A file Git does not track yet
+is diffed against nothing. Images are not polled while an agent runs.
+
+```sh
+npm run test -w packages/agent-runtime -- src/runtime/workspace-files.test.ts
+npm run test -w packages/agent-bridge -- src/protocol.test.ts
+npm run test -w apps/connector -- src/daemon.test.ts
+npm run test -w apps/web -- lib/agents/workspaceFilePreview.test.ts 'app/api/agent-workspaces/[id]/file'
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'shows durable turn activity'
+```
+
+The runtime test runs the real script against temporary repositories: modified,
+deleted, renamed, staged, untracked and binary files, a workspace below the
+repository root, a repository with no commits, an oversized diff, and paths that
+leave the workspace. The browser test mocks the server's file routes. Before
+release, open an image, a changed file and a deleted file on a real SSH host
+and a Windows target, and open a changed file against a connector without
+`workspace-files-v2`: the pane must offer the file's contents instead.
+
 ## Agent display transcript lifecycle
 
 The connector owns the display transcript. Model, effort, permissions, usage,
