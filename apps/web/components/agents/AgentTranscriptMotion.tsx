@@ -1,6 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  type TouchEvent,
+  type WheelEvent,
+} from "react";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +42,51 @@ export function AgentTranscriptMotion({ collapsed, children }: {
       </div>
     </div>
   );
+}
+
+/** Rows pass the control that was pressed, before they change height. */
+export const AgentDisclosureContext = createContext<(control: HTMLElement) => void>(
+  () => {},
+);
+
+/**
+ * Stop following new content the moment the reader reaches for older content.
+ * Position cannot tell the reader's scroll from content growing beneath it, so
+ * this reads the input itself, wherever in the transcript it lands.
+ */
+export function useAgentScrollRelease(release: () => void) {
+  const touchStart = useRef<number | null>(null);
+  return {
+    onWheel: (event: WheelEvent<HTMLElement>) => {
+      if (event.deltaY < 0 && !event.ctrlKey) release();
+    },
+    onTouchStart: (event: TouchEvent<HTMLElement>) => {
+      touchStart.current = event.touches[0]?.clientY ?? null;
+    },
+    onTouchMove: (event: TouchEvent<HTMLElement>) => {
+      const y = event.touches[0]?.clientY;
+      if (touchStart.current !== null && y !== undefined && y - touchStart.current > 8) {
+        release();
+      }
+    },
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      const target = event.target as HTMLElement;
+      if (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (
+        ["PageUp", "ArrowUp", "Home"].includes(event.key) ||
+        (event.key === " " && event.shiftKey)
+      ) {
+        release();
+      }
+    },
+    onPointerDown: (event: PointerEvent<HTMLElement>) => {
+      const viewport = event.currentTarget;
+      // A press on the viewport itself, beyond its content box, is on the scrollbar.
+      const contentEdge =
+        viewport.getBoundingClientRect().left + viewport.clientLeft + viewport.clientWidth;
+      if (event.target === viewport && event.clientX >= contentEdge) release();
+    },
+  };
 }
 
 /** Keep the clicked disclosure steady while surrounding row heights settle. */

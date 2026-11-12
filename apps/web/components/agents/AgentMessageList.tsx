@@ -1,7 +1,7 @@
 "use client";
 
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
@@ -61,7 +61,12 @@ import { AgentRewindMenu } from "./AgentRewindMenu";
 import type { AgentRewindMode } from "@overtchat/agent-bridge";
 import { AgentLinkIcon } from "./AgentLinkIcon";
 import { AgentWorkspaceLink } from "./AgentWorkspaceLink";
-import { AgentTranscriptMotion, useAgentDisclosureAnchor } from "./AgentTranscriptMotion";
+import {
+  AgentDisclosureContext,
+  AgentTranscriptMotion,
+  useAgentDisclosureAnchor,
+  useAgentScrollRelease,
+} from "./AgentTranscriptMotion";
 import { serverUrl } from "@/lib/api-url";
 
 export type { AgentRunActivity } from "./AgentActivity";
@@ -184,9 +189,33 @@ export function AgentMessageList({
     [projectedTranscript, unsettled, expandedTurns],
   );
   const anchorDisclosure = useAgentDisclosureAnchor();
-  const toggleWork = (key: string, button: HTMLElement) => {
+  const scrollRelease = useAgentScrollRelease(stopScroll);
+  const holdDisclosure = (control: HTMLElement) => {
     stopScroll();
-    anchorDisclosure(button, scrollRef.current);
+    anchorDisclosure(control, scrollRef.current);
+  };
+  const latestPrompt = useMemo(() => {
+    let count = 0;
+    let id: unknown;
+    for (const message of messages) {
+      if (roleOf(message) !== "user") continue;
+      count += 1;
+      id = recordOf(message)?.id;
+    }
+    return { count, id };
+  }, [messages]);
+  const previousPrompt = useRef(latestPrompt);
+  useEffect(() => {
+    const previous = previousPrompt.current;
+    previousPrompt.current = latestPrompt;
+    // Sending a prompt returns the reader to its reply, wherever they had scrolled.
+    // Older history adds prompts too, but leaves the latest one unchanged.
+    if (latestPrompt.count > previous.count && latestPrompt.id !== previous.id) {
+      void scrollToBottom("instant");
+    }
+  }, [latestPrompt, scrollToBottom]);
+  const toggleWork = (key: string, button: HTMLElement) => {
+    holdDisclosure(button);
     setExpandedTurns((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
@@ -232,7 +261,9 @@ export function AgentMessageList({
       <div
         ref={scrollRef}
         className="h-full overflow-y-auto overscroll-contain"
+        {...scrollRelease}
       >
+        <AgentDisclosureContext.Provider value={holdDisclosure}>
         <div
           ref={contentRef}
           className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pt-8 pb-8"
@@ -325,6 +356,7 @@ export function AgentMessageList({
             </div>
           )}
         </div>
+        </AgentDisclosureContext.Provider>
       </div>
 
       {!isAtBottom && !suppressScrollButton && (
