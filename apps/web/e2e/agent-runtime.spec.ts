@@ -2724,6 +2724,82 @@ test("shows durable turn activity without changing completed tool status", async
   await expect.poll(() => retryRequested).toBe(true);
 });
 
+test("fades each new block of a streaming reply in and draws no cursor", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Fade Tester");
+  await page.locator("#email").fill("fade@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  const reply = (text: string) => [
+    { role: "user", id: "user", content: "Explain", timestamp: 100000 },
+    { role: "assistant", id: "answer", timestamp: 101000, content: [{ type: "text", text }] },
+  ];
+  snapshot.messages = reply("First paragraph.\n\n- one\n- two");
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    const sources: EventTarget[] = [];
+    let sequence = 0;
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor(url: string) {
+        super();
+        if (url.includes("/api/agent-sessions/")) sources.push(this);
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      close() { const i = sources.indexOf(this); if (i >= 0) sources.splice(i, 1); }
+    }
+    Object.assign(window, {
+      EventSource: FakeEventSource,
+      __fadeEmit: (snapshot: unknown) => {
+        sequence += 1;
+        for (const source of sources) {
+          source.dispatchEvent(new MessageEvent("runtime", {
+            data: JSON.stringify({ epoch: "fade", sequence, type: "snapshot", data: snapshot }),
+          }));
+        }
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+  await expect(page.getByText("First paragraph.", { exact: true })).toBeVisible();
+  // The reply ends in a list, where a cursor used to drop onto a line of its own.
+  const cursor = await page.evaluate(() => {
+    const root = [...document.querySelectorAll("p")].find((node) => node.textContent === "First paragraph.")!.parentElement!;
+    return [...root.querySelectorAll("*")].map((node) => getComputedStyle(node, "::after").content);
+  });
+  expect(cursor.every((content) => content === "none" || content === "normal")).toBe(true);
+
+  // A block that arrives while the reply streams starts transparent and settles.
+  snapshot.messages = reply("First paragraph.\n\n- one\n- two\n\nSecond paragraph.");
+  const opacities = await page.evaluate(async (next) => {
+    const first = [...document.querySelectorAll("p")].find((node) => node.textContent === "First paragraph.")!;
+    const root = first.parentElement!;
+    (window as unknown as { __fadeEmit: (value: unknown) => void }).__fadeEmit(next);
+    const seen: number[] = [];
+    const end = performance.now() + 900;
+    while (performance.now() < end) {
+      await new Promise(requestAnimationFrame);
+      const block = [...root.children].find((node) => node.textContent === "Second paragraph.");
+      if (block) seen.push(Number(getComputedStyle(block).opacity));
+    }
+    return { seen, first: Number(getComputedStyle(first).opacity) };
+  }, snapshot);
+  expect(opacities.seen[0]).toBeLessThan(0.5);
+  expect(opacities.seen.at(-1)).toBe(1);
+  expect(opacities.first).toBe(1);
+
+  // A finished reply is not animated at all.
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.evaluate((value) => (window as unknown as { __fadeEmit: (value: unknown) => void }).__fadeEmit(value), snapshot);
+  await expect(page.getByRole("button", { name: "Copy response", exact: true })).toHaveCount(1);
+  await expect(page.locator(".motion-stream-blocks")).toHaveCount(0);
+});
+
 test("folds long completed work smoothly, anchors disclosures, and respects reduced motion", async ({ page }, testInfo) => {
   await page.goto(await setupUrl());
   await page.locator("#name").fill("Motion Tester");
@@ -2928,82 +3004,6 @@ test("keeps reasoning inside its tool group, opens steps without nested scrollin
   await page.getByRole("button", { name: "Open apps/web/runtime.ts" }).click();
   await expect(page.getByTestId("agent-workspace-pane")).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("activity-steps-file-open.png") });
-});
-
-test("fades each new block of a streaming reply in and draws no cursor", async ({ page }) => {
-  await page.goto(await setupUrl());
-  await page.locator("#name").fill("Fade Tester");
-  await page.locator("#email").fill("fade@overtchat-test.local");
-  await page.locator("#password").fill("test-password-123");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL("**/");
-  seedAgentSession();
-  const snapshot = runtimeSnapshot(Date.now());
-  const reply = (text: string) => [
-    { role: "user", id: "user", content: "Explain", timestamp: 100000 },
-    { role: "assistant", id: "answer", timestamp: 101000, content: [{ type: "text", text }] },
-  ];
-  snapshot.messages = reply("First paragraph.\n\n- one\n- two");
-  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
-  await page.addInitScript(() => {
-    const sources: EventTarget[] = [];
-    let sequence = 0;
-    class FakeEventSource extends EventTarget {
-      onopen: ((event: Event) => void) | null = null;
-      constructor(url: string) {
-        super();
-        if (url.includes("/api/agent-sessions/")) sources.push(this);
-        setTimeout(() => this.onopen?.(new Event("open")), 0);
-      }
-      close() { const i = sources.indexOf(this); if (i >= 0) sources.splice(i, 1); }
-    }
-    Object.assign(window, {
-      EventSource: FakeEventSource,
-      __fadeEmit: (snapshot: unknown) => {
-        sequence += 1;
-        for (const source of sources) {
-          source.dispatchEvent(new MessageEvent("runtime", {
-            data: JSON.stringify({ epoch: "fade", sequence, type: "snapshot", data: snapshot }),
-          }));
-        }
-      },
-    });
-  });
-  await page.goto(`/agents/${SESSION_ID}`);
-  await expect(page.getByText("First paragraph.", { exact: true })).toBeVisible();
-  // The reply ends in a list, where a cursor used to drop onto a line of its own.
-  const cursor = await page.evaluate(() => {
-    const root = [...document.querySelectorAll("p")].find((node) => node.textContent === "First paragraph.")!.parentElement!;
-    return [...root.querySelectorAll("*")].map((node) => getComputedStyle(node, "::after").content);
-  });
-  expect(cursor.every((content) => content === "none" || content === "normal")).toBe(true);
-
-  // A block that arrives while the reply streams starts transparent and settles.
-  snapshot.messages = reply("First paragraph.\n\n- one\n- two\n\nSecond paragraph.");
-  const opacities = await page.evaluate(async (next) => {
-    const first = [...document.querySelectorAll("p")].find((node) => node.textContent === "First paragraph.")!;
-    const root = first.parentElement!;
-    (window as unknown as { __fadeEmit: (value: unknown) => void }).__fadeEmit(next);
-    const seen: number[] = [];
-    const end = performance.now() + 900;
-    while (performance.now() < end) {
-      await new Promise(requestAnimationFrame);
-      const block = [...root.children].find((node) => node.textContent === "Second paragraph.");
-      if (block) seen.push(Number(getComputedStyle(block).opacity));
-    }
-    return { seen, first: Number(getComputedStyle(first).opacity) };
-  }, snapshot);
-  expect(opacities.seen[0]).toBeLessThan(0.5);
-  expect(opacities.seen.at(-1)).toBe(1);
-  expect(opacities.first).toBe(1);
-
-  // A finished reply is not animated at all.
-  snapshot.status = "idle";
-  snapshot.activeTurn = null;
-  snapshot.state.isStreaming = false;
-  await page.evaluate((value) => (window as unknown as { __fadeEmit: (value: unknown) => void }).__fadeEmit(value), snapshot);
-  await expect(page.getByRole("button", { name: "Copy response", exact: true })).toHaveCount(1);
-  await expect(page.locator(".motion-stream-blocks")).toHaveCount(0);
 });
 
 test("preserves an OMP markdown answer through continuation, abort and reload", async ({
