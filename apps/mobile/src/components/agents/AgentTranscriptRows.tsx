@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import {
+  agentThoughtPreview,
   describeAgentActivity,
   describeAgentTool,
   type AgentActivityEntry,
@@ -70,6 +71,77 @@ function ActivityIcon({
   return <Ionicons name={name} size={16} color={colors.mutedForeground} />;
 }
 
+/** Reasoning between tool calls: one line until it is opened in place. */
+function AgentThoughtRow({
+  content,
+  live,
+  onToggle,
+}: {
+  content: string;
+  live: boolean;
+  onToggle?: () => void;
+}) {
+  const { colors, fonts } = useTheme();
+  const [open, setOpen] = useState(false);
+  const preview = agentThoughtPreview(content);
+  const label = live ? "Thinking" : "Thought";
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={preview || undefined}
+        accessibilityState={{ expanded: open }}
+        onPress={() => {
+          onToggle?.();
+          setOpen((current) => !current);
+        }}
+        style={({ pressed }) => ({
+          minHeight: 44,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          borderRadius: 10,
+          paddingHorizontal: 6,
+          paddingVertical: 6,
+          backgroundColor: pressed ? colors.muted : "transparent",
+        })}
+      >
+        <Ionicons name="bulb-outline" size={16} color={colors.mutedForeground} />
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <Text
+            style={{
+              color: colors.foreground,
+              fontFamily: fonts.sansMedium,
+              fontSize: 13,
+            }}
+          >
+            {label}
+          </Text>
+          {!open && !!preview && (
+            <Text
+              numberOfLines={1}
+              style={{
+                color: colors.mutedForeground,
+                fontFamily: fonts.sansRegular,
+                fontSize: 12,
+              }}
+            >
+              {preview}
+            </Text>
+          )}
+        </View>
+        <Chevron open={open} />
+      </Pressable>
+      {open && (
+        <View style={{ paddingHorizontal: 6, paddingBottom: 6 }}>
+          <MarkdownBody text={content} variant="thinking" fuzzyLinks={false} />
+        </View>
+      )}
+    </View>
+  );
+}
+
 /** One collapsible group of tool calls, thinking, or subagent work. */
 export function AgentActivityGroup({
   entries,
@@ -89,6 +161,7 @@ export function AgentActivityGroup({
     (entry) => entry.type === "tool" && entry.id === selectedToolId,
   );
   const selectedTool = selected?.type === "tool" ? selected.tool : undefined;
+  const hasTools = entries.some((entry) => entry.type === "tool");
   return (
     <View>
       <Pressable
@@ -133,9 +206,16 @@ export function AgentActivityGroup({
       </Pressable>
       {expanded && (
         <View style={[styles.rail, { borderLeftColor: colors.border }]}>
-          {entries.map((entry) => {
+          {entries.map((entry, index) => {
             if (entry.type === "thinking")
-              return (
+              return hasTools ? (
+                <AgentThoughtRow
+                  key={entry.id}
+                  content={entry.content}
+                  live={active && index === entries.length - 1}
+                  onToggle={onToggle}
+                />
+              ) : (
                 <View key={entry.id} style={{ paddingVertical: 4 }}>
                   <MarkdownBody text={entry.content} variant="thinking" fuzzyLinks={false} />
                 </View>

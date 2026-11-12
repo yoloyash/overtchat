@@ -431,7 +431,7 @@ export function agentActivitySequencePosition(
   return "single";
 }
 
-function isGroupableToolActivity(
+function isGroupableActivity(
   item: AgentTranscriptItem,
 ): item is Extract<AgentTranscriptItem, { type: "activity" }> {
   return (
@@ -439,15 +439,16 @@ function isGroupableToolActivity(
     item.entries.length > 0 &&
     item.entries.every(
       (entry) =>
-        entry.type === "tool" && normalizedToolName(entry.tool.name) !== "speak",
+        entry.type === "thinking" ||
+        (entry.type === "tool" && normalizedToolName(entry.tool.name) !== "speak"),
     )
   );
 }
 
 /**
- * Consecutive tool calls share one expandable summary in the transcript. The
- * raw entries remain intact inside that summary, and any non-tool item seals
- * the current run.
+ * Consecutive tool calls share one expandable summary in the transcript, and
+ * the reasoning between them stays inside it as steps. The raw entries remain
+ * intact inside that summary, and any other item seals the current run.
  */
 export function groupAgentToolActivity(
   items: readonly AgentTranscriptItem[],
@@ -471,7 +472,7 @@ export function groupAgentToolActivity(
   };
 
   for (const item of items) {
-    if (isGroupableToolActivity(item)) {
+    if (isGroupableActivity(item)) {
       if (pending.length && pending[0].turnId !== item.turnId) flush();
       pending.push(item);
       continue;
@@ -1393,13 +1394,16 @@ export function describeAgentActivity(
   }
 
   const statuses = tools.map((tool) => agentToolStatus(tool, active));
-  const status: AgentToolStatus = statuses.includes("running")
-    ? "running"
-    : statuses.includes("failed")
-      ? "failed"
-      : statuses.includes("stopped")
-        ? "stopped"
-        : "completed";
+  // Reasoning after the last tool call keeps a live group running.
+  const status: AgentToolStatus =
+    statuses.includes("running") ||
+    (active && entries.at(-1)?.type === "thinking")
+      ? "running"
+      : statuses.includes("failed")
+        ? "failed"
+        : statuses.includes("stopped")
+          ? "stopped"
+          : "completed";
 
   const editedFiles = new Set<string>();
   const readFiles = new Set<string>();
@@ -1452,6 +1456,22 @@ export function describeAgentActivity(
     secondary: null,
     status,
   };
+}
+
+/** One line of a reasoning block, for the step that stands in for it. */
+export function agentThoughtPreview(content: string): string {
+  const line = content
+    .split("\n")
+    .map((candidate) =>
+      candidate
+        .replace(/^\s*(?:#{1,6}|>|[-*+]|\d+[.)])\s+/u, "")
+        .replace(/[*_`]+/gu, "")
+        .replace(/\s+/gu, " ")
+        .trim(),
+    )
+    .find(Boolean);
+  if (!line) return "";
+  return line.length > 160 ? `${line.slice(0, 159).trimEnd()}…` : line;
 }
 
 export function formatAgentToolDetail(tool: AgentToolActivity): string {

@@ -2800,6 +2800,136 @@ test("folds long completed work smoothly, anchors disclosures, and respects redu
   await page.screenshot({ path: testInfo.outputPath("completed-work.png") });
 });
 
+test("keeps reasoning inside its tool group, opens steps without nested scrolling, and folds long prompts", async ({ page }, testInfo) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Steps Tester");
+  await page.locator("#email").fill("steps@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const prompt = Array.from({ length: 40 }, (_, i) => `Prompt line ${i}`).join("\n");
+  const script = [
+    "node - <<'JS'",
+    `console.log("${"migrations ".repeat(30)}");`,
+    ...Array.from({ length: 6 }, (_, i) => `console.log("line ${i}");`),
+    "JS",
+  ].join("\n");
+  const call = (id: string, name: string, args: Record<string, unknown>, timestamp: number) => ({
+    role: "assistant", id: `call-${id}`, timestamp,
+    content: [{ type: "toolCall", id, name, arguments: args }],
+  });
+  const result = (id: string, name: string, text: string, timestamp: number, isError = false) => ({
+    role: "toolResult", toolCallId: id, toolName: name, isError, timestamp,
+    content: [{ type: "text", text }],
+  });
+  const thought = (id: string, thinking: string, timestamp: number) => ({
+    role: "assistant", id, timestamp, content: [{ type: "thinking", id, thinking }],
+  });
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  snapshot.messages = [
+    { role: "user", id: "user", content: prompt, timestamp: 100000 },
+    thought("thought-1", "**Reading the runtime first.**\n\nThen I will run the checks.", 101000),
+    call("read", "read", { path: "apps/web/runtime.ts" }, 102000),
+    result("read", "read", "export const state = 'ready';", 103000),
+    call("resource", "read", { path: "proc://bg_22" }, 104000),
+    result("resource", "read", "exited", 105000),
+    thought("thought-2", "The migration count needs a direct query.", 106000),
+    call("query", "bash", { command: script }, 107000),
+    result("query", "bash", Array.from({ length: 40 }, (_, i) => `output ${i}`).join("\n"), 108000, true),
+    thought("thought-3", "That failed, so I will retry it another way.", 109000),
+    call("retry", "bash", { command: "npm test" }, 110000),
+    result("retry", "bash", "passed", 111000),
+    ...Array.from({ length: 12 }, (_, i) => [
+      call(`grep-${i}`, "grep", { pattern: `state ${i}`, path: "apps/web" }, 112000 + i * 2),
+      result(`grep-${i}`, "grep", "apps/web/runtime.ts", 112001 + i * 2),
+    ]).flat(),
+    { role: "assistant", id: "answer", timestamp: 165000, content: [{ type: "text", text: "Everything is in place." }] },
+  ];
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() {
+        super();
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  // A long prompt is folded, and can be copied without selecting it.
+  const bubble = page.getByTestId("agent-user-message");
+  await expect(bubble.getByRole("button", { name: "Show more" })).toBeVisible();
+  expect((await bubble.boundingBox())!.height).toBeLessThan(320);
+  await bubble.getByRole("button", { name: "Show more" }).click();
+  await expect(bubble.getByRole("button", { name: "Show less" })).toBeVisible();
+  expect((await bubble.boundingBox())!.height).toBeGreaterThan(700);
+  await bubble.getByRole("button", { name: "Show less" }).click();
+  await bubble.hover();
+  await expect(page.getByRole("button", { name: "Copy message" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("user-message-folded.png") });
+
+  // The turn's reasoning and tool calls are one group, counted by its tools.
+  await page.getByRole("button", { name: "Worked for 1m 5s", exact: true }).click();
+  await expect(page.locator('[data-testid="agent-activity-group"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Thoughts" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Ran 2 commands, read 2 files, and searched 12 times, 1 failed, failed" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  const thoughts = page.getByTestId("agent-thought-activity");
+  await expect(thoughts).toHaveCount(3);
+  await expect(thoughts.first()).toContainText("Reading the runtime first.");
+  await expect(page.getByText("Then I will run the checks.")).toHaveCount(0);
+  await thoughts.first().getByRole("button").click();
+  await expect(page.getByText("Then I will run the checks.")).toBeVisible();
+  await thoughts.first().getByRole("button").click();
+
+  // Step icons sit on the rail, inside the scroller that would clip them.
+  const details = page.getByTestId("agent-activity-details");
+  const clipped = await details.evaluate((scroller) => {
+    const edge = scroller.getBoundingClientRect().left;
+    return [...scroller.querySelectorAll("svg")].filter(
+      (icon) => icon.getBoundingClientRect().left < edge,
+    ).length;
+  });
+  expect(clipped).toBe(0);
+
+  // The failed command is open. The step list is long enough to scroll, and
+  // its cap has grown by the open detail, which wraps instead of scrolling
+  // sideways.
+  await expect(page.getByText("output 0", { exact: false }).first()).toBeVisible();
+  const sizes = await details.evaluate((scroller) => {
+    const command = [...scroller.querySelectorAll("pre")].find((pre) => pre.textContent?.startsWith("$ node"))!;
+    const detail = scroller.querySelector<HTMLElement>("[data-agent-step-detail]")!;
+    return {
+      scrolls: scroller.scrollHeight > scroller.clientHeight,
+      cap: parseFloat(getComputedStyle(scroller).maxHeight),
+      detail: detail.offsetHeight,
+      sideways: command.scrollWidth - command.clientWidth,
+    };
+  });
+  expect(sizes.scrolls).toBe(true);
+  expect(sizes.detail).toBeGreaterThan(200);
+  expect(Math.abs(sizes.cap - (400 + sizes.detail))).toBeLessThanOrEqual(1);
+  expect(sizes.sideways).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("activity-steps.png") });
+
+  // A file step opens its file beside the transcript; a resource URL does not.
+  await expect(page.getByRole("button", { name: "Open proc://bg_22" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Read: apps/web/runtime.ts, completed" }).hover();
+  await page.screenshot({ path: testInfo.outputPath("activity-steps-hover.png") });
+  await page.getByRole("button", { name: "Open apps/web/runtime.ts" }).click();
+  await expect(page.getByTestId("agent-workspace-pane")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("activity-steps-file-open.png") });
+});
+
 test("preserves an OMP markdown answer through continuation, abort and reload", async ({
   page,
 }, testInfo) => {

@@ -653,11 +653,19 @@ function AgentSpeakButton({
   );
 }
 
-function AgentCopyButton({ text, disabled }: { text: string; disabled: boolean }) {
+function AgentCopyButton({
+  text,
+  disabled,
+  subject = "response",
+}: {
+  text: string;
+  disabled: boolean;
+  subject?: "response" | "message";
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <MessageActionButton
-      label={copied ? "Copied response" : "Copy response"}
+      label={copied ? `Copied ${subject}` : `Copy ${subject}`}
       icon={copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
       disabled={disabled}
       onClick={() => {
@@ -795,6 +803,7 @@ function UserMessage({
         ];
       })
     : [];
+  const rewindable = !!messageId && !messageId.startsWith("submission:");
   return (
     <div className="group/user relative flex flex-col items-end gap-2">
       {images.map((image, index) => (
@@ -808,21 +817,84 @@ function UserMessage({
       ))}
       {(text || images.length > 0) && (
         <div className="relative min-w-0 max-w-[80%]">
-          {text && (
-            <div className="rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
-              {text}
-            </div>
-          )}
-          {messageId && !messageId.startsWith("submission:") && (
-            <div className="absolute right-full bottom-0 mr-1 opacity-0 motion-opacity group-hover/user:opacity-100 group-focus-within/user:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:opacity-100">
-              <AgentRewindMenu
-                options={rewindOptions}
-                disabled={actionsDisabled}
-                onRewind={(mode) => onRewindMessage(messageId, mode)}
-              />
+          {text && <UserMessageText text={text} />}
+          {(text || rewindable) && (
+            <div className="absolute right-full bottom-0 mr-1 flex items-center gap-0.5 opacity-0 motion-opacity group-hover/user:opacity-100 group-focus-within/user:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:opacity-100">
+              {rewindable && messageId && (
+                <AgentRewindMenu
+                  options={rewindOptions}
+                  disabled={actionsDisabled}
+                  onRewind={(mode) => onRewindMessage(messageId, mode)}
+                />
+              )}
+              {text && (
+                <AgentCopyButton text={text} disabled={false} subject="message" />
+              )}
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** A prompt taller than this is folded to `USER_MESSAGE_FOLDED_HEIGHT`. */
+const USER_MESSAGE_FOLD_THRESHOLD = 360;
+const USER_MESSAGE_FOLDED_HEIGHT = 240;
+
+/** A prompt's text. A long one is folded so the reply stays in reach. */
+function UserMessageText({ text }: { text: string }) {
+  const body = useRef<HTMLDivElement>(null);
+  const [tall, setTall] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  // Measured before paint, so a long prompt never shows at full height first.
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (!element) return;
+    // scrollHeight is the full text height whether or not it is folded.
+    const measure = () =>
+      setTall(element.scrollHeight > USER_MESSAGE_FOLD_THRESHOLD);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const folded = tall && !expanded;
+  return (
+    <div
+      className="rounded-2xl bg-secondary px-4 py-2.5 text-sm text-secondary-foreground"
+      data-testid="agent-user-message"
+    >
+      <div
+        ref={body}
+        className={cn(
+          "whitespace-pre-wrap wrap-anywhere",
+          folded &&
+            "overflow-hidden [mask-image:linear-gradient(to_bottom,black_calc(100%-3rem),transparent)]",
+        )}
+        style={folded ? { maxHeight: USER_MESSAGE_FOLDED_HEIGHT } : undefined}
+      >
+        {text}
+      </div>
+      {tall && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={(event) => {
+            const bubble = event.currentTarget.parentElement;
+            setExpanded((current) => !current);
+            // Folding a prompt read from its end must not leave it above the
+            // viewport.
+            if (expanded) {
+              requestAnimationFrame(() =>
+                bubble?.scrollIntoView({ block: "nearest" }),
+              );
+            }
+          }}
+          className="mt-1.5 cursor-pointer text-xs font-medium text-muted-foreground motion-colors hover:text-foreground"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
       )}
     </div>
   );

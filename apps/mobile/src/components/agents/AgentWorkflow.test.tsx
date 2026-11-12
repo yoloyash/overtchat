@@ -1688,7 +1688,7 @@ describe("agent presentation regressions", () => {
     expect(container.textContent).toContain("The agent stopped unexpectedly.");
   });
 
-  it("settles earlier work in a running turn and keeps only the newest row live", async () => {
+  it("keeps a running turn's reasoning and tool calls in one live group", async () => {
     mocks.snapshot!.status = "running";
     mocks.snapshot!.messages = [
       { role: "user", id: "current-user", content: "Check the files" },
@@ -1698,16 +1698,22 @@ describe("agent presentation regressions", () => {
       { role: "assistant", id: "think-2", content: [{ type: "thinking", thinking: "Now read it." }] },
     ];
     await render();
-    expect(container.textContent).toContain("Thoughts");
-    expect(container.textContent).toContain("Thinking");
-    expect(container.textContent?.match(/Thinking/g)).toHaveLength(1);
+    expect(container.textContent).toContain("Ran 1 command");
+    expect(container.textContent).not.toContain("Thoughts");
+    expect(container.querySelectorAll('[role="progressbar"][aria-label="Working"]')).toHaveLength(1);
     mocks.snapshot!.messages = [
       ...mocks.snapshot!.messages,
       { role: "assistant", id: "tool-2", content: [{ type: "toolCall", id: "call-2", name: "bash", arguments: { command: "cat README.md" } }] },
     ];
     await render();
-    expect(container.textContent).not.toContain("Thinking");
-    expect(container.textContent?.match(/Thoughts/g)).toHaveLength(2);
+    expect(container.textContent).toContain("Ran 2 commands");
+    expect(container.querySelectorAll('[role="progressbar"][aria-label="Working"]')).toHaveLength(1);
+    // Reasoning is a one-line step inside the group until it is opened.
+    await click("Ran 2 commands");
+    expect(container.querySelectorAll('button[aria-label="Thought"]')).toHaveLength(2);
+    expect(container.textContent).toContain("Look first.");
+    await click("Thought");
+    expect(container.textContent?.match(/Look first\./g)).toHaveLength(1);
   });
 });
 
