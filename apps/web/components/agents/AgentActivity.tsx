@@ -30,6 +30,7 @@ import {
 } from "@/lib/agents/presentation";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { AgentDiffLines } from "./AgentDiffLines";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -585,23 +586,7 @@ function DiffSurface({ value }: { value: string }) {
         Changes
       </div>
       <pre className="max-h-80 overflow-auto bg-background/50 py-2.5 font-mono text-[11px] leading-5">
-        {value.split("\n").map((line, index) => (
-          <span
-            key={index}
-            className={cn(
-              "block min-w-max px-3 whitespace-pre",
-              line.startsWith("+") &&
-                !line.startsWith("+++") &&
-                "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-              line.startsWith("-") &&
-                !line.startsWith("---") &&
-                "bg-red-500/10 text-red-700 dark:text-red-300",
-              line.startsWith("@@") && "text-muted-foreground",
-            )}
-          >
-            {line || " "}
-          </span>
-        ))}
+        <AgentDiffLines value={value} />
       </pre>
     </div>
   );

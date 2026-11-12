@@ -318,8 +318,63 @@ export type AgentWorkspaceTextFilePreview = {
   modifiedAt: number;
 };
 
+/** Sent only when the request asked for images (`workspace-files-v2`). */
+export type AgentWorkspaceImageFilePreview = {
+  kind: "image";
+  encoding: "base64";
+  mediaType: AgentWorkspaceImageMediaType;
+  path: string;
+  content: string;
+  size: number;
+  modifiedAt: number;
+};
+
+/** Image files the workspace preview shows, by lower-case file extension. */
+export const AGENT_WORKSPACE_IMAGE_MEDIA_TYPES = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+} as const;
+export type AgentWorkspaceImageMediaType =
+  (typeof AGENT_WORKSPACE_IMAGE_MEDIA_TYPES)[keyof typeof AGENT_WORKSPACE_IMAGE_MEDIA_TYPES];
+
+/** Largest image the workspace preview reads. */
+export const AGENT_WORKSPACE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** The image type a workspace path previews as, from its extension. */
+export function agentWorkspaceImageMediaType(
+  filePath: string,
+): AgentWorkspaceImageMediaType | null {
+  const name = filePath.split(/[\\/]/u).at(-1)?.toLowerCase() ?? "";
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const extension = name.slice(dot + 1);
+  return Object.hasOwn(AGENT_WORKSPACE_IMAGE_MEDIA_TYPES, extension)
+    ? AGENT_WORKSPACE_IMAGE_MEDIA_TYPES[
+        extension as keyof typeof AGENT_WORKSPACE_IMAGE_MEDIA_TYPES
+      ]
+    : null;
+}
+
 /** Extensible read-only preview payload; future content kinds add union members. */
-export type AgentWorkspaceFilePreview = AgentWorkspaceTextFilePreview;
+export type AgentWorkspaceFilePreview =
+  | AgentWorkspaceTextFilePreview
+  | AgentWorkspaceImageFilePreview;
+
+/** Largest patch a workspace file diff returns before it is cut short. */
+export const AGENT_WORKSPACE_FILE_DIFF_MAX_BYTES = 512 * 1024;
+
+/** One file's uncommitted changes against the last commit (`workspace-files-v2`). */
+export type AgentWorkspaceFileDiff = {
+  path: string;
+  /** Unified diff text; empty when nothing changed or the file is binary. */
+  patch: string;
+  /** True when the patch was cut at the size limit. */
+  truncated: boolean;
+  binary: boolean;
+};
 
 export const AGENT_TERMINAL_MIN_COLUMNS = 2;
 export const AGENT_TERMINAL_MAX_COLUMNS = 1_000;

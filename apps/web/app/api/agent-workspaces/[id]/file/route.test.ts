@@ -77,6 +77,29 @@ describe("agent workspace file route", () => {
     });
   });
 
+  it("asks for images only when the client can show them and the connector can read them", async () => {
+    const url =
+      "http://server.test/api/agent-workspaces/workspace/file?path=shot.png&images=1";
+    expect((await GET(new Request(url), context)).status).toBe(200);
+    expect(mocks.daemonRequest).toHaveBeenCalledWith(
+      "connector",
+      expect.objectContaining({ path: "shot.png", images: true }),
+    );
+    expect(mocks.supports).toHaveBeenCalledWith("connector", "workspace-files-v2");
+
+    mocks.daemonRequest.mockClear();
+    mocks.supports.mockImplementation(
+      (_connector: string, capability: string) =>
+        capability === "workspace-files-v1",
+    );
+    const response = await GET(new Request(url), context);
+    expect(response.status).toBe(426);
+    expect(await response.json()).toEqual({
+      error: "Update the OvertChat Host Connector to preview images.",
+    });
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
+  });
+
   it("rejects missing paths and incompatible connectors", async () => {
     expect(
       (

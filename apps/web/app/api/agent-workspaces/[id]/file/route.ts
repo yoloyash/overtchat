@@ -33,9 +33,22 @@ export async function GET(
     );
   }
 
-  const filePath = new URL(req.url).searchParams.get("path");
+  const query = new URL(req.url).searchParams;
+  const filePath = query.get("path");
   if (!filePath) {
     return Response.json({ error: "File path is required." }, { status: 400 });
+  }
+  // Only clients that can show an image ask for one; the rest keep getting text.
+  const images = query.get("images") === "1";
+  if (
+    images &&
+    hostConnectorBroker.isOnline(owned.host.connectorId) &&
+    !hostConnectorBroker.supports(owned.host.connectorId, "workspace-files-v2")
+  ) {
+    return Response.json(
+      { error: "Update the OvertChat Host Connector to preview images." },
+      { status: 426 },
+    );
   }
   try {
     const file = await hostConnectorBroker.request(
@@ -45,6 +58,7 @@ export async function GET(
         target: daemonTarget(owned.host, owned.connection.shellMode),
         root: owned.workspace.path,
         path: filePath,
+        ...(images ? { images: true } : {}),
       },
     );
     return Response.json(
