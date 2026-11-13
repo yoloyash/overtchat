@@ -38,7 +38,7 @@ import {
   agentActivitySequencePosition,
   agentActiveTurnStart,
   agentResponseActions,
-  describeAgentActivity,
+  agentActivityIsLive,
   presentAgentError,
   projectAgentTranscript,
   foldAgentTranscript,
@@ -255,7 +255,7 @@ export function AgentMessageList({
   const activityAlreadyVisible =
     (activity === "compacting" && transcript.some((item) => item.type === "compaction" && item.active)) ||
     (activity === "working" && streaming && trailingItem?.type === "activity" &&
-      describeAgentActivity(trailingItem.entries, true).status === "running");
+      agentActivityIsLive(trailingItem.entries));
 
   return (
     <div
