@@ -43,6 +43,7 @@ import {
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { AgentDiffLines } from "./AgentDiffLines";
+import { AgentDisclosureContext } from "./AgentTranscriptMotion";
 import { useAgentWorkspaceNavigation } from "./AgentWorkspaceNavigationContext";
 
 type UnknownRecord = Record<string, unknown>;
@@ -134,6 +135,7 @@ export function AgentActivityGroup({
   const presentation = describeAgentActivity(entries, active);
   const hasError = presentation.status === "failed";
   const [open, setOpen] = useState(hasError);
+  const holdDisclosure = useContext(AgentDisclosureContext);
   const [openDetailHeight, reportDetailHeight] = useOpenDetailHeight();
   const singleEntry = entries.length === 1 ? entries[0] : null;
   if (singleEntry?.type === "subagent") {
@@ -165,7 +167,10 @@ export function AgentActivityGroup({
     >
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={(event) => {
+          holdDisclosure(event.currentTarget);
+          setOpen((current) => !current);
+        }}
         aria-expanded={open}
         aria-label={
           toolSummary
@@ -306,6 +311,7 @@ function SubagentActivityStep({
         ? "stopped"
         : "completed";
   const [open, setOpen] = useState(status === "failed");
+  const holdDisclosure = useContext(AgentDisclosureContext);
   const { label, summary } = describeSubagentActivity(activity);
   const canOpen =
     Boolean(activity.prompt) ||
@@ -316,7 +322,11 @@ function SubagentActivityStep({
     <div data-testid="agent-subagent-activity">
       <button
         type="button"
-        onClick={() => canOpen && setOpen((current) => !current)}
+        onClick={(event) => {
+          if (!canOpen) return;
+          holdDisclosure(event.currentTarget);
+          setOpen((current) => !current);
+        }}
         disabled={!canOpen}
         aria-expanded={canOpen ? open : undefined}
         className={cn(
@@ -407,13 +417,17 @@ function ThoughtActivityStep({
   live: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const holdDisclosure = useContext(AgentDisclosureContext);
   const preview = agentThoughtPreview(content);
 
   return (
     <div data-testid="agent-thought-activity">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={(event) => {
+          holdDisclosure(event.currentTarget);
+          setOpen((current) => !current);
+        }}
         aria-expanded={open}
         className="group flex min-h-6 w-full cursor-pointer items-start gap-2 rounded-md py-0.5 text-left text-muted-foreground motion-colors hover:text-foreground"
       >
@@ -524,6 +538,7 @@ function ToolActivityStep({
   const status = agentToolStatus(tool, active);
   const detail = toolDetail(tool, presentation.category);
   const [open, setOpen] = useState(status === "failed");
+  const holdDisclosure = useContext(AgentDisclosureContext);
   const canOpen = detail !== null;
   const navigation = useAgentWorkspaceNavigation();
   const filePath =
@@ -541,7 +556,11 @@ function ToolActivityStep({
     <div className="group/step relative" data-testid="agent-tool-activity">
       <button
         type="button"
-        onClick={() => canOpen && setOpen((current) => !current)}
+        onClick={(event) => {
+          if (!canOpen) return;
+          holdDisclosure(event.currentTarget);
+          setOpen((current) => !current);
+        }}
         disabled={!canOpen}
         aria-expanded={canOpen ? open : undefined}
         aria-label={`${presentation.label}${presentation.summary ? `: ${presentation.summary}` : ""}, ${status}`}

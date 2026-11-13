@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { groupAgentsByWorkspace } from "./helpers/agent-attention";
-import { _electron, expect, test, type ElectronApplication, type Locator } from "@playwright/test";
+import { _electron, expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
@@ -2928,6 +2928,162 @@ test("keeps reasoning inside its tool group, opens steps without nested scrollin
   await page.getByRole("button", { name: "Open apps/web/runtime.ts" }).click();
   await expect(page.getByTestId("agent-workspace-pane")).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("activity-steps-file-open.png") });
+});
+
+type ScrollSnapshot = ReturnType<typeof runtimeSnapshot>;
+
+/** Opens a session whose reply the test can grow like a stream. */
+async function openScrollSession(page: Page, snapshot: ScrollSnapshot) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Scroll Tester");
+  await page.locator("#email").fill("scroll@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    const sources: EventTarget[] = [];
+    let sequence = 0;
+    let timer = 0;
+    let streamed: unknown = null;
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor(url: string) {
+        super();
+        if (url.includes("/api/agent-sessions/")) sources.push(this);
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      close() { const i = sources.indexOf(this); if (i >= 0) sources.splice(i, 1); }
+    }
+    const emit = (snapshot: unknown) => {
+      sequence += 1;
+      for (const source of sources) {
+        source.dispatchEvent(new MessageEvent("runtime", {
+          data: JSON.stringify({ epoch: "scroll", sequence, type: "snapshot", data: snapshot }),
+        }));
+      }
+    };
+    Object.assign(window, {
+      EventSource: FakeEventSource,
+      __scrollEmit: emit,
+      // Grows the last assistant message every 40ms, like a streamed reply.
+      __scrollStream: (snapshot: { messages: Array<{ content: Array<{ text: string }> | string }> }) => {
+        window.clearInterval(timer);
+        streamed = snapshot;
+        let line = 0;
+        timer = window.setInterval(() => {
+          line += 1;
+          const part = (snapshot.messages.at(-1)!.content as Array<{ text: string }>)[0]!;
+          part.text += `\n\nLine ${line}`;
+          emit(snapshot);
+        }, 40);
+      },
+      // Returns the snapshot as it stands, so later states build on what is on screen.
+      __scrollStop: () => {
+        window.clearInterval(timer);
+        return streamed;
+      },
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+  await expect(page.getByText("Line 0", { exact: true })).toBeVisible();
+  const viewport = page.getByTestId("agent-message-list").locator("> div").first();
+  const gap = () => viewport.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight);
+  const toLatest = page.getByRole("button", { name: "Scroll to bottom", exact: true });
+  const stream = (value: ScrollSnapshot) =>
+    page.evaluate((streaming) => (window as unknown as { __scrollStream: (value: unknown) => void }).__scrollStream(streaming), value);
+  const stopStream = () =>
+    page.evaluate(() => (window as unknown as { __scrollStop: () => unknown }).__scrollStop()) as Promise<ScrollSnapshot>;
+  return { viewport, gap, toLatest, stream, stopStream };
+}
+
+test("stops following on upward input, returns for a new prompt, and holds an opened tool group in place", async ({ page }) => {
+  const code = ["```ts", ...Array.from({ length: 30 }, (_, i) => `const value${i} = ${i};`), "```"].join("\n");
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.messages = [
+    { role: "user", id: "user", content: "Explain the limiter", timestamp: 100000 },
+    { role: "assistant", id: "answer", timestamp: 101000, content: [{ type: "text", text: `Here is the code.\n\n${code}\n\nLine 0` }] },
+  ];
+  const { gap, toLatest, stream, stopStream } = await openScrollSession(page, snapshot);
+
+  // Upward input over a nested scroller (a code block) must release the view while the reply grows.
+  await stream(snapshot);
+  await expect(page.getByText("Line 12", { exact: true })).toBeVisible();
+  await expect.poll(gap).toBeLessThan(40);
+  const block = (await page.locator("pre").first().boundingBox())!;
+  await page.mouse.move(block.x + 40, Math.max(block.y + 20, 120));
+  await page.mouse.wheel(0, -300);
+  await expect(toLatest).toBeVisible();
+  await page.waitForTimeout(600);
+  expect(await gap()).toBeGreaterThan(250);
+  await expect(toLatest).toBeVisible();
+
+  // A new prompt returns the view to its reply.
+  const next = await stopStream();
+  expect(await gap()).toBeGreaterThan(250);
+  next.messages = [
+    ...next.messages,
+    { role: "user", id: "user-2", content: "And the refill?", timestamp: 200000 },
+    { role: "assistant", id: "answer-2", timestamp: 201000, content: [{ type: "text", text: "Reply 0" }] },
+  ];
+  await page.evaluate((streaming) => {
+    const api = window as unknown as { __scrollEmit: (value: unknown) => void; __scrollStream: (value: unknown) => void };
+    api.__scrollEmit(streaming);
+    api.__scrollStream(streaming);
+  }, next);
+  await expect(page.getByText("Line 8", { exact: true }).last()).toBeVisible();
+  await expect.poll(gap).toBeLessThan(40);
+  await expect(toLatest).toHaveCount(0);
+
+  // Opening a tool group at the bottom keeps the pressed row where it is.
+  const tools = await stopStream();
+  tools.messages = [
+    ...tools.messages,
+    ...Array.from({ length: 8 }, (_, i) => [
+      { role: "assistant", id: `call-${i}`, timestamp: 210000 + i * 2, content: [{ type: "toolCall", id: `tool-${i}`, name: "bash", arguments: { command: `echo ${i}` } }] },
+      { role: "toolResult", toolCallId: `tool-${i}`, toolName: "bash", isError: false, timestamp: 210001 + i * 2, content: [{ type: "text", text: `${i}` }] },
+    ]).flat(),
+  ];
+  await page.evaluate((value) => (window as unknown as { __scrollEmit: (value: unknown) => void }).__scrollEmit(value), tools);
+  const group = page.getByRole("button", { name: /^Ran 8 commands/ });
+  await expect(group).toBeVisible();
+  await expect.poll(gap).toBeLessThan(40);
+  const before = (await group.boundingBox())!.y;
+  await group.click();
+  await expect(group).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("agent-tool-activity")).toHaveCount(8);
+  await page.waitForTimeout(400);
+  expect(Math.abs((await group.boundingBox())!.y - before)).toBeLessThan(2);
+});
+
+test("keeps following when upward input has nowhere to go, and hears scroll keys from the page", async ({ page }) => {
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.messages = [
+    { role: "user", id: "user", content: "Explain the limiter", timestamp: 100000 },
+    { role: "assistant", id: "answer", timestamp: 101000, content: [{ type: "text", text: "Line 0" }] },
+  ];
+  const { viewport, gap, toLatest, stream } = await openScrollSession(page, snapshot);
+
+  // Nothing overflows yet, so scrolling up moves nothing and must not end the follow.
+  expect(await viewport.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThan(2);
+  const box = (await viewport.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 200);
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.press("PageUp");
+  await stream(snapshot);
+  await expect(page.getByText("Line 40", { exact: true })).toBeVisible();
+  await expect.poll(gap).toBeLessThan(40);
+  await expect(toLatest).toHaveCount(0);
+
+  // A press on the reply leaves focus on the page; its scroll keys still release the view.
+  await page.getByText("Line 38", { exact: true }).click();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  await page.keyboard.press("PageUp");
+  await expect(toLatest).toBeVisible();
+  await page.waitForTimeout(600);
+  expect(await gap()).toBeGreaterThan(250);
 });
 
 test("preserves an OMP markdown answer through continuation, abort and reload", async ({
