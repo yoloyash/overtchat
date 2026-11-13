@@ -1849,10 +1849,10 @@ test("shows durable turn activity without changing completed tool status", async
     name: "Ran 1 command, completed",
   });
   await expect(completedCommandSummary).toBeVisible();
-  const liveActivity = page.getByRole("button", {
-    name: "Edited 1 file and searched 1 time, running",
-  });
-  await expect(liveActivity).toBeVisible();
+  // The running turn's last group names the step it is on, not a count.
+  const liveActivity = page.locator('[data-agent-live-step="true"]');
+  await expect(liveActivity).toContainText("Searching");
+  await expect(liveActivity).toContainText("runtimeStatus");
   const completedCommand = page.getByRole("button", {
     name: "Terminal: printf done, completed",
   });
@@ -3123,8 +3123,8 @@ test("stops following on upward input, returns for a new prompt, and holds an op
     ]).flat(),
   ];
   await page.evaluate((value) => (window as unknown as { __scrollEmit: (value: unknown) => void }).__scrollEmit(value), tools);
-  const group = page.getByRole("button", { name: /^Ran 8 commands/ });
-  await expect(group).toBeVisible();
+  const group = page.locator('[data-agent-live-step="true"]');
+  await expect(group).toContainText("echo 7");
   await expect.poll(gap).toBeLessThan(40);
   const before = (await group.boundingBox())!.y;
   await group.click();
@@ -3162,7 +3162,7 @@ test("keeps following when upward input has nowhere to go, and hears scroll keys
   expect(await gap()).toBeGreaterThan(250);
 });
 
-test("times a running turn in its header and hands that place to the turn summary", async ({ page }, testInfo) => {
+test("times a running turn in its header, names its live step, and hands the header to the turn summary", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(await setupUrl());
   await page.locator("#name").fill("Header Tester");
@@ -3176,6 +3176,7 @@ test("times a running turn in its header and hands that place to the turn summar
   const progress = { role: "assistant", id: "progress", timestamp: 103000, content: [{ type: "text", text: "Looking at the runtime first." }] };
   const call = { role: "assistant", id: "call", timestamp: 104000, content: [{ type: "toolCall", id: "tool", name: "bash", arguments: { command: "npm test" } }] };
   const result = { role: "toolResult", toolCallId: "tool", toolName: "bash", isError: false, timestamp: 105000, content: [{ type: "text", text: "passed" }] };
+  const thought = { role: "assistant", id: "thought", timestamp: 103500, content: [{ type: "thinking", id: "thought", thinking: "**Running the suite**\n\nIt should pass." }] };
   const answer = { role: "assistant", id: "answer", timestamp: 165000, content: [{ type: "text", text: "Everything passes." }] };
   snapshot.messages = [prompt];
   await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
@@ -3226,10 +3227,40 @@ test("times a running turn in its header and hands that place to the turn summar
   await expect(live).toHaveText("Thinking");
   expect(await top(live)).toBeGreaterThan(await top(page.getByText("Looking at the runtime first.", { exact: true })));
   await emit([prompt, progress, call]);
-  await expect(page.getByRole("button", { name: /^Ran 1 command, running$/ })).toBeVisible();
+  const step = page.locator('[data-agent-live-step="true"]');
+  const thoughtLine = page.getByTestId("agent-live-thought");
+  await expect(step).toContainText("Running");
+  await expect(step).toContainText("npm test");
+  await expect(thoughtLine).toHaveCount(0);
   await expect(live).toHaveCount(0);
   expect(Math.abs((await top(header)) - headerTop)).toBeLessThan(2);
+
+  // The group's newest thought leads the step, by its heading.
+  await emit([prompt, progress, thought, call]);
+  await expect(thoughtLine).toHaveText("Running the suite");
+  await expect(step).toContainText("npm test");
+  await expect(live).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("running-turn.png") });
+
+  // Between steps the finished one stays as the live row, so nothing blinks.
+  await emit([prompt, progress, thought, call, result]);
+  await expect(step).toContainText("Terminal");
+  await expect(step).toContainText("npm test");
+  await expect(live).toHaveCount(0);
+
+  // Opened, the group keeps its live line and lists every step under it.
+  await step.click();
+  await expect(step).toHaveAttribute("aria-expanded", "true");
+  await expect(thoughtLine).toHaveCount(0);
+  await expect(page.getByTestId("agent-thought-activity")).toBeVisible();
+  await step.click();
+  await expect(thoughtLine).toHaveText("Running the suite");
+
+  // A failed last step is not progress: the count returns, and the turn's own row.
+  await emit([prompt, progress, thought, call, { ...result, isError: true }]);
+  await expect(page.getByRole("button", { name: "Ran 1 command, 1 failed, failed" })).toBeVisible();
+  await expect(step).toHaveCount(0);
+  await expect(live).toHaveText("Thinking");
 
   // The answer streams under the finished tool; the live row returns after it.
   await emit([prompt, progress, call, result, answer]);

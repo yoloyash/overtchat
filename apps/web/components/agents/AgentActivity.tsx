@@ -31,6 +31,7 @@ import {
   agentThoughtPreview,
   agentToolStatus,
   describeAgentActivity,
+  describeAgentLiveActivity,
   describeAgentTool,
   describeSubagentActivity,
   isSubagentRunning,
@@ -189,7 +190,9 @@ export function AgentActivityGroup({
   }
 
   const toolSummary = entries.some((entry) => entry.type === "tool");
-  const live = active && presentation.status === "running";
+  // The last group of a running turn shows the step it is on, not a count.
+  const liveActivity = active ? describeAgentLiveActivity(entries) : null;
+  const liveStep = liveActivity ? liveStepPresentation(liveActivity.step) : null;
   const hasDetailedSteps = entries.some(
     (entry) =>
       entry.type === "tool" ||
@@ -211,33 +214,57 @@ export function AgentActivityGroup({
         }}
         aria-expanded={open}
         aria-label={
-          toolSummary
-            ? `${presentation.label}, ${presentation.status}`
-            : undefined
+          liveStep
+            ? undefined
+            : toolSummary
+              ? `${presentation.label}, ${presentation.status}`
+              : undefined
         }
-        className="group flex min-h-7 w-full items-center gap-2 rounded-md py-0.5 pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
+        className="group flex w-full flex-col rounded-md pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
+        data-agent-live-step={liveStep ? "true" : undefined}
       >
-        <DisclosureLeadIcon open={open}>
-          <ActivityIcon
-            entries={entries}
-            status={presentation.status}
-            toolSummary={toolSummary}
-          />
-        </DisclosureLeadIcon>
-        <span className="min-w-0 flex flex-1 items-baseline gap-2">
+        {liveActivity?.thought && !open && (
           <span
-            className={cn(
-              "shrink-0 font-normal motion-colors group-hover:text-foreground",
-              live && !open && motionClasses.shimmer,
-            )}
+            className="flex w-full items-start gap-2 py-0.5"
+            data-testid="agent-live-thought"
           >
-            {presentation.label}
-          </span>
-          {presentation.secondary && (
-            <span className="min-w-0 truncate font-mono text-[11px]">
-              {presentation.secondary}
+            <Brain className="mt-0.5 size-3.5 shrink-0" />
+            <span className="line-clamp-4 min-w-0 leading-relaxed">
+              {liveActivity.thought}
             </span>
-          )}
+          </span>
+        )}
+        <span className="flex min-h-7 w-full items-center gap-2 py-0.5">
+          <DisclosureLeadIcon open={open}>
+            {liveStep ? (
+              liveStep.icon
+            ) : (
+              <ActivityIcon
+                entries={entries}
+                status={presentation.status}
+                toolSummary={toolSummary}
+              />
+            )}
+          </DisclosureLeadIcon>
+          <span className="min-w-0 flex flex-1 items-baseline gap-2">
+            <span
+              className={cn(
+                "shrink-0 font-normal motion-colors group-hover:text-foreground",
+                liveStep && motionClasses.shimmer,
+              )}
+            >
+              {liveStep ? liveStep.label : presentation.label}
+            </span>
+            {liveStep?.summary ? (
+              <span className="min-w-0 truncate font-mono text-[11px]">
+                {liveStep.summary}
+              </span>
+            ) : !liveStep && presentation.secondary ? (
+              <span className="min-w-0 truncate font-mono text-[11px]">
+                {presentation.secondary}
+              </span>
+            ) : null}
+          </span>
         </span>
       </button>
 
@@ -273,6 +300,27 @@ export function AgentActivityGroup({
       )}
     </div>
   );
+}
+
+/** The live group's one line: the step's own label, in the words its row uses. */
+function liveStepPresentation(step: AgentActivityEntry): {
+  icon: ReactNode;
+  label: string;
+  summary: string | null;
+} {
+  const iconClass = "size-3.5 shrink-0 text-muted-foreground";
+  if (step.type === "thinking") {
+    return { icon: <Brain className={iconClass} />, label: "Thinking", summary: null };
+  }
+  if (step.type === "subagent") {
+    return { icon: <Users className={iconClass} />, ...describeSubagentActivity(step.activity) };
+  }
+  const presentation = describeAgentTool(step.tool);
+  return {
+    icon: <ToolCategoryIcon category={presentation.category} className={iconClass} />,
+    label: toolStepLabel(presentation.category, agentToolStatus(step.tool, true)),
+    summary: presentation.summary,
+  };
 }
 
 function ActivityStep({

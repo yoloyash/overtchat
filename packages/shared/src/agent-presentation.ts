@@ -1474,6 +1474,80 @@ export function agentThoughtPreview(content: string): string {
   return line.length > 160 ? `${line.slice(0, 159).trimEnd()}…` : line;
 }
 
+/** The opening of a reasoning block: its bold heading, else its first sentence. */
+export function agentLiveThoughtLine(content: string): string {
+  const source = content.slice(0, 8192).trim();
+  const firstLine = source.split("\n", 1)[0]?.trim() ?? "";
+  const heading = /^\*\*([^*]+)\*\*$/u.exec(firstLine)?.[1];
+  const text = (heading ?? source)
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:#{1,6}|>|[-*+]|\d+[.)])\s+/u, ""))
+    .join(" ")
+    // A link keeps its text.
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/gu, "$1")
+    .replace(/[*`~]+/gu, "")
+    // Underscores mark emphasis only at a word's edge; inside a name they stay.
+    .replace(/(^|\s)_+|_+(?=\s|$)/gu, "$1")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (heading !== undefined) return text;
+  const end = /[.?!]["'”’)]?(?=\s)/u.exec(text);
+  return end ? text.slice(0, end.index + end[0].length) : text;
+}
+
+export type AgentLiveActivity = {
+  /** The step the turn is on: the newest one still running, else the newest. */
+  step: AgentActivityEntry;
+  /** The newest thought's opening line. */
+  thought: string | null;
+};
+
+function activityEntryStatus(entry: AgentActivityEntry): AgentToolStatus | null {
+  if (entry.type === "tool") return agentToolStatus(entry.tool, true);
+  if (entry.type !== "subagent") return null;
+  if (isSubagentRunning(entry.activity.status)) return "running";
+  return entry.activity.status === "failed" ? "failed" : "completed";
+}
+
+/**
+ * What the last group of a running turn is doing right now. Null when the
+ * group has nothing to show, or when its newest step failed with nothing
+ * else running: a failure is not progress.
+ */
+export function describeAgentLiveActivity(
+  entries: AgentActivityEntry[],
+): AgentLiveActivity | null {
+  let latest: AgentActivityEntry | undefined;
+  let running: AgentActivityEntry | undefined;
+  let thought: string | undefined;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.type === "thinking") {
+      if (!entry.content.trim()) continue;
+      thought ??= entry.content;
+    } else if (!running && activityEntryStatus(entry) === "running") {
+      running = entry;
+    }
+    latest ??= entry;
+  }
+  if (!latest) return null;
+  if (!running && activityEntryStatus(latest) === "failed") return null;
+  return {
+    step: running ?? latest,
+    thought: thought === undefined ? null : agentLiveThoughtLine(thought) || null,
+  };
+}
+
+/** Whether the last group of a running turn is itself the turn's live row. */
+export function agentActivityIsLive(entries: AgentActivityEntry[]): boolean {
+  const [only] = entries;
+  // A lone subagent launch renders as its own row, live only while it runs.
+  if (entries.length === 1 && only?.type === "subagent") {
+    return isSubagentRunning(only.activity.status);
+  }
+  return describeAgentLiveActivity(entries) !== null;
+}
+
 export function formatAgentToolDetail(tool: AgentToolActivity): string {
   const presentation = describeAgentTool(tool);
   if (presentation.category === "shell") {
