@@ -4,6 +4,7 @@ import { expoClient } from "@better-auth/expo/client";
 import { twoFactorClient } from "better-auth/client/plugins";
 import * as SecureStore from "expo-secure-store";
 import { getServerUrl } from "@/lib/server-url";
+import { sessionResponseGuard } from "./sessionResponseGuard";
 
 function createClient() {
   const baseURL = getServerUrl();
@@ -19,6 +20,7 @@ function createClient() {
       }),
       // The pending sign-in cookie is stored with the session cookie.
       twoFactorClient(),
+      sessionResponseGuard(),
     ],
   });
 }

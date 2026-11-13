@@ -99,8 +99,9 @@ async function requestError(
     return new IntegrationError(service.notFoundMessage, 404);
   }
   if (response.status === 429) {
+    // Google names the limit that was reached, which tells one from another.
     return new IntegrationError(
-      `${service.name} is limiting requests for this account. Try again in a minute.`,
+      `${service.name} is limiting requests for this account. Try again in a minute.${detail ? ` Google said: ${detail}` : ""}`,
       429,
     );
   }

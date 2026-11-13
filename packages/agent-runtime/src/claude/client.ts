@@ -273,7 +273,8 @@ function thinkingOptions(level: string | undefined) {
   if (level === "off") return { thinking: { type: "disabled" as const } };
   if (["low", "medium", "high", "xhigh", "max"].includes(level ?? "")) {
     return {
-      thinking: { type: "adaptive" as const },
+      // Reasoning text is omitted unless a summary is requested.
+      thinking: { type: "adaptive" as const, display: "summarized" as const },
       effort: level as "low" | "medium" | "high" | "xhigh" | "max",
     };
   }
@@ -325,6 +326,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private restarting = false;
   private recentStderr = "";
   private currentStreamMessageId?: string;
+  /** The block of the streaming message that started most recently. */
+  private currentStreamBlockIndex?: number;
 
   constructor(
     private readonly target: HostTarget,
@@ -1138,16 +1141,22 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       const native = record(event.message);
       if (typeof native?.id === "string") {
         this.currentStreamMessageId = native.id;
+        this.currentStreamBlockIndex = undefined;
         this.ensureAssistant(native.id);
       }
       return;
     }
     const messageId = this.currentStreamMessageId;
     if (!messageId) return;
+    if (event.type === "message_stop") {
+      this.currentStreamMessageId = undefined;
+      return;
+    }
     const index = typeof event.index === "number" ? event.index : 0;
     if (event.type === "content_block_start") {
       const block = record(event.content_block);
-      if (block) this.mergeAssistantBlock(messageId, block, index);
+      this.currentStreamBlockIndex = index;
+      if (block) this.mergeAssistantBlock(messageId, block, index, true);
       return;
     }
     if (event.type === "content_block_delta") {
@@ -1192,31 +1201,50 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     if (typeof message.uuid === "string") projection.overtchatProviderMessageId = message.uuid;
     if (typeof message.error === "string") projection.errorMessage = message.error;
     const content = Array.isArray(native.content) ? native.content : [];
+    // While a message streams, each finished block arrives as its own frame
+    // under the same id, so it belongs where that block has been streaming.
+    // The stream stays open: the message's later blocks are still to come.
+    const streamIndex =
+      this.currentStreamMessageId === native.id && content.length === 1
+        ? this.currentStreamBlockIndex
+        : undefined;
     for (const [index, block] of content.entries()) {
       const value = record(block);
-      if (value) this.mergeAssistantBlock(native.id, value, index);
+      if (value) {
+        this.mergeAssistantBlock(
+          native.id, value, streamIndex ?? index, streamIndex !== undefined,
+        );
+      }
     }
     this.publishAssistant(projection, "message_end");
-    if (this.currentStreamMessageId === native.id) {
-      this.currentStreamMessageId = undefined;
-    }
   }
 
+  /**
+   * `streamed` places the block at its own stream index. Other frames carry no
+   * position, so they replace the part of the same tool call or kind.
+   */
   private mergeAssistantBlock(
     messageId: string,
     block: Record<string, unknown>,
     index: number,
+    streamed = false,
   ): void {
     const projection = this.ensureAssistant(messageId);
-    const matchingIndex = projection.content.findIndex((candidate) => {
+    const sameBlock = (candidate: Record<string, unknown> | undefined) => {
+      if (!candidate) return false;
       if (block.type === "tool_use") return candidate.id === block.id;
       if (block.type === "text") return candidate.type === "text";
       if (block.type === "thinking") return candidate.type === "thinking";
       return false;
-    });
+    };
+    const current = projection.content[index];
+    const matchingIndex =
+      streamed && (current === undefined || sameBlock(current))
+        ? index
+        : projection.content.findIndex(sameBlock);
     const destination = matchingIndex >= 0
       ? matchingIndex
-      : projection.content[index] === undefined
+      : current === undefined
         ? index
         : projection.content.length;
     if (block.type === "text" && typeof block.text === "string") {

@@ -126,15 +126,17 @@ export async function searchGmail(
     })}`,
     { signal },
   );
-  const messages = await Promise.all(
-    (listed.messages ?? []).map(({ id }) =>
-      gmailRequest<GmailApiMessage>(
+  // One at a time: Gmail refuses a mailbox that is asked for many at once.
+  const messages: GmailApiMessage[] = [];
+  for (const { id } of listed.messages ?? []) {
+    messages.push(
+      await gmailRequest<GmailApiMessage>(
         userId,
         `/messages/${encodeURIComponent(id)}?${metadataQuery(SUMMARY_HEADERS)}`,
         { signal },
       ),
-    ),
-  );
+    );
+  }
   return {
     account: mailbox(userId),
     messages: messages.map(

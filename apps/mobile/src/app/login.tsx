@@ -21,6 +21,7 @@ import {
 } from "@overtchat/shared";
 import { SignInApprovalStep } from "@/components/SignInApprovalStep";
 import { getAuthClient } from "@/lib/auth/client";
+import { unexpectedSessionMessage } from "@/lib/auth/sessionResponseGuard";
 import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
@@ -52,6 +53,7 @@ export default function LoginScreen() {
   const authClient = getAuthClient();
   const session = authClient.useSession();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
+  const serverNotice = unexpectedSessionMessage(session.error);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -296,11 +298,11 @@ export default function LoginScreen() {
 
             )}
 
-            {error !== "" && (
+            {(error || serverNotice) && (
               <Text
                 style={[styles.error, { color: colors.destructive, fontFamily: fonts.sansRegular }]}
               >
-                {error}
+                {error || serverNotice}
               </Text>
             )}
 
