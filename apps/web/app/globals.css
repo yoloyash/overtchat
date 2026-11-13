@@ -162,6 +162,17 @@
     transition-timing-function: var(--motion-ease-standard);
   }
 
+  /* Each block of a streaming reply fades in once, as it arrives. */
+  .motion-stream-blocks > * {
+    transition-property: opacity;
+    transition-duration: 600ms;
+    transition-timing-function: var(--motion-ease-enter);
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
   .motion-disable,
   .motion-disable * {
     transition-duration: var(--motion-duration-instant) !important;

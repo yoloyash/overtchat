@@ -941,13 +941,12 @@ function Markdown({
 }) {
   return (
     <Streamdown
-      className={AGENT_MARKDOWN_CLASSES}
+      className={cn(AGENT_MARKDOWN_CLASSES, streaming && "motion-stream-blocks")}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={AGENT_REMARK_PLUGINS}
       allowedTags={AGENT_MARKDOWN_ALLOWED_TAGS}
       components={AGENT_MARKDOWN_COMPONENTS}
       isAnimating={streaming}
-      caret={streaming ? "block" : undefined}
     >
       {children}
     </Streamdown>
