@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import Animated, {
   ReduceMotion,
   useAnimatedStyle,
@@ -46,6 +46,39 @@ function useElapsed(startedAt: number | null | undefined) {
     return () => clearInterval(timer);
   }, [startedAt]);
   return startedAt == null ? null : formatAgentElapsed(now - startedAt);
+}
+
+/** The running turn's header. "Worked for …" takes its place when the turn ends. */
+export function AgentRunHeader({ startedAt }: { startedAt?: number | null }) {
+  const { colors, fonts } = useTheme();
+  const elapsed = useElapsed(startedAt);
+  return (
+    <View
+      accessible
+      // Announce the state once; a ticking clock would be re-read every second.
+      accessibilityLabel="Working"
+      testID="agent-run-header"
+      style={{
+        minHeight: 40,
+        flexDirection: "row",
+        alignItems: "center",
+        paddingBottom: 4,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <Text
+        style={{
+          color: colors.mutedForeground,
+          fontFamily: fonts.sansRegular,
+          fontSize: 14,
+          fontVariant: ["tabular-nums"],
+        }}
+      >
+        {elapsed ? `Working for ${elapsed}` : "Working"}
+      </Text>
+    </View>
+  );
 }
 
 /** The transcript's live status line while a turn is in progress. */

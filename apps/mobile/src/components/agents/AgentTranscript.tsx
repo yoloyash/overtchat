@@ -31,7 +31,7 @@ import {
   agentActiveTurnStart,
   agentResponseActions,
   agentWorkLabel,
-  describeAgentActivity,
+  agentActivityIsLive,
   type AgentRewindCapabilities,
   type AgentTranscriptItem,
 } from "@overtchat/shared/agent-presentation";
@@ -57,7 +57,7 @@ import {
   AgentWorkSummary,
 } from "./AgentTranscriptRows";
 import { AgentUserMessage } from "./AgentUserMessage";
-import { AgentRunStatus } from "./AgentWorkingIndicator";
+import { AgentRunHeader, AgentRunStatus } from "./AgentWorkingIndicator";
 
 type Speech = Pick<ReturnType<typeof useSpeech>, "activeId" | "status" | "play">;
 
@@ -350,21 +350,28 @@ export function AgentTranscript({
   }, [history]);
 
   const trailing = items.at(-1);
-  const runningActivity =
-    trailing?.type === "activity" &&
-    describeAgentActivity(trailing.entries, true).status === "running";
-  const runLabel = snapshot.state.isCompacting
+  const compacting = snapshot.state.isCompacting;
+  const turnStartedAt = snapshot.activeTurn?.startedAt ?? null;
+  // The timer belongs to the turn, so it leads the turn's rows from start to end.
+  const runHeaderVisible = active && !compacting && !question;
+  // The last group of a running turn is the turn's live row whenever it can be.
+  const liveActivity =
+    trailing?.type === "activity" && agentActivityIsLive(trailing.entries);
+  const runLabel = compacting
     ? "Compacting context"
-    : active && !runningActivity
-      ? "Working"
+    : active && !liveActivity
+      ? "Thinking"
       : null;
   const header = (
     <View style={styles.tail}>
+      {runHeaderVisible && activeTurnStart >= items.length && (
+        <AgentRunHeader startedAt={turnStartedAt} />
+      )}
       {question}
       {!question && runLabel && (
         <AgentRunStatus
           label={runLabel}
-          startedAt={snapshot.activeTurn?.startedAt ?? null}
+          startedAt={compacting ? turnStartedAt : null}
         />
       )}
       {!!error && <AgentErrorCard error={{ summary: error, details: null }} />}
@@ -396,6 +403,11 @@ export function AgentTranscript({
           entering={disclosing && item.type === "activity" ? revealWork : undefined}
           style={{ paddingTop: rowSpacing(item, items[position - 1]) }}
         >
+          {runHeaderVisible && position === activeTurnStart && (
+            <View style={{ paddingBottom: item.type === "activity" ? 10 : 18 }}>
+              <AgentRunHeader startedAt={turnStartedAt} />
+            </View>
+          )}
           <TranscriptItem
             item={item}
             active={active && index === 0}
@@ -420,6 +432,8 @@ export function AgentTranscript({
       disclosing,
       active,
       activeTurnStart,
+      runHeaderVisible,
+      turnStartedAt,
       rowSpeech,
       disabled,
       capabilities,

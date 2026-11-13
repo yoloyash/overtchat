@@ -1304,6 +1304,30 @@ export function agentToolStatus(
   return active ? "running" : "stopped";
 }
 
+/** A step's verb: what it is doing while it runs, what it was once it is done. */
+export function agentToolStepLabel(
+  category: AgentToolCategory,
+  status: AgentToolStatus,
+): string {
+  const running = status === "running";
+  switch (category) {
+    case "shell":
+      return running ? "Running" : "Terminal";
+    case "read":
+      return running ? "Reading" : "Read";
+    case "edit":
+      return running ? "Editing" : "Edited";
+    case "write":
+      return running ? "Writing" : "Wrote";
+    case "search":
+      return running ? "Searching" : "Searched";
+    case "fetch":
+      return running ? "Fetching" : "Fetched";
+    case "other":
+      return running ? "Running tool" : "Tool";
+  }
+}
+
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? one : many}`;
 }

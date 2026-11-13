@@ -8,9 +8,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import {
+  agentActivityIsLive,
   agentThoughtPreview,
+  agentToolStatus,
+  agentToolStepLabel,
   describeAgentActivity,
+  describeAgentLiveActivity,
   describeAgentTool,
+  describeSubagentActivity,
   type AgentActivityEntry,
   type AgentErrorPresentation,
   type AgentNotificationPresentation,
@@ -142,6 +147,20 @@ function AgentThoughtRow({
   );
 }
 
+/** The live group's one line: the step's verb, and what it is acting on. */
+function liveStepPresentation(step: AgentActivityEntry): {
+  label: string;
+  summary: string | null;
+} {
+  if (step.type === "thinking") return { label: "Thinking", summary: null };
+  if (step.type === "subagent") return describeSubagentActivity(step.activity);
+  const presentation = describeAgentTool(step.tool);
+  return {
+    label: agentToolStepLabel(presentation.category, agentToolStatus(step.tool, true)),
+    summary: presentation.summary,
+  };
+}
+
 /** One collapsible group of tool calls, thinking, or subagent work. */
 export function AgentActivityGroup({
   entries,
@@ -155,6 +174,10 @@ export function AgentActivityGroup({
 }) {
   const { colors, fonts } = useTheme();
   const summary = describeAgentActivity(entries, active);
+  // The last group of a running turn shows the step it is on, not a count.
+  const liveActivity =
+    active && agentActivityIsLive(entries) ? describeAgentLiveActivity(entries) : null;
+  const liveStep = liveActivity ? liveStepPresentation(liveActivity.step) : null;
   const [expanded, setExpanded] = useState(summary.status === "failed");
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const selected = entries.find(
@@ -166,43 +189,73 @@ export function AgentActivityGroup({
     <View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={summary.label}
-        accessibilityHint={summary.secondary ?? undefined}
+        accessibilityLabel={
+          liveStep
+            ? `${liveStep.label}${liveStep.summary ? `: ${liveStep.summary}` : ""}`
+            : summary.label
+        }
+        accessibilityHint={
+          (liveStep ? liveActivity?.thought : summary.secondary) ?? undefined
+        }
         accessibilityState={{ expanded }}
         onPress={() => {
           onToggle?.();
           setExpanded((current) => !current);
         }}
-        style={({ pressed }) => [styles.activityHeader, { opacity: pressed ? 0.6 : 1 }]}
+        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
       >
-        <View style={styles.activityIcon}>
-          <ActivityIcon entries={entries} status={summary.status} />
-        </View>
-        <Text
-          numberOfLines={1}
-          style={{
-            flexShrink: 1,
-            color: summary.status === "failed" ? colors.destructive : colors.mutedForeground,
-            fontFamily: fonts.sansRegular,
-            fontSize: 14,
-          }}
-        >
-          {summary.label}
-        </Text>
-        {!!summary.secondary && (
+        {!!liveActivity?.thought && !expanded && (
+          <View style={styles.liveThought} testID="agent-live-thought">
+            <View style={[styles.activityIcon, { paddingTop: 2 }]}>
+              <Ionicons name="bulb-outline" size={16} color={colors.mutedForeground} />
+            </View>
+            <Text
+              numberOfLines={4}
+              style={{
+                flex: 1,
+                color: colors.mutedForeground,
+                fontFamily: fonts.sansRegular,
+                fontSize: 14,
+                lineHeight: 20,
+              }}
+            >
+              {liveActivity.thought}
+            </Text>
+          </View>
+        )}
+        <View style={styles.activityHeader}>
+          <View style={styles.activityIcon}>
+            <ActivityIcon
+              entries={entries}
+              status={liveStep ? "running" : summary.status}
+            />
+          </View>
           <Text
             numberOfLines={1}
             style={{
-              flexShrink: 1,
-              color: colors.mutedForeground,
-              fontFamily: fonts.mono,
-              fontSize: 12,
+              flexShrink: liveStep?.summary ? 0 : 1,
+              color: summary.status === "failed" && !liveStep ? colors.destructive : colors.mutedForeground,
+              fontFamily: fonts.sansRegular,
+              fontSize: 14,
             }}
           >
-            {summary.secondary}
+            {liveStep ? liveStep.label : summary.label}
           </Text>
-        )}
-        <Chevron open={expanded} />
+          {!!(liveStep ? liveStep.summary : summary.secondary) && (
+            <Text
+              numberOfLines={1}
+              style={{
+                flexShrink: 1,
+                color: colors.mutedForeground,
+                fontFamily: fonts.mono,
+                fontSize: 12,
+              }}
+            >
+              {liveStep ? liveStep.summary : summary.secondary}
+            </Text>
+          )}
+          <Chevron open={expanded} />
+        </View>
       </Pressable>
       {expanded && (
         <View style={[styles.rail, { borderLeftColor: colors.border }]}>
@@ -610,6 +663,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   activityIcon: { width: 18, alignItems: "center" },
+  liveThought: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingTop: 8 },
   rail: {
     marginLeft: 8,
     paddingLeft: 12,

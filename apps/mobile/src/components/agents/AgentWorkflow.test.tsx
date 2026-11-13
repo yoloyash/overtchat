@@ -1670,17 +1670,37 @@ describe("agent presentation regressions", () => {
     expect(mocks.scrollToOffset).not.toHaveBeenCalled();
   });
 
-  it("shows a live working status with elapsed time and session errors after the transcript", async () => {
+  it("times a running turn in its header and shows session errors after the transcript", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-26T12:00:00Z"));
     mocks.snapshot!.status = "running";
     mocks.snapshot!.activeTurn = { startedAt: Date.now() - 65_000 };
     mocks.snapshot!.messages = [{ role: "user", id: "first", content: "Go" }];
     await render();
-    expect(container.textContent).toContain("Working");
-    expect(container.textContent).toContain("1m 5s");
+    const header = () => container.querySelectorAll('[data-testid="agent-run-header"]');
+    // Before any reply: the timer, then one live row.
+    expect(header()).toHaveLength(1);
+    expect(header()[0]!.textContent).toBe("Working for 1m 5s");
+    expect(container.querySelectorAll('[role="progressbar"][aria-label="Thinking"]')).toHaveLength(1);
     await act(async () => vi.advanceTimersByTime(2000));
-    expect(container.textContent).toContain("1m 7s");
+    expect(header()[0]!.textContent).toBe("Working for 1m 7s");
+    // Once the turn has rows, the timer leads its first row and stays there.
+    mocks.snapshot!.messages = [
+      ...mocks.snapshot!.messages,
+      { role: "assistant", id: "progress", content: [{ type: "text", text: "Looking first." }] },
+      { role: "assistant", id: "tool-1", content: [{ type: "toolCall", id: "call", name: "bash", arguments: { command: "ls" } }] },
+    ];
+    await render();
+    expect(header()).toHaveLength(1);
+    expect(header()[0]!.closest('[data-testid^="agent-transcript-cell:"]')?.textContent).toContain(
+      "Looking first.",
+    );
+    // Compaction has its own status line; the timer steps aside.
+    mocks.snapshot!.state.isCompacting = true;
+    await render();
+    expect(header()).toHaveLength(0);
+    expect(container.textContent).toContain("Compacting context");
+    mocks.snapshot!.state.isCompacting = false;
     mocks.snapshot!.status = "idle";
     mocks.snapshot!.error = "The agent stopped unexpectedly.";
     await render();
@@ -1698,22 +1718,50 @@ describe("agent presentation regressions", () => {
       { role: "assistant", id: "think-2", content: [{ type: "thinking", thinking: "Now read it." }] },
     ];
     await render();
-    expect(container.textContent).toContain("Ran 1 command");
+    // The group's own spinner is the turn's one live row; no "Thinking" row joins it.
+    const spinners = () =>
+      container.querySelectorAll(
+        '[role="progressbar"][aria-label="Working"], [role="progressbar"][aria-label="Thinking"]',
+      );
+    const thought = () => container.querySelector('[data-testid="agent-live-thought"]');
+    // The group shows the step it is on under its newest thought, not a count.
+    expect(container.querySelector('button[aria-label="Thinking"]')).not.toBeNull();
+    expect(thought()?.textContent).toBe("Now read it.");
+    expect(container.textContent).not.toContain("Ran 1 command");
     expect(container.textContent).not.toContain("Thoughts");
-    expect(container.querySelectorAll('[role="progressbar"][aria-label="Working"]')).toHaveLength(1);
+    expect(spinners()).toHaveLength(1);
     mocks.snapshot!.messages = [
       ...mocks.snapshot!.messages,
       { role: "assistant", id: "tool-2", content: [{ type: "toolCall", id: "call-2", name: "bash", arguments: { command: "cat README.md" } }] },
     ];
     await render();
-    expect(container.textContent).toContain("Ran 2 commands");
-    expect(container.querySelectorAll('[role="progressbar"][aria-label="Working"]')).toHaveLength(1);
+    expect(container.querySelector('button[aria-label="Running: cat README.md"]')).not.toBeNull();
+    expect(thought()?.textContent).toBe("Now read it.");
+    expect(spinners()).toHaveLength(1);
+    // Between steps the finished one stays as the live row.
+    mocks.snapshot!.messages = [
+      ...mocks.snapshot!.messages,
+      { role: "toolResult", toolCallId: "call-2", content: [{ type: "text", text: "# Demo" }] },
+    ];
+    await render();
+    expect(container.querySelector('button[aria-label="Terminal: cat README.md"]')).not.toBeNull();
+    expect(spinners()).toHaveLength(1);
     // Reasoning is a one-line step inside the group until it is opened.
-    await click("Ran 2 commands");
+    await click("Terminal: cat README.md");
+    expect(thought()).toBeNull();
     expect(container.querySelectorAll('button[aria-label="Thought"]')).toHaveLength(2);
     expect(container.textContent).toContain("Look first.");
     await click("Thought");
     expect(container.textContent?.match(/Look first\./g)).toHaveLength(1);
+    // A failed last step is not progress: the count returns, with the turn's own row.
+    mocks.snapshot!.messages = [
+      ...mocks.snapshot!.messages,
+      { role: "assistant", id: "tool-3", content: [{ type: "toolCall", id: "call-3", name: "bash", arguments: { command: "false" } }] },
+      { role: "toolResult", toolCallId: "call-3", isError: true, content: [{ type: "text", text: "exit 1" }] },
+    ];
+    await render();
+    expect(container.textContent).toContain("Ran 3 commands, 1 failed");
+    expect(container.querySelectorAll('[role="progressbar"][aria-label="Thinking"]')).toHaveLength(1);
   });
 });
 

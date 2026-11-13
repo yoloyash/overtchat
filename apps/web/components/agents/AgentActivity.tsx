@@ -30,6 +30,7 @@ import { ThinkingContent } from "@/components/chat/ThinkingContent";
 import {
   agentThoughtPreview,
   agentToolStatus,
+  agentToolStepLabel,
   describeAgentActivity,
   describeAgentLiveActivity,
   describeAgentTool,
@@ -318,7 +319,7 @@ function liveStepPresentation(step: AgentActivityEntry): {
   const presentation = describeAgentTool(step.tool);
   return {
     icon: <ToolCategoryIcon category={presentation.category} className={iconClass} />,
-    label: toolStepLabel(presentation.category, agentToolStatus(step.tool, true)),
+    label: agentToolStepLabel(presentation.category, agentToolStatus(step.tool, true)),
     summary: presentation.summary,
   };
 }
@@ -670,7 +671,7 @@ function ToolActivityStep({
           )}
         >
           <span className="shrink-0 font-normal motion-colors group-hover:text-foreground">
-            {toolStepLabel(presentation.category, status)}
+            {agentToolStepLabel(presentation.category, status)}
           </span>
           {presentation.summary && (
             <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
@@ -705,29 +706,6 @@ function ToolActivityStep({
       {open && detail && <StepDetail>{detail}</StepDetail>}
     </div>
   );
-}
-
-function toolStepLabel(
-  category: AgentToolCategory,
-  status: AgentToolStatus,
-): string {
-  const running = status === "running";
-  switch (category) {
-    case "shell":
-      return running ? "Running" : "Terminal";
-    case "read":
-      return running ? "Reading" : "Read";
-    case "edit":
-      return running ? "Editing" : "Edited";
-    case "write":
-      return running ? "Writing" : "Wrote";
-    case "search":
-      return running ? "Searching" : "Searched";
-    case "fetch":
-      return running ? "Fetching" : "Fetched";
-    case "other":
-      return running ? "Running tool" : "Tool";
-  }
 }
 
 function toolDetail(
