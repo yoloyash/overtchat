@@ -557,6 +557,76 @@ describe("Claude runtime client", () => {
     },
   );
 
+  it("keeps streaming a message after its first block completes", async () => {
+    const { client, query, events } = await createClientForTest();
+    const stream = (event: Record<string, unknown>) => query.push({ type: "stream_event", event });
+    const block = (content: Record<string, unknown>) =>
+      query.push({ type: "assistant", message: { id: "reply", content: [content] } });
+    const streamedText = () =>
+      events.flatMap((event) => {
+        if (event.type !== "message_update") return [];
+        const message = event.message as { content: Array<Record<string, unknown> | undefined> };
+        return message.content.flatMap((part) => (part?.type === "text" ? [part.text] : []));
+      });
+    try {
+      await client.prompt("Explain");
+      stream({ type: "message_start", message: { id: "reply" } });
+      stream({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } });
+      stream({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Weigh it." } });
+      // Claude Code sends each finished block as its own frame, before the block stops.
+      block({ type: "thinking", thinking: "Weigh it." });
+      stream({ type: "content_block_stop", index: 0 });
+      stream({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } });
+      stream({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Slow start " } });
+      stream({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "is not slow." } });
+      await nextTask();
+      expect(streamedText()).toEqual(["Slow start ", "Slow start is not slow."]);
+
+      block({ type: "text", text: "Slow start is not slow." });
+      stream({ type: "content_block_stop", index: 1 });
+      stream({ type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "read-1", name: "Read", input: {} } });
+      stream({ type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: '{"file_path":"README.md"}' } });
+      block({ type: "tool_use", id: "read-1", name: "Read", input: { file_path: "README.md" } });
+      stream({ type: "content_block_stop", index: 2 });
+      stream({ type: "message_stop" });
+      await nextTask();
+      expect((await client.getMessages()).messages.at(-1)).toMatchObject({
+        id: "reply",
+        content: [
+          { type: "thinking", thinking: "Weigh it." },
+          { type: "text", text: "Slow start is not slow." },
+          { type: "toolCall", id: "read-1", name: "Read", arguments: { file_path: "README.md" } },
+        ],
+      });
+    } finally {
+      await client.stop();
+    }
+  });
+
+  it("keeps two text blocks of one streamed message apart", async () => {
+    const { client, query } = await createClientForTest();
+    const stream = (event: Record<string, unknown>) => query.push({ type: "stream_event", event });
+    const block = (content: Record<string, unknown>) =>
+      query.push({ type: "assistant", message: { id: "reply", content: [content] } });
+    try {
+      await client.prompt("Explain");
+      stream({ type: "message_start", message: { id: "reply" } });
+      for (const [index, text] of ["First.", "Second."].entries()) {
+        stream({ type: "content_block_start", index, content_block: { type: "text", text: "" } });
+        stream({ type: "content_block_delta", index, delta: { type: "text_delta", text } });
+        block({ type: "text", text });
+        stream({ type: "content_block_stop", index });
+      }
+      stream({ type: "message_stop" });
+      await nextTask();
+      expect((await client.getMessages()).messages.at(-1)).toMatchObject({
+        content: [{ type: "text", text: "First." }, { type: "text", text: "Second." }],
+      });
+    } finally {
+      await client.stop();
+    }
+  });
+
   it("initializes without a prompt and streams a normalized turn", async () => {
     let query!: FakeQuery;
     queryMock.mockImplementation((params) => {
@@ -638,6 +708,26 @@ describe("Claude runtime client", () => {
     expect(await client.getSessionStats()).toMatchObject({
       tokens: { input: 2, output: 3, total: 5 },
       cost: 0.001,
+    });
+    await client.stop();
+  });
+
+  it("asks for readable reasoning whenever thinking is on", async () => {
+    const queries: FakeQuery[] = [];
+    queryMock.mockImplementation((params) => {
+      const query = new FakeQuery(params);
+      queries.push(query);
+      return query;
+    });
+    const client = new ClaudeRuntimeClient(
+      { transport: "local" },
+      { executable: "claude", cwd: "/workspace", modeId: "default", thinkingOptionId: "high" },
+    );
+    await client.getState();
+
+    expect(queries.at(-1)?.options).toMatchObject({
+      thinking: { type: "adaptive", display: "summarized" },
+      effort: "high",
     });
     await client.stop();
   });
