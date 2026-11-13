@@ -1,6 +1,11 @@
 {
   "openai": {
     "chatgpt-image-latest": {
+      "cost": {
+        "cache_read": 1.25,
+        "input": 5,
+        "output": 10
+      },
       "input_modalities": [
         "text",
         "image"
@@ -721,7 +726,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -818,7 +823,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -871,7 +876,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -924,7 +929,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -977,7 +982,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -1083,7 +1088,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -1136,7 +1141,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -1242,7 +1247,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -1295,7 +1300,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false,
+      "temperature": true,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -1357,6 +1362,11 @@
       "temperature": false
     },
     "gpt-image-1.5": {
+      "cost": {
+        "cache_read": 1.25,
+        "input": 5,
+        "output": 10
+      },
       "input_modalities": [
         "text",
         "image"
@@ -2282,22 +2292,8 @@
       "context": 128000,
       "output": 64000,
       "cost": {
-        "context_over_200k": {
-          "input": 2.5,
-          "output": 15
-        },
         "input": 1.25,
-        "output": 10,
-        "tiers": [
-          {
-            "input": 2.5,
-            "output": 15,
-            "tier": {
-              "size": 200000,
-              "type": "context"
-            }
-          }
-        ]
+        "output": 10
       },
       "input_modalities": [
         "text",
@@ -3206,26 +3202,6 @@
         ]
       }
     },
-    "gemini-omni-flash-preview": {
-      "context": 131072,
-      "output": 65536,
-      "cost": {
-        "input": 1.5,
-        "output": 17.5
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "video"
-      ],
-      "output_modalities": [
-        "video"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": true,
-      "temperature": true
-    },
     "gemini-pro-latest": {
       "context": 1048576,
       "output": 65536,
@@ -3278,6 +3254,10 @@
     "gemma-4-26b-a4b-it": {
       "context": 262144,
       "output": 32768,
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
       "input_modalities": [
         "text",
         "image"
@@ -3294,6 +3274,10 @@
     "gemma-4-31b-it": {
       "context": 262144,
       "output": 32768,
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
       "input_modalities": [
         "text",
         "image"
@@ -5313,7 +5297,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "global.openai.gpt-5.6-sol": {
       "context": 1050000,
@@ -5354,7 +5338,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "global.openai.gpt-5.6-terra": {
       "context": 1050000,
@@ -5395,7 +5379,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "global.openai.gpt-6-astra": {
       "context": 1050000,
@@ -5477,7 +5461,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "global.openai.gpt-6-sol": {
       "context": 1050000,
@@ -5518,7 +5502,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "global.openai.gpt-6.1-sol": {
       "context": 1050000,
@@ -5600,7 +5584,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "global.xai.grok-4.6": {
       "context": 500000,
@@ -5899,7 +5883,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "in.openai.gpt-5.6-terra": {
       "context": 1050000,
@@ -5941,7 +5925,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "jp.amazon.nova-2-lite-v1:0": {
       "context": 1000000,
@@ -6677,7 +6661,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-5.6-luna": {
       "context": 1050000,
@@ -6719,7 +6703,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-5.6-sol": {
       "context": 1050000,
@@ -6761,7 +6745,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-5.6-terra": {
       "context": 1050000,
@@ -6803,7 +6787,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-6-astra": {
       "context": 1050000,
@@ -6887,7 +6871,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-6-sol": {
       "context": 1050000,
@@ -6929,7 +6913,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-6.1-sol": {
       "context": 1050000,
@@ -7013,7 +6997,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-oss-120b": {
       "context": 131072,
@@ -8038,7 +8022,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "us.openai.gpt-5.6-sol": {
       "context": 1050000,
@@ -8079,7 +8063,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "us.openai.gpt-5.6-terra": {
       "context": 1050000,
@@ -8120,7 +8104,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "us.openai.gpt-6-astra": {
       "context": 1050000,
@@ -8202,7 +8186,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "us.openai.gpt-6-sol": {
       "context": 1050000,
@@ -8243,7 +8227,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "us.openai.gpt-6.1-sol": {
       "context": 1050000,
@@ -8325,7 +8309,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "us.writer.palmyra-x4-v1:0": {
       "context": 122880,
