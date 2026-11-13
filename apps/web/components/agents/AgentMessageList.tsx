@@ -51,6 +51,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   AgentActivityGroup,
+  AgentLiveRow,
+  AgentRunHeader,
   AgentRunIndicator,
   formatAgentElapsed,
   type AgentRunActivity,
@@ -248,6 +250,8 @@ export function AgentMessageList({
   }, [transcript]);
   const trailingItem = transcript.at(-1);
   const activeTurnStart = agentActiveTurnStart(transcript, streaming);
+  // The timer belongs to the turn, so it leads the turn's rows from start to end.
+  const runHeaderVisible = activity === "working" && !question;
   const activityAlreadyVisible =
     (activity === "compacting" && transcript.some((item) => item.type === "compaction" && item.active)) ||
     (activity === "working" && streaming && trailingItem?.type === "activity" &&
@@ -322,8 +326,15 @@ export function AgentMessageList({
                             sequencePosition === "last") &&
                             "mt-0",
                           item.type === "turn_footer" && "mt-2",
+                          runHeaderVisible && index === activeTurnStart && index > 0 && "mt-6",
                         )}
                       >
+                        {runHeaderVisible && index === activeTurnStart && (
+                          <AgentRunHeader
+                            startedAt={activityStartedAt}
+                            className={item.type === "activity" ? "mb-3" : "mb-6"}
+                          />
+                        )}
                         <AgentTranscriptRow
                           speech={speech}
                           item={item}
@@ -344,12 +355,22 @@ export function AgentMessageList({
                   })}
                 </AgentTranscriptMotion>
               ))}
-              {activity && !question && !activityAlreadyVisible && (
-                <AgentRunIndicator
-                  activity={activity}
+              {runHeaderVisible && activeTurnStart >= transcript.length && (
+                <AgentRunHeader
                   startedAt={activityStartedAt}
-                  providerLabel={providerLabel}
+                  className={transcript.length > 0 ? "mt-6" : undefined}
                 />
+              )}
+              {activity && !question && !activityAlreadyVisible && (
+                activity === "working" ? (
+                  <AgentLiveRow providerLabel={providerLabel} />
+                ) : (
+                  <AgentRunIndicator
+                    activity={activity}
+                    startedAt={activityStartedAt}
+                    providerLabel={providerLabel}
+                  />
+                )
               )}
               {question && <div className="mt-4">{question}</div>}
               {error && <AgentErrorNotice error={presentAgentError(error)} />}

@@ -3162,6 +3162,94 @@ test("keeps following when upward input has nowhere to go, and hears scroll keys
   expect(await gap()).toBeGreaterThan(250);
 });
 
+test("times a running turn in its header and hands that place to the turn summary", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Header Tester");
+  await page.locator("#email").fill("header@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now() - 12_000);
+  const prompt = { role: "user", id: "user", content: "Check this", timestamp: 100000 };
+  const progress = { role: "assistant", id: "progress", timestamp: 103000, content: [{ type: "text", text: "Looking at the runtime first." }] };
+  const call = { role: "assistant", id: "call", timestamp: 104000, content: [{ type: "toolCall", id: "tool", name: "bash", arguments: { command: "npm test" } }] };
+  const result = { role: "toolResult", toolCallId: "tool", toolName: "bash", isError: false, timestamp: 105000, content: [{ type: "text", text: "passed" }] };
+  const answer = { role: "assistant", id: "answer", timestamp: 165000, content: [{ type: "text", text: "Everything passes." }] };
+  snapshot.messages = [prompt];
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    const sources: EventTarget[] = [];
+    let sequence = 0;
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor(url: string) {
+        super();
+        if (url.includes("/api/agent-sessions/")) sources.push(this);
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      close() { const i = sources.indexOf(this); if (i >= 0) sources.splice(i, 1); }
+    }
+    Object.assign(window, {
+      EventSource: FakeEventSource,
+      __headerEmit: (snapshot: unknown) => {
+        sequence += 1;
+        for (const source of sources) {
+          source.dispatchEvent(new MessageEvent("runtime", {
+            data: JSON.stringify({ epoch: "header", sequence, type: "snapshot", data: snapshot }),
+          }));
+        }
+      },
+    });
+  });
+  const emit = (messages: unknown[]) => {
+    snapshot.messages = messages;
+    return page.evaluate((value) => (window as unknown as { __headerEmit: (value: unknown) => void }).__headerEmit(value), snapshot);
+  };
+  await page.goto(`/agents/${SESSION_ID}`);
+  const header = page.getByTestId("agent-run-header");
+  const live = page.getByTestId("agent-run-activity");
+  const top = async (locator: Locator) => (await locator.boundingBox())!.y;
+
+  // Before any reply: the timer under the prompt, and one live row after it.
+  await expect(header).toHaveText(/^Working for 1[2-9]s$/);
+  await expect(live).toHaveText("Thinking");
+  const headerTop = await top(header);
+  expect(headerTop).toBeGreaterThan(await top(page.getByText("Check this", { exact: true })));
+
+  // Text, then a running tool: the header does not move, and only one thing is live.
+  await emit([prompt, progress]);
+  await expect(page.getByText("Looking at the runtime first.", { exact: true })).toBeVisible();
+  await expect(header).toHaveCount(1);
+  expect(Math.abs((await top(header)) - headerTop)).toBeLessThan(2);
+  await expect(live).toHaveText("Thinking");
+  expect(await top(live)).toBeGreaterThan(await top(page.getByText("Looking at the runtime first.", { exact: true })));
+  await emit([prompt, progress, call]);
+  await expect(page.getByRole("button", { name: /^Ran 1 command, running$/ })).toBeVisible();
+  await expect(live).toHaveCount(0);
+  expect(Math.abs((await top(header)) - headerTop)).toBeLessThan(2);
+  await page.screenshot({ path: testInfo.outputPath("running-turn.png") });
+
+  // The answer streams under the finished tool; the live row returns after it.
+  await emit([prompt, progress, call, result, answer]);
+  await expect(page.getByText("Everything passes.", { exact: true })).toBeVisible();
+  await expect(live).toHaveText("Thinking");
+  expect(Math.abs((await top(header)) - headerTop)).toBeLessThan(2);
+
+  // At the end the summary stands exactly where the timer was.
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await emit([prompt, progress, call, result, answer]);
+  const summary = page.getByRole("button", { name: "Worked for 1m 5s", exact: true });
+  await expect(summary).toBeVisible();
+  await expect(header).toHaveCount(0);
+  await expect(live).toHaveCount(0);
+  await expect.poll(async () => Math.abs((await top(summary.locator(".."))) - headerTop)).toBeLessThan(2);
+  await page.screenshot({ path: testInfo.outputPath("settled-turn.png") });
+});
+
 test("preserves an OMP markdown answer through continuation, abort and reload", async ({
   page,
 }, testInfo) => {
@@ -3717,7 +3805,7 @@ test("ends OMP turns when the agent yields to background work and starts a new t
     expect(await prompts()).toBe(2);
     // Stop ends a woken turn; the native abort leaves the job running.
     await writeFile(control, "wake-2");
-    await expect(indicator).toContainText("Working");
+    await expect(page.getByTestId("agent-run-header")).toContainText("Working");
     await expect(sidebarWorking.first()).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("omp-background-wake.png"), fullPage: true });
     await stopButton.click();
@@ -3726,7 +3814,7 @@ test("ends OMP turns when the agent yields to background work and starts a new t
     await expect(stopButton).toHaveCount(0);
     // The surviving job's result wakes the agent into a new turn.
     await writeFile(control, "wake-3");
-    await expect(indicator).toContainText("Working");
+    await expect(page.getByTestId("agent-run-header")).toContainText("Working");
     await writeFile(control, "settle");
     await expect(indicator).toHaveCount(0);
     await expect(stopButton).toHaveCount(0);
