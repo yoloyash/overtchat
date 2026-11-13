@@ -134,6 +134,30 @@ describe("search", () => {
     });
   });
 
+  it("asks for one message at a time", async () => {
+    let open = 0;
+    let mostOpen = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      open += 1;
+      mostOpen = Math.max(mostOpen, open);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      open -= 1;
+      const { pathname } = new URL(String(input));
+      return new Response(
+        JSON.stringify(
+          pathname.endsWith("/messages")
+            ? { messages: [{ id: "m1" }, { id: "m2" }, { id: "m3" }] }
+            : { id: pathname.split("/").pop(), threadId: "t1" },
+        ),
+      );
+    });
+
+    const result = await gmail.searchGmail("ada", { query: "in:inbox", limit: 5 });
+
+    expect(result.messages.map((message) => message.id)).toEqual(["m1", "m2", "m3"]);
+    expect(mostOpen).toBe(1);
+  });
+
   it("returns nothing when no mail matches", async () => {
     google(() => ({ body: { resultSizeEstimate: 0 } }));
     await expect(
@@ -760,7 +784,12 @@ describe("failures", () => {
 
   it.each([
     [404, {}, /no message or thread with that ID/],
-    [429, {}, /limiting requests/],
+    [429, {}, /limiting requests for this account\. Try again in a minute\.$/],
+    [
+      429,
+      { error: { message: "Too many concurrent requests for user" } },
+      /Try again in a minute\. Google said: Too many concurrent requests for user$/,
+    ],
     [403, { error: { message: "Gmail API has not been used" } }, /Gmail API has not been used/],
     [500, {}, /returned an error/],
   ])("explains a %i from Gmail", async (status, body, message) => {
