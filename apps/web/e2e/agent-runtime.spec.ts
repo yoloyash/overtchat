@@ -3006,6 +3006,108 @@ test("keeps reasoning inside its tool group, opens steps without nested scrollin
   await page.screenshot({ path: testInfo.outputPath("activity-steps-file-open.png") });
 });
 
+test("lists what a turn changed under its answer and opens a changed file", async ({ page }, testInfo) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Changes Tester");
+  await page.locator("#email").fill("changes@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const turnChanges = (head: string, changes: Record<string, unknown>, timestamp: number) => ({
+    role: "custom", customType: "overtchat_turn_changes", display: false, timestamp,
+    changes: { base: "a".repeat(40), head: head.repeat(40), ...changes },
+  });
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  snapshot.messages = [
+    { role: "user", id: "user-1", content: "Add the retry helper", timestamp: 100000 },
+    {
+      role: "assistant", id: "call-edit", timestamp: 101000,
+      content: [{ type: "toolCall", id: "edit", name: "edit", arguments: { path: "apps/web/lib/retry.ts" } }],
+    },
+    { role: "toolResult", toolCallId: "edit", toolName: "edit", isError: false, timestamp: 102000, content: [{ type: "text", text: "ok" }] },
+    { role: "assistant", id: "answer-1", timestamp: 104000, content: [{ type: "text", text: "The retry helper is in place." }] },
+    turnChanges("b", {
+      files: [
+        { path: "README.md", additions: 2, deletions: 0 },
+        { path: "apps/web/lib/retry.test.ts", additions: 40, deletions: 0 },
+        { path: "apps/web/lib/retry.ts", previousPath: "apps/web/lib/again.ts", additions: 1180, deletions: 12 },
+        { path: "apps/web/public/logo.png", additions: 0, deletions: 0 },
+      ],
+      total: { files: 6, additions: 1300, deletions: 14 },
+    }, 104500),
+    { role: "user", id: "user-2", content: "Fix the typo", timestamp: 200000 },
+    { role: "assistant", id: "answer-2", timestamp: 201000, content: [{ type: "text", text: "Fixed." }] },
+    turnChanges("c", {
+      files: [{ path: "notes.txt", additions: 1, deletions: 1 }],
+      total: { files: 1, additions: 1, deletions: 1 },
+    }, 201500),
+  ];
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() {
+        super();
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await page.goto(`/agents/${SESSION_ID}`);
+
+  // Each turn lists its own changes: the count, the lines, folders closed.
+  const cards = page.getByTestId("agent-turn-changes");
+  await expect(cards).toHaveCount(2);
+  const card = cards.first();
+  await expect(card.getByRole("heading", { name: "6 changed files" })).toBeVisible();
+  await expect(card.getByRole("group", { name: "1300 added, 14 removed" }).first()).toHaveText("+1.3k-14");
+  await expect(card.getByText("and 2 more files")).toBeVisible();
+  const files = card.getByTestId("agent-turn-changes-file");
+  await expect(files).toHaveCount(1);
+  await expect(files).toContainText("README.md");
+  const folder = card.getByRole("button", { name: /^apps\/web/ });
+  await expect(folder).toHaveAttribute("aria-expanded", "false");
+  await expect(folder.getByRole("group", { name: "1220 added, 12 removed" })).toBeVisible();
+  await expect(cards.last().getByRole("heading", { name: "1 changed file" })).toBeVisible();
+  await expect(cards.last().getByRole("button", { name: "Expand all folders" })).toHaveCount(0);
+
+  // The turn's actions sit under its changes, which sit under its answer.
+  const box = async (locator: ReturnType<typeof page.locator>) => (await locator.boundingBox())!;
+  const answer = await box(page.getByText("The retry helper is in place."));
+  const changes = await box(card);
+  const copy = await box(page.getByRole("button", { name: "Copy response", exact: true }).first());
+  expect(changes.y).toBeGreaterThan(answer.y + answer.height - 1);
+  expect(copy.y).toBeGreaterThan(changes.y + changes.height - 1);
+  await page.screenshot({ path: testInfo.outputPath("turn-changes-closed.png") });
+
+  // One folder opens on its own; the header control opens and closes them all.
+  await folder.click();
+  await expect(folder).toHaveAttribute("aria-expanded", "true");
+  await expect(files).toHaveCount(1);
+  await card.getByRole("button", { name: "Expand all folders" }).click();
+  await expect(files).toHaveCount(4);
+  await expect(card.getByRole("button", { name: "Open apps/web/lib/retry.ts" }))
+    .toHaveAttribute("title", "apps/web/lib/retry.ts (renamed from apps/web/lib/again.ts)");
+  // A binary file counts no lines, so it shows none.
+  await expect(card.getByRole("button", { name: "Open apps/web/public/logo.png" }).getByRole("group")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("turn-changes-open.png") });
+  await card.getByRole("button", { name: "Collapse all folders" }).click();
+  await expect(files).toHaveCount(1);
+
+  // A changed file opens beside the transcript.
+  await card.getByRole("button", { name: "Expand all folders" }).click();
+  await card.getByRole("button", { name: "Open apps/web/lib/retry.ts" }).click();
+  const pane = page.getByTestId("agent-workspace-pane");
+  await expect(pane).toBeVisible();
+  await expect(pane.getByRole("tab", { name: "Open apps/web/lib/retry.ts" })).toBeVisible();
+});
+
 type ScrollSnapshot = ReturnType<typeof runtimeSnapshot>;
 
 /** Opens a session whose reply the test can grow like a stream. */

@@ -643,6 +643,9 @@ const TranscriptItem = memo(function TranscriptItem({
       );
     case "task_list":
       return <AgentTaskListCard snapshot={item.snapshot} />;
+    case "turn_changes":
+      // The turn's actions sit under its changes.
+      return actions;
     case "message": {
       const message = record(item.message);
       if (message.role === "user")

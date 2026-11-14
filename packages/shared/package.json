@@ -15,6 +15,7 @@
     "./agent-creation": "./src/agent-creation.ts",
     "./agent-attention": "./src/agent-attention.ts",
     "./agent-tool-details": "./src/agent-tool-details.ts",
+    "./agent-turn-changes": "./src/agent-turn-changes.ts",
     "./agent-interaction": "./src/agent-interaction.ts",
     "./context-meter": "./src/context-meter.ts",
     "./mobile-connection": "./src/mobile-connection.ts",
