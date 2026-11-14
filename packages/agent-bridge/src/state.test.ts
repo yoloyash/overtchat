@@ -7,6 +7,7 @@ import {
   applyAgentRuntimeEnvelope,
   reconcileAgentRuntimeSnapshot,
 } from "./state.js";
+import { agentTurnChangesOf } from "./turn-changes.js";
 
 function snapshot(): AgentRuntimeSnapshot {
   return {
@@ -140,6 +141,88 @@ describe("agent runtime event reducer", () => {
       ],
     });
     expect(reconciled).not.toHaveProperty("error");
+  });
+
+  it("records what a turn changed as a hidden row, in one place for every replica", () => {
+    const changes = {
+      base: "a".repeat(40),
+      head: "b".repeat(40),
+      files: [{ path: "src/app.ts", additions: 3, deletions: 1 }],
+      total: { files: 1, additions: 3, deletions: 1 },
+    };
+    const next = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_turn_changes",
+        changes,
+        overtchatRecordedAt: 1234,
+      }),
+    );
+    expect(next?.messages).toEqual([
+      { role: "user", content: "Hello" },
+      {
+        role: "custom",
+        customType: "overtchat_turn_changes",
+        display: false,
+        timestamp: 1234,
+        changes,
+      },
+    ]);
+    expect(agentTurnChangesOf(next?.messages[1])).toEqual(changes);
+    expect(agentTurnChangesOf(next?.messages[0])).toBeNull();
+
+    // A malformed report adds nothing.
+    const current = snapshot();
+    expect(
+      applyAgentRuntimeEnvelope(
+        current,
+        event({
+          type: "overtchat_turn_changes",
+          changes: { ...changes, total: { files: -1 } },
+        }),
+      ),
+    ).toBe(current);
+  });
+
+  it("keeps what a turn changed behind its message when provider history takes over", () => {
+    const row = (head: string) => ({
+      role: "custom",
+      customType: "overtchat_turn_changes",
+      display: false,
+      timestamp: 5,
+      changes: {
+        base: "a".repeat(40),
+        head: head.repeat(40),
+        files: [{ path: "a.txt", additions: 1, deletions: 0 }],
+        total: { files: 1, additions: 1, deletions: 0 },
+      },
+    });
+    const durable = {
+      ...snapshot(),
+      messages: [
+        { role: "user", content: "first", overtchatSubmissionId: "submission-1" },
+        { id: "answer-1", role: "assistant", content: "done" },
+        row("b"),
+        { role: "user", content: "second", timestamp: 20 },
+        { role: "assistant", content: "rewound away", timestamp: 30 },
+        row("c"),
+      ],
+    };
+    const fresh = {
+      ...snapshot(),
+      messages: [
+        { id: "provider-user", role: "user", content: "first", overtchatSubmissionId: "submission-1" },
+        { id: "answer-1", role: "assistant", content: "done" },
+        { id: "provider-user-2", role: "user", content: "second", timestamp: 20 },
+      ],
+    };
+
+    expect(reconcileAgentRuntimeSnapshot(durable, fresh).messages).toEqual([
+      expect.objectContaining({ id: "provider-user" }),
+      { id: "answer-1", role: "assistant", content: "done" },
+      row("b"),
+      expect.objectContaining({ id: "provider-user-2" }),
+    ]);
   });
 
   it("treats plain resumed provider history as authoritative", () => {

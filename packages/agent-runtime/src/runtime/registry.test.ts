@@ -163,6 +163,165 @@ describe("agent runtime", () => {
     mocks.eventSubscriber = null;
   });
 
+  describe("turn changes", () => {
+    const changes = {
+      base: "a".repeat(40),
+      head: "b".repeat(40),
+      files: [{ path: "src/app.ts", additions: 3, deletions: 1 }],
+      total: { files: 1, additions: 3, deletions: 1 },
+    };
+    const descriptor = {
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "pi" as const, target: { transport: "local" as const }, executable: "pi", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    };
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((settle) => { resolve = settle; });
+      return { promise, resolve };
+    }
+    const rows = (messages: unknown[]) =>
+      messages.map((message) => {
+        const record = message as Record<string, unknown>;
+        return record.customType ?? `${String(record.role)}:${String(record.content)}`;
+      });
+
+    it("keeps a turn open until its changes are recorded, ahead of the queued prompt", async () => {
+      const finish = deferred<typeof changes | null>();
+      const tracker = {
+        warm: vi.fn().mockResolvedValue(undefined),
+        prepare: vi.fn().mockResolvedValue(undefined),
+        finish: vi.fn().mockReturnValueOnce(finish.promise).mockResolvedValue(null),
+      };
+      const trackTurnChanges = vi.fn().mockReturnValue(tracker);
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+        saveQueuedMessages: mocks.saveQueue,
+        trackTurnChanges,
+      });
+      const runtime = await registry.getOrStart(descriptor);
+      expect(trackTurnChanges).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "session", cwd: "/workspace", target: { transport: "local" } }),
+      );
+      const events: Array<Record<string, unknown>> = [];
+      runtime.observe((envelope) => {
+        if (envelope.type === "runtime_event") events.push(envelope.data);
+      });
+
+      expect(tracker.warm).toHaveBeenCalledOnce();
+      expect(tracker.prepare).not.toHaveBeenCalled();
+      await runtime.command({ type: "prompt", message: "Start the task" }, "first");
+      expect(tracker.prepare).toHaveBeenCalledOnce();
+      await runtime.command({ type: "queue", message: "Follow up" }, "queued");
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+      await vi.waitFor(() => expect(tracker.finish).toHaveBeenCalledOnce());
+      expect(runtime.snapshot().status).toBe("running");
+      expect(mocks.prompt).toHaveBeenCalledOnce();
+
+      finish.resolve(changes);
+      await vi.waitFor(() => expect(mocks.prompt).toHaveBeenCalledTimes(2));
+      expect(rows(runtime.snapshot().messages)).toEqual([
+        "user:Start the task",
+        "overtchat_turn_changes",
+        "user:Follow up",
+      ]);
+      expect(runtime.snapshot().messages[1]).toMatchObject({
+        role: "custom",
+        display: false,
+        changes,
+      });
+      const recorded = events.find((event) => event.type === "overtchat_turn_changes");
+      expect(recorded).toMatchObject({ changes });
+      // The connector timeline builds the same row from this event.
+      expect(recorded?.overtchatRecordedAt).toBe(
+        (runtime.snapshot().messages[1] as { timestamp: number }).timestamp,
+      );
+
+      // A turn that changed nothing adds no row.
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(tracker.finish).toHaveBeenCalledTimes(2);
+      expect(rows(runtime.snapshot().messages)).toHaveLength(3);
+      await registry.stopAll();
+    });
+
+    it("takes the first snapshot before the provider sees a prompt, and drops a prompt stopped meanwhile", async () => {
+      const first = deferred<void>();
+      const second = deferred<void>();
+      const tracker = {
+        warm: vi.fn().mockResolvedValue(undefined),
+        prepare: vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise),
+        finish: vi.fn().mockResolvedValue(null),
+      };
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+        trackTurnChanges: () => tracker,
+      });
+      const runtime = await registry.getOrStart(descriptor);
+
+      const sent = runtime.command({ type: "prompt", message: "Edit the file" }, "first");
+      await vi.waitFor(() => expect(tracker.prepare).toHaveBeenCalledOnce());
+      expect(runtime.snapshot().status).toBe("running");
+      expect(mocks.prompt).not.toHaveBeenCalled();
+      first.resolve();
+      await sent;
+      expect(mocks.prompt).toHaveBeenCalledOnce();
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+
+      const stopped = runtime.command({ type: "prompt", message: "Never sent" }, "second");
+      const rejection = expect(stopped).rejects.toThrow("stopped before the message was sent");
+      await vi.waitFor(() => expect(tracker.prepare).toHaveBeenCalledTimes(2));
+      await runtime.command({ type: "abort" });
+      expect(runtime.snapshot().status).toBe("idle");
+      second.resolve();
+      await rejection;
+      expect(mocks.prompt).toHaveBeenCalledOnce();
+      expect(rows(runtime.snapshot().messages)).toEqual(["user:Edit the file"]);
+      await registry.stopAll();
+    });
+
+    it("records a stopped turn's changes without holding the stop", async () => {
+      const finish = deferred<typeof changes | null>();
+      const tracker = {
+        warm: vi.fn().mockResolvedValue(undefined),
+        prepare: vi.fn().mockResolvedValue(undefined),
+        finish: vi.fn().mockReturnValue(finish.promise),
+      };
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+        trackTurnChanges: () => tracker,
+      });
+      const runtime = await registry.getOrStart(descriptor);
+      await runtime.command({ type: "prompt", message: "Start the task" }, "first");
+
+      await runtime.command({ type: "abort" });
+      expect(runtime.snapshot().status).toBe("idle");
+      expect(tracker.finish).toHaveBeenCalledOnce();
+      expect(rows(runtime.snapshot().messages)).toEqual(["user:Start the task"]);
+
+      finish.resolve(changes);
+      await vi.waitFor(() =>
+        expect(rows(runtime.snapshot().messages)).toEqual([
+          "user:Start the task",
+          "overtchat_turn_changes",
+        ]),
+      );
+      await registry.stopAll();
+    });
+
+    it("leaves a session alone when nothing tracks its workspace", async () => {
+      const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+      const runtime = await registry.getOrStart(descriptor);
+      await runtime.command({ type: "prompt", message: "Start the task" }, "first");
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(rows(runtime.snapshot().messages)).toEqual(["user:Start the task"]);
+      await registry.stopAll();
+    });
+  });
+
   it("checks native delivery after restart without replacing the retained display transcript", async () => {
     const displayed = [
       { id: "old-answer", role: "assistant", content: "Keep this completed answer" },
