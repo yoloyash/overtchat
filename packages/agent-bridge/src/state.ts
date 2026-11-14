@@ -9,6 +9,7 @@ import { agentProviderMetadata } from "./catalog";
 import { applyAgentTurnDelta, isAgentTurnDelta } from "./message-delta";
 import {
   AGENT_TURN_CHANGES_EVENT,
+  agentTurnChangesOf,
   agentTurnChangesRow,
   agentTurnChangesSchema,
   isAgentTurnChangesRow,
@@ -167,6 +168,11 @@ function sameMessage(left: unknown, right: unknown): boolean {
   return timestamp !== null && timestamp === timestampOf(right);
 }
 
+/** The snapshot a row ends at names it: one turn ends at one snapshot. */
+function turnChangesHead(message: unknown): string | undefined {
+  return agentTurnChangesOf(message)?.head;
+}
+
 /** The provider never sees what a turn changed. Each such row stays behind the
  * message it followed, and goes when a rewind or fork removes that message. */
 function withTurnChangesRows(
@@ -174,13 +180,15 @@ function withTurnChangesRows(
   messages: unknown[],
 ): unknown[] {
   const kept = new Map<number, unknown[]>();
+  // A runtime's own snapshot already carries its rows.
+  const present = new Set(messages.map(turnChangesHead));
   let anchor: unknown;
   for (const message of previous) {
     if (!isAgentTurnChangesRow(message)) {
       anchor = message;
       continue;
     }
-    if (anchor === undefined) continue;
+    if (anchor === undefined || present.has(turnChangesHead(message))) continue;
     let index = messages.length - 1;
     while (index >= 0 && !sameMessage(anchor, messages[index])) index -= 1;
     if (index < 0) continue;
@@ -383,12 +391,15 @@ export function applyAgentRuntimeMessageEvent(
   }
   if (event.type === AGENT_TURN_CHANGES_EVENT) {
     const changes = agentTurnChangesSchema.safeParse(event.changes);
-    return changes.success
-      ? [
+    if (!changes.success) return messages;
+    // A replayed report is recorded once.
+    const head = changes.data.head;
+    return messages.some((message) => turnChangesHead(message) === head)
+      ? messages
+      : [
           ...messages,
           agentTurnChangesRow(changes.data, runtimeEventTimestamp(event)),
-        ]
-      : messages;
+        ];
   }
   if (event.type === "command_output" && typeof event.text === "string") {
     return [
