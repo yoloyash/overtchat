@@ -1,7 +1,9 @@
 import {
   agentForkMessageId,
+  agentTurnChangesOf,
   type AgentRewindMode,
   type AgentRuntimeCapabilities,
+  type AgentTurnChanges,
 } from "@overtchat/agent-bridge";
 type UnknownRecord = Record<string, unknown>;
 
@@ -160,6 +162,12 @@ export type AgentTranscriptItem = {
       key: string;
       durationMs: number | null;
       expanded: boolean;
+    }
+  | {
+      /** What the turn above changed in the workspace's Git working tree. */
+      type: "turn_changes";
+      key: string;
+      changes: AgentTurnChanges;
     });
 
 /** Fold settled work for display only; the canonical transcript stays intact. */
@@ -369,7 +377,9 @@ export function agentResponseActions(
         if (!sameResponse) break;
         texts.unshift(item.text);
       }
-      actions.set(answer.key, {
+      // The actions close the turn, so they sit under what it changed.
+      const changes = turn.slice(answerIndex + 1).find((item) => item.type === "turn_changes");
+      actions.set((changes ?? answer).key, {
         text: texts.join("\n\n"),
         messageId: answer.actionable ? answer.messageId : null,
       });
@@ -1138,6 +1148,15 @@ export function projectAgentTranscript(
       return;
     }
 
+    const turnChanges = agentTurnChangesOf(message);
+    if (turnChanges) {
+      items.push({
+        type: "turn_changes",
+        key: `turn-changes:${turnChanges.head}`,
+        changes: turnChanges,
+      });
+      return;
+    }
     if (role === "custom" && record.display === false) return;
     if (role === "custom") {
       const notification = presentOmpSystemNotice(textOfContent(record.content));
@@ -1176,6 +1195,14 @@ export function projectAgentTranscript(
       if (["aborted", "error", "cancelled", "interrupted"].includes(String(record?.stopReason))) {
         item.interrupted = true;
       }
+    }
+  });
+  // A turn's changes are recorded after its footer; they read above it.
+  items.forEach((item, index) => {
+    const previous = items[index - 1];
+    if (item.type === "turn_changes" && previous?.type === "turn_footer") {
+      items[index - 1] = { ...item, turnId: previous.turnId };
+      items[index] = previous;
     }
   });
   return groupAgentToolActivity(items);
