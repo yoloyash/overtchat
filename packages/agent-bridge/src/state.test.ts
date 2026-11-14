@@ -217,12 +217,24 @@ describe("agent runtime event reducer", () => {
       ],
     };
 
-    expect(reconcileAgentRuntimeSnapshot(durable, fresh).messages).toEqual([
+    const reconciled = reconcileAgentRuntimeSnapshot(durable, fresh);
+    expect(reconciled.messages).toEqual([
       expect.objectContaining({ id: "provider-user" }),
       { id: "answer-1", role: "assistant", content: "done" },
       row("b"),
       expect.objectContaining({ id: "provider-user-2" }),
     ]);
+
+    // A snapshot that already carries the rows gains no second copy, and a
+    // report delivered twice is recorded once.
+    expect(reconcileAgentRuntimeSnapshot(durable, reconciled).messages)
+      .toEqual(reconciled.messages);
+    const repeated = event({
+      type: "overtchat_turn_changes",
+      changes: row("b").changes,
+      overtchatRecordedAt: 5,
+    });
+    expect(applyAgentRuntimeEnvelope(reconciled, repeated)).toBe(reconciled);
   });
 
   it("treats plain resumed provider history as authoritative", () => {
