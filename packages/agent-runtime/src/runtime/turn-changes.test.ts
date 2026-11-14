@@ -234,6 +234,7 @@ describe("agent turn changes", () => {
     writeFileSync(path.join(directory, "tracked.txt"), "outside the workspace\n");
 
     expect(run(workspace, "capture")).toMatchObject({
+      workspacePath: "packages/app",
       files: [{ path: "packages/app/index.ts", additions: 1, deletions: 0 }],
       total: { files: 1, additions: 1, deletions: 0 },
     });

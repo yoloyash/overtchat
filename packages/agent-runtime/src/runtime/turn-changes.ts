@@ -431,6 +431,9 @@ async function main() {
     status: "ready",
     base: latest.oid,
     head,
+    ...(repository.prefix === ""
+      ? {}
+      : { workspacePath: repository.prefix.replace(/\\/$/, "") }),
     files: files.slice(0, MAX_FILES),
     total: files.reduce(
       (total, file) => ({

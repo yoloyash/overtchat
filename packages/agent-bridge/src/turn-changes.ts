@@ -20,6 +20,8 @@ export const agentTurnChangesSchema = z.object({
   /** The snapshot commits the turn's changes lie between. */
   base: objectId,
   head: objectId,
+  /** The workspace's folder inside the repository, when it is not the root. */
+  workspacePath: z.string().min(1).optional(),
   files: z.array(agentTurnChangedFileSchema).max(AGENT_TURN_CHANGES_MAX_FILES),
   total: z.object({ files: count, additions: count, deletions: count }),
 });
