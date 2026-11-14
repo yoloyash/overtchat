@@ -34,7 +34,10 @@ const mocks = vi.hoisted(() => ({
   switchGitBranch: vi.fn(),
   createGitWorktree: vi.fn(),
   removeGitWorktree: vi.fn(),
+  createTurnChangeTracker: vi.fn(),
+  deleteTurnSnapshots: vi.fn(),
   registryOptions: null as {
+    trackTurnChanges?: (descriptor: Record<string, unknown>) => unknown;
     runtimeExited?: (sessionId: string, runtime: unknown) => void | Promise<void>;
     saveQueuedMessages?: (
       sessionId: string,
@@ -53,6 +56,8 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
     switchAgentWorkspaceGitBranch: mocks.switchGitBranch,
     createAgentWorkspaceGitWorktree: mocks.createGitWorktree,
     removeAgentWorkspaceGitWorktree: mocks.removeGitWorktree,
+    createAgentTurnChangeTracker: mocks.createTurnChangeTracker,
+    deleteAgentTurnSnapshots: mocks.deleteTurnSnapshots,
     workspaceFilesService: {
       listDirectory: mocks.listWorkspaceDirectory,
       readFile: mocks.readWorkspaceFile,
@@ -170,6 +175,7 @@ async function openJournal(): Promise<{
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.directoryStatus.mockReturnValue({});
+  mocks.deleteTurnSnapshots.mockResolvedValue(undefined);
   mocks.normalizeCommand.mockImplementation((value) => value);
   mocks.command.mockResolvedValue({ queued: true, id: "message-1" });
   mocks.snapshot.mockReturnValue({
@@ -1588,6 +1594,71 @@ describe("connector daemon command identity", () => {
     await journal.close();
   });
 
+  it("tracks each session's turn changes in its own workspace, and removes a deleted workspace's snapshots", async () => {
+    const { journal, timelines } = await openJournal();
+    await journal.recordSession(session);
+    await journal.recordSession({
+      ...session,
+      sessionId: "session-2",
+      providerSessionId: "provider-session-2",
+      providerSessionPath: "/sessions/provider-session-2.jsonl",
+    });
+    await journal.recordSession({
+      ...session,
+      workspaceId: "other-workspace",
+      cwd: "/other",
+      sessionId: "session-3",
+      providerSessionId: "provider-session-3",
+      providerSessionPath: "/sessions/provider-session-3.jsonl",
+    });
+    mocks.deleteTurnSnapshots.mockResolvedValue(undefined);
+    const emitted: HostConnectorEventPayload[] = [];
+    const daemon = new ConnectorDaemon(
+      (event) => emitted.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    const tracker = { warm: vi.fn(), prepare: vi.fn(), finish: vi.fn() };
+    mocks.createTurnChangeTracker.mockReturnValue(tracker);
+    expect(
+      mocks.registryOptions?.trackTurnChanges?.({
+        target: { transport: "local" },
+        cwd: "/workspace",
+        sessionId: "session",
+      }),
+    ).toBe(tracker);
+    expect(mocks.createTurnChangeTracker).toHaveBeenCalledWith(
+      { transport: "local" },
+      "/workspace",
+      "session",
+    );
+
+    await daemon.handle({
+      type: "request",
+      requestId: "stop-workspace",
+      request: { type: "stop_workspace", workspaceId: "workspace" },
+    });
+
+    expect(mocks.deleteTurnSnapshots).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ transport: "local" }),
+      "/workspace",
+      ["session", "session-2"],
+    );
+    expect(journal.sessionIds()).toEqual(["session-3"]);
+    expect(emitted).toContainEqual(
+      expect.objectContaining({
+        type: "response",
+        requestId: "stop-workspace",
+        success: true,
+      }),
+    );
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("keeps journal discovery intact if bulk timeline deletion fails", async () => {
     const { journal, timelines } = await openJournal();
     await journal.recordSession(session);
@@ -1609,6 +1680,8 @@ describe("connector daemon command identity", () => {
     });
 
     expect(journal.sessionIds()).toEqual(["session"]);
+    // Sessions that stay keep their snapshots.
+    expect(mocks.deleteTurnSnapshots).not.toHaveBeenCalled();
     expect(emitted).toContainEqual(
       expect.objectContaining({
         type: "response",
