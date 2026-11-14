@@ -57,6 +57,7 @@ import {
   AgentWorkSummary,
 } from "./AgentTranscriptRows";
 import { AgentUserMessage } from "./AgentUserMessage";
+import { AgentTurnChangesCard } from "./AgentTurnChanges";
 import { AgentRunHeader, AgentRunStatus } from "./AgentWorkingIndicator";
 
 type Speech = Pick<ReturnType<typeof useSpeech>, "activeId" | "status" | "play">;
@@ -111,6 +112,7 @@ function rowSpacing(
   if (!previous) return 0;
   if (item.type === "activity" && previous.type === "activity") return 0;
   if (item.type === "turn_footer") return 2;
+  if (item.type === "turn_changes") return 12;
   if (isUser(item)) return 24;
   if (
     item.type === "activity" ||
@@ -645,7 +647,15 @@ const TranscriptItem = memo(function TranscriptItem({
       return <AgentTaskListCard snapshot={item.snapshot} />;
     case "turn_changes":
       // The turn's actions sit under its changes.
-      return actions;
+      return (
+        <View>
+          <AgentTurnChangesCard
+            changes={item.changes}
+            onToggle={() => onHold(item.key)}
+          />
+          {actions}
+        </View>
+      );
     case "message": {
       const message = record(item.message);
       if (message.role === "user")
