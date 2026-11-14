@@ -324,6 +324,7 @@ export class AgentSessionRuntime {
   private idleStopTimer: NodeJS.Timeout | undefined;
   private turnGeneration = 0;
   private acknowledgedAborts = 0;
+  private stoppedTurnChanges: Promise<void> | null = null;
   private stopped = false;
   private exitNotified = false;
 
@@ -1336,11 +1337,13 @@ export class AgentSessionRuntime {
     this.pendingSubmissions.set(submission.id, submission);
     this.promptSubmissionId = submission.id;
     this.publishStatus();
+    const aborts = this.acknowledgedAborts;
+    // A stopped turn's changes belong above the message that follows it.
+    if (this.stoppedTurnChanges) await this.stoppedTurnChanges;
     this.publishSubmission(submission.id, submission.message, images);
     if (this.turnChanges) {
       // The turn is compared against a snapshot of the workspace, which has to
       // exist before the provider can change a file.
-      const aborts = this.acknowledgedAborts;
       await this.turnChanges.prepare();
       if (this.stopped || aborts !== this.acknowledgedAborts) {
         this.rejectSubmission(submission.id);
@@ -1525,7 +1528,12 @@ export class AgentSessionRuntime {
       this.completeAcknowledgedAbort(busy);
       // A stopped turn keeps what it wrote. The next prompt waits for this
       // snapshot, so stopping itself does not.
-      if (!busy) void this.recordTurnChanges();
+      if (!busy) {
+        const recording = this.recordTurnChanges().finally(() => {
+          if (this.stoppedTurnChanges === recording) this.stoppedTurnChanges = null;
+        });
+        this.stoppedTurnChanges = recording;
+      }
       return result;
     });
     const settled = operation

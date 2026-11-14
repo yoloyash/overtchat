@@ -301,13 +301,19 @@ describe("agent runtime", () => {
       expect(tracker.finish).toHaveBeenCalledOnce();
       expect(rows(runtime.snapshot().messages)).toEqual(["user:Start the task"]);
 
+      // A prompt sent meanwhile lands below the stopped turn's changes.
+      const next = runtime.command({ type: "prompt", message: "Try again" }, "second");
+      expect(runtime.snapshot().status).toBe("running");
+      expect(rows(runtime.snapshot().messages)).toEqual(["user:Start the task"]);
+
       finish.resolve(changes);
-      await vi.waitFor(() =>
-        expect(rows(runtime.snapshot().messages)).toEqual([
-          "user:Start the task",
-          "overtchat_turn_changes",
-        ]),
-      );
+      await next;
+      expect(rows(runtime.snapshot().messages)).toEqual([
+        "user:Start the task",
+        "overtchat_turn_changes",
+        "user:Try again",
+      ]);
+      expect(mocks.prompt).toHaveBeenCalledTimes(2);
       await registry.stopAll();
     });
 
