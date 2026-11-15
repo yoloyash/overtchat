@@ -722,6 +722,37 @@ servers left behind by older versions without records are not automatically
 reaped. Stopping a session aborts its work; other sessions sharing the same
 OpenCode server remain available.
 
+### Turn change snapshots
+
+After each agent turn in a Git workspace, the Host Connector records which
+files the turn changed and how many lines it added and removed. It does this by
+snapshotting the working tree before the first prompt and after every turn, and
+comparing consecutive snapshots, so changes made by commands and formatters
+count like edits, and work that was already uncommitted before the turn does
+not.
+
+A snapshot is a commit under `refs/overtchat/turns/<session>/<n>` in the
+workspace's repository (the parent repository, for a worktree). It is built in
+a scratch index: the working tree, the index, branches, `HEAD`, and stashes are
+never touched, and nothing is pushed. Snapshots do appear in views that list
+every ref, such as `git log --all`. Files matched by `.gitignore` are left out;
+other untracked files are stored in the repository's object database, so keep
+large generated files ignored.
+
+Snapshots run with Git and Node.js on the machine that holds the workspace,
+like workspace Git status. A folder that is not a repository, a sparse
+checkout, or a workspace directory its repository ignores is skipped and shows
+no changes. A snapshot that takes longer than 30 seconds is abandoned and the
+session stops snapshotting until it is reopened; the first snapshot of a
+session holds its first prompt for at most 5 seconds.
+
+Removing a workspace or connection from OvertChat deletes its sessions'
+snapshots. To remove every snapshot from a repository by hand:
+
+```sh
+git for-each-ref --format='delete %(refname)' refs/overtchat | git update-ref --stdin
+```
+
 ### Workspace terminals
 
 The web and desktop agent workspace header includes a resizable terminal panel.

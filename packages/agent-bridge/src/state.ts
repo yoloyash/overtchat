@@ -7,6 +7,13 @@ import type {
 import { agentPromptImageSchema, agentUsageUpdateSchema } from "./agents";
 import { agentProviderMetadata } from "./catalog";
 import { applyAgentTurnDelta, isAgentTurnDelta } from "./message-delta";
+import {
+  AGENT_TURN_CHANGES_EVENT,
+  agentTurnChangesOf,
+  agentTurnChangesRow,
+  agentTurnChangesSchema,
+  isAgentTurnChangesRow,
+} from "./turn-changes";
 
 type AgentRuntimeEvent = Extract<
   AgentRuntimeEnvelope,
@@ -146,7 +153,53 @@ export function reconcileSubmittedUserMessages(
       messages[providerIndex],
     );
   }
-  return messages;
+  return withTurnChangesRows(submitted, messages);
+}
+
+function sameMessage(left: unknown, right: unknown): boolean {
+  if (roleOf(left) !== roleOf(right)) return false;
+  const submissionId = submissionIdOf(left);
+  if (submissionId !== null) return submissionId === submissionIdOf(right);
+  const id = idOf(left);
+  if (id !== null && idOf(right) !== null) return id === idOf(right);
+  const toolCallId = toolCallIdOf(left);
+  if (toolCallId !== null) return toolCallId === toolCallIdOf(right);
+  const timestamp = timestampOf(left);
+  return timestamp !== null && timestamp === timestampOf(right);
+}
+
+/** The snapshot a row ends at names it: one turn ends at one snapshot. */
+function turnChangesHead(message: unknown): string | undefined {
+  return agentTurnChangesOf(message)?.head;
+}
+
+/** The provider never sees what a turn changed. Each such row stays behind the
+ * message it followed, and goes when a rewind or fork removes that message. */
+function withTurnChangesRows(
+  previous: readonly unknown[],
+  messages: unknown[],
+): unknown[] {
+  const kept = new Map<number, unknown[]>();
+  // A runtime's own snapshot already carries its rows.
+  const present = new Set(messages.map(turnChangesHead));
+  let anchor: unknown;
+  for (const message of previous) {
+    if (!isAgentTurnChangesRow(message)) {
+      anchor = message;
+      continue;
+    }
+    if (anchor === undefined || present.has(turnChangesHead(message))) continue;
+    let index = messages.length - 1;
+    while (index >= 0 && !sameMessage(anchor, messages[index])) index -= 1;
+    if (index < 0) continue;
+    kept.set(index, [...(kept.get(index) ?? []), message]);
+  }
+  return kept.size === 0
+    ? messages
+    : messages.flatMap((message, index) => [
+        message,
+        ...(kept.get(index) ?? []),
+      ]);
 }
 
 function replaceTurnMessages(
@@ -336,6 +389,18 @@ export function applyAgentRuntimeMessageEvent(
     const message = partialToolResult(event);
     return message ? upsertMessage(messages, message) : messages;
   }
+  if (event.type === AGENT_TURN_CHANGES_EVENT) {
+    const changes = agentTurnChangesSchema.safeParse(event.changes);
+    if (!changes.success) return messages;
+    // A replayed report is recorded once.
+    const head = changes.data.head;
+    return messages.some((message) => turnChangesHead(message) === head)
+      ? messages
+      : [
+          ...messages,
+          agentTurnChangesRow(changes.data, runtimeEventTimestamp(event)),
+        ];
+  }
   if (event.type === "command_output" && typeof event.text === "string") {
     return [
       ...messages,
@@ -498,6 +563,10 @@ export function applyAgentRuntimeEnvelope(
     event.type === "tool_execution_update" ||
     event.type === "tool_execution_end"
   ) {
+    const messages = applyAgentRuntimeMessageEvent(current.messages, event);
+    return messages === current.messages ? current : { ...current, messages };
+  }
+  if (event.type === AGENT_TURN_CHANGES_EVENT) {
     const messages = applyAgentRuntimeMessageEvent(current.messages, event);
     return messages === current.messages ? current : { ...current, messages };
   }

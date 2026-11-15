@@ -21,6 +21,7 @@ import type {
   AgentThinkingLevel,
 } from "@overtchat/agent-bridge";
 import {
+  AGENT_TURN_CHANGES_EVENT,
   applyAgentRuntimeMessageEvent,
   applyAgentRuntimeStateEvent,
   applyAgentRuntimeUsageEvent,
@@ -40,6 +41,7 @@ import type {
   AgentSessionChangeResult,
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
+import type { AgentTurnChangeTracker } from "./turn-changes";
 import { AgentUsagePoller } from "./usage-poller";
 import { AgentTurnTracker, sessionAttention } from "./attention";
 
@@ -113,6 +115,10 @@ export type AgentRuntimeRegistryOptions = {
   resolveCatalog?: (
     descriptor: AgentWorkspaceDescriptor,
   ) => Promise<AgentProviderCatalog>;
+  /** Reports what each turn changed in the session's workspace. */
+  trackTurnChanges?: (
+    descriptor: AgentWorkspaceDescriptor & { sessionId: string },
+  ) => AgentTurnChangeTracker | null;
 };
 
 function emptyStats(): AgentSessionStats {
@@ -317,6 +323,8 @@ export class AgentSessionRuntime {
   private refreshPromise: Promise<void> | null = null;
   private idleStopTimer: NodeJS.Timeout | undefined;
   private turnGeneration = 0;
+  private acknowledgedAborts = 0;
+  private stoppedTurnChanges: Promise<void> | null = null;
   private stopped = false;
   private exitNotified = false;
 
@@ -337,6 +345,7 @@ export class AgentSessionRuntime {
     >,
     initialQueuedMessages: readonly AgentQueuedMessage[],
     private readonly onExit: () => void,
+    private readonly turnChanges: AgentTurnChangeTracker | null = null,
   ) {
     this.eventClassifier = adapter.createEventClassifier();
     this.state = initial.state;
@@ -369,6 +378,7 @@ export class AgentSessionRuntime {
     this.activeTurnStartedAt =
       this.status === "running" ? Date.now() : null;
     this.turns = new AgentTurnTracker(this.status, this.activeTurnStartedAt);
+    void this.turnChanges?.warm();
     this.scheduleIdleStop();
     if (
       restoredQueue.changed ||
@@ -1327,7 +1337,21 @@ export class AgentSessionRuntime {
     this.pendingSubmissions.set(submission.id, submission);
     this.promptSubmissionId = submission.id;
     this.publishStatus();
+    const aborts = this.acknowledgedAborts;
+    // A stopped turn's changes belong above the message that follows it.
+    if (this.stoppedTurnChanges) await this.stoppedTurnChanges;
     this.publishSubmission(submission.id, submission.message, images);
+    if (this.turnChanges) {
+      // The turn is compared against a snapshot of the workspace, which has to
+      // exist before the provider can change a file.
+      await this.turnChanges.prepare();
+      if (this.stopped || aborts !== this.acknowledgedAborts) {
+        this.rejectSubmission(submission.id);
+        throw new Error(
+          `${agentProviderMetadata(this.provider).label} was stopped before the message was sent.`,
+        );
+      }
+    }
     try {
       onProviderInvoke?.();
       const result =
@@ -1502,6 +1526,14 @@ export class AgentSessionRuntime {
       }
       if (this.stopped || this.status === "exited") return result;
       this.completeAcknowledgedAbort(busy);
+      // A stopped turn keeps what it wrote. The next prompt waits for this
+      // snapshot, so stopping itself does not.
+      if (!busy) {
+        const recording = this.recordTurnChanges().finally(() => {
+          if (this.stoppedTurnChanges === recording) this.stoppedTurnChanges = null;
+        });
+        this.stoppedTurnChanges = recording;
+      }
       return result;
     });
     const settled = operation
@@ -1539,6 +1571,7 @@ export class AgentSessionRuntime {
     this.usagePoller?.stop();
     // An acknowledged abort supersedes settlement work for the canceled turn.
     this.turnGeneration += 1;
+    this.acknowledgedAborts += 1;
     this.settlePromise = null;
     this.promptAwaitingStart = false;
     this.promptSubmissionId = undefined;
@@ -1603,6 +1636,10 @@ export class AgentSessionRuntime {
         data: { type: "rpc_error", command: "get_state", error: this.error },
       });
     }
+    // The turn stays open until its snapshot exists, so a queued prompt cannot
+    // start ahead of the snapshot it is compared against.
+    await this.recordTurnChanges();
+    if (!this.isProviderIdleWaitCurrent(turnGeneration)) return;
     this.usagePoller?.stop();
     this.status = "idle";
     this.activeTurnStartedAt = null;
@@ -1676,6 +1713,21 @@ export class AgentSessionRuntime {
       this.status !== "exited" &&
       this.turnGeneration === turnGeneration
     );
+  }
+
+  private async recordTurnChanges(): Promise<void> {
+    if (!this.turnChanges) return;
+    const changes = await this.turnChanges.finish();
+    if (!changes || this.stopped || this.status === "exited") return;
+    const event = {
+      type: AGENT_TURN_CHANGES_EVENT,
+      changes,
+      // The runtime and the connector timeline each reduce this event into a
+      // row; one recorded time keeps the two rows identical.
+      overtchatRecordedAt: Date.now(),
+    };
+    this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
+    this.publish({ type: "runtime_event", data: event });
   }
 
   private publishStatus(): void {
@@ -2258,6 +2310,7 @@ export class AgentRuntimeRegistry {
         }
         void this.options.runtimeExited?.(sessionId, runtime);
       },
+      this.options.trackTurnChanges?.({ ...descriptor, sessionId }) ?? null,
     );
     this.runtimes.set(sessionId, runtime);
     return runtime;

@@ -70,6 +70,7 @@ export * from "./commands";
 export * from "./state";
 export * from "./replica";
 export * from "./transcript";
+export * from "./turn-changes";
 export * from "./message-delta";
 export * from "./session-held";
 

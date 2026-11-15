@@ -13,6 +13,11 @@ export * from "./runtime/provider-catalogs";
 export * from "./runtime/provider-snapshots";
 export * from "./runtime/registry";
 export {
+  createAgentTurnChangeTracker,
+  deleteAgentTurnSnapshots,
+  type AgentTurnChangeTracker,
+} from "./runtime/turn-changes";
+export {
   workspaceFilesService,
   type WorkspaceFilesService,
 } from "./runtime/workspace-files";

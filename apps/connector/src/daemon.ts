@@ -25,6 +25,8 @@ import {
   configureHostEnvironmentResolver,
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
+  createAgentTurnChangeTracker,
+  deleteAgentTurnSnapshots,
   listAgentDirectories,
   createAgentWorkspaceGitWorktree,
   inspectAgentWorkspaceGitWorktree,
@@ -135,6 +137,12 @@ function workspaceDescriptor(
   };
 }
 
+type TurnSnapshotOwner = {
+  target: HostTarget;
+  cwd: string;
+  sessionIds: string[];
+};
+
 function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
   return {
     ...descriptor,
@@ -212,6 +220,12 @@ export class ConnectorDaemon {
       },
       resolveCatalog: (descriptor) =>
         this.providerCatalogs.getCatalog(descriptor),
+      trackTurnChanges: (descriptor) =>
+        createAgentTurnChangeTracker(
+          descriptor.target,
+          descriptor.cwd,
+          descriptor.sessionId,
+        ),
     });
   }
 
@@ -364,6 +378,7 @@ export class ConnectorDaemon {
     const removed = this.journal
       .sessionIds()
       .filter((sessionId) => !active.has(sessionId));
+    const snapshots = this.turnSnapshotOwners(removed);
     await Promise.all(
       removed.map((sessionId) => this.registry.stopSession(sessionId)),
     );
@@ -373,7 +388,39 @@ export class ConnectorDaemon {
     );
     this.assertAccepting();
     await this.journal.retainSessions(active);
+    void this.removeTurnSnapshots(snapshots);
     this.publishSessionDirectory(active);
+  }
+
+  /** Where each session's turn snapshots live, read before its record goes. */
+  private turnSnapshotOwners(sessionIds: readonly string[]): TurnSnapshotOwner[] {
+    const owners = new Map<string, TurnSnapshotOwner>();
+    for (const sessionId of sessionIds) {
+      const descriptor = this.journal.sessionDescriptor(sessionId);
+      if (!descriptor) continue;
+      const key = JSON.stringify([descriptor.target, descriptor.cwd]);
+      const owner = owners.get(key) ?? {
+        target: hostTarget(descriptor.target),
+        cwd: descriptor.cwd,
+        sessionIds: [],
+      };
+      owner.sessionIds.push(sessionId);
+      owners.set(key, owner);
+    }
+    return [...owners.values()];
+  }
+
+  /** Deleted sessions leave no snapshots in their repositories. Best effort. */
+  private async removeTurnSnapshots(
+    owners: readonly TurnSnapshotOwner[],
+  ): Promise<void> {
+    for (const owner of owners) {
+      try {
+        await deleteAgentTurnSnapshots(owner.target, owner.cwd, owner.sessionIds);
+      } catch {
+        // The machine or the folder may already be gone.
+      }
+    }
   }
 
   private async handleRequest(request: AgentDaemonRequest): Promise<unknown> {
@@ -592,16 +639,20 @@ export class ConnectorDaemon {
         }
         this.subscriptions.delete(request.subscriptionId);
         return { subscribed: false };
-      case "stop_session":
+      case "stop_session": {
+        const snapshots = this.turnSnapshotOwners([request.sessionId]);
         await this.registry.stopSession(request.sessionId);
         this.assertAccepting();
         await this.finishCapture(request.sessionId, true);
         this.assertAccepting();
         await this.journal.deleteSession(request.sessionId);
+        await this.removeTurnSnapshots(snapshots);
         return { stopped: true };
+      }
       case "stop_workspace": {
         this.terminals.stopWorkspace(request.workspaceId);
         const removed = this.journal.sessionIdsForWorkspace(request.workspaceId);
+        const snapshots = this.turnSnapshotOwners(removed);
         await this.registry.stopWorkspace(request.workspaceId);
         this.assertAccepting();
         await Promise.all(
@@ -609,11 +660,15 @@ export class ConnectorDaemon {
         );
         this.assertAccepting();
         await this.journal.deleteWorkspace(request.workspaceId);
+        // A worktree's snapshots live in its parent repository, so they go
+        // before the caller removes the worktree itself.
+        await this.removeTurnSnapshots(snapshots);
         return { stopped: true };
       }
       case "stop_connection": {
         this.terminals.stopConnection(request.connectionId);
         const removed = this.journal.sessionIdsForConnection(request.connectionId);
+        const snapshots = this.turnSnapshotOwners(removed);
         await this.registry.stopConnection(request.connectionId);
         this.assertAccepting();
         await Promise.all(
@@ -621,11 +676,13 @@ export class ConnectorDaemon {
         );
         this.assertAccepting();
         await this.journal.deleteConnection(request.connectionId);
+        void this.removeTurnSnapshots(snapshots);
         return { stopped: true };
       }
       case "stop_all": {
         this.terminals.stopAll();
         const removed = this.journal.sessionIds();
+        const snapshots = this.turnSnapshotOwners(removed);
         await this.registry.stopAll();
         this.assertAccepting();
         await Promise.all(
@@ -633,6 +690,7 @@ export class ConnectorDaemon {
         );
         this.assertAccepting();
         await this.journal.deleteAllSessions();
+        void this.removeTurnSnapshots(snapshots);
         return { stopped: true };
       }
     }
