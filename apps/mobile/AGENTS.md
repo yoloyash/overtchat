@@ -14,7 +14,10 @@ Advanced MCP and agent workspace setup can open the matching web settings page.
 ## Architecture
 
 - `src/app/_layout.tsx` owns root providers and protected routing between server
-  selection, login, and authenticated routes.
+  selection, login, and authenticated routes. At launch it keeps the splash
+  screen up until the session is known (`src/lib/auth/launch.ts`), so a
+  signed-in user never sees the login screen; after that the screens stay
+  mounted through every session check.
 - `src/app/(authed)/_layout.tsx` owns the active chat session and authenticated
   navigation stack. The drawer selects chats and projects through
   `src/lib/chat/session.ts`.
