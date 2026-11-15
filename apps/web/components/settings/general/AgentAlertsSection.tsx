@@ -3,20 +3,22 @@
 import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { authClient } from "@/lib/auth/client";
-import {
-  AGENT_ALERT_SOUND_KEY,
-  AGENT_ALERT_SYSTEM_KEY,
-} from "@/lib/notifications/agentNotification";
 import { playAgentAlertSound } from "@/lib/notifications/sound";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  AGENT_ALERT_BLOCKED,
+  requestNotificationAccess,
+  useAgentAlertChoices,
+} from "@/lib/notifications/useAgentAlertChoices";
 import { SettingsRow, SettingsSection } from "../SettingsRows";
 
 /** Per-device alerts for the agents an administrator runs. */
 export function AgentAlertsSection() {
   const { data: session } = authClient.useSession();
-  const [sound, setSound] = useLocalStorage<boolean>(AGENT_ALERT_SOUND_KEY, false);
-  const [system, setSystem] = useLocalStorage<boolean>(AGENT_ALERT_SYSTEM_KEY, false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const { sound, setSound, system, systemWanted, setSystem, access } =
+    useAgentAlertChoices();
+  const [refused, setRefused] = useState<string | null>(null);
+  // Turned on here, then taken away in the browser's own settings.
+  const problem = refused ?? (systemWanted && !system ? AGENT_ALERT_BLOCKED : null);
   if (session?.user?.role !== "admin") return null;
 
   function toggleSound(next: boolean) {
@@ -27,24 +29,22 @@ export function AgentAlertsSection() {
   }
 
   async function toggleSystem(next: boolean) {
-    setProblem(null);
+    setRefused(null);
     if (!next) {
       setSystem(false);
       return;
     }
-    if (typeof Notification === "undefined" || !window.isSecureContext) {
-      setProblem(
+    const result = access === "granted" ? access : await requestNotificationAccess();
+    if (result === "unsupported") {
+      setRefused(
         "System notifications need a supported browser over HTTPS, or the desktop app.",
       );
       return;
     }
-    const permission = await Notification.requestPermission().catch(
-      () => "denied" as const,
-    );
-    if (permission !== "granted") {
-      setProblem(
-        "Allow notifications for this site in your browser or system settings, then turn this on again.",
-      );
+    if (result !== "granted") {
+      // Asked and refused: stop wanting it until the switch is used again.
+      setSystem(false);
+      setRefused(AGENT_ALERT_BLOCKED);
       return;
     }
     setSystem(true);

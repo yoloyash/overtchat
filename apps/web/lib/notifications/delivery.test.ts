@@ -456,6 +456,17 @@ describe("push registration and delivery through the production migration", () =
     await sender.notifyAgentAttention(asked);
     expect(sink).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A client nobody has used for a while is told, and so is the phone.
+    registry.record("alice", {
+      clientId: "tab-00000001",
+      visible: false,
+      viewing: null,
+      notify: true,
+      idleMs: presence.AGENT_PRESENCE_WINDOW_MS + 1,
+    });
+    await sender.notifyAgentAttention(asked);
+    expect(sink).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     detach();
   });
   it("does not submit agent notifications after admin access is revoked", async () => {
