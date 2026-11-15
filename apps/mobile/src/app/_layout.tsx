@@ -42,12 +42,13 @@ import { Stack, useNavigationContainerRef } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { getAuthClient } from "@/lib/auth/client";
+import { LAUNCH_SESSION_WAIT_MS, sessionKnown } from "@/lib/auth/launch";
 import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
@@ -138,12 +139,20 @@ function RootLayout() {
 
 function AuthRoutes({ backgroundColor }: { backgroundColor: string }) {
   const serverUrl = useServerUrl();
+  // Set once the first screens are up, or the launch has waited long enough.
+  const [launched, setLaunched] = useState(false);
+  const markLaunched = useCallback(() => setLaunched(true), []);
+  useEffect(() => {
+    const timer = setTimeout(markLaunched, LAUNCH_SESSION_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [markLaunched]);
 
   if (!serverUrl) {
     return (
       <QueryClientScope>
         <RootStack
           authReady
+          onReady={markLaunched}
           hasServer={false}
           hasSession={false}
           backgroundColor={backgroundColor}
@@ -152,18 +161,41 @@ function AuthRoutes({ backgroundColor }: { backgroundColor: string }) {
     );
   }
 
-  return <SessionRoutes key={serverUrl} backgroundColor={backgroundColor} />;
+  return (
+    <SessionRoutes
+      key={serverUrl}
+      launched={launched}
+      onReady={markLaunched}
+      backgroundColor={backgroundColor}
+    />
+  );
 }
 
-function SessionRoutes({ backgroundColor }: { backgroundColor: string }) {
+function SessionRoutes({
+  launched,
+  onReady,
+  backgroundColor,
+}: {
+  launched: boolean;
+  onReady: () => void;
+  backgroundColor: string;
+}) {
   const session = getAuthClient().useSession();
   const userId = session.data?.user.id ?? "signed-out";
   return (
     <QueryClientScope key={userId}>
       <RootStack
-        // A signed-out refetch also reports pending; keep the screens mounted
-        // so the login form keeps its two-factor step.
-        authReady={!session.isPending || session.isRefetching}
+        // The launch waits behind the splash screen until the session is
+        // known. After it, a check in flight leaves the screens up: a
+        // signed-out recheck reports an unknown session again, and unmounting
+        // the login form would reset its two-factor step. A newly chosen
+        // server still starts from an empty stack, before its first check.
+        authReady={
+          launched
+            ? !session.isPending || session.isRefetching
+            : sessionKnown(session)
+        }
+        onReady={onReady}
         hasServer
         hasSession={Boolean(session.data?.user)}
         backgroundColor={backgroundColor}
@@ -182,18 +214,22 @@ function QueryClientScope({ children }: { children: ReactNode }) {
 
 function RootStack({
   authReady,
+  onReady,
   hasServer,
   hasSession,
   backgroundColor,
 }: {
   authReady: boolean;
+  onReady: () => void;
   hasServer: boolean;
   hasSession: boolean;
   backgroundColor: string;
 }) {
   useEffect(() => {
-    if (authReady) SplashScreen.hideAsync();
-  }, [authReady]);
+    if (!authReady) return;
+    SplashScreen.hideAsync();
+    onReady();
+  }, [authReady, onReady]);
 
   if (!authReady) return null;
 
