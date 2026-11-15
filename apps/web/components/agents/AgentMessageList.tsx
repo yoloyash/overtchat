@@ -58,6 +58,7 @@ import {
   type AgentRunActivity,
 } from "./AgentActivity";
 import { AgentTaskProgressCard } from "./AgentTaskList";
+import { AgentTurnChangesCard } from "./AgentTurnChanges";
 import { AgentForkMenu } from "./AgentForkMenu";
 import { AgentRewindMenu } from "./AgentRewindMenu";
 import type { AgentRewindMode } from "@overtchat/agent-bridge";
@@ -234,12 +235,18 @@ export function AgentMessageList({
     transcript.forEach((item, index) => {
       const previousGroup = groups.at(-1);
       const previousItem = previousGroup?.at(-1)?.item;
+      // An answer moves as one with what closes it: its changes, its footer.
+      const answer = previousItem?.type === "turn_changes"
+        ? previousGroup?.at(-2)?.item
+        : previousItem;
       if (
         previousGroup &&
-        item.type === "turn_footer" &&
-        item.messageId !== null &&
-        previousItem?.type === "assistant_text" &&
-        previousItem.messageId === item.messageId
+        answer?.type === "assistant_text" &&
+        (item.type === "turn_changes"
+          ? previousItem === answer
+          : item.type === "turn_footer" &&
+            item.messageId !== null &&
+            answer.messageId === item.messageId)
       ) {
         previousGroup.push({ item, index });
       } else {
@@ -316,6 +323,7 @@ export function AgentMessageList({
                       previous &&
                       (item.type === "activity" ||
                         previous.type === "activity" ||
+                        item.type === "turn_changes" ||
                         item.type === "turn_footer");
                     return (
                       <div
@@ -427,6 +435,22 @@ function AgentTranscriptRow({
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
+  const actionBar = responseActions && (
+    <div className="mt-2">
+      <MessageActions show alwaysVisible>
+        <AgentCopyButton text={responseActions.text} disabled={actionsDisabled} />
+        <AgentSpeakButton id={item.key} text={responseActions.text} speech={speech} />
+        {canForkMessages && responseActions.messageId && (
+          <AgentForkMenu
+            disabled={actionsDisabled}
+            onFork={(chooseWorkspace) =>
+              onForkMessage(responseActions.messageId!, chooseWorkspace)
+            }
+          />
+        )}
+      </MessageActions>
+    </div>
+  );
   if (item.type === "compaction") {
     return (
       <div role="separator" aria-label={item.label} data-testid="agent-compaction"
@@ -474,22 +498,15 @@ function AgentTranscriptRow({
     return (
       <div className="group/assistant relative text-sm leading-relaxed">
         <Markdown streaming={active}>{item.text}</Markdown>
-        {responseActions && (
-          <div className="mt-2">
-            <MessageActions show alwaysVisible>
-              <AgentCopyButton text={responseActions.text} disabled={actionsDisabled} />
-              <AgentSpeakButton id={item.key} text={responseActions.text} speech={speech} />
-              {canForkMessages && responseActions.messageId && (
-                <AgentForkMenu
-                  disabled={actionsDisabled}
-                  onFork={(chooseWorkspace) =>
-                    onForkMessage(responseActions.messageId!, chooseWorkspace)
-                  }
-                />
-              )}
-            </MessageActions>
-          </div>
-        )}
+        {actionBar}
+      </div>
+    );
+  }
+  if (item.type === "turn_changes") {
+    return (
+      <div>
+        <AgentTurnChangesCard changes={item.changes} />
+        {actionBar}
       </div>
     );
   }
