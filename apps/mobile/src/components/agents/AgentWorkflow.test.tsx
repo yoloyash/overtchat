@@ -1708,6 +1708,46 @@ describe("agent presentation regressions", () => {
     expect(container.textContent).toContain("The agent stopped unexpectedly.");
   });
 
+  it("lists what a turn changed under its answer, folders closed, with the turn's actions below", async () => {
+    mocks.snapshot!.messages = [
+      { role: "user", id: "first", content: "Add the retry helper" },
+      { role: "assistant", id: "answer", content: [{ type: "text", text: "The retry helper is in place." }] },
+      {
+        role: "custom", customType: "overtchat_turn_changes", display: false, timestamp: 5,
+        changes: {
+          base: "a".repeat(40), head: "b".repeat(40),
+          files: [
+            { path: "README.md", additions: 2, deletions: 0 },
+            { path: "apps/web/lib/retry.ts", additions: 1180, deletions: 12 },
+            { path: "apps/web/public/logo.png", additions: 0, deletions: 0 },
+          ],
+          total: { files: 5, additions: 1300, deletions: 14 },
+        },
+      },
+    ];
+    await render();
+    const card = container.querySelector('[data-testid="agent-turn-changes"]')!;
+    const files = () =>
+      [...card.querySelectorAll('[data-testid="agent-turn-changes-file"]')].map((row) => row.textContent);
+    // The count, the lines, one closed folder with its own lines, and the rest.
+    expect(card.textContent).toBe("5 changed files+1.3k-14apps/web+1.2k-12README.md+2-0and 2 more files");
+    expect(files()).toEqual(["README.md+2-0"]);
+    // The answer, the card, then the turn's actions, in one cell.
+    const cell = card.closest('[data-testid^="agent-transcript-cell:"]')!;
+    expect(cell.querySelector('[aria-label="Copy response"]')).not.toBeNull();
+    expect(container.querySelectorAll('[aria-label="Copy response"]')).toHaveLength(1);
+
+    const folder = card.querySelector<HTMLElement>('[aria-label="apps/web"]')!;
+    expect(folder.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => folder.click());
+    expect(files()).toEqual(["README.md+2-0"]);
+    await act(async () => card.querySelector<HTMLElement>('[aria-label="Expand all folders"]')!.click());
+    // A binary file counts no lines, so it shows none.
+    expect(files()).toEqual(["retry.ts+1.2k-12", "logo.png", "README.md+2-0"]);
+    await act(async () => card.querySelector<HTMLElement>('[aria-label="Collapse all folders"]')!.click());
+    expect(files()).toEqual(["README.md+2-0"]);
+  });
+
   it("keeps a running turn's reasoning and tool calls in one live group", async () => {
     mocks.snapshot!.status = "running";
     mocks.snapshot!.messages = [
