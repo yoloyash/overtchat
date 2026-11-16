@@ -469,6 +469,41 @@ describe("push registration and delivery through the production migration", () =
     expect(fetchMock).toHaveBeenCalledTimes(2);
     detach();
   });
+  it("keeps the phone quiet about a chat reply a client in use has open", async () => {
+    register();
+    const registry = presence.agentClientRegistry;
+    const report = (overrides: { visible: boolean; viewing: string | null; notify: boolean; idleMs?: number }) =>
+      registry.record("alice", { clientId: "tab-00000002", ...overrides });
+    // On screen: the reply is being read.
+    report({ visible: true, viewing: "chat:chat", notify: false });
+    await send();
+    expect(fetchMock).not.toHaveBeenCalled();
+    // In the background with alerts on: the page says so itself.
+    report({ visible: false, viewing: "chat:chat", notify: true });
+    await send();
+    expect(fetchMock).not.toHaveBeenCalled();
+    // In the background with alerts off, on another chat, or left alone: the phone is told.
+    report({ visible: false, viewing: "chat:chat", notify: false });
+    await send();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    report({ visible: true, viewing: "chat:other", notify: true });
+    await send();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    report({
+      visible: true,
+      viewing: "chat:chat",
+      notify: true,
+      idleMs: presence.AGENT_PRESENCE_WINDOW_MS + 1,
+    });
+    await send();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // Showing the chat, then not heard from again: a closed laptop.
+    report({ visible: true, viewing: "chat:chat", notify: true });
+    vi.advanceTimersByTime(presence.AGENT_PRESENCE_LIVE_MS + 1);
+    await send();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    report({ visible: false, viewing: null, notify: false });
+  });
   it("does not submit agent notifications after admin access is revoked", async () => {
     register();
     db.update(schema.user)

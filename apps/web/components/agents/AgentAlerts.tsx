@@ -8,7 +8,6 @@ import { AgentSessionStatusIcon } from "@/components/agents/AgentSessionStatus";
 import { toast } from "@/components/ui/toast";
 import { agentAttentionCounts } from "@/lib/agents/attention";
 import { agentSessionIdForPath } from "@/lib/agents/sidebarMode";
-import { desktopBridge } from "@/lib/desktop";
 import {
   agentNotificationHeading,
   agentNotificationNeedsInput,
@@ -16,12 +15,12 @@ import {
 } from "@/lib/notifications/agentNotification";
 import { subscribeAgentStream } from "@/lib/notifications/agentStream";
 import { showAgentAttentionBadge } from "@/lib/notifications/favicon";
+import { playAgentAlertSound } from "@/lib/notifications/sound";
 import {
-  playAgentAlertSound,
-  unlockAgentAlertSound,
-} from "@/lib/notifications/sound";
+  closeSystemNotification,
+  showSystemNotification,
+} from "@/lib/notifications/systemNotification";
 import { useAgentAlertChoices } from "@/lib/notifications/useAgentAlertChoices";
-import { useAgentPresence } from "@/lib/notifications/useAgentPresence";
 import {
   useAgentConnectionSessionDirectory,
   useAgentConnections,
@@ -33,12 +32,12 @@ const seen = new Set<string>();
 /** One toast per session: a newer alert takes the place of the one before it. */
 const alertToastId = (sessionId: string) => `agent-alert:${sessionId}`;
 
-/** The system notification each session has up, if any. */
-const systemNotifications = new Map<string, Notification>();
+/** One system notification per session, likewise. */
+const alertNotificationKey = (sessionId: string) => `agent:${sessionId}`;
 
 /**
- * Keeps the server told where this client is, counts what needs the owner on
- * the icon, and shows the alerts the server sends this client: a toast while
+ * Counts what needs the owner on the icon, and shows the alerts the server
+ * sends this client: a toast while
  * the window is in front, a system notification while it is not. A window
  * that can be seen falls back to the toast when it may not notify.
  */
@@ -51,7 +50,6 @@ export function AgentAlerts({
   const pathname = useLocation({ select: (location) => location.pathname });
   const viewing = agentSessionIdForPath(pathname);
   const { sound, system } = useAgentAlertChoices();
-  useAgentPresence(viewing, sound || system);
 
   const counts = useMemo(() => agentAttentionCounts(connections), [connections]);
   useEffect(() => {
@@ -60,22 +58,11 @@ export function AgentAlerts({
   // Signing out or losing admin rights takes the count off the icon too.
   useEffect(() => () => showAgentAttentionBadge(0), []);
 
-  useEffect(() => {
-    if (!sound) return;
-    document.addEventListener("pointerdown", unlockAgentAlertSound);
-    document.addEventListener("keydown", unlockAgentAlertSound);
-    return () => {
-      document.removeEventListener("pointerdown", unlockAgentAlertSound);
-      document.removeEventListener("keydown", unlockAgentAlertSound);
-    };
-  }, [sound]);
-
   // An alert has done its work once its session is on screen.
   useEffect(() => {
     if (!viewing) return;
     toast.dismiss(alertToastId(viewing));
-    systemNotifications.get(viewing)?.close();
-    systemNotifications.delete(viewing);
+    closeSystemNotification(alertNotificationKey(viewing));
   }, [viewing]);
 
   // Alerts arrive outside render; read the latest choices when they do.
@@ -134,7 +121,13 @@ export function AgentAlerts({
         }
         // The system's own sound stands in for a chime that could not play.
         void chimed.then((played) => {
-          const shown = showSystemNotification(notification, open, !sound || played);
+          const shown = showSystemNotification({
+            key: alertNotificationKey(notification.sessionId),
+            title: notification.title,
+            body: notification.body,
+            silent: !sound || played,
+            onOpen: open,
+          });
           if (!shown && visible) showToast();
         });
       }),
@@ -154,45 +147,6 @@ function AlertIcon({ reason }: { reason: AgentNotification["reason"] }) {
     );
   }
   return <AgentSessionStatusIcon state={reason} className="size-4" />;
-}
-
-/** Whether the notification was handed to the system. */
-function showSystemNotification(
-  notification: AgentNotification,
-  open: () => void,
-  silent: boolean,
-): boolean {
-  if (
-    typeof Notification === "undefined" ||
-    Notification.permission !== "granted"
-  ) {
-    return false;
-  }
-  const { sessionId } = notification;
-  try {
-    const shown = new Notification(notification.title, {
-      body: notification.body,
-      // A newer alert for the same session replaces the one before it.
-      tag: `agent:${sessionId}`,
-      silent,
-    });
-    systemNotifications.set(sessionId, shown);
-    shown.addEventListener("close", () => {
-      if (systemNotifications.get(sessionId) === shown) {
-        systemNotifications.delete(sessionId);
-      }
-    });
-    shown.addEventListener("click", () => {
-      shown.close();
-      window.focus();
-      void desktopBridge()?.revealWindow?.().catch(() => undefined);
-      open();
-    });
-    return true;
-  } catch {
-    // Some browsers expose Notification but refuse to show one.
-    return false;
-  }
 }
 
 /**

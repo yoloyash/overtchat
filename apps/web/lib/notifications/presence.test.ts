@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  AGENT_PRESENCE_LIVE_MS,
   AGENT_PRESENCE_WINDOW_MS,
   AgentClientRegistry,
+  chatPresenceKey,
+  chatReplyNeedsPush,
   planAgentNotification,
   type AgentClientPresence,
 } from "./presence";
@@ -12,8 +15,10 @@ function client(
   return {
     clientId: "tab",
     activeAt: 100_000,
+    heardAt: 100_000,
     visible: true,
     viewing: null,
+    alerts: true,
     notify: true,
     ...overrides,
   };
@@ -93,12 +98,42 @@ describe("planning who hears about a session", () => {
   });
 });
 
+describe("whether phones hear about a chat reply", () => {
+  const now = 100_000;
+  const open = (overrides: Partial<AgentClientPresence> = {}) =>
+    client({ viewing: chatPresenceKey("c"), notify: false, ...overrides });
+
+  it("leaves it to a client in use that shows the chat or alerts itself", () => {
+    expect(chatReplyNeedsPush([open({ alerts: false })], "c", now)).toBe(false);
+    expect(chatReplyNeedsPush([open({ visible: false })], "c", now)).toBe(false);
+  });
+
+  it("tells phones otherwise", () => {
+    expect(chatReplyNeedsPush([], "c", now)).toBe(true);
+    // In the background on a device that wants no alerts.
+    expect(chatReplyNeedsPush([open({ visible: false, alerts: false })], "c", now)).toBe(true);
+    // Another chat, an agent session that shares the id, or a client left alone.
+    expect(chatReplyNeedsPush([open({ viewing: chatPresenceKey("d") })], "c", now)).toBe(true);
+    expect(chatReplyNeedsPush([open({ viewing: "c" })], "c", now)).toBe(true);
+    expect(
+      chatReplyNeedsPush([open({ activeAt: now - AGENT_PRESENCE_WINDOW_MS - 1 })], "c", now),
+    ).toBe(true);
+  });
+
+  it("tells phones once the client has stopped reporting in", () => {
+    // A laptop closed on a chat it was just used in.
+    const quiet = open({ heardAt: now - AGENT_PRESENCE_LIVE_MS - 1 });
+    expect(chatReplyNeedsPush([quiet], "c", now)).toBe(true);
+    expect(chatReplyNeedsPush([open({ heardAt: now - AGENT_PRESENCE_LIVE_MS })], "c", now)).toBe(false);
+  });
+});
+
 describe("the client registry", () => {
   it("counts a client as wanting alerts only while its stream is attached", () => {
     const registry = new AgentClientRegistry();
     registry.record("u", { clientId: "tab", visible: true, viewing: "s", notify: true }, 1_000);
     expect(registry.clients("u", 2_000)).toEqual([
-      { clientId: "tab", activeAt: 1_000, visible: true, viewing: "s", notify: false },
+      { clientId: "tab", activeAt: 1_000, heardAt: 1_000, visible: true, viewing: "s", alerts: true, notify: false },
     ]);
     const sink = vi.fn();
     const stop = registry.subscribe("u", "tab", sink, 2_000);
@@ -116,7 +151,7 @@ describe("the client registry", () => {
     // Without a stream the client cannot be looking at anything.
     stop();
     expect(registry.clients("u", 2_000)).toEqual([
-      { clientId: "tab", activeAt: 1_000, visible: false, viewing: null, notify: false },
+      { clientId: "tab", activeAt: 1_000, heardAt: 1_000, visible: false, viewing: null, alerts: true, notify: false },
     ]);
     expect(registry.deliver("u", "tab", notification)).toBe(false);
     expect(registry.deliver("v", "tab", notification)).toBe(false);
@@ -172,8 +207,8 @@ describe("the client registry", () => {
     const stop = registry.subscribe("u", "background", vi.fn(), 1_000);
     registry.record("u", { clientId: "new", visible: true, viewing: null, notify: true }, later);
     expect(registry.clients("u", later)).toEqual([
-      { clientId: "background", activeAt: 1_000, visible: false, viewing: null, notify: true },
-      { clientId: "new", activeAt: later, visible: true, viewing: null, notify: false },
+      { clientId: "background", activeAt: 1_000, heardAt: 1_000, visible: false, viewing: null, alerts: true, notify: true },
+      { clientId: "new", activeAt: later, heardAt: later, visible: true, viewing: null, alerts: true, notify: false },
     ]);
     stop();
     expect(registry.clients("u", later).map((c) => c.clientId)).toEqual(["new"]);

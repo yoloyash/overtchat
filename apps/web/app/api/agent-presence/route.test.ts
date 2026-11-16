@@ -42,13 +42,20 @@ describe("agent presence heartbeats", () => {
     expect(client?.activeAt).toBeGreaterThanOrEqual(before - 60_000);
   });
 
-  it("rejects signed-out users, members and malformed heartbeats", async () => {
+  it("records a member's client too, for their chats", async () => {
+    mocks.getSession.mockResolvedValueOnce({ user: { id: "member", role: "user" } });
+    const response = await POST(
+      request({ clientId: "tab-00000002", visible: true, viewing: "chat:one", notify: true }),
+    );
+    expect(response.status).toBe(204);
+    expect(agentClientRegistry.clients("member")).toEqual([
+      expect.objectContaining({ clientId: "tab-00000002", viewing: "chat:one", alerts: true }),
+    ]);
+  });
+
+  it("rejects signed-out users and malformed heartbeats", async () => {
     mocks.getSession.mockResolvedValueOnce(null);
     expect((await POST(request({}))).status).toBe(401);
-    mocks.getSession.mockResolvedValueOnce({ user: { id: "member", role: "user" } });
-    expect(
-      (await POST(request({ clientId: "tab-00000002", visible: true, viewing: null, notify: true }))).status,
-    ).toBe(403);
     for (const body of [
       null,
       { clientId: "short", visible: true, viewing: null, notify: true },
@@ -59,6 +66,8 @@ describe("agent presence heartbeats", () => {
     ]) {
       expect((await POST(request(body))).status).toBe(400);
     }
-    expect(agentClientRegistry.clients("member")).toEqual([]);
+    expect(agentClientRegistry.clients("owner").map((client) => client.clientId)).not.toContain(
+      "tab-00000003",
+    );
   });
 });

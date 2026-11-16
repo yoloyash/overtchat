@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { auth } from "@/lib/auth/server";
-import { connectionAccessError } from "@/lib/agents/access";
 import { agentClientRegistry } from "@/lib/notifications/presence";
 
 const presenceSchema = z.strictObject({
@@ -12,14 +11,14 @@ const presenceSchema = z.strictObject({
   idleMs: z.number().int().min(0).max(86_400_000).optional(),
 });
 
-/** A web or desktop client's heartbeat: whether it can be seen and what it shows. */
+/**
+ * A web or desktop client's heartbeat: whether it can be seen and what it
+ * shows. Any signed-in user reports in, since chat replies follow presence
+ * too; agent alerts are still only planned for sessions an admin owns.
+ */
 export async function POST(req: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
-  const accessError = connectionAccessError(session.user.role);
-  if (accessError) {
-    return Response.json({ error: accessError }, { status: 403 });
-  }
   const parsed = presenceSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return Response.json({ error: "Invalid presence." }, { status: 400 });

@@ -19,9 +19,10 @@ let plainHeartbeat = false;
 
 /**
  * Reports this client to the server: every half minute while the page can be
- * seen, at once when that or the open session changes, and in the desktop
- * app also with the window in the background. Each report says how long ago
- * the client was used, which in the desktop app means the computer.
+ * seen, at once when that or what is open changes, and in the desktop app
+ * also with the window in the background. Each report says how long ago the
+ * client was used, which in the desktop app means the computer. A page being
+ * closed says it shows nothing any more.
  */
 export function useAgentPresence(viewing: string | null, notify: boolean): void {
   useEffect(() => {
@@ -74,8 +75,23 @@ export function useAgentPresence(viewing: string | null, notify: boolean): void 
     };
     send();
     const timer = setInterval(() => void tick(), AGENT_PRESENCE_HEARTBEAT_MS);
+    // A page on its way out can no longer show or say anything.
+    const leave = () =>
+      void fetch(apiUrl("/api/agent-presence"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: agentClientId(),
+          visible: false,
+          viewing: null,
+          notify: false,
+        }),
+        keepalive: true,
+      }).catch(() => undefined);
     document.addEventListener("visibilitychange", send);
-    window.addEventListener("pagehide", send);
+    window.addEventListener("pagehide", leave);
+    // Brought back from the browser's page cache.
+    window.addEventListener("pageshow", send);
     for (const name of USE_EVENTS) {
       window.addEventListener(name, used, { passive: true });
     }
@@ -86,7 +102,8 @@ export function useAgentPresence(viewing: string | null, notify: boolean): void 
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", send);
-      window.removeEventListener("pagehide", send);
+      window.removeEventListener("pagehide", leave);
+      window.removeEventListener("pageshow", send);
       for (const name of USE_EVENTS) window.removeEventListener(name, used);
       unsubscribe();
     };
