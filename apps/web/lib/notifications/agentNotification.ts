@@ -107,10 +107,18 @@ export function agentNotificationHeading(
     : { label: notification.title };
 }
 
-/** How long after its last heartbeat a client still counts as present. */
+/** How a client names the chat it has open, apart from agent session ids. */
+export const chatPresenceKey = (chatId: string) => `chat:${chatId}`;
+
+/** How long after it was last used a client still counts as present. */
 export const AGENT_PRESENCE_WINDOW_MS = 180_000;
 /** How often a client reports in while it can be seen. */
 export const AGENT_PRESENCE_HEARTBEAT_MS = 30_000;
+/**
+ * How long after its last report a client is still known to be running: two
+ * heartbeats and some slack. A laptop that went to sleep says nothing more.
+ */
+export const AGENT_PRESENCE_LIVE_MS = 75_000;
 
 /** Per-device choices for web and desktop alerts, kept in local storage. */
 export const AGENT_ALERT_SOUND_KEY = "overtchat:agent-alert-sound";

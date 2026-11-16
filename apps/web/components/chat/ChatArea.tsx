@@ -49,6 +49,7 @@ import {
   useLoadOlderChatMessages,
   type ChatListItem,
 } from "@/lib/queries/chats";
+import { useChatReplyAlert } from "@/lib/notifications/useChatReplyAlert";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import {
@@ -96,6 +97,7 @@ import {
 } from "@/lib/chat/composer-drafts";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
+import { AlertsIntro } from "@/components/AlertsIntro";
 import { toast } from "@/components/ui/toast";
 import { ChatFilesPanel } from "./ChatFiles";
 import { ChatHeader } from "./ChatHeader";
@@ -309,6 +311,11 @@ export function ChatArea({
   useEffect(() => {
     temporaryRef.current = temporary;
   }, [temporary]);
+  const replyAlert = useChatReplyAlert(chatId);
+  const replyFinishedRef = useRef(replyAlert.replyFinished);
+  useEffect(() => {
+    replyFinishedRef.current = replyAlert.replyFinished;
+  }, [replyAlert.replyFinished]);
 
   const {
     messages,
@@ -355,7 +362,7 @@ export function ChatArea({
         void qc.invalidateQueries({ queryKey: libraryKeys.all() });
       }
     },
-    onFinish: ({ message, isError }) => {
+    onFinish: ({ message, isError, isAbort }) => {
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -380,6 +387,9 @@ export function ChatArea({
         void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       }
       if (isError) return;
+      // Stats come with a generation that ran to its end. A reply stopped by
+      // hand has none, and neither has a summary the person asked for.
+      if (stats && !isAbort) replyFinishedRef.current(message.parts);
       setChatPersisted(true);
       void Promise.all([
         qc.invalidateQueries({ queryKey: chatKeys.list() }),
@@ -1108,6 +1118,7 @@ export function ChatArea({
                   onPersisted={handleVoicePersisted}
                 />
               )}
+              {replyAlert.missed && !temporary && <AlertsIntro agents={isAdmin} />}
               {composer}
             </div>
           </div>

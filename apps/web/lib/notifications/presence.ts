@@ -1,18 +1,24 @@
 import {
+  AGENT_PRESENCE_LIVE_MS,
   AGENT_PRESENCE_WINDOW_MS,
+  chatPresenceKey,
   type AgentNotification,
 } from "./agentNotification";
 
-export { AGENT_PRESENCE_WINDOW_MS };
+export { AGENT_PRESENCE_LIVE_MS, AGENT_PRESENCE_WINDOW_MS, chatPresenceKey };
 
 export type AgentClientPresence = {
   clientId: string;
   /** When the client was last used, on the server's clock. */
   activeAt: number;
+  /** When the client last reported in, on the server's clock. */
+  heardAt: number;
   visible: boolean;
-  /** The agent session open in the client, if any. */
+  /** What is open in the client: an agent session's id, or a chat as {@link chatPresenceKey}. */
   viewing: string | null;
-  /** Whether the client is connected and its device wants alerts. */
+  /** Whether the device wants alerts. */
+  alerts: boolean;
+  /** Whether the server can send it one: it wants alerts and its stream is attached. */
   notify: boolean;
 };
 
@@ -54,8 +60,31 @@ export function planAgentNotification(
     : { recipients: connected, push: true };
 }
 
+/**
+ * Whether phones are told a chat's reply is ready. A client that has the chat
+ * open hears the reply finish itself, so phones stay quiet while such a client
+ * is in use and either shows the chat or alerts on its own. Nothing but its
+ * reports says the client is still running, so one that has gone quiet (a
+ * closed laptop, a page in the background for a while) does not count: a
+ * second alert costs less than none.
+ */
+export function chatReplyNeedsPush(
+  clients: readonly AgentClientPresence[],
+  chatId: string,
+  now: number,
+): boolean {
+  const key = chatPresenceKey(chatId);
+  return !clients.some(
+    (client) =>
+      now - client.activeAt <= AGENT_PRESENCE_WINDOW_MS &&
+      now - client.heardAt <= AGENT_PRESENCE_LIVE_MS &&
+      client.viewing === key &&
+      (client.visible || client.alerts),
+  );
+}
+
 type Sink = (notification: AgentNotification) => void;
-type ClientRecord = Omit<AgentClientPresence, "notify"> & {
+type ClientRecord = Omit<AgentClientPresence, "notify" | "alerts" | "heardAt"> & {
   /** The last heartbeat, on the server's clock. */
   at: number;
   wantsAlerts: boolean;
@@ -63,7 +92,7 @@ type ClientRecord = Omit<AgentClientPresence, "notify"> & {
   sinks: Sink[];
 };
 
-/** Each owner's web and desktop clients: their heartbeats and event streams. */
+/** Each user's web and desktop clients: their heartbeats and event streams. */
 export class AgentClientRegistry {
   private readonly users = new Map<string, Map<string, ClientRecord>>();
 
@@ -144,8 +173,10 @@ export class AgentClientRegistry {
       result.push({
         clientId: record.clientId,
         activeAt: record.activeAt,
+        heardAt: record.at,
         visible: record.visible,
         viewing: record.viewing,
+        alerts: record.wantsAlerts,
         notify: record.wantsAlerts && record.sinks.length > 0,
       });
     }

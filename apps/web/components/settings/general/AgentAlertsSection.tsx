@@ -11,7 +11,10 @@ import {
 } from "@/lib/notifications/useAgentAlertChoices";
 import { SettingsRow, SettingsSection } from "../SettingsRows";
 
-/** Per-device alerts for the agents an administrator runs. */
+/**
+ * Per-device alerts: for chat replies that finish in the background, and for
+ * the agents an administrator runs.
+ */
 export function AgentAlertsSection() {
   const { data: session } = authClient.useSession();
   const { sound, setSound, system, systemWanted, setSystem, access } =
@@ -19,7 +22,7 @@ export function AgentAlertsSection() {
   const [refused, setRefused] = useState<string | null>(null);
   // Turned on here, then taken away in the browser's own settings.
   const problem = refused ?? (systemWanted && !system ? AGENT_ALERT_BLOCKED : null);
-  if (session?.user?.role !== "admin") return null;
+  const agents = session?.user?.role === "admin";
 
   function toggleSound(next: boolean) {
     setSound(next);
@@ -52,12 +55,20 @@ export function AgentAlertsSection() {
 
   return (
     <SettingsSection
-      title="Agent alerts"
-      description="When an agent needs you, finishes or fails. Only on this device, and only while OvertChat is open; otherwise your phone is told."
+      title="Alerts"
+      description={
+        agents
+          ? "When a chat reply is ready in the background, and when an agent needs you, finishes or fails. Only on this device, and only while OvertChat is open; otherwise your phone is told."
+          : "When a chat reply is ready in the background. Only on this device, and only while OvertChat is open; otherwise your phone is told."
+      }
     >
       <SettingsRow
         title="Play a sound"
-        description="A short chime: rising when an agent needs you, falling when it is done."
+        description={
+          agents
+            ? "A short chime: rising when an agent needs you, falling when it or a reply is done."
+            : "A short chime when a reply is done."
+        }
         htmlFor="agent-alert-sound"
         align="center"
         controlAlign="end"
@@ -74,7 +85,9 @@ export function AgentAlertsSection() {
         title="System notifications"
         description={
           problem ??
-          "Shown while the window is in the background. In front, alerts appear in the corner instead."
+          (agents
+            ? "Shown while the window is in the background. In front, agent alerts appear in the corner instead."
+            : "Shown while the window is in the background.")
         }
         htmlFor="agent-alert-system"
         align="center"

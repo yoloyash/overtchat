@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { AgentLiveState } from "@/components/agents/AgentAlerts";
+import { AlertsPresence } from "@/components/AlertsPresence";
 import { AgentSessionRenameHost } from "@/components/agents/AgentSessionRowMenu";
 import { AppError } from "@/components/AppError";
 import { AuthFrame } from "@/components/auth/AuthFrame";
@@ -79,6 +80,7 @@ function AppLayout() {
       <Outlet />
       <TwoFactorPrompt key={session.user.id} />
       <SignInRequestPrompt key={`sign-in-${session.user.id}`} />
+      <AlertsPresence />
       {isAdmin && <AgentLiveState />}
       {isAdmin && <AgentSessionRenameHost />}
     </AppShell>

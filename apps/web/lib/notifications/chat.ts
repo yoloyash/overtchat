@@ -1,4 +1,5 @@
 import "server-only";
+import { agentClientRegistry, chatReplyNeedsPush } from "./presence";
 import { sendPushNotification } from "./sender";
 
 export function notifyChatComplete(
@@ -7,6 +8,10 @@ export function notifyChatComplete(
   streamId: string,
   parts: readonly { type: string; text?: unknown }[],
 ) {
+  const now = Date.now();
+  if (!chatReplyNeedsPush(agentClientRegistry.clients(userId, now), chatId, now)) {
+    return Promise.resolve();
+  }
   // Only visible answer text, never reasoning or tool inputs/results.
   const body = parts
     .filter((part) => part.type === "text" && typeof part.text === "string")
