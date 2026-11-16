@@ -8,6 +8,8 @@ interface PublicCapabilitiesResponse {
   capabilities: {
     chatPinning?: boolean;
     chatMarkdownExport?: boolean;
+    /** Absent on a server from before scheduled tasks. */
+    scheduledTasks?: boolean;
     voice: VoiceCapability;
     images: ImageCapability;
     [key: string]: unknown;

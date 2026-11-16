@@ -55,6 +55,9 @@ const ChatRequestEnvelopeSchema = z.object({
   // The client shows an email a model wrote as a card the user sends from.
   // One that does not is given a draft saved in Gmail instead.
   gmailComposeSupported: z.boolean().optional().default(false),
+  // The client has the Scheduled page. One that does not is not offered the
+  // skill that sets tasks up, since it could not show or change them.
+  scheduledTasksSupported: z.boolean().optional().default(false),
   imageGeneration: z.object({
     size: z.enum(IMAGE_SIZES).default("auto"),
     quality: z.enum(IMAGE_QUALITIES).default("auto"),
@@ -96,6 +99,7 @@ export interface ParsedChatRequest {
   documentsSupported?: boolean;
   codeExecutionSupported?: boolean;
   gmailComposeSupported?: boolean;
+  scheduledTasksSupported?: boolean;
   imageGeneration?: ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
@@ -130,6 +134,7 @@ export function chatRequestFingerprint({
   documentsSupported = false,
   codeExecutionSupported = false,
   gmailComposeSupported = false,
+  scheduledTasksSupported = false,
   imageGeneration,
   timeZone,
   projectId,
@@ -155,6 +160,8 @@ export function chatRequestFingerprint({
         documentsSupported,
         codeExecutionSupported,
         gmailComposeSupported,
+        // Left out when off, so requests from before it existed hash the same.
+        ...(scheduledTasksSupported ? { scheduledTasksSupported } : {}),
         imageGeneration,
         timeZone: timeZone ?? null,
         projectId: projectId ?? null,
@@ -245,6 +252,7 @@ export async function parseChatRequest(
     documentsSupported: envelope.data.documentsSupported,
     codeExecutionSupported: envelope.data.codeExecutionSupported,
     gmailComposeSupported: envelope.data.gmailComposeSupported,
+    scheduledTasksSupported: envelope.data.scheduledTasksSupported,
     imageGeneration: envelope.data.imageGeneration,
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,

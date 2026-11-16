@@ -14,6 +14,8 @@ export function resetE2eDatabase() {
   const db = openE2eDatabase();
   try {
     db.transaction(() => {
+      db.prepare("DELETE FROM scheduled_task_runs").run();
+      db.prepare("DELETE FROM scheduled_tasks").run();
       db.prepare("DELETE FROM generation_usage").run();
       db.prepare("DELETE FROM messages").run();
       db.prepare("DELETE FROM messages_fts").run();

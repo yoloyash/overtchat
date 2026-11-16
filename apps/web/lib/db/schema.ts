@@ -11,9 +11,14 @@ import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import {
   CHAT_GENERATION_STATUSES,
   CHAT_KINDS,
+  SCHEDULED_TASK_RUN_STATUSES,
+  SCHEDULED_TASK_RUN_TRIGGERS,
   type ChatGenerationStatus,
   type ChatKind,
   type ModelCapabilities,
+  type ScheduledTaskRunStatus,
+  type ScheduledTaskRunTrigger,
+  type TaskSchedule,
 } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
@@ -1159,3 +1164,96 @@ export const chatShareUploads = sqliteTable("chat_share_uploads", {
   primaryKey({ columns: [table.shareId, table.uploadId] }),
   index("chat_share_uploads_upload_idx").on(table.uploadId),
 ]);
+
+/**
+ * A prompt the server runs for its owner on a schedule. `nextRunAt` is the
+ * clock: the scheduler runs a task that is on once that time has come, and
+ * moves it forward in the same transaction that records the run.
+ */
+export const scheduledTasks = sqliteTable(
+  "scheduled_tasks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    prompt: text("prompt").notNull(),
+    modelConfigId: text("model_config_id").references(() => modelConfigs.id, {
+      onDelete: "set null",
+    }),
+    /** Where each run's chat is filed. */
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    webSearchEnabled: integer("web_search_enabled", { mode: "boolean" })
+      .default(true)
+      .notNull(),
+    schedule: text("schedule", { mode: "json" }).$type<TaskSchedule>().notNull(),
+    /** IANA zone of the schedule's wall-clock fields. */
+    timeZone: text("time_zone").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
+    /** Set when the server switched the task off, and why. */
+    pausedReason: text("paused_reason"),
+    /** Null while the task is off, and once a one-time task has run. */
+    nextRunAt: integer("next_run_at", { mode: "timestamp_ms" }),
+    /** Scheduled runs that failed in a row. */
+    failureCount: integer("failure_count").default(0).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    /** The owner's last edit; the scheduler's own writes leave it alone. */
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    index("scheduled_tasks_user_idx").on(table.userId, table.createdAt),
+    index("scheduled_tasks_due_idx").on(table.enabled, table.nextRunAt),
+  ],
+);
+
+/**
+ * One time a task ran, or was passed over. A scheduled time is recorded once
+ * per task, so a second claim of the same time cannot start a second run.
+ */
+export const scheduledTaskRuns = sqliteTable(
+  "scheduled_task_runs",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => scheduledTasks.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** The chat the run wrote. Deleting the chat keeps the run. */
+    chatId: text("chat_id").references(() => chats.id, {
+      onDelete: "set null",
+    }),
+    trigger: text("trigger", { enum: SCHEDULED_TASK_RUN_TRIGGERS })
+      .$type<ScheduledTaskRunTrigger>()
+      .notNull(),
+    status: text("status", { enum: SCHEDULED_TASK_RUN_STATUSES })
+      .$type<ScheduledTaskRunStatus>()
+      .notNull(),
+    error: text("error"),
+    /** The time the schedule asked for, or when Run now was pressed. */
+    scheduledFor: integer("scheduled_for", { mode: "timestamp_ms" }).notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+    /** When the owner opened the run's chat. */
+    seenAt: integer("seen_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    uniqueIndex("scheduled_task_runs_occurrence_idx").on(
+      table.taskId,
+      table.trigger,
+      table.scheduledFor,
+    ),
+    index("scheduled_task_runs_task_idx").on(table.taskId, table.startedAt),
+    index("scheduled_task_runs_unseen_idx").on(table.userId, table.seenAt),
+    index("scheduled_task_runs_chat_idx").on(table.chatId),
+    index("scheduled_task_runs_status_idx").on(table.status),
+  ],
+);

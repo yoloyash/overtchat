@@ -42,8 +42,25 @@ describe("resumable stream context", () => {
     expect(getStreamContext()).toBe(context);
     expect(getStreamContext()).toBe(context);
     expect(mocks.createContext).toHaveBeenCalledOnce();
-    expect(mocks.createContext).toHaveBeenCalledWith({
-      waitUntil: mocks.waitUntil,
+    const { waitUntil } = mocks.createContext.mock.calls[0][0];
+    const work = Promise.resolve();
+    waitUntil(work);
+    expect(mocks.waitUntil).toHaveBeenCalledWith(work);
+  });
+
+  it("keeps buffering a generation that no request started", async () => {
+    vi.stubEnv("REDIS_URL", "redis://127.0.0.1:6379");
+    mocks.createContext.mockReturnValue({});
+    mocks.waitUntil.mockImplementation(() => {
+      throw new Error("`after` was called outside a request scope.");
     });
+    const { getStreamContext } = await import("./context");
+    getStreamContext();
+
+    const { waitUntil } = mocks.createContext.mock.calls[0][0];
+    expect(() => waitUntil(Promise.resolve())).not.toThrow();
+    // A failure in that work is the generation's to report, not a crash.
+    expect(() => waitUntil(Promise.reject(new Error("Redis went away.")))).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 });

@@ -48,6 +48,8 @@ export interface ChatRequestBody {
   codeExecutionSupported?: boolean;
   /** The client shows an email a model wrote as a card the user sends from. */
   gmailComposeSupported?: boolean;
+  /** The client has the Scheduled page, where a task set up in chat is managed. */
+  scheduledTasksSupported?: boolean;
   /** Explicitly request an image on this turn; otherwise image tools remain automatic. */
   imageGeneration?: import("./images").ImageGenerationOptions;
   timeZone?: string;

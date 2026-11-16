@@ -84,6 +84,12 @@ describe("public capabilities", () => {
     });
   });
 
+  it("advertises scheduled tasks to bundled clients", async () => {
+    await expect((await GET(request)).json()).resolves.toMatchObject({
+      capabilities: { scheduledTasks: true },
+    });
+  });
+
   it("advertises realtime voice when it is ready", async () => {
     const response = await GET(request);
 

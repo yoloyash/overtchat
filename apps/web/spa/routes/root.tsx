@@ -14,6 +14,7 @@ import { AuthFrame } from "@/components/auth/AuthFrame";
 import { TwoFactorPrompt } from "@/components/auth/TwoFactorPrompt";
 import { SignInRequestPrompt } from "@/components/auth/SignInRequestPrompt";
 import { DesktopServer } from "@/components/auth/DesktopServer";
+import { ScheduledTaskActivity } from "@/components/scheduled/ScheduledTaskActivity";
 import { Sidebar } from "@/components/Sidebar";
 import { activeChatIdsQuery, chatListQuery } from "@/lib/queries/chats";
 import { projectListQuery } from "@/lib/queries/projects";
@@ -79,6 +80,7 @@ function AppLayout() {
       <Outlet />
       <TwoFactorPrompt key={session.user.id} />
       <SignInRequestPrompt key={`sign-in-${session.user.id}`} />
+      <ScheduledTaskActivity />
       {isAdmin && <AgentLiveState />}
       {isAdmin && <AgentSessionRenameHost />}
     </AppShell>
