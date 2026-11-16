@@ -1,5 +1,9 @@
-import { CLIENT_HEADER } from "@overtchat/shared";
-import { app, session } from "electron";
+import {
+  CLIENT_HEADER,
+  NATIVE_SIGN_IN_EXCHANGE_PATH,
+  type NativeSignInExchange,
+} from "@overtchat/shared";
+import { app, net, session } from "electron";
 import { getServerOrigin, getSessionToken, setSessionToken } from "./settings";
 import { needsTwoFactorCookie, pendingTwoFactorCookie } from "./two-factor-cookie";
 
@@ -70,4 +74,30 @@ export function configureServerAuth(): void {
     }
     callback({});
   });
+}
+
+/**
+ * Trades the code a sign-in through the browser came back with for a session,
+ * and keeps its token. False when the server no longer accepts the code.
+ */
+export async function exchangeSignInCode(
+  serverOrigin: string,
+  grant: NativeSignInExchange,
+): Promise<boolean> {
+  const response = await net.fetch(
+    `${serverOrigin}/api/auth${NATIVE_SIGN_IN_EXCHANGE_PATH}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        [CLIENT_HEADER]: `desktop/${app.getVersion()}`,
+      },
+      body: JSON.stringify(grant),
+    },
+  );
+  const token = response.headers.get("set-auth-token");
+  // The server may have changed while the browser was away.
+  if (!response.ok || !token || getServerOrigin() !== serverOrigin) return false;
+  setSessionToken(token);
+  return true;
 }
