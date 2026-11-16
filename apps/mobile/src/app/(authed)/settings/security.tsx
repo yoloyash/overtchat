@@ -11,6 +11,7 @@ import {
   useUnsavedChanges,
   WebRow,
 } from "@/components/settings/SettingsUI";
+import { useSignInMethods } from "@/lib/queries/signInMethods";
 import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { toastSuccess } from "@/lib/toast";
 export default function Security() {
@@ -20,7 +21,26 @@ export default function Security() {
   const [confirm, setConfirm] = useState("");
   const action = useAction();
   const twoFactor = useTwoFactorStatus();
+  const methods = useSignInMethods();
   useUnsavedChanges(!!(current || password || confirm));
+  // An account that signs in through the identity provider has no password
+  // here to change, and nothing for two-factor to guard.
+  if (twoFactor.data?.passwordSignIn === false) {
+    const provider = methods.data?.sso?.name ?? "your identity provider";
+    return (
+      <SettingsPage title="Security">
+        <Section>
+          <Row title="Email" detail={session.data?.user.email} />
+        </Section>
+        <Section
+          title="Sign-in"
+          description="Your password and sign-in protection are managed there."
+        >
+          <Row title="You sign in with" value={provider} />
+        </Section>
+      </SettingsPage>
+    );
+  }
   return (
     <SettingsPage title="Security">
       <Section>

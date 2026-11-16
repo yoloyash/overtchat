@@ -70,6 +70,12 @@ and native validation are documented in
 `docs/development.md#authentication-upgrade-validation`. Changing servers must
 also reset the cached auth client.
 
+Signing in with the server's identity provider opens the system browser
+session (`src/lib/auth/providerSignIn.ts`) and returns through
+`overtchat://login` with a one-time code, which only the app that started the
+sign-in can trade for its session. Never load the provider in a web view. See
+`docs/development.md#identity-provider-sign-in-validation`.
+
 `src/polyfills.js` must load before the AI SDK streaming stack. Test streaming
 on both Android and iOS after changing the transport or its polyfills.
 
