@@ -18,7 +18,7 @@ export function MessageActions({
     <div
       data-slot="message-actions"
       className={cn(
-        "flex items-center gap-0.5",
+        "flex items-center gap-0.5 select-none",
         !alwaysVisible &&
           "opacity-0 motion-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:opacity-100",
       )}
