@@ -1950,8 +1950,17 @@ them at startup (`requestNotificationAccess` in
 `apps/desktop/src/main/permissions.ts`) so the question appears with the app
 in front, not with the first alert, which only comes with the window in the
 background. Electron does not report the answer, so a refusal in System
-Settings → Notifications leaves the switch on while nothing is shown. Unsigned
-development builds never deliver notifications on macOS.
+Settings → Notifications leaves the switch on while nothing is shown.
+
+macOS refuses the request outright ("Notifications are not allowed for this
+application") for an ad-hoc signed build such as `package:mac` makes, and for
+a build run from `/tmp`, so neither can show the question or a notification.
+To check the question, sign the packaged app with a real identity, put it in
+an Applications folder, and start it with `ELECTRON_DEBUG_NOTIFICATIONS=1
+ELECTRON_ENABLE_LOGGING=1`: a refusal is logged at once, and a request that
+was put to the owner adds the app to System Settings → Notifications within
+seconds of launch. Use a bundle identifier of its own, since macOS asks once
+per identifier.
 
 Toasts sit at the top right, under the header row, so none covers the
 composer. An alert's toast shows the state, the session and two lines of the
