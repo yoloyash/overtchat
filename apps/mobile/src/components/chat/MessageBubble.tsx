@@ -8,7 +8,11 @@ import {
   type OpenUIFormState,
 } from "@overtchat/shared";
 import type { FileUIPart, UIMessage } from "ai";
-import { groupMessageParts, isToolSettled } from "@overtchat/shared";
+import {
+  groupMessageParts,
+  isToolSettled,
+  splitQuotedMessage,
+} from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +34,7 @@ import { OpenUICard } from "./OpenUICard";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
 import { Sources } from "./Sources";
+import { UserQuote } from "./UserQuote";
 
 export function MessageBubble({
   message,
@@ -100,6 +105,7 @@ export function MessageBubble({
       (p): p is FileUIPart => p.type === "file",
     );
     if (!text && fileParts.length === 0 && !editing) return null;
+    const { quotes, body } = splitQuotedMessage(text);
 
     const actions: MessageAction[] = streaming
       ? []
@@ -156,18 +162,23 @@ export function MessageBubble({
                 },
               ]}
             >
-              <Text
-                style={[
-                  styles.userText,
-                  {
-                    color: colors.secondaryForeground,
-                    fontFamily: fonts.sansRegular,
-                  },
-                ]}
-                selectable
-              >
-                {text}
-              </Text>
+              {quotes.map((quote, i) => (
+                <UserQuote key={i} text={quote} />
+              ))}
+              {body ? (
+                <Text
+                  style={[
+                    styles.userText,
+                    {
+                      color: colors.secondaryForeground,
+                      fontFamily: fonts.sansRegular,
+                    },
+                  ]}
+                  selectable
+                >
+                  {body}
+                </Text>
+              ) : null}
             </Pressable>
           ) : null}
         </View>
@@ -360,6 +371,7 @@ const styles = StyleSheet.create({
     maxWidth: "85%",
     paddingHorizontal: 16,
     paddingVertical: 12,
+    gap: 8,
   },
   userText: { fontSize: 15, lineHeight: 22 },
 });
