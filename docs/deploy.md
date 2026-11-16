@@ -490,12 +490,12 @@ setup does, accounts created by a first sign-in do not, and
 already has. Keep the setup administrator, or another administrator with a
 password, before turning passwords off.
 
-**Apps.** The desktop app opens the provider in the default browser, so saved
-passwords and passkeys work, and returns to the app when it is done. It
-listens on a port of its own computer for that return, only while a sign-in
-is in progress. It needs the current app; older apps show only the password
-form and cannot sign in once passwords are off. Signing out of OvertChat does
-not sign out of the provider.
+**Apps.** The desktop and mobile apps open the provider in the system browser,
+so saved passwords and passkeys work, and return to the app when it is done.
+The desktop app listens on a port of its own computer for that return, only
+while a sign-in is in progress. Both need the current app; older apps show
+only the password form and cannot sign in once passwords are off. Signing out
+of OvertChat does not sign out of the provider.
 
 Refusals are shown on the login screen. "Doesn't have an OvertChat account on
 this server" means no account has that email address and
