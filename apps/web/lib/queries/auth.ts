@@ -1,7 +1,9 @@
 import {
+  PASSWORD_ONLY_SIGN_IN,
   getChatQueueStore,
   type SignInDecision,
   type SignInDecisionResult,
+  type SignInMethods,
   type SignInRequest,
   type TwoFactorStatus,
 } from "@overtchat/shared";
@@ -21,6 +23,22 @@ export const sessionQuery = queryOptions({
     const { data, error } = await authClient.getSession();
     if (error) throw new Error(error.message ?? `HTTP ${error.status}`);
     return data;
+  },
+});
+
+/**
+ * What the login screen offers. A server without the route predates single
+ * sign-on, which the desktop app can be pointed at.
+ */
+export const signInMethodsQuery = queryOptions({
+  queryKey: authKeys.signInMethods(),
+  queryFn: async (): Promise<SignInMethods> => {
+    const response = await fetch(apiUrl("/api/sign-in-methods"), {
+      cache: "no-store",
+    });
+    if (response.status === 404) return PASSWORD_ONLY_SIGN_IN;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json()) as SignInMethods;
   },
 });
 

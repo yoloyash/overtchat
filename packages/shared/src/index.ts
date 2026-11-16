@@ -27,6 +27,7 @@ export * from "./conversation-files";
 export * from "./openui";
 export * from "./errors";
 export * from "./two-factor";
+export * from "./sign-in";
 export * from "./chat-continuation";
 export * from "./chat-queue";
 export * from "./chat-generation";

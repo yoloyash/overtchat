@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
+import { signInMethodsQuery, twoFactorQuery } from "@/lib/queries/auth";
 import {
   SettingsActions,
   SettingsNotice,
@@ -14,14 +16,43 @@ import {
 } from "../SettingsRows";
 import { TwoFactorSection } from "./TwoFactorSection";
 
-export function AccountForm({
-  email,
-  startTwoFactorSetup = false,
-}: {
+type AccountFormProps = {
   email: string;
   /** Opens two-factor setup right away, as when coming from the sign-in prompt. */
   startTwoFactorSetup?: boolean;
-}) {
+};
+
+export function AccountForm(props: AccountFormProps) {
+  const { data: status } = useQuery(twoFactorQuery);
+  const { data: methods } = useQuery(signInMethodsQuery);
+  // An account that signs in through the identity provider has no password
+  // here to change, and nothing for two-factor to guard.
+  if (status?.passwordSignIn === false) {
+    const provider = methods?.sso?.name ?? "your identity provider";
+    return (
+      <SettingsPage>
+        <SettingsPageHeader
+          title="Security"
+          description={
+            <>
+              Signed in as <span className="text-foreground">{props.email}</span>.
+            </>
+          }
+        />
+        <SettingsSection
+          title="Sign-in"
+          description={`You sign in with ${provider}. Your password and sign-in protection are managed there.`}
+        />
+      </SettingsPage>
+    );
+  }
+  return <PasswordSecurity {...props} />;
+}
+
+function PasswordSecurity({
+  email,
+  startTwoFactorSetup = false,
+}: AccountFormProps) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [pwError, setPwError] = useState("");

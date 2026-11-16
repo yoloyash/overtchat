@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { KeyRound, Plus, ShieldOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
+import { signInMethodsQuery } from "@/lib/queries/auth";
 import {
   useInvalidateUsers,
   useSetUserRole,
@@ -40,6 +42,9 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   const { data: users = [] } = useUsers();
   const invalidateUsers = useInvalidateUsers();
   const setRoleMutation = useSetUserRole();
+  // With passwords off there is nothing to reset; accounts sign in elsewhere.
+  const { data: methods } = useQuery(signInMethodsQuery);
+  const passwords = methods?.password !== false;
   const [addOpen, setAddOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [twoFactorTarget, setTwoFactorTarget] = useState<UserRow | null>(null);
@@ -90,7 +95,9 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       setPendingRoleChange(null);
     } catch (cause) {
       setRoleError(
-        cause instanceof Error ? cause.message : "The role could not be changed.",
+        cause instanceof Error
+          ? cause.message
+          : "The role could not be changed.",
       );
     }
   }
@@ -172,14 +179,16 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                     </span>
                   ) : (
                     <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setResetTarget(u)}
-                      >
-                        <KeyRound data-icon="inline-start" /> Reset password
-                      </Button>
+                      {passwords && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setResetTarget(u)}
+                        >
+                          <KeyRound data-icon="inline-start" /> Reset password
+                        </Button>
+                      )}
                       {u.twoFactorEnabled && (
                         <Button
                           type="button"
@@ -187,7 +196,8 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                           size="sm"
                           onClick={() => setTwoFactorTarget(u)}
                         >
-                          <ShieldOff data-icon="inline-start" /> Reset two-factor
+                          <ShieldOff data-icon="inline-start" /> Reset
+                          two-factor
                         </Button>
                       )}
                       <Button
@@ -244,7 +254,10 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
-            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+            className={cn(
+              "fixed inset-0 z-40 bg-black/40",
+              motionClasses.overlay,
+            )}
           />
           <AlertDialog.Popup
             className={cn(
@@ -272,8 +285,8 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   <span className="font-medium text-foreground">
                     {pendingRoleChange?.user.email}
                   </span>{" "}
-                  will lose administrator features. Their active agent runs
-                  will stop.
+                  will lose administrator features. Their active agent runs will
+                  stop.
                 </>
               )}{" "}
               They will be signed out on all devices.
@@ -322,7 +335,10 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
-            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+            className={cn(
+              "fixed inset-0 z-40 bg-black/40",
+              motionClasses.overlay,
+            )}
           />
           <AlertDialog.Popup
             className={cn(
