@@ -28,4 +28,8 @@ export const queryKeys = {
   project: (id: string) => ["projects", id] as const,
   projectFiles: (id: string) => ["projects", id, "files"] as const,
   personalization: () => ["personalization"] as const,
+  scheduledTasksRoot: () => ["scheduledTasks"] as const,
+  scheduledTasks: () => ["scheduledTasks", "list"] as const,
+  scheduledTaskRuns: (id: string) => ["scheduledTasks", "runs", id] as const,
+  scheduledTaskActivity: () => ["scheduledTasks", "activity"] as const,
 };

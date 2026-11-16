@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import {
+  hasScheduledTaskChange,
   hasSuccessfulMemoryMutation,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
@@ -13,7 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
-import { useHeaderHeight } from "expo-router/react-navigation";
+import { useHeaderHeight, useIsFocused } from "expo-router/react-navigation";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { router, useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
@@ -24,9 +25,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -77,6 +80,7 @@ import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useOptionalProject } from "@/lib/queries/projects";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
+import { useReadScheduledResults } from "@/lib/queries/scheduledTasks";
 import { useSelectedModel } from "@/lib/modelPreferences";
 import {
   setReasoningLevel,
@@ -92,8 +96,16 @@ import {
   type ContextStatus,
 } from "@overtchat/shared";
 
+function subscribeToAppState(onChange: () => void) {
+  const subscription = AppState.addEventListener("change", onChange);
+  return () => subscription.remove();
+}
+
 export default function ChatScreen() {
   const { activeChatId, isNewChat, activeProjectId } = useChatSession();
+  const focused = useIsFocused();
+  const appState = useSyncExternalStore(subscribeToAppState, () => AppState.currentState);
+  useReadScheduledResults(activeChatId, focused && appState === "active" && !isNewChat);
   return (
     <ChatGate
       key={activeChatId}
@@ -319,6 +331,9 @@ function ChatSurface({
         ),
       );
       setContextStatus(null);
+      if (hasScheduledTaskChange(message)) {
+        void qc.invalidateQueries({ queryKey: queryKeys.scheduledTasksRoot() });
+      }
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: queryKeys.personalization() });
       }
@@ -637,6 +652,7 @@ function ChatSurface({
       documentsSupported: true,
       codeExecutionSupported: true,
       gmailComposeSupported: true,
+      scheduledTasksSupported: true,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.

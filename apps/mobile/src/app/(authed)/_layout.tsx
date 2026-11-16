@@ -4,6 +4,7 @@ import { Stack } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { RequiredTwoFactorNotice } from "@/components/RequiredTwoFactorNotice";
 import { ChatSessionContext, type ChatSession } from "@/lib/chat/session";
+import { useScheduledRunRefresh } from "@/lib/queries/scheduledTasks";
 import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { useSignInRequestPrompt } from "@/lib/queries/signInRequests";
 import { useTheme } from "@/lib/theme";
@@ -40,6 +41,9 @@ export default function AuthedLayout() {
   );
 
   useNotifications(session);
+  // Kept here, above every screen, so the task list, a task's runs and the
+  // chat list follow a run whichever of them is showing.
+  useScheduledRunRefresh();
   const twoFactor = useTwoFactorStatus();
   useSignInRequestPrompt({ enabled: twoFactor.data?.enabled === true });
 
@@ -62,6 +66,8 @@ export default function AuthedLayout() {
         <Stack.Screen name="personalization" />
         <Stack.Screen name="search" />
         <Stack.Screen name="projects/[id]" />
+        <Stack.Screen name="scheduled/index" />
+        <Stack.Screen name="scheduled/[id]" />
         <Stack.Screen name="sign-in-request" options={{ presentation: "modal" }} />
       </Stack>
     </ChatSessionContext.Provider>

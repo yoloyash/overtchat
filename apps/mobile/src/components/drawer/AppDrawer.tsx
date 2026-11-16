@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { agentAttentionCounts } from "@overtchat/shared/agent-attention";
+import { unreadRunChatIds } from "@overtchat/shared";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import {
@@ -36,6 +37,10 @@ import {
 } from "@/lib/queries/projects";
 import { useAgentConnections } from "@/lib/queries/agents";
 import { useCapabilities } from "@/lib/queries/capabilities";
+import {
+  useScheduledTaskActivity,
+  useScheduledTasksSupported,
+} from "@/lib/queries/scheduledTasks";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 import { useChatActions } from "@/components/chat/useChatActions";
@@ -67,6 +72,10 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const { data: projects } = useProjects();
   const { data: capabilities } = useCapabilities();
   const pinningSupported = capabilities?.capabilities.chatPinning === true;
+  const scheduledTasksSupported = useScheduledTasksSupported();
+  const { data: scheduledRuns } = useScheduledTaskActivity();
+  // Chats that finished scheduled runs wrote and nobody has opened.
+  const unreadChats = useMemo(() => unreadRunChatIds(scheduledRuns), [scheduledRuns]);
   const session = getAuthClient().useSession();
   const user = session.data?.user;
   // Agents are an administrator's feature, as on the web; everyone else keeps
@@ -316,6 +325,41 @@ export function AppDrawer(props: DrawerContentComponentProps) {
             </Pressable>
           </View>
 
+          {scheduledTasksSupported && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                unreadChats.size > 0
+                  ? `Scheduled, ${unreadChats.size} new ${unreadChats.size === 1 ? "result" : "results"}`
+                  : "Scheduled"
+              }
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push("/scheduled");
+              }}
+              style={({ pressed }) => [
+                styles.scheduled,
+                {
+                  backgroundColor: pressed ? colors.accent : "transparent",
+                  borderRadius: radii.md,
+                },
+              ]}
+            >
+              <Ionicons name="calendar-outline" size={20} color={colors.foreground} />
+              <Text
+                style={[
+                  styles.newChatText,
+                  { flex: 1, color: colors.foreground, fontFamily: fonts.sansSemiBold },
+                ]}
+              >
+                Scheduled
+              </Text>
+              {unreadChats.size > 0 && (
+                <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+              )}
+            </Pressable>
+          )}
+
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.list}>
@@ -339,6 +383,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
               }
               keyExtractor={(e) => e.key}
               getItemType={(e) => e.kind}
+              extraData={unreadChats}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               refreshing={isFetching && !isPending}
@@ -381,6 +426,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                         onPin={chatActions.togglePin}
                         pinPending={chatActions.pinPending}
                         pinningSupported={pinningSupported}
+                        unread={unreadChats.has(entry.chat.id)}
                         onMove={chatActions.openMove}
                         onDelete={chatActions.openDeleteConfirm}
                       />
@@ -430,6 +476,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                         onPin={chatActions.togglePin}
                         pinPending={chatActions.pinPending}
                         pinningSupported={pinningSupported}
+                        unread={unreadChats.has(entry.chat.id)}
                         onMove={chatActions.openMove}
                         onDelete={chatActions.openDeleteConfirm}
                       />
@@ -611,6 +658,7 @@ function ChatRow({
   onPin,
   pinPending,
   pinningSupported,
+  unread = false,
   onMove,
   onDelete,
 }: {
@@ -622,6 +670,8 @@ function ChatRow({
   onPin: (item: ChatListItem) => void;
   pinPending: boolean;
   pinningSupported: boolean;
+  /** A scheduled run wrote this chat and it has not been opened. */
+  unread?: boolean;
   onMove: (item: ChatListItem) => void;
   onDelete: (item: ChatListItem) => void;
 }) {
@@ -650,13 +700,20 @@ function ChatRow({
           },
         ]}
       >
+        {unread && (
+          <View
+            accessible
+            accessibilityLabel="New result"
+            style={[styles.unreadDot, { backgroundColor: colors.primary }]}
+          />
+        )}
         <Text
           numberOfLines={1}
           style={[
             styles.rowText,
             {
               color: isActive ? colors.accentForeground : colors.foreground,
-              fontFamily: fonts.sansRegular,
+              fontFamily: unread ? fonts.sansSemiBold : fonts.sansRegular,
             },
           ]}
         >
@@ -776,6 +833,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   rowIndented: { marginLeft: 24 },
+  unreadDot: { width: 7, height: 7, borderRadius: 4 },
+  scheduled: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 8,
+    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
   rowText: { flex: 1, fontSize: 14 },
   empty: { fontSize: 13, paddingHorizontal: 16, paddingVertical: 24, textAlign: "center" },
   footer: {
