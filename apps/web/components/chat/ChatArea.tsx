@@ -1089,6 +1089,11 @@ export function ChatArea({
                 ? (action) => handleSubmit(action.message, [], action)
                 : undefined
             }
+            onQuote={
+              voiceActive
+                ? undefined
+                : (text) => composerRef.current?.addQuote(text)
+            }
             onEdit={handleEdit}
             onReconnect={handleReconnect}
           />

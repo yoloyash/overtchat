@@ -14,6 +14,7 @@ export * from "./voice";
 export * from "./personalization";
 export * from "./memory-tools";
 export * from "./message-parts";
+export * from "./message-quotes";
 export * from "./theme/tokens";
 export * from "./images";
 export * from "./documents";
