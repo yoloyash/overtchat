@@ -183,6 +183,7 @@ loopback redirect cannot use it.
 
 ```sh
 npm run test -w apps/web -- lib/auth/oidc.test.ts lib/auth/native-sign-in.test.ts
+npm run test -w apps/desktop --
 E2E_PORT=4881 npm run test:e2e -w apps/web -- sign-in-methods.spec.ts
 ```
 
@@ -214,6 +215,11 @@ see an account matched by email. `newcomer` is refused until
 with `OIDC_DISABLE_PASSWORD_LOGIN=true`: the login screen shows only the
 provider button, `POST /api/auth/sign-in/email` answers 403, and Security
 settings and **Settings → Users** offer no password actions.
+
+From `npm run dev:desktop`, **Continue with Keycloak** must open the default
+browser rather than a window of the app, the browser must end on "You're
+signed in", and the app must stay signed in after a restart. Opening the
+server in that browser afterwards must still ask for a login.
 
 ## CI browser and desktop smoke diagnostics
 
