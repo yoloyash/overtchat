@@ -4,6 +4,7 @@ import type { ModelPricing } from "@/lib/model-config/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import {
   catalogEntryFor,
+  catalogImagePricingFor,
   catalogPricingFor,
 } from "@/lib/providers/server/model-catalog";
 
@@ -40,36 +41,38 @@ type TokenBuckets = {
   cacheWrite: number;
 };
 
-export function estimateGenerationCost({
-  ...params
-}: {
+type GenerationCostParams = {
   providerId: ProviderId;
   model: string;
   usage: LanguageModelUsage;
   pricing?: ModelPricing | null;
   cacheWriteTtl?: "5m" | "1h";
-}): EstimatedGenerationCost | null {
+};
+
+export function estimateGenerationCost(
+  params: GenerationCostParams,
+): EstimatedGenerationCost | null {
+  return estimateWithCatalogRates(params, (tokens) =>
+    catalogRatesFor(params.providerId, params.model, tokens),
+  );
+}
+
+function estimateWithCatalogRates(
+  params: GenerationCostParams,
+  catalogRates: (tokens: TokenBuckets) => PricingRates | null,
+): EstimatedGenerationCost | null {
   try {
-    return estimateGenerationCostUnchecked(params);
+    return estimateGenerationCostUnchecked(params, catalogRates);
   } catch (error) {
     console.error("[generation-cost]", error);
     return null;
   }
 }
 
-function estimateGenerationCostUnchecked({
-  providerId,
-  model,
-  usage,
-  pricing,
-  cacheWriteTtl,
-}: {
-  providerId: ProviderId;
-  model: string;
-  usage: LanguageModelUsage;
-  pricing?: ModelPricing | null;
-  cacheWriteTtl?: "5m" | "1h";
-}): EstimatedGenerationCost | null {
+function estimateGenerationCostUnchecked(
+  { usage, pricing, cacheWriteTtl }: GenerationCostParams,
+  catalogRates: (tokens: TokenBuckets) => PricingRates | null,
+): EstimatedGenerationCost | null {
   const tokens = tokenBuckets(usage);
   if (!tokens) return null;
 
@@ -79,7 +82,7 @@ function estimateGenerationCostUnchecked({
       : MODEL_CONFIG_COST_SOURCE;
   const rates =
     pricing === null || pricing === undefined
-      ? catalogRatesFor(providerId, model, tokens)
+      ? catalogRates(tokens)
       : configuredPricingRates(pricing);
   if (!rates) return null;
 
@@ -138,25 +141,28 @@ export function estimateImageGenerationCost({
   pricing?: ModelPricing | null;
 }): EstimatedGenerationCost | null {
   if (!usage) return null;
-  return estimateGenerationCost({
-    providerId,
-    model,
-    pricing,
-    usage: {
-      inputTokens: usage.inputTokens,
-      inputTokenDetails: {
-        noCacheTokens: undefined,
-        cacheReadTokens: undefined,
-        cacheWriteTokens: undefined,
+  return estimateWithCatalogRates(
+    {
+      providerId,
+      model,
+      pricing,
+      usage: {
+        inputTokens: usage.inputTokens,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: undefined,
+        },
+        outputTokens: usage.outputTokens,
+        outputTokenDetails: {
+          textTokens: undefined,
+          reasoningTokens: undefined,
+        },
+        totalTokens: usage.totalTokens,
       },
-      outputTokens: usage.outputTokens,
-      outputTokenDetails: {
-        textTokens: undefined,
-        reasoningTokens: undefined,
-      },
-      totalTokens: usage.totalTokens,
     },
-  });
+    () => catalogImagePricingFor(providerId, model) ?? null,
+  );
 }
 
 export function sumEstimatedGenerationCosts(
