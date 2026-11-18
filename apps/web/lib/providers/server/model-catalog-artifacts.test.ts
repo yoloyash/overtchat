@@ -48,6 +48,12 @@ describe("model catalog artifacts", () => {
     ).toEqual({ input: 5, output: 30 });
     expect(
       readModelCatalogImageCost({
+        text: { input: { unit: "token", price: 5 } },
+        image: { output: { unit: "token", price: 30 } },
+      }),
+    ).toEqual({ input: 5, output: 30 });
+    expect(
+      readModelCatalogImageCost({
         text,
         image: { output: { unit: "image", price: 0.04 } },
       }),

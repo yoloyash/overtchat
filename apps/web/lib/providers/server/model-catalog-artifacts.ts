@@ -157,7 +157,8 @@ function parseObject(
 }
 
 function readTokenPrice(value: unknown): number | undefined {
-  if (!isObject(value) || value.unit !== undefined) return undefined;
+  if (!isObject(value)) return undefined;
+  if (value.unit !== undefined && value.unit !== "token") return undefined;
   return typeof value.price === "number" &&
     Number.isFinite(value.price) &&
     value.price >= 0
