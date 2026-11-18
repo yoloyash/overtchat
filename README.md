@@ -80,6 +80,10 @@ Podman can run [`compose.minimal.yml`](compose.minimal.yml). Installation
 details, adopting an existing Compose stack, backups, and troubleshooting live
 in the [operator guide](docs/deploy.md).
 
+## One-click deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/OvertChat/)
+
 ## More than a text box
 
 - **Interactive answers.** Models that support tools can reply with charts,
