@@ -346,6 +346,9 @@ claiming compatibility with a particular backend version.
 
 The weekday `Refresh model catalog` workflow fetches models.dev, validates the
 generated catalog and manifest, and opens or updates `automation/model-catalog`.
+Text rates come from `api.json`. Image generation rates are published only in the
+experimental v2 feed, so the generator reads them from there into `image_cost`;
+it fails rather than dropping them if that feed moves or changes shape.
 To run the same validation locally:
 
 ```sh

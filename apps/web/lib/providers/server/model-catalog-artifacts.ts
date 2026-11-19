@@ -1,15 +1,43 @@
 import { createHash } from "node:crypto";
 
-export const MODEL_CATALOG_SCHEMA_VERSION = 2;
+export const MODEL_CATALOG_SCHEMA_VERSION = 3;
 export const MODEL_CATALOG_SOURCE_URL = "https://models.dev/api.json";
+/** The stable feed carries text rates only; image rates are published here. */
+export const MODEL_CATALOG_IMAGE_COST_SOURCE_URL =
+  "https://models.dev/experimental/v2.0/api.json";
 
 export interface ModelCatalogManifest {
   schemaVersion: number;
   generatedAt: string;
   sourceUrl: string;
   sourceSha256: string;
+  imageCostSourceUrl: string;
+  imageCostSourceSha256: string;
   catalogSha256: string;
   modelCount: number;
+}
+
+/** USD per 1M tokens: prompt tokens in, generated image tokens out. */
+export interface ModelCatalogImageCost {
+  input: number;
+  output: number;
+}
+
+/**
+ * Reads per-token image generation rates from a models.dev v2 cost object.
+ * Models priced per image, or without generated-image pricing, have none.
+ */
+export function readModelCatalogImageCost(
+  cost: unknown,
+): ModelCatalogImageCost | undefined {
+  if (!isObject(cost) || !isObject(cost.text) || !isObject(cost.image)) {
+    return undefined;
+  }
+  const input = readTokenPrice(cost.text.input);
+  const output = readTokenPrice(cost.image.output);
+  return input === undefined || output === undefined
+    ? undefined
+    : { input, output };
 }
 
 export function sha256(value: string): string {
@@ -19,11 +47,13 @@ export function sha256(value: string): string {
 export function createModelCatalogManifest({
   catalogText,
   sourceText,
+  imageCostSourceText,
   generatedAt,
   modelCount,
 }: {
   catalogText: string;
   sourceText: string;
+  imageCostSourceText: string;
   generatedAt: string;
   modelCount: number;
 }): ModelCatalogManifest {
@@ -32,6 +62,8 @@ export function createModelCatalogManifest({
     generatedAt,
     sourceUrl: MODEL_CATALOG_SOURCE_URL,
     sourceSha256: sha256(sourceText),
+    imageCostSourceUrl: MODEL_CATALOG_IMAGE_COST_SOURCE_URL,
+    imageCostSourceSha256: sha256(imageCostSourceText),
     catalogSha256: sha256(catalogText),
     modelCount,
   };
@@ -65,6 +97,14 @@ export function validateModelCatalogArtifacts(
   }
   if (!isSha256(manifest.sourceSha256)) {
     errors.push("sourceSha256 must be a SHA-256 digest");
+  }
+  if (manifest.imageCostSourceUrl !== MODEL_CATALOG_IMAGE_COST_SOURCE_URL) {
+    errors.push(
+      `imageCostSourceUrl must be ${MODEL_CATALOG_IMAGE_COST_SOURCE_URL}`,
+    );
+  }
+  if (!isSha256(manifest.imageCostSourceSha256)) {
+    errors.push("imageCostSourceSha256 must be a SHA-256 digest");
   }
 
   const catalogSha256 = sha256(catalogText);
@@ -114,6 +154,16 @@ function parseObject(
     throw new Error(`${description} must contain a JSON object`);
   }
   return parsed;
+}
+
+function readTokenPrice(value: unknown): number | undefined {
+  if (!isObject(value)) return undefined;
+  if (value.unit !== undefined && value.unit !== "token") return undefined;
+  return typeof value.price === "number" &&
+    Number.isFinite(value.price) &&
+    value.price >= 0
+    ? value.price
+    : undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

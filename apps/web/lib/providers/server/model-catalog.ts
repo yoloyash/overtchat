@@ -16,6 +16,7 @@ export interface ModelCatalogEntry {
   input?: number;
   output?: number;
   cost?: Readonly<Record<string, unknown>>;
+  image_cost?: Readonly<{ input: number; output: number }>;
   input_modalities?: readonly string[];
   output_modalities?: readonly string[];
   attachment?: boolean;
@@ -69,6 +70,25 @@ export function catalogPricingFor(
     tiered:
       (Array.isArray(cost.tiers) && cost.tiers.length > 0) ||
       isRecord(cost.context_over_200k),
+  };
+}
+
+/**
+ * Image models price generated images separately from any text they return, so
+ * image generation must not fall back to the text rates above.
+ */
+export function catalogImagePricingFor(
+  providerId: ProviderId,
+  model: string,
+): CatalogModelPricing | undefined {
+  const cost = catalogEntryFor(providerId, model)?.image_cost;
+  if (!cost) return undefined;
+  return {
+    input: cost.input,
+    output: cost.output,
+    cacheRead: 0,
+    cacheWrite: 0,
+    tiered: false,
   };
 }
 
