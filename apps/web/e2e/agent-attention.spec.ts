@@ -145,9 +145,14 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   await page.getByRole("menuitem", { name: "Mark all as read" }).click();
   await expect(section(page, "Ready to review")).toHaveCount(0);
   expect(reads.at(-1)).toEqual({ sessionId: "seen", read: true });
-  await page.getByRole("button", { name: "Agent list options", exact: true }).click();
+  const listOptions = page.getByRole("button", { name: "Agent list options", exact: true });
+  await listOptions.click();
+  // The menu can open a moment after the click while the last one animates out;
+  // Escape before then closes nothing and the open menu covers the sidebar.
+  await expect(listOptions).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("menuitem", { name: "Mark all as read" })).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await expect(listOptions).toHaveAttribute("aria-expanded", "false");
 
   // Opening a session with an unseen result marks it read.
   await failed.getByRole("link", { name: /Fix the flaky test/ }).click();
