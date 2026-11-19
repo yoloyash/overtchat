@@ -1633,6 +1633,18 @@ to the internet. Before a sandbox version is published, tag a locally built imag
 as `ghcr.io/yoloyash/overtchat-sandbox:<version>` (or `overtchat-sandbox-full`) and
 run setup in development mode, which ignores pull failures.
 
+For sign-in with an identity provider, run `setup --dry-run` against a
+provider that answers (the Keycloak realm in
+[Identity provider sign-in validation](#identity-provider-sign-in-validation)
+needs an address other than `localhost`), and check that the preview's
+environment file carries the six `OIDC_*` values. A dry run writes no
+installation state; after a real setup, `installation.json` must not hold the
+client secret. In the generated stack, rerunning setup with **Keep** leaves
+the client secret as it was, **Turn it off** empties every value, and an
+unattended run changes nothing. A secret containing `$` must reach the app
+unchanged: the environment file doubles each `$`, which
+`docker compose config` shows as a single one in the app's environment.
+
 Installer binary and terminal checks are documented in [Release process](release.md).
 
 ## Agent transport validation
