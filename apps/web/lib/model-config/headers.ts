@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Replaced in a header value with an ID that is stable for one conversation. */
+/** Replaced in a header value with the ID of the conversation a request is for. */
 export const CHAT_ID_PLACEHOLDER = "{{CHAT_ID}}";
 
 export const MAX_MODEL_HEADERS = 32;

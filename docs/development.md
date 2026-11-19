@@ -411,10 +411,10 @@ asks of that connection: chat, titles, the connection test, model discovery,
 the template check, and image generation. A header replaces any header of the
 same name the app would send, so it can also replace the authentication header.
 
-`{{CHAT_ID}}` in a value becomes a digest of the chat's ID, so every request of
-one conversation carries the same value and the ID itself is never sent.
-Requests outside a chat get a fresh ID, because gateways that require such a
-header reject an empty one. A save that omits `headers` keeps the stored ones,
+`{{CHAT_ID}}` in a value becomes the chat's ID, so every request of one
+conversation carries the same value. Chat IDs come from clients, so one that a
+header cannot carry is sent as its SHA-256 digest. Requests outside a chat get
+a fresh ID, because gateways that require such a header reject an empty one. A save that omits `headers` keeps the stored ones,
 which protects them from clients that predate the field; `null` removes them.
 The exception is a save that also changes the provider: headers may be
 credentials, so unsent ones do not follow the model to another provider.

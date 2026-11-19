@@ -7,7 +7,6 @@ test.beforeEach(resetE2eDatabase);
 
 const SESSION_HEADER = "x-gateway-session";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const CHAT_DIGEST = /^[A-Za-z0-9_-]{43}$/;
 
 interface GatewayCall {
   path: string;
@@ -180,7 +179,7 @@ test("a model sends its request headers, with one session ID per conversation", 
     "X-Team": "search platform",
   });
 
-  // Two turns of one chat share a session; its title request does too.
+  // Two turns of one chat carry its ID as the session; its title request does too.
   calls.length = 0;
   await page.goto("/");
   await sendMessage(page, "First question");
@@ -191,23 +190,20 @@ test("a model sends its request headers, with one session ID per conversation", 
   await expect.poll(() => calls.filter((call) => !call.stream).length).toBe(1);
   const firstChat = [...calls];
   expect(firstChat.filter((call) => call.stream)).toHaveLength(2);
-  const firstSession = firstChat[0].session;
-  expect(firstSession).toMatch(CHAT_DIGEST);
-  expect(firstChat.every((call) => call.session === firstSession)).toBe(true);
-  expect(firstChat.every((call) => call.team === "search platform")).toBe(true);
-  // The session identifies the conversation without being its ID.
   const chatId = new URL(page.url()).pathname.split("/").pop() ?? "";
   expect(chatId).not.toBe("");
-  expect(firstSession).not.toContain(chatId);
+  expect(firstChat.map((call) => call.session)).toEqual([chatId, chatId, chatId]);
+  expect(firstChat.every((call) => call.team === "search platform")).toBe(true);
 
   // Another chat gets another session.
   calls.length = 0;
   await page.goto("/");
   await sendMessage(page, "Unrelated question");
   await expect(page.getByText("Routed by session")).toHaveCount(1);
-  const secondSession = calls.find((call) => call.stream)?.session;
-  expect(secondSession).toMatch(CHAT_DIGEST);
-  expect(secondSession).not.toBe(firstSession);
+  await page.waitForURL(/\/chat\//);
+  const otherChatId = new URL(page.url()).pathname.split("/").pop() ?? "";
+  expect(otherChatId).not.toBe(chatId);
+  expect(calls.find((call) => call.stream)?.session).toBe(otherChatId);
 
   // Editing shows the saved headers; removing one stops sending it.
   await page.goto("/settings/models");

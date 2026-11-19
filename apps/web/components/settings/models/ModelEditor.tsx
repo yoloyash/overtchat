@@ -496,8 +496,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             description={
               <>
                 Extra HTTP headers for gateways that need them.{" "}
-                <code>{CHAT_ID_PLACEHOLDER}</code> in a value becomes an ID
-                unique to each conversation.
+                <code>{CHAT_ID_PLACEHOLDER}</code> in a value becomes the
+                conversation&apos;s ID.
               </>
             }
             rows={headerRows}

@@ -44,26 +44,33 @@ describe("connectionHeaders", () => {
     expect(connectionHeaders({ headers: {} })).toBeUndefined();
   });
 
-  it("gives every request of one chat the same ID and other chats another", () => {
-    const headers = { "x-session": "{{CHAT_ID}}", "X-Static": "fixed" };
-    const first = connectionHeaders({ headers, chatId: "chat-one" });
-    const again = connectionHeaders({ headers, chatId: "chat-one" });
-    const other = connectionHeaders({ headers, chatId: "chat-two" });
-    expect(first).toEqual(again);
-    expect(first?.["X-Static"]).toBe("fixed");
-    expect(first?.["x-session"]).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(other?.["x-session"]).not.toBe(first?.["x-session"]);
+  it("fills in the chat's ID wherever the placeholder appears", () => {
+    expect(
+      connectionHeaders({
+        headers: {
+          "x-session": "{{CHAT_ID}}",
+          "x-trace": "chat-{{CHAT_ID}}",
+          "X-Static": "fixed",
+        },
+        chatId: "0f8fad5b-d9cb-469f-a165-70867728950e",
+      }),
+    ).toEqual({
+      "x-session": "0f8fad5b-d9cb-469f-a165-70867728950e",
+      "x-trace": "chat-0f8fad5b-d9cb-469f-a165-70867728950e",
+      "X-Static": "fixed",
+    });
   });
 
-  it("never sends the chat ID itself, whatever characters it holds", () => {
-    const chatId = "chat\r\nX-Injected: 1 ✓";
-    const value = connectionHeaders({
-      headers: { "x-session": "s-{{CHAT_ID}}" },
-      chatId,
-    })?.["x-session"];
-    expect(value).toMatch(/^s-[A-Za-z0-9_-]{43}$/);
-    expect(() => new Headers({ "x-session": value ?? "" })).not.toThrow();
-  });
+  it.each(["chat\r\nX-Injected: 1", "chat ✓", "chat with spaces", "x".repeat(129)])(
+    "sends a stable digest for a chat ID a header cannot carry: %j",
+    (chatId) => {
+      const headers = { "x-session": "s-{{CHAT_ID}}" };
+      const value = connectionHeaders({ headers, chatId })?.["x-session"];
+      expect(value).toMatch(/^s-[A-Za-z0-9_-]{43}$/);
+      expect(connectionHeaders({ headers, chatId })?.["x-session"]).toBe(value);
+      expect(() => new Headers({ "x-session": value ?? "" })).not.toThrow();
+    },
+  );
 
   it("uses one fresh ID per request outside a chat", () => {
     const headers = { "x-session": "{{CHAT_ID}}", "x-trace": "t-{{CHAT_ID}}" };
@@ -143,12 +150,9 @@ describe("requests to a model's endpoint", () => {
         expect(request.url).toContain(path);
         expect(request.headers.get("authorization")).toBe("Basic override");
       }
-      const [first, again, other] = requests.map((request) =>
-        request.headers.get("x-opencode-session"),
-      );
-      expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/);
-      expect(again).toBe(first);
-      expect(other).not.toBe(first);
+      expect(
+        requests.map((request) => request.headers.get("x-opencode-session")),
+      ).toEqual(["chat-one", "chat-one", "chat-two"]);
     },
   );
 

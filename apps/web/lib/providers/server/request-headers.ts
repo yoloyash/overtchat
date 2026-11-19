@@ -7,10 +7,11 @@ import type { ProviderConnection } from "@/lib/providers/server/types";
  * The extra headers to send on a connection's requests, with placeholders
  * filled in. Returns undefined when the connection has none.
  *
- * `{{CHAT_ID}}` becomes a digest of the chat's ID, so gateways that route or
- * cache by conversation get a stable value without learning the ID itself.
- * Requests outside a chat, such as model discovery and connection tests, get a
- * fresh ID instead: gateways that require the header reject an empty value.
+ * `{{CHAT_ID}}` becomes the chat's ID, so gateways that route or cache by
+ * conversation get a stable value. Chat IDs come from clients, so one that a
+ * header cannot carry is sent as its digest instead. Requests outside a chat,
+ * such as model discovery and connection tests, get a fresh ID: gateways that
+ * require the header reject an empty value.
  */
 export function connectionHeaders(
   connection: Pick<ProviderConnection, "headers" | "chatId">,
@@ -24,15 +25,21 @@ export function connectionHeaders(
       value.includes(CHAT_ID_PLACEHOLDER)
         ? value.replaceAll(
             CHAT_ID_PLACEHOLDER,
-            (conversationId ??= connection.chatId
-              ? createHash("sha256")
-                  .update(connection.chatId)
-                  .digest("base64url")
-              : randomUUID()),
+            (conversationId ??= conversationIdFor(connection.chatId)),
           )
         : value,
     ]),
   );
+}
+
+// Visible ASCII without spaces, short enough for any header.
+const HEADER_SAFE_ID = /^[\x21-\x7E]{1,128}$/;
+
+function conversationIdFor(chatId: string | undefined): string {
+  if (!chatId) return randomUUID();
+  return HEADER_SAFE_ID.test(chatId)
+    ? chatId
+    : createHash("sha256").update(chatId).digest("base64url");
 }
 
 /**
