@@ -50,6 +50,7 @@ import {
 import { createPreMigrationSnapshot } from "./snapshot.js";
 import type { ExistingInstallation, InstallationConfig } from "./types.js";
 import { accessSummary, connectionInstructions } from "./access.js";
+import { identityProviderSummary } from "./identity-provider.js";
 import { initialSetupLink } from "./initial-setup.js";
 import { finishAccess } from "./connection-check.js";
 import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
@@ -424,7 +425,13 @@ export async function setup(
       gpus,
       adopting ? existing ?? undefined : undefined,
       appleChip,
-      { dryRun: options.dryRun },
+      {
+        dryRun: options.dryRun,
+        identityProviderSecretStored: Boolean(
+          previousSecrets.oidcClientSecret ||
+            existing?.environment.get("OIDC_CLIENT_SECRET"),
+        ),
+      },
     );
   } else if (gpus.length > 0 && config.stt.provider === "bundled") {
     const gpu = [...gpus].sort((left, right) => right.memoryMiB - left.memoryMiB)[0];
@@ -514,6 +521,16 @@ export async function setup(
       "This server has no OvertChat Cloud credential. Run overtchat setup, choose OvertChat Cloud, and link this server again.",
     );
   }
+  // A secret typed just now replaces the stored one; no provider drops it.
+  secrets.oidcClientSecret = config.identityProvider
+    ? (config.identityProvider.clientSecret ?? secrets.oidcClientSecret)
+    : "";
+  if (config.identityProvider && !secrets.oidcClientSecret) {
+    // Without it the app would leave the provider off and say so only in logs.
+    throw new Error(
+      `This server has no client secret for ${config.identityProvider.name}. Run overtchat setup, choose Change its settings, and enter it.`,
+    );
+  }
   protectInstallationSecrets(...Object.values(secrets), config.search.apiKey, config.tts.apiKey, config.stt.apiKey);
   note([
     accessSummary(config),
@@ -524,6 +541,7 @@ export async function setup(
     `Realtime voice: ${config.voice.installed ? "installed" : "set up later"}`,
     `Code execution: ${config.sandbox.installed ? (config.sandbox.tier === "full" ? "full" : "standard") : "set up later"}`,
     `Agent Connections: ${config.agents.installed ? "installed" : "set up later"}`,
+    identityProviderSummary(config),
     `Data: ${config.dataMountType} ${config.dataVolume}`,
   ].join("\n"), "Selected configuration");
   if (options.dryRun) {
