@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       # The workspace terminal test edits a file with vi.
       - name: Install vi
-        timeout-minutes: 2
+        timeout-minutes: 5
         run: |
           install -m 644 .github/apt-ci.conf /etc/apt/apt.conf.d/99overtchat-ci
           apt-get update
