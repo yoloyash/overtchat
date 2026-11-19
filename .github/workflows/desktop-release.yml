@@ -138,7 +138,7 @@ jobs:
         run: npm install --global npm@10.9.8
       - run: npm ci
       - name: Install Linux packaging and smoke dependencies
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
           sudo install -m 644 .github/apt-ci.conf /etc/apt/apt.conf.d/99overtchat-ci
           sudo apt-get update
@@ -312,7 +312,7 @@ jobs:
           name: desktop-linux-x64
           path: release
       - name: Install Debian package and smoke dependencies on Ubuntu 24.04
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
           sudo install -m 644 .github/apt-ci.conf /etc/apt/apt.conf.d/99overtchat-ci
           sudo apt-get update

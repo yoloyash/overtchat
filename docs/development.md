@@ -146,17 +146,19 @@ E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
 Web E2E runs inside the official Playwright image
 (`mcr.microsoft.com/playwright:v<version>-noble`), which includes Chromium and
 its system libraries. The job runs as the image's root user and installs only
-`vim-tiny`, for the workspace terminal test, under a two-minute step deadline.
+`vim-tiny`, for the workspace terminal test, under a five-minute step deadline.
 Inside the job, Redis is reached at `redis:6379`. The image tag must match the
 Playwright version in `package-lock.json`. Update both together; the job's
 browser check fails with the expected tag when they differ.
 
-Linux desktop dependency installation has a five-minute step deadline,
+Linux desktop dependency installation has a ten-minute step deadline,
 separate from test execution. Both jobs use `.github/apt-ci.conf`, which
-limits APT connection and stalled-download waits to 30 seconds, disables
-download retries, and makes incomplete package-index updates fail. These
-settings apply only to the disposable CI runners; they do not change operator
-installations.
+limits APT connection and stalled-download waits to 30 seconds. APT's default
+retries (three, with backoff) and package-index error handling stay on, so a
+dropped connection or one unreachable index does not fail the step when the
+packages can still be installed. The step deadlines leave room for those
+retries. These settings apply only to the disposable CI runners; they do not
+change operator installations.
 
 When a check fails, inspect the failed step first. A dependency-installation
 failure means the tests did not run. Diagnose the package source or runner
