@@ -403,6 +403,33 @@ produce some. `THINKING_LIVE_REPORT` writes a small JSON report without
 credentials or transcripts. The test does not modify saved models or chats,
 and ordinary unit runs skip it.
 
+## Model request headers validation
+
+A model's extra request headers live in `model_configs.headers` and are
+administrator-only, like its API key. The server sends them on everything it
+asks of that connection: chat, titles, the connection test, model discovery,
+the template check, and image generation. A header replaces any header of the
+same name the app would send, so it can also replace the authentication header.
+
+`{{CHAT_ID}}` in a value becomes a digest of the chat's ID, so every request of
+one conversation carries the same value and the ID itself is never sent.
+Requests outside a chat get a fresh ID, because gateways that require such a
+header reject an empty one. A save that omits `headers` keeps the stored ones,
+which protects them from clients that predate the field; `null` removes them.
+The exception is a save that also changes the provider: headers may be
+credentials, so unsent ones do not follow the model to another provider.
+
+```sh
+npm run test -w apps/web -- lib/model-config lib/providers/server lib/db/modelConfigs.test.ts app/api/model-configs
+E2E_PORT=4791 npm run test:e2e -w apps/web -- model-request-headers.spec.ts
+```
+
+The browser test runs against a local gateway that refuses any request without
+a session header. To check a real one without an account, add a custom model
+for `https://opencode.ai/inference/go/v1` with any API key: **Test connection**
+reports a missing `x-opencode-session` header until the model has that header
+set to `{{CHAT_ID}}`, and an invalid credential afterwards.
+
 ## Chat attachment reading validation
 
 Uploads keep up to 5,000,000 extracted characters. Each message includes 30% of

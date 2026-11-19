@@ -25,8 +25,16 @@ export const openRouterAdapter = createOpenAICompatibleAdapter("openrouter", {
   // Dedicated image models are absent from the chat listing.
   listModels: (connection, options) =>
     options?.modelType === "image"
-      ? listOpenRouterImageModels(connection.baseUrl, connection.apiKey)
-      : listOpenAIModels(connection.baseUrl, connection.apiKey),
+      ? listOpenRouterImageModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      )
+      : listOpenAIModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      ),
   transformRequestBody: (body, config) =>
     applyLocalReasoningLevel(
       body,

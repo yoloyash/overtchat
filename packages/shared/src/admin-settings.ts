@@ -44,6 +44,11 @@ export interface AdminModelConfig {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string | null;
+  /**
+   * Extra headers sent with every request to this connection. Absent on
+   * servers that predate them; omit on save to keep the stored headers.
+   */
+  headers?: Record<string, string> | null;
   /** Last model configuration update, in milliseconds since epoch. */
   updatedAt: number;
   model: string;

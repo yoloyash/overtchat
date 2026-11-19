@@ -30,6 +30,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
+    headers: row.headers,
     updatedAt: row.updatedAt.getTime(),
     model: row.model,
     pricing: row.pricing,
