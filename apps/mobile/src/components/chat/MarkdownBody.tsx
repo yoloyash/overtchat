@@ -84,12 +84,27 @@ export function MarkdownBody({
           );
         }
         const file = codeFiles.get(name.toLowerCase());
-        return file ? (
-          <CodeExecutionFiles key={node.key} files={[file]} large />
-        ) : (
-          <Text key={node.key}>{alt}</Text>
-        );
+        if (file) return <CodeExecutionFiles key={node.key} files={[file]} large />;
+        // Images sit outside the paragraph's text, so nothing passes the body
+        // style down, and each name takes its own line as a file would.
+        return alt ? (
+          <Text key={node.key} style={[ruleStyles.body, ruleStyles.missingCodeFile]}>
+            {alt}
+          </Text>
+        ) : null;
       },
+      // The default rule draws a bullet if any list above the item is a bullet
+      // list, so a numbered list inside one would lose its numbers.
+      list_item: (node, children, parent, ruleStyles, inheritedStyles) =>
+        renderRules.list_item!(
+          node,
+          children,
+          parent[0]?.type === "ordered_list"
+            ? parent.filter((ancestor) => ancestor.type !== "bullet_list")
+            : parent,
+          ruleStyles,
+          inheritedStyles,
+        ),
       link: (node, children, _parent, ruleStyles, onLinkPress) => {
         const href = (node as ASTNode & { attributes?: { href?: string } }).attributes
           ?.href;
@@ -235,6 +250,7 @@ function buildStyles({
     strong: { fontFamily: fonts.sansSemiBold },
     em: { fontStyle: "italic" },
     link: { color: colors.primary, textDecorationLine: "underline" },
+    missingCodeFile: { width: "100%" },
     citationPill: {
       color: colors.foreground,
       backgroundColor: colors.muted,
