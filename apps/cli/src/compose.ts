@@ -7,7 +7,9 @@ function envValue(value: string): string {
   if (/[\r\n\0]/u.test(value)) {
     throw new Error("Configuration values cannot contain line breaks.");
   }
-  return JSON.stringify(value.replaceAll("$", "$$"));
+  // Compose expands "$name" in this file and reads "$$" as one "$". A
+  // replacement function, because "$$" as a replacement string means "$".
+  return JSON.stringify(value.replaceAll("$", () => "$$"));
 }
 
 function composeBindAddress(value: string): string {
@@ -47,6 +49,24 @@ function capabilityUrl(
   if (provider === "bundled") return bundledUrl;
   if (provider === "disabled") return "";
   return configuredUrl ?? "";
+}
+
+function identityProviderEnvironment(
+  config: InstallationConfig,
+  secrets: InstallationSecrets,
+): Array<[string, string]> {
+  const provider = config.identityProvider;
+  return [
+    ["OIDC_ISSUER_URL", provider?.issuerUrl ?? ""],
+    ["OIDC_CLIENT_ID", provider?.clientId ?? ""],
+    ["OIDC_CLIENT_SECRET", provider ? secrets.oidcClientSecret : ""],
+    ["OIDC_PROVIDER_NAME", provider?.name ?? ""],
+    ["OIDC_AUTO_CREATE_USERS", String(provider?.autoCreateUsers ?? false)],
+    [
+      "OIDC_DISABLE_PASSWORD_LOGIN",
+      String(provider?.disablePasswordLogin ?? false),
+    ],
+  ];
 }
 
 function cloudEnvironment(
@@ -161,6 +181,7 @@ export function renderStackEnvironment(
     ["OVERTCHAT_CLOUD_PROXY_IMAGE", config.cloudProxyImage],
     ["OVERTCHAT_CLOUD_DIR", paths.cloudDirectory],
     ...cloudEnvironment(config, secrets),
+    ...identityProviderEnvironment(config, secrets),
   ];
   return `${values
     .map(([key, value]) => `${key}=${envValue(String(value))}`)
@@ -198,6 +219,12 @@ services:
       HOST_CONNECTOR_URL: \${HOST_CONNECTOR_URL}
       DISABLE_UPDATE_CHECK: \${DISABLE_UPDATE_CHECK:-false}
       OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR: \${OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR:-false}
+      OIDC_ISSUER_URL: \${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: \${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: \${OIDC_CLIENT_SECRET:-}
+      OIDC_PROVIDER_NAME: \${OIDC_PROVIDER_NAME:-}
+      OIDC_AUTO_CREATE_USERS: \${OIDC_AUTO_CREATE_USERS:-false}
+      OIDC_DISABLE_PASSWORD_LOGIN: \${OIDC_DISABLE_PASSWORD_LOGIN:-false}
       OVERTCHAT_MANAGEMENT_SECRET: \${OVERTCHAT_MANAGEMENT_SECRET}
       OVERTCHAT_INSTALLED_CAPABILITIES: \${OVERTCHAT_INSTALLED_CAPABILITIES:-}
       VOICE_SHARED_SECRET: \${VOICE_SHARED_SECRET}
