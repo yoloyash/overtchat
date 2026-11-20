@@ -8,12 +8,15 @@ import { assertFetchedImageContent } from "@/lib/image-content";
 
 import { runCustomImageProvider } from "./custom-image-generation";
 import { runOpenRouterImageProvider } from "./openrouter-image-generation";
+import { fetchWithHeaders } from "./request-headers";
 
 export interface ImageConnection {
   providerId: "openai" | "google" | "openrouter" | "custom";
   providerOptions?: Record<string, unknown> | null;
   baseUrl: string;
   apiKey: string | null;
+  /** Extra request headers, placeholders already filled. */
+  headers?: Record<string, string> | null;
   model: string;
 }
 
@@ -57,10 +60,11 @@ export async function runImageProvider(
   input: ImageGenerationOptions & { prompt: string; references: Uint8Array[] },
   signal?: AbortSignal,
 ) {
+  const fetcher = fetchWithHeaders(connection.headers, boundedFetch);
   const settings = {
     baseURL: connection.baseUrl.replace(/\/+$/, ""),
     apiKey: connection.apiKey ?? "",
-    fetch: boundedFetch,
+    fetch: fetcher,
   };
   const abortSignal = AbortSignal.any([
     ...(signal ? [signal] : []),
@@ -71,14 +75,14 @@ export async function runImageProvider(
       return await runCustomImageProvider(
         connection,
         input,
-        boundedFetch,
+        fetcher,
         abortSignal,
       );
     if (connection.providerId === "openrouter")
       return await runOpenRouterImageProvider(
         connection,
         input,
-        boundedFetch,
+        fetcher,
         abortSignal,
       );
     const result =
@@ -176,6 +180,9 @@ export async function runImageProvider(
       error instanceof Error ? error.message : "Image generation failed.";
     if (connection.apiKey)
       message = message.replaceAll(connection.apiKey, "[redacted]");
+    // Header values can be credentials too; short ones are not worth masking.
+    for (const value of Object.values(connection.headers ?? {}))
+      if (value.length >= 8) message = message.replaceAll(value, "[redacted]");
     throw new Error(message.slice(0, 500));
   }
 }

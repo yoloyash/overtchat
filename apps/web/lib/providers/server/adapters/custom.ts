@@ -48,6 +48,7 @@ function createCustomLanguageModel(
           providerName: "custom",
           baseUrl: config.baseUrl,
           apiKey: config.apiKey,
+          headers: config.headers,
           model: config.model,
           supportsImageInput: config.supportsImageInput,
           transformRequestBody: (body) =>
@@ -65,6 +66,7 @@ function createCustomLanguageModel(
           providerName: "custom",
           url: appendPath(config.baseUrl, "responses"),
           apiKey: config.apiKey,
+          headers: config.headers,
           model: config.model,
         }),
         providerOptionsKey: "custom",
@@ -75,6 +77,7 @@ function createCustomLanguageModel(
           providerName: "custom",
           baseUrl: config.baseUrl,
           apiKey: config.apiKey,
+          headers: config.headers,
           model: config.model,
           authentication: "api-key",
         }),
@@ -99,9 +102,17 @@ function listCustomModels(
     case "openai-images":
     case "openai-chat":
     case "openai-responses":
-      return listOpenAIModels(connection.baseUrl, connection.apiKey);
+      return listOpenAIModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      );
     case "anthropic-messages":
-      return listAnthropicModels(connection.baseUrl, connection.apiKey);
+      return listAnthropicModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      );
     case "auto":
       throw new ProviderConfigurationError(
         "Custom providers require an explicit API format.",

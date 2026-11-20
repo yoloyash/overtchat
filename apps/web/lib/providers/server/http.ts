@@ -5,7 +5,11 @@ import {
   type ModelReasoningControls,
   type ReasoningEffort,
 } from "@overtchat/shared";
+import { applyHeaders } from "@/lib/providers/server/request-headers";
 import type { DiscoveredModel } from "@/lib/providers/server/types";
+
+/** A connection's extra request headers, placeholders already filled. */
+type ConnectionHeaders = Record<string, string> | null | undefined;
 
 const MODEL_LIST_TIMEOUT_MS = 10_000;
 const MAX_MODEL_LIST_PAGES = 20;
@@ -80,18 +84,21 @@ export function appendPath(baseUrl: string, path: string): string {
 export async function listOpenAIModels(
   baseUrl: string,
   apiKey: string | null | undefined,
+  headers?: ConnectionHeaders,
 ): Promise<DiscoveredModel[]> {
-  return listOpenAIModelsWithOptions(baseUrl, apiKey, false);
+  return listOpenAIModelsWithOptions(baseUrl, apiKey, headers, false);
 }
 
 /** OpenRouter's image listing; every entry generates images. */
 export async function listOpenRouterImageModels(
   baseUrl: string,
   apiKey: string | null | undefined,
+  headers?: ConnectionHeaders,
 ): Promise<DiscoveredModel[]> {
   const json = await fetchJson<OpenRouterImageModelList>(
     appendPath(baseUrl, "images/models"),
     { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} },
+    headers,
   );
   return normalizeDiscoveredModels(
     json.data?.map((model) => {
@@ -114,18 +121,22 @@ export async function listOpenRouterImageModels(
 export async function listLlamaCppModels(
   baseUrl: string,
   apiKey: string | null | undefined,
+  headers?: ConnectionHeaders,
 ): Promise<DiscoveredModel[]> {
-  return listOpenAIModelsWithOptions(baseUrl, apiKey, true);
+  return listOpenAIModelsWithOptions(baseUrl, apiKey, headers, true);
 }
 
 async function listOpenAIModelsWithOptions(
   baseUrl: string,
   apiKey: string | null | undefined,
+  headers: ConnectionHeaders,
   probeAllLlamaCppProps: boolean,
 ): Promise<DiscoveredModel[]> {
-  const json = await fetchJson<OpenAIModelList>(appendPath(baseUrl, "models"), {
-    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-  });
+  const json = await fetchJson<OpenAIModelList>(
+    appendPath(baseUrl, "models"),
+    { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} },
+    headers,
+  );
   const models = normalizeDiscoveredModels(
     json.data?.map((model) => ({
       id: model.id,
@@ -157,7 +168,12 @@ async function listOpenAIModelsWithOptions(
   return Promise.all(
     models.map(async (model) => {
       if (!llamaModelIds.has(model.id)) return model;
-      const props = await readLlamaCppProps(baseUrl, apiKey, model.id);
+      const props = await readLlamaCppProps(
+        baseUrl,
+        apiKey,
+        headers,
+        model.id,
+      );
       if (!props) return model;
       return {
         ...model,
@@ -176,6 +192,7 @@ async function listOpenAIModelsWithOptions(
 export async function listAnthropicModels(
   baseUrl: string,
   apiKey: string | null | undefined,
+  headers?: ConnectionHeaders,
 ): Promise<DiscoveredModel[]> {
   const models: Array<{
     id?: unknown;
@@ -189,12 +206,16 @@ export async function listAnthropicModels(
     url.searchParams.set("limit", "1000");
     if (afterId) url.searchParams.set("after_id", afterId);
 
-    const json = await fetchJson<AnthropicModelList>(url.toString(), {
-      headers: {
-        "anthropic-version": "2023-06-01",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
+    const json = await fetchJson<AnthropicModelList>(
+      url.toString(),
+      {
+        headers: {
+          "anthropic-version": "2023-06-01",
+          ...(apiKey ? { "x-api-key": apiKey } : {}),
+        },
       },
-    });
+      headers,
+    );
     models.push(
       ...(json.data?.map((model) => ({
         id: model.id,
@@ -213,6 +234,7 @@ export async function listAnthropicModels(
 export async function listGoogleModels(
   baseUrl: string,
   apiKey: string | null | undefined,
+  headers?: ConnectionHeaders,
 ): Promise<DiscoveredModel[]> {
   const models: Array<{
     id?: unknown;
@@ -226,9 +248,11 @@ export async function listGoogleModels(
     url.searchParams.set("pageSize", "1000");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
 
-    const json = await fetchJson<GoogleModelList>(url.toString(), {
-      headers: apiKey ? { "x-goog-api-key": apiKey } : {},
-    });
+    const json = await fetchJson<GoogleModelList>(
+      url.toString(),
+      { headers: apiKey ? { "x-goog-api-key": apiKey } : {} },
+      headers,
+    );
     models.push(
       ...(json.models ?? [])
         .filter((model) =>
@@ -251,9 +275,11 @@ export async function listGoogleModels(
 async function fetchJson<T>(
   url: string,
   init: Omit<RequestInit, "signal">,
+  headers?: ConnectionHeaders,
 ): Promise<T> {
   const response = await fetch(url, {
     ...init,
+    ...(headers ? { headers: applyHeaders(init.headers, headers) } : {}),
     signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -436,14 +462,17 @@ function googleModelCapabilities(
 async function readLlamaCppProps(
   baseUrl: string,
   apiKey: string | null | undefined,
+  headers: ConnectionHeaders,
   model: string,
 ): Promise<LlamaCppProps | undefined> {
   try {
     const url = new URL(appendPath(openAIServiceRoot(baseUrl), "props"));
     url.searchParams.set("model", model);
-    return await fetchJson<LlamaCppProps>(url.toString(), {
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-    });
+    return await fetchJson<LlamaCppProps>(
+      url.toString(),
+      { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} },
+      headers,
+    );
   } catch {
     // /props is a llama.cpp extension. Older versions and compatibility
     // proxies may omit it; model discovery must still succeed.
@@ -495,6 +524,7 @@ export function createTemplateRenderer(
   baseUrl: string,
   apiKey: string | null | undefined,
   model: string,
+  connectionHeaders?: ConnectionHeaders,
 ): TemplateRenderer {
   const headers = {
     "Content-Type": "application/json",
@@ -515,17 +545,21 @@ export function createTemplateRenderer(
   return async (fields) => {
     for (;;) {
       const endpoint = endpoints[endpointIndex];
-      const json = await tryFetchJson<Record<string, unknown>>(endpoint.url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          ...fields,
-          model,
-          messages: [{ role: "user", content: "hi" }],
-          add_generation_prompt: true,
-          ...endpoint.extra,
-        }),
-      });
+      const json = await tryFetchJson<Record<string, unknown>>(
+        endpoint.url,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            ...fields,
+            model,
+            messages: [{ role: "user", content: "hi" }],
+            add_generation_prompt: true,
+            ...endpoint.extra,
+          }),
+        },
+        connectionHeaders,
+      );
       const key = renderedPromptKey(json);
       if (key) {
         settled = true;
@@ -561,9 +595,10 @@ function renderedPromptKey(
 async function tryFetchJson<T>(
   url: string,
   init: Omit<RequestInit, "signal">,
+  headers?: ConnectionHeaders,
 ): Promise<T | undefined> {
   try {
-    return await fetchJson<T>(url, init);
+    return await fetchJson<T>(url, init, headers);
   } catch {
     // Render endpoints are runtime extensions and older servers may omit them.
     return undefined;

@@ -13,6 +13,7 @@ export const openAIAdapter: ProviderAdapter = {
         providerName: "openai",
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
+        headers: config.headers,
         model: config.model,
       }),
       providerOptionsKey: "openai",
@@ -22,6 +23,10 @@ export const openAIAdapter: ProviderAdapter = {
     };
   },
   listModels(connection) {
-    return listOpenAIModels(connection.baseUrl, connection.apiKey);
+    return listOpenAIModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      );
   },
 };

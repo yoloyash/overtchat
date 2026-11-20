@@ -8,6 +8,13 @@ export interface ProviderConnection {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string | null | undefined;
+  /**
+   * Administrator-configured request headers. The registry fills placeholders
+   * before adapters see them; other callers use `connectionHeaders()`.
+   */
+  headers?: Record<string, string> | null;
+  /** The chat a request belongs to, for the `{{CHAT_ID}}` header placeholder. */
+  chatId?: string;
 }
 
 export interface ProviderModelConfig extends ProviderConnection {

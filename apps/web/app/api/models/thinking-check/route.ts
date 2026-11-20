@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth/server";
 import { ProviderConnectionSchema } from "@/lib/model-config/schema";
 import { ReasoningOverrideSchema } from "@/lib/model-config/reasoning-override";
 import { createTemplateRenderer } from "@/lib/providers/server/http";
+import { connectionHeaders } from "@/lib/providers/server/request-headers";
 import { checkThinkingLevels } from "@/lib/providers/server/thinking-check";
 
 const ThinkingCheckSchema = ProviderConnectionSchema.and(
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { providerId, baseUrl, apiKey, model, reasoningOverride } =
+  const { providerId, baseUrl, apiKey, headers, model, reasoningOverride } =
     parsed.data;
   if (providerId !== "vllm" && providerId !== "llamacpp") {
     return Response.json(
@@ -42,7 +43,13 @@ export async function POST(req: Request) {
   }
   return Response.json(
     await checkThinkingLevels(
-      createTemplateRenderer(providerId, baseUrl, apiKey, model),
+      createTemplateRenderer(
+        providerId,
+        baseUrl,
+        apiKey,
+        model,
+        connectionHeaders({ headers }),
+      ),
       reasoningOverride.requests,
     ),
   );
