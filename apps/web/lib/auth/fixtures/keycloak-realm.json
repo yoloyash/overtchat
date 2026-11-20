@@ -1,0 +1,53 @@
+{
+  "realm": "overtchat",
+  "enabled": true,
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "overtchat",
+      "name": "OvertChat",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "overtchat-development-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4717/api/auth/callback/oidc"
+      ],
+      "webOrigins": []
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "emailVerified": false,
+      "firstName": "Lab",
+      "lastName": "Admin",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "development-password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "newcomer",
+      "email": "newcomer@example.com",
+      "emailVerified": true,
+      "firstName": "New",
+      "lastName": "Comer",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "development-password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
