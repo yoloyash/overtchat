@@ -53,7 +53,20 @@ test("alerts stay off until turned on for the device, then open the session", as
   page,
 }) => {
   const { presence } = await setupAgentAttention(page, agentAttentionFixture(), alert);
-  await page.context().grantPermissions(["notifications"]);
+  // A headless browser reports notifications as blocked whatever it was
+  // granted, so the page gets a browser that allows them when asked.
+  await page.addInitScript(() => {
+    class FakeNotification {
+      static get permission() {
+        return sessionStorage.getItem("notification-access") ?? "default";
+      }
+      static requestPermission = async () => {
+        sessionStorage.setItem("notification-access", "granted");
+        return "granted";
+      };
+    }
+    Object.assign(window, { Notification: FakeNotification });
+  });
 
   // The icon counts what needs you and what finished unseen, whatever the device wants.
   await expect(
@@ -69,6 +82,9 @@ test("alerts stay off until turned on for the device, then open the session", as
   // The client reports in, saying it wants no alerts yet; so none is shown.
   await expect.poll(() => presence.at(-1)?.notify).toBe(false);
   expect(presence.at(-1)).toMatchObject({ visible: true, viewing: null });
+  // Each report says how long ago the page was used: just now.
+  expect(presence.at(-1)?.idleMs).toBeGreaterThanOrEqual(0);
+  expect(presence.at(-1)?.idleMs).toBeLessThan(30_000);
   const toast = page.getByRole("dialog", { name: "Needs approval" });
   await expect(toast).toHaveCount(0);
 
@@ -148,6 +164,48 @@ test("uses a system notification while the window is in the background", async (
   await expect(page.getByRole("dialog", { name: "Needs approval" })).toHaveCount(0);
 });
 
+test("closes a session's system notification once the session is open", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  const { shown, closed } = await watchSystemNotifications(page, alertsOn(false, true));
+  const alerts = alertQueue();
+  await setupAgentAttention(page, agentAttentionFixture(), alerts.next);
+  await page.goto("/agents/history");
+  alerts.send(finished("Added cursor pagination to /items."));
+  await expect.poll(() => shown, { timeout: 15_000 }).toMatchObject([{ tag: "agent:ready" }]);
+  expect(closed).toEqual([]);
+  await page.getByRole("main").getByRole("link", { name: /Add pagination/ }).click();
+  await page.waitForURL("**/agents/ready");
+  await expect.poll(() => closed).toEqual(["agent:ready"]);
+});
+
+test("a window that can be seen but may not notify shows the toast instead", async ({ page }) => {
+  // Only the chime is wanted: with the window behind another, the toast still shows.
+  const { shown } = await watchSystemNotifications(page, alertsOn(true, false));
+  const alerts = alertQueue();
+  const { presence } = await setupAgentAttention(page, agentAttentionFixture(), alerts.next);
+  await page.goto("/agents/history");
+  const toast = page.getByRole("dialog", { name: "Finished" });
+  alerts.send(finished("Added the first page."));
+  await expect(toast).toContainText("Added the first page.", { timeout: 15_000 });
+  expect(shown).toEqual([]);
+
+  // System notifications were turned on here, then blocked in the browser:
+  // the alert is still a toast, and Settings shows the switch off and why.
+  await page.addInitScript((systemKey) => {
+    localStorage.setItem(systemKey, "true");
+    (window.Notification as unknown as { permission: string }).permission = "denied";
+  }, SYSTEM_KEY);
+  await page.reload();
+  alerts.send(finished("Added the next page."));
+  await expect(toast).toContainText("Added the next page.", { timeout: 15_000 });
+  expect(shown).toEqual([]);
+  await expect.poll(() => presence.at(-1)?.notify).toBe(true);
+  await page.goto("/settings/general");
+  await expect(page.getByRole("switch", { name: "System notifications" })).not.toBeChecked();
+  await expect(page.getByText("Allow notifications for this site in your browser or system settings")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Play a sound" })).toBeChecked();
+});
+
 test("the system makes the sound when the chime cannot play", async ({ page }) => {
   await page.context().grantPermissions(["notifications"]);
   const { shown, tones } = await watchSystemNotifications(page, alertsOn(true, true));
@@ -194,8 +252,10 @@ async function watchSystemNotifications(
   choices: ReturnType<typeof alertsOn>,
 ) {
   const shown: unknown[] = [];
+  const closed: string[] = [];
   let tones = 0;
   await page.exposeFunction("__agentAlertShown", (item: unknown) => void shown.push(item));
+  await page.exposeFunction("__agentAlertClosed", (tag: string) => void closed.push(tag));
   await page.exposeFunction("__agentAlertTone", () => void (tones += 1));
   await page.addInitScript(([soundKey, systemKey, sound, system]) => {
     localStorage.setItem(soundKey, sound);
@@ -203,17 +263,22 @@ async function watchSystemNotifications(
     document.hasFocus = () => false;
     const report = window as unknown as {
       __agentAlertShown: (item: unknown) => void;
+      __agentAlertClosed: (tag: string) => void;
       __agentAlertTone: () => void;
       __agentAlertAudio?: AudioContext;
     };
     class FakeNotification {
       static permission = "granted";
       static requestPermission = async () => "granted";
+      private readonly tag: string;
       constructor(title: string, options: { body?: string; tag?: string } = {}) {
+        this.tag = options.tag ?? "";
         report.__agentAlertShown({ title, ...options });
       }
       addEventListener() {}
-      close() {}
+      close() {
+        report.__agentAlertClosed(this.tag);
+      }
     }
     const createOscillator = AudioContext.prototype.createOscillator;
     AudioContext.prototype.createOscillator = function () {
@@ -223,5 +288,5 @@ async function watchSystemNotifications(
     };
     Object.assign(window, { Notification: FakeNotification });
   }, choices);
-  return { shown, tones: () => tones };
+  return { shown, closed, tones: () => tones };
 }

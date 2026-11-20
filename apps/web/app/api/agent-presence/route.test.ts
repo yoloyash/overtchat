@@ -31,6 +31,17 @@ describe("agent presence heartbeats", () => {
     ]);
   });
 
+  it("takes how long the client sat idle", async () => {
+    const before = Date.now();
+    const response = await POST(
+      request({ clientId: "tab-00000001", visible: true, viewing: null, notify: true, idleMs: 60_000 }),
+    );
+    expect(response.status).toBe(204);
+    const [client] = agentClientRegistry.clients("owner");
+    expect(client?.activeAt).toBeLessThanOrEqual(Date.now() - 60_000);
+    expect(client?.activeAt).toBeGreaterThanOrEqual(before - 60_000);
+  });
+
   it("rejects signed-out users, members and malformed heartbeats", async () => {
     mocks.getSession.mockResolvedValueOnce(null);
     expect((await POST(request({}))).status).toBe(401);
@@ -44,6 +55,7 @@ describe("agent presence heartbeats", () => {
       { clientId: "tab-00000003", visible: "yes", viewing: null, notify: true },
       { clientId: "tab-00000003", visible: true, viewing: "", notify: true },
       { clientId: "tab-00000003", visible: true, viewing: null },
+      { clientId: "tab-00000003", visible: true, viewing: null, notify: true, idleMs: -1 },
     ]) {
       expect((await POST(request(body))).status).toBe(400);
     }

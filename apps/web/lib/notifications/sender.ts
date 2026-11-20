@@ -169,7 +169,8 @@ const PLAIN_PUSH: Record<AgentNotificationReason, { title: string; body: string 
 
 /**
  * Tells the owner about a request or a finished turn: the web or desktop
- * client they used most recently if one is present, otherwise their phones.
+ * client they are using if there is one, otherwise every connected client
+ * that wants alerts and their phones.
  */
 export async function notifyAgentAttention(event: AgentAttentionEvent) {
   const session = agentNotificationSession(event.sessionId);
@@ -192,14 +193,10 @@ export async function notifyAgentAttention(event: AgentAttentionEvent) {
     event.sessionId,
     now,
   );
-  if (
-    plan.recipient &&
-    agentClientRegistry.deliver(session.userId, plan.recipient, notification)
-  ) {
-    return;
+  for (const clientId of plan.recipients) {
+    agentClientRegistry.deliver(session.userId, clientId, notification);
   }
-  // A client whose stream dropped since the plan leaves the phones to it.
-  if (!plan.recipient && !plan.push) return;
+  if (!plan.push) return;
   await sendPushNotification({
     userId: session.userId,
     kind: "agent",
