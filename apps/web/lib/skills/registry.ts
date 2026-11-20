@@ -24,6 +24,11 @@ import {
   gmailToolPrompt,
 } from "@/lib/integrations/gmail-tools";
 import { OPENUI_TOOL_PROMPT } from "@/lib/openui/tools";
+import {
+  createScheduledTaskTools,
+  SCHEDULED_TASKS_SKILL_DESCRIPTION,
+  scheduledTasksPrompt,
+} from "@/lib/scheduled-tasks/tools";
 
 /** One tool as a skill describes it to a model, since it is not in the tool list. */
 export interface SkillToolSpec {
@@ -70,6 +75,16 @@ export interface ResolveChatSkillsOptions {
   interactiveUi: { offered: boolean; alwaysOn: boolean };
   /** Whether the client shows an email a model wrote as a card to send from. */
   gmailCompose: boolean;
+  /**
+   * Nobody is watching this turn. An email is then never sent by the model,
+   * whatever the account allows: it waits as a card.
+   */
+  unattended?: boolean;
+  /**
+   * The chat may set up scheduled tasks: on this chat's model, with times on
+   * the user's own clock. Null where it may not.
+   */
+  scheduledTasks?: { timeZone?: string; modelConfigId: string } | null;
 }
 
 /** The skills a user's chats may load, with the tools each may run. */
@@ -77,6 +92,8 @@ export async function resolveChatSkills({
   userId,
   interactiveUi,
   gmailCompose,
+  unattended = false,
+  scheduledTasks = null,
 }: ResolveChatSkillsOptions): Promise<ChatSkill[]> {
   const skills: ChatSkill[] = [];
 
@@ -84,7 +101,10 @@ export async function resolveChatSkills({
   if (gmail.status !== "unavailable") {
     const options = {
       compose: gmailCompose,
-      send: gmail.status === "available" && gmail.sendWithoutAsking === true,
+      send:
+        !unattended &&
+        gmail.status === "available" &&
+        gmail.sendWithoutAsking === true,
     };
     const tools: Record<string, Tool> =
       gmail.status === "available" ? createGmailTools(userId, options) : {};
@@ -144,6 +164,23 @@ export async function resolveChatSkills({
       tools: {},
       toolSpecs: [],
       alwaysOn: interactiveUi.alwaysOn,
+    });
+  }
+
+  if (scheduledTasks) {
+    const tools = createScheduledTaskTools({
+      userId,
+      timeZone: scheduledTasks.timeZone,
+      modelConfigId: scheduledTasks.modelConfigId,
+    });
+    skills.push({
+      id: "scheduled_tasks",
+      name: CHAT_SKILL_NAMES.scheduled_tasks,
+      description: SCHEDULED_TASKS_SKILL_DESCRIPTION,
+      content: scheduledTasksPrompt(scheduledTasks.timeZone),
+      tools,
+      toolSpecs: await describeTools(tools),
+      alwaysOn: false,
     });
   }
 

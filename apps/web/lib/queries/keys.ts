@@ -11,6 +11,13 @@ export const chatKeys = {
   usage: (id: string) => [...chatKeys.detail(id), "usage"] as const,
 };
 
+export const scheduledTaskKeys = {
+  all: () => ["scheduledTasks"] as const,
+  list: () => [...scheduledTaskKeys.all(), "list"] as const,
+  runs: (id: string) => [...scheduledTaskKeys.all(), "runs", id] as const,
+  activity: () => [...scheduledTaskKeys.all(), "activity"] as const,
+};
+
 export const shareKeys = {
   all: () => ["shares"] as const,
   chat: (id: string) => [...shareKeys.all(), "chat", id] as const,

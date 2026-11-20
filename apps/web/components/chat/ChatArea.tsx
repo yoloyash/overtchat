@@ -19,6 +19,7 @@ import {
   documentIdOf,
   findDocumentPart,
   followLiveDocuments,
+  hasScheduledTaskChange,
   hasSuccessfulMemoryMutation,
   isDocumentToolPart,
   modelSupportsChatReasoningLevel,
@@ -38,6 +39,7 @@ import {
   chatKeys,
   libraryKeys,
   personalizationKeys,
+  scheduledTaskKeys,
 } from "@/lib/queries/keys";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import type { IntegrationId } from "@/lib/integrations/schema";
@@ -379,6 +381,9 @@ export function ChatArea({
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       }
+      if (hasScheduledTaskChange(message)) {
+        void qc.invalidateQueries({ queryKey: scheduledTaskKeys.all() });
+      }
       if (isError) return;
       setChatPersisted(true);
       void Promise.all([
@@ -400,6 +405,8 @@ export function ChatArea({
       qc.invalidateQueries({ queryKey: chatKeys.active() }),
       qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
       qc.invalidateQueries({ queryKey: activityKeys.all() }),
+      // A reply that finished out of sight may have scheduled something.
+      qc.invalidateQueries({ queryKey: scheduledTaskKeys.all() }),
     ]);
   }, [chatId, qc]);
   const generation = useChatGenerationRecovery({
@@ -541,6 +548,7 @@ export function ChatArea({
     documentsSupported: true,
     codeExecutionSupported: true,
     gmailComposeSupported: true,
+    scheduledTasksSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
     gmailEnabled: connectorRequested("gmail"),
     calendarEnabled: connectorRequested("calendar"),

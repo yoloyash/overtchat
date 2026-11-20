@@ -990,6 +990,39 @@ tells them where to reconnect.
 - Entering a different client ID disconnects everyone until they sign in
   again. Removing Google access deletes every Google connection.
 
+## Scheduled tasks
+
+Everyone with an account can have OvertChat run a prompt by itself: once, or
+every hour, day, weekday, chosen days of the week, or day of the month. A task
+is made on the **Scheduled** page in the sidebar, or by asking in any chat
+("every weekday at 8, send me a news briefing"); the model then asks for
+whatever is missing and sets it up. Each run opens a new chat named after the
+task, on the model the task was given, and is marked as new until it is opened.
+Phones with notifications on are told when a run finishes or fails.
+
+The server keeps the schedule, so nothing needs to be open for a task to run,
+but the server itself must be running at that time:
+
+- A repeating task whose time passed more than 15 minutes ago, for example
+  during an update or while the host was off, is recorded as missed and waits
+  for its next time. A one-time task still runs when the server is back.
+- Times are wall-clock times in the time zone saved on the task, and follow its
+  daylight-saving changes.
+- A person can have 10 tasks switched on at a time, and a task runs at most
+  hourly. The server carries out three runs at once and stops a run after 30
+  minutes. A task is switched off after five failed scheduled runs in a row, or
+  at once when its model is removed; the Scheduled page says why. The page keeps
+  90 days of runs. The chats themselves stay until they are deleted.
+- A run can search the web, run code, and read the person's connected Gmail and
+  Google Calendar, like a chat they start themselves. It never sends email: a
+  message it writes waits in the chat as a card to send, even when the account
+  allows sending without asking.
+- Runs use the same models and provider credentials as the person's chats, so
+  they add to that provider's usage.
+
+Run one app container against a database. Two servers sharing one database would
+not run a task twice, but each would count its own three runs at a time.
+
 ## Share with your family
 
 Add accounts under **Settings → Users → Add user**, then share their login

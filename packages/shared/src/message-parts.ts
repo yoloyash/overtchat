@@ -7,6 +7,7 @@ import {
 } from "./gmail";
 import { isMcpToolName } from "./mcp";
 import { isMemoryToolPart, type MemoryToolPart } from "./memory-tools";
+import { isScheduledTaskToolPart } from "./scheduled-tasks";
 import { isViewSkillToolPart } from "./skills";
 
 import { isDocumentToolPart, type DocumentToolPart } from "./documents";
@@ -53,6 +54,7 @@ export function isActivityPart(part: AnyPart): boolean {
     isGmailToolPart(part) ||
     isCalendarToolPart(part) ||
     isViewSkillToolPart(part) ||
+    isScheduledTaskToolPart(part) ||
     (part.type === "dynamic-tool" && isMcpToolName(part.toolName))
   );
 }

@@ -221,6 +221,18 @@ describe("transactional chat turns", () => {
     expect(chatTurns.failChatStream({ chatId: "chat", streamId: "failed", error: "provider error" })).toBe(true);
     expect((await chatDb.getMessages("chat")).at(-1)).toEqual(saved);
   });
+  it("titles a chat it creates when given a title, and leaves an existing title alone", async () => {
+    const input = {
+      chatId: "chat", userId: "user", projectId: null,
+      streamId: "stream", clientRequestId: "request", requestFingerprint: "fingerprint",
+      staleStreamId: null, title: "Morning news",
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.title).toBe("Morning news");
+    expect(chatTurns.commitChatTurn({ ...input, streamId: "next", clientRequestId: "next", staleStreamId: "stream", title: "Other" })).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.title).toBe("Morning news");
+  });
+
   it("records the model only when the turn is committed and leaves it unchanged on rejected turns", async () => {
     const input = {
       chatId: "chat", userId: "user", projectId: null,

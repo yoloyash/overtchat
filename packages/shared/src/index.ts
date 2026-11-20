@@ -23,6 +23,8 @@ export * from "./code-execution";
 export * from "./calendar";
 export * from "./gmail";
 export * from "./skills";
+export * from "./scheduled-tasks";
+export * from "./scheduled-task-client";
 export * from "./conversation-files";
 export * from "./openui";
 export * from "./errors";

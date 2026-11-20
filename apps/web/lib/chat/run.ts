@@ -182,6 +182,14 @@ export interface ChatExecutionOptions {
   respond?: (stream: ReadableStream<import("ai").UIMessageChunk>) => Promise<Response>;
   onUserMessage?: (message: import("ai").UIMessage) => void;
   voiceSessionId?: string;
+  /** Stops the generation, along with the Stop button's own controller. */
+  signal?: AbortSignal;
+  /**
+   * A turn the server starts for the owner with nobody watching, such as a
+   * scheduled task. The chat it creates takes this title, the alert that it
+   * finished names it, and nothing in it acts for the owner unasked.
+   */
+  unattended?: { title: string };
 }
 
 export async function runChat(
@@ -316,6 +324,16 @@ export async function runChat(
         gmailCompose:
           parsedRequest.gmailComposeSupported === true &&
           parsedRequest.responseStyle !== "voice",
+        unattended: options.unattended !== undefined,
+        // For a client that has the Scheduled page. A task does not schedule
+        // tasks, and a chat that is not kept has nowhere to say what it
+        // scheduled.
+        scheduledTasks:
+          parsedRequest.scheduledTasksSupported === true &&
+          !temporary &&
+          !options.unattended
+            ? { timeZone, modelConfigId: modelConfig.id }
+            : null,
       })
     : [];
   // What the composer asked for with this message: a connector, or an
@@ -665,6 +683,7 @@ export async function runChat(
         staleStreamId,
         voiceSessionId: options.voiceSessionId,
         truncateFromMessageId,
+        ...(options.unattended ? { title: options.unattended.title } : {}),
         ...(continueMessage ? { continueMessage } : {}),
         userMessage: persistUserMessage
           ? { id: last.id, parts: last.parts, metadata: last.metadata as Record<string, unknown> | undefined }
@@ -730,9 +749,15 @@ export async function runChat(
   const pendingContextStatuses: ContextStatus[] = [];
 
   try {
-    const abortSignal = options.voiceSessionId && controller
-      ? AbortSignal.any([controller.signal, req.signal])
-      : controller?.signal ?? req.signal;
+    // A saved turn outlives its request: only Stop, a voice session ending
+    // or the caller's own signal ends it.
+    const signals = [
+      ...(controller ? [controller.signal] : []),
+      ...(options.voiceSessionId || !controller ? [req.signal] : []),
+      ...(options.signal ? [options.signal] : []),
+    ];
+    const abortSignal =
+      signals.length === 1 ? signals[0] : AbortSignal.any(signals);
     const hasMcpTools = Object.keys(mcpTools).length > 0;
     const memoryToolsEnabled = toolCallingEnabled && personalizationEnabled;
     const memoryTools = memoryToolsEnabled ? createMemoryTools(userId) : {};
@@ -934,6 +959,7 @@ export async function runChat(
     if (
       !temporary &&
       !manualCompaction &&
+      !options.unattended &&
       (existingChat?.title ?? null) === null
     ) {
       titlePromise = ensureChatTitle({
@@ -1192,6 +1218,7 @@ export async function runChat(
                 chatId,
                 streamId,
                 assistantMessage.parts,
+                options.unattended?.title,
               ).catch(() =>
                 console.error("[push] Could not send chat notification."),
               );
