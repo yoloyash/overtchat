@@ -211,6 +211,11 @@ export class ConnectorDaemon {
       loadQueuedMessages: (sessionId) => this.journal.sessionQueue(sessionId),
       saveQueuedMessages: (sessionId, messages) =>
         this.journal.saveSessionQueue(sessionId, messages),
+      sessionMoved: (sessionId, runtime) => {
+        void this.followMovedSession(sessionId, runtime).catch((error) => {
+          console.error("[connector] could not follow a moved agent session:", error);
+        });
+      },
       runtimeExited: (sessionId, runtime) => {
         void this.retireRuntime(sessionId, runtime).catch((error) => {
           console.error(
@@ -733,14 +738,17 @@ export class ConnectorDaemon {
       sessionDescriptor(descriptor),
     );
     const capture = this.captures.get(descriptor.sessionId);
-    const attachedDescriptor =
-      capture?.runtime === runtime
-        ? {
-            ...descriptor,
-            providerSessionId: capture.providerSessionId,
-            providerSessionPath: capture.providerSessionPath,
-          }
-        : descriptor;
+    // A runtime attached here knows its session best; one that just started
+    // may have resumed the copy its provider carried the conversation on in.
+    const attached =
+      capture?.runtime === runtime ? capture : runtime.movedSession();
+    const attachedDescriptor = attached
+      ? {
+          ...descriptor,
+          providerSessionId: attached.providerSessionId,
+          providerSessionPath: attached.providerSessionPath,
+        }
+      : descriptor;
     await this.assertRuntimeAccepted(descriptor.sessionId);
     await this.journal.recordSession(attachedDescriptor);
     await this.assertRuntimeAccepted(descriptor.sessionId);
@@ -750,7 +758,53 @@ export class ConnectorDaemon {
       attachedDescriptor.providerSessionPath,
     );
     await this.assertRuntimeAccepted(descriptor.sessionId);
+    // Repeated on every open until the server asks for the session we hold.
+    if (attachedDescriptor.providerSessionId !== descriptor.providerSessionId) {
+      this.publishMovedSession(attachedDescriptor);
+    }
     return runtime;
+  }
+
+  /** A live session's provider moved it to a new id and file mid-run. */
+  private async followMovedSession(
+    sessionId: string,
+    runtime: AgentSessionRuntime,
+  ): Promise<void> {
+    await this.serializeSession(sessionId, async () => {
+      const moved = runtime.movedSession();
+      const recorded = this.journal.sessionDescriptor(sessionId);
+      const capture = this.captures.get(sessionId);
+      // A runtime that is not attached yet reports its move when it attaches.
+      if (!moved || !recorded || capture?.runtime !== runtime) return;
+      if (capture.providerSessionId === moved.providerSessionId) return;
+      const descriptor = { ...recorded, ...moved };
+      this.assertStoresAvailable();
+      await this.journal.recordSession(descriptor);
+      this.assertStoresAvailable();
+      await this.attachTimeline(
+        runtime,
+        descriptor.providerSessionId,
+        descriptor.providerSessionPath,
+      );
+      this.publishMovedSession(descriptor);
+    });
+  }
+
+  private publishMovedSession(
+    descriptor: Pick<
+      AgentDaemonSessionDescriptor,
+      "sessionId" | "providerSessionId" | "providerSessionPath"
+    >,
+  ): void {
+    if (!this.serverCapabilities.has("session-move-v1")) return;
+    this.emit({
+      type: "session_metadata",
+      sessionId: descriptor.sessionId,
+      patch: {
+        providerSessionId: descriptor.providerSessionId,
+        providerSessionPath: descriptor.providerSessionPath,
+      },
+    });
   }
 
   private async runCommand(
@@ -933,12 +987,20 @@ export class ConnectorDaemon {
       hydrateHistory: reloadHistory,
     });
     await this.assertRuntimeAccepted(descriptor.sessionId);
+    // The new process may itself have resumed a copy the provider moved to.
+    const attached = { ...descriptor, ...runtime.movedSession() };
+    if (attached.providerSessionId !== descriptor.providerSessionId) {
+      await this.journal.recordSession(attached);
+    }
     await this.attachTimeline(
       runtime,
-      descriptor.providerSessionId,
-      descriptor.providerSessionPath,
+      attached.providerSessionId,
+      attached.providerSessionPath,
       reloadHistory,
     );
+    if (attached.providerSessionId !== session.providerSessionId) {
+      this.publishMovedSession(attached);
+    }
     return runtime;
   }
 

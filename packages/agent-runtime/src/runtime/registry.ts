@@ -39,6 +39,7 @@ import type {
   AgentRuntimeInitialState,
   ResolvedAgentImage,
   AgentSessionChangeResult,
+  AgentSessionIdentity,
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
 import type { AgentTurnChangeTracker } from "./turn-changes";
@@ -109,6 +110,11 @@ export type AgentRuntimeRegistryOptions = {
     messages: readonly AgentQueuedMessage[],
   ) => void | Promise<void>;
   runtimeExited?: (
+    sessionId: string,
+    runtime: AgentSessionRuntime,
+  ) => void | Promise<void>;
+  /** A live session went on under a new provider id; see `movedSession`. */
+  sessionMoved?: (
     sessionId: string,
     runtime: AgentSessionRuntime,
   ) => void | Promise<void>;
@@ -346,6 +352,8 @@ export class AgentSessionRuntime {
     initialQueuedMessages: readonly AgentQueuedMessage[],
     private readonly onExit: () => void,
     private readonly turnChanges: AgentTurnChangeTracker | null = null,
+    private providerSessionId?: string,
+    private readonly onSessionMoved: () => void = () => {},
   ) {
     this.eventClassifier = adapter.createEventClassifier();
     this.state = initial.state;
@@ -1050,6 +1058,7 @@ export class AgentSessionRuntime {
       if (mode === "files") await this.refreshState();
       else await this.hydrateHistory();
       const identity = this.adapter.sessionIdentity(this.state);
+      this.providerSessionId = identity.providerSessionId;
       return {
         session: {
           providerSessionId: identity.providerSessionId,
@@ -1084,7 +1093,10 @@ export class AgentSessionRuntime {
       );
     }
     const result = await this.client.forkSession(messageId, mode);
-    if (result.replacesCurrentSession) await this.hydrateHistory();
+    if (result.replacesCurrentSession) {
+      this.providerSessionId = result.session.providerSessionId;
+      await this.hydrateHistory();
+    }
     return result;
   }
 
@@ -1147,6 +1159,7 @@ export class AgentSessionRuntime {
             ? stats.contextUsage : this.stats.contextUsage,
       };
       this.commands = runtimeCommands(this.adapter, commands);
+      this.followMovedSession();
       if (activityIsCurrent && !this.stopped) {
         this.status = this.providerBusy(state) ? "running" : "idle";
       }
@@ -1173,6 +1186,40 @@ export class AgentSessionRuntime {
       this.refreshPromise = null;
     });
     return this.refreshPromise;
+  }
+
+  private moved: { providerSessionId: string; providerSessionPath: string } | null = null;
+
+  /**
+   * The provider session this runtime now writes, when it is not the one the
+   * runtime was started on: the provider carried the conversation on under a
+   * new id and file. Null while the runtime still has the session it resumed.
+   */
+  movedSession(): { providerSessionId: string; providerSessionPath: string } | null {
+    return this.moved;
+  }
+
+  /** Adopt the session the provider reports once it differs from ours. */
+  adoptMovedSession(identity: AgentSessionIdentity): void {
+    this.providerSessionId = identity.providerSessionId;
+    this.moved = {
+      providerSessionId: identity.providerSessionId,
+      providerSessionPath: identity.providerSessionPath,
+    };
+  }
+
+  private followMovedSession(): void {
+    // A rewind changes the session on purpose and reports the result itself.
+    if (!this.adapter.followsMovedSessions || this.providerSessionId === undefined || this.rewinding) return;
+    let identity: AgentSessionIdentity;
+    try {
+      identity = this.adapter.sessionIdentity(this.state);
+    } catch {
+      return;
+    }
+    if (identity.providerSessionId === this.providerSessionId) return;
+    this.adoptMovedSession(identity);
+    this.onSessionMoved();
   }
 
   /** Import a complete provider branch only when conversation history changes.
@@ -2193,6 +2240,7 @@ export class AgentRuntimeRegistry {
         client,
         initial,
         launchConfig,
+        identity.providerSessionId,
       );
       return { runtime, session, launchConfig };
     } catch (error) {
@@ -2251,33 +2299,39 @@ export class AgentRuntimeRegistry {
         providerSessionPath: descriptor.providerSessionPath,
       },
     };
-    // A provider that still owns the session elsewhere would start a copy
-    // under a new id; refuse before the process (and its stray file) exists.
-    await adapter.checkResume?.(descriptor.target, launch);
     const client = adapter.startSession(descriptor.target, launch);
     try {
       const transcript = await this.options.loadTranscript?.(descriptor);
       const pendingSubmissions = this.options.loadQueuedMessages?.(descriptor.sessionId)
         .some((message) => message.status === "sending" || message.status === "uncertain") ?? false;
-      const initial = await this.loadInitial(adapter, client, {
+      let initial = await this.loadInitial(adapter, client, {
         transcript, hydrateHistory, pendingSubmissions,
       });
       const identity = adapter.sessionIdentity(initial.state);
-      if (
-        identity.providerSessionId !== descriptor.providerSessionId
-      ) {
+      const moved = identity.providerSessionId !== descriptor.providerSessionId;
+      if (moved && !adapter.followsMovedSessions) {
         throw new Error(
           `${agentProviderMetadata(adapter.provider).label} opened a different session than requested.`,
         );
       }
-      return this.register(
+      // The stored transcript describes the session we asked for. The one the
+      // provider resumed may hold turns it lacks, so show the provider's own.
+      if (moved && transcript && !hydrateHistory) {
+        initial = await this.loadInitial(adapter, client, {
+          hydrateHistory: true, pendingSubmissions,
+        });
+      }
+      const runtime = this.register(
         descriptor.sessionId,
         descriptor,
         adapter,
         client,
         initial,
         descriptor.launchConfig,
+        descriptor.providerSessionId,
       );
+      if (moved) runtime.adoptMovedSession(identity);
+      return runtime;
     } catch (error) {
       await client.stop();
       throw error;
@@ -2291,6 +2345,7 @@ export class AgentRuntimeRegistry {
     client: AgentRuntimeClient,
     initial: AgentRuntimeInitialState,
     launchConfig: AgentSessionLaunchConfig,
+    providerSessionId: string,
   ): AgentSessionRuntime {
     const runtime = new AgentSessionRuntime(
       sessionId,
@@ -2311,6 +2366,12 @@ export class AgentRuntimeRegistry {
         void this.options.runtimeExited?.(sessionId, runtime);
       },
       this.options.trackTurnChanges?.({ ...descriptor, sessionId }) ?? null,
+      providerSessionId,
+      () => {
+        if (this.runtimes.get(sessionId) === runtime) {
+          void this.options.sessionMoved?.(sessionId, runtime);
+        }
+      },
     );
     this.runtimes.set(sessionId, runtime);
     return runtime;
