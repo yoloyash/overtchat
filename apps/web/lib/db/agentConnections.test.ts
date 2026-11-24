@@ -560,6 +560,42 @@ describe("agent connection persistence", () => {
     });
   });
 
+  it("moves a session to the file its provider continued in, for its own connector only", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/overtchat", name: "overtchat" },
+    );
+    const listed = (id: string) => ({
+      providerSessionId: id,
+      providerSessionPath: `/omp/${id}.jsonl`,
+      name: "Fix the build",
+      firstMessage: "Fix the build",
+      messageCount: 2,
+      createdAt: new Date(1_000),
+      modifiedAt: new Date(2_000),
+    });
+    const original = await repository.upsertAgentSession(workspace!.id, listed("first"));
+    // The session list reached the continuation before the connector did.
+    await repository.upsertAgentSession(workspace!.id, listed("continued"));
+    const continued = {
+      providerSessionId: "continued",
+      providerSessionPath: "/omp/continued.jsonl",
+    };
+
+    repository.moveAgentSessionProviderSession("someone-else", original.id, continued);
+    await expect(
+      repository.getOwnedAgentSession(original.id, "alice"),
+    ).resolves.toMatchObject({ agentSession: { providerSessionId: "first" } });
+
+    repository.moveAgentSessionProviderSession("alice-connector", original.id, continued);
+    // The next list no longer holds the file the conversation left.
+    expect(
+      repository.syncAgentWorkspaceSessions(workspace!.id, [listed("continued")]),
+    ).toMatchObject([{ id: original.id, ...continued, name: "Fix the build" }]);
+  });
+
   it("fills a missing title once and preserves explicit renames", async () => {
     const owned = createAliceConnection();
     const workspace = await repository.createAgentWorkspace(

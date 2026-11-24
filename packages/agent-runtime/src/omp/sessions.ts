@@ -62,7 +62,7 @@ function textContent(message) {
   return message.content.filter((part) => part && part.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n").trim();
 }
 async function readSession(file) {
-  let header = null, name = null, firstMessage = null, messageCount = 0, modifiedAt = null, model = null, thinkingOptionId = null;
+  let header = null, name = null, firstMessage = null, messageCount = 0, modifiedAt = null, model = null, thinkingOptionId = null, newestMessageId = null, entryIds = null;
   try {
     const lines = readline.createInterface({ input: fs.createReadStream(file, { encoding: "utf8" }), crlfDelay: Infinity });
     for await (const line of lines) {
@@ -75,8 +75,10 @@ async function readSession(file) {
         try { entryCwd = fs.realpathSync(entry.cwd); } catch { entryCwd = path.resolve(entry.cwd); }
         if (entryCwd !== requestedCwd) return null;
         header = entry;
+        if (typeof entry.continuationOf === "string" && entry.continuationOf) entryIds = new Set();
         continue;
       }
+      if (entryIds && typeof entry.id === "string") entryIds.add(entry.id);
       if (entry.type === "session_info") name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : null;
       if (entry.type === "model_change") {
         if (typeof entry.provider === "string" && typeof entry.modelId === "string") model = entry.provider + "/" + entry.modelId;
@@ -85,6 +87,7 @@ async function readSession(file) {
       if (entry.type === "thinking_level_change" && ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(entry.thinkingLevel)) thinkingOptionId = entry.thinkingLevel;
       if (entry.type !== "message" || !entry.message) continue;
       messageCount++;
+      if (typeof entry.id === "string") newestMessageId = entry.id;
       const activity = typeof entry.message.timestamp === "number" ? entry.message.timestamp : Date.parse(entry.timestamp);
       if (Number.isFinite(activity)) modifiedAt = Math.max(modifiedAt || 0, activity);
       if (!firstMessage && entry.message.role === "user") firstMessage = textContent(entry.message) || null;
@@ -93,7 +96,10 @@ async function readSession(file) {
     if (!header) return null;
     const createdAt = Date.parse(header.timestamp);
     if (!modifiedAt) modifiedAt = (await fsp.stat(file)).mtimeMs;
-    return { providerSessionId: header.id, providerSessionPath: file, name, firstMessage, messageCount, createdAt: Number.isFinite(createdAt) ? createdAt : null, modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : null, launchConfig: { ...(model ? { model } : {}), ...(thinkingOptionId ? { thinkingOptionId } : {}), modeId: "full" } };
+    return {
+      session: { providerSessionId: header.id, providerSessionPath: file, name, firstMessage, messageCount, createdAt: Number.isFinite(createdAt) ? createdAt : null, modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : null, launchConfig: { ...(model ? { model } : {}), ...(thinkingOptionId ? { thinkingOptionId } : {}), modeId: "full" } },
+      continuationOf: entryIds ? header.continuationOf : null, entryIds, newestMessageId,
+    };
   } catch { return null; }
 }
 (async () => {
@@ -107,7 +113,20 @@ async function readSession(file) {
     const session = await readSession(item.file);
     if (session) sessions.push(session);
   }
-  process.stdout.write(JSON.stringify(sessions));
+  // OMP carries a conversation on in a sibling file when it cannot keep
+  // writing the first, and names the first in that file's header. A copy
+  // whose newest message its continuation also holds is the conversation as
+  // it was before the move, which OMP itself no longer resumes, so only the
+  // continuation is listed. Copies that both went on stay listed.
+  const superseded = new Set();
+  for (const copy of sessions) {
+    if (!copy.continuationOf) continue;
+    for (const earlier of sessions) {
+      if (earlier === copy || earlier.session.providerSessionId !== copy.continuationOf) continue;
+      if (!earlier.newestMessageId || copy.entryIds.has(earlier.newestMessageId)) superseded.add(earlier);
+    }
+  }
+  process.stdout.write(JSON.stringify(sessions.filter((entry) => !superseded.has(entry)).map((entry) => entry.session)));
 })().catch((error) => { process.stderr.write(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
 `.trim();
 
