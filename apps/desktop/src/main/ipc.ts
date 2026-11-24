@@ -1,5 +1,5 @@
-import { ipcMain, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import type { DesktopBadge } from "@overtchat/shared/desktop";
+import { ipcMain, powerMonitor, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import type { DesktopBadge, DesktopSignInResult } from "@overtchat/shared/desktop";
 import {
   IPC,
   type BootState,
@@ -15,7 +15,9 @@ import {
   setColorScheme,
   setServer,
 } from "./settings";
+import { exchangeSignInCode } from "./auth";
 import { applyBadge } from "./badge";
+import { signInWithBrowser } from "./browser-sign-in";
 import { applyColorScheme, getMainWindow, getShellWindowState, isAppSender, restartUi, revealWindow } from "./window";
 import { checkDesktopUpdates, desktopUpdates, downloadDesktopUpdate, installDesktopUpdate, setUpdateOrigin } from "./updates";
 
@@ -81,6 +83,20 @@ async function connect(address: string): Promise<ConnectResult> {
   return { ok: true };
 }
 
+/** Signs in with the server's identity provider in the default browser. */
+async function signInWithProvider(): Promise<DesktopSignInResult> {
+  const serverOrigin = getServerOrigin();
+  if (!serverOrigin) return { ok: false, error: "sign_in_failed" };
+  const result = await signInWithBrowser({
+    serverOrigin,
+    openBrowser: (url) => shell.openExternal(url),
+    exchange: (grant) => exchangeSignInCode(serverOrigin, grant),
+  });
+  // The browser has the screen; bring the app back once it's done its part.
+  if (result.ok || result.error !== "access_denied") revealWindow();
+  return result;
+}
+
 export function registerIpc(): void {
   handle(IPC.updateState, desktopUpdates.getState);
   handle(IPC.checkForUpdates, checkDesktopUpdates);
@@ -114,6 +130,7 @@ export function registerIpc(): void {
   });
   handle(IPC.revealWindow, revealWindow);
   handle(IPC.systemIdle, () => powerMonitor.getSystemIdleTime());
+  handle(IPC.signInWithProvider, signInWithProvider);
   ipcMain.on(IPC.theme, (event, scheme: ColorScheme) => {
     if (!fromApp(event) || (scheme !== "light" && scheme !== "dark")) return;
     setColorScheme(scheme);

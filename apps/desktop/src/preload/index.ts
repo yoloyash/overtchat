@@ -112,6 +112,7 @@ function exposeBridge(): void {
     setBadge: (badge: DesktopBadge) => ipcRenderer.invoke(IPC.setBadge, badge),
     revealWindow: () => ipcRenderer.invoke(IPC.revealWindow),
     getSystemIdleSeconds: () => ipcRenderer.invoke(IPC.systemIdle),
+    signInWithProvider: () => ipcRenderer.invoke(IPC.signInWithProvider),
   };
   contextBridge.exposeInMainWorld("overtchatDesktop", bridge);
 }
