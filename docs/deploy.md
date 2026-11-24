@@ -334,6 +334,10 @@ require an OvertChat login, follow redirects, or use the public access URL. Use
 the same `OVERTCHAT_CONFIG_DIR` override as setup if the installation uses a
 custom location. An older app or CLI must be updated to support this command.
 
+An account that only signed in through an
+[identity provider](#sign-in-with-an-identity-provider) has no password;
+both the administrator's reset and `overtchat reset-password` give it one.
+
 Every successful recovery signs out all of that account's web, desktop, and
 mobile sessions. Sign in again with the replacement password. Chats, settings,
 and administrator/user roles are preserved. Other accounts remain signed in.
@@ -500,10 +504,10 @@ New users are added by email address only. If the provider is unreachable, set
 the variable back to `false`, recreate the app container, and sign in with a
 password; on a managed installation, rerun `overtchat setup` and keep
 passwords. That needs an administrator who has one: the account created during
-setup does, accounts created by a first sign-in do not, and
-[password recovery](#password-recovery) only replaces a password an account
-already has. Keep the setup administrator, or another administrator with a
-password, before turning passwords off.
+setup does, and accounts that only ever signed in through the provider do not.
+[Password recovery](#password-recovery) gives any account a password,
+including one that never had one, so `overtchat reset-password` gets an
+administrator back in either way.
 
 **Apps.** The desktop and mobile apps open the provider in the system browser,
 so saved passwords and passkeys work, and return to the app when it is done.
