@@ -311,6 +311,10 @@ describe("setup provider selection", () => {
     promptAnswers.set("Client ID", "overtchat");
     promptAnswers.set("Client secret", "s3cret");
     promptAnswers.set("Name on the sign-in button", "Pocket ID");
+    promptAnswers.set(
+      "When someone signs in with Pocket ID but has no account here?",
+      "refuse",
+    );
 
     const selected = await promptInstallationConfig(setupConfig(), []);
 

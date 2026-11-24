@@ -125,6 +125,27 @@ describe("the identity provider question", () => {
     ).toContain("run overtchat setup again and keep passwords");
   });
 
+  it("refuses people without an account unless told to create one", async () => {
+    const NEWCOMERS = "When someone signs in with Pocket ID but has no account here?";
+    answer(QUESTION, "configure");
+    answer(NEWCOMERS, "create");
+    const stored = { ...options, secretStored: true };
+
+    const creating = await promptIdentityProvider(current, stored);
+    expect(creating?.autoCreateUsers).toBe(true);
+
+    // Asked again, the saved choice is the one offered.
+    answer(QUESTION, "configure");
+    expect(
+      (await promptIdentityProvider(creating, stored))?.autoCreateUsers,
+    ).toBe(true);
+    answer(QUESTION, "configure");
+    answer(NEWCOMERS, "refuse");
+    expect(
+      (await promptIdentityProvider(creating, stored))?.autoCreateUsers,
+    ).toBe(false);
+  });
+
   it("asks again for an issuer that can't be read, or keeps it on request", async () => {
     answer(QUESTION, "configure");
     answer("Issuer URL", "https://typo.example.com", "https://id.example.com");

@@ -133,12 +133,22 @@ export async function promptIdentityProvider(
         value?.trim() ? undefined : "Enter what to call the provider.",
     }),
   ).trim();
-  const autoCreateUsers = chosen(
-    await confirm({
-      message: "Create an account the first time someone signs in?",
-      initialValue: current?.autoCreateUsers ?? false,
-      active: "Yes",
-      inactive: "No, only people added in Settings → Users",
+  const newcomers = chosen(
+    await select<"refuse" | "create">({
+      message: `When someone signs in with ${name} but has no account here?`,
+      initialValue: current?.autoCreateUsers ? "create" : "refuse",
+      options: [
+        {
+          value: "refuse",
+          label: "Refuse them",
+          hint: "add people in Settings → Users first",
+        },
+        {
+          value: "create",
+          label: "Create an account for them",
+          hint: `anyone who can sign in to ${name} gets in`,
+        },
+      ],
     }),
   );
   const disablePasswordLogin = chosen(
@@ -159,7 +169,7 @@ export async function promptIdentityProvider(
     issuerUrl,
     clientId: clientId.trim(),
     name,
-    autoCreateUsers,
+    autoCreateUsers: newcomers === "create",
     disablePasswordLogin,
     ...(clientSecret?.trim() ? { clientSecret: clientSecret.trim() } : {}),
   };
