@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Linking, Text } from "react-native";
 import {
   EnrichedMarkdownText,
@@ -57,19 +57,19 @@ export const MarkdownBody = memo(function MarkdownBody({
     [colors, fonts, radii, variant, scheme],
   );
 
-  // The handler reads these through a ref, so it keeps one identity.
-  const latest = useRef({ codeFiles, save });
-  latest.current = { codeFiles, save };
-  const onLinkPress = useCallback(({ url }: LinkPressEvent) => {
-    const name = codeFileLinkName(url);
-    if (name !== null) {
-      // A link to a run's file saves it; a name no run returned does nothing.
-      const file = latest.current.codeFiles.get(name.toLowerCase());
-      if (file) void latest.current.save(file);
-      return;
-    }
-    Linking.openURL(linkTarget(url)).catch(() => {});
-  }, []);
+  const onLinkPress = useCallback(
+    ({ url }: LinkPressEvent) => {
+      const name = codeFileLinkName(url);
+      if (name !== null) {
+        // A link to a run's file saves it; a name no run returned does nothing.
+        const file = codeFiles.get(name.toLowerCase());
+        if (file) void save(file);
+        return;
+      }
+      Linking.openURL(linkTarget(url)).catch(() => {});
+    },
+    [codeFiles, save],
+  );
 
   // An image, or a line that is only a link, naming a run's file shows the
   // file. A name no run returned keeps its text.

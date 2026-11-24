@@ -15,7 +15,7 @@ import {
 } from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { buildSourceLookup } from "@/lib/chat/citations";
@@ -36,7 +36,10 @@ import { type MessageAction, MessageMenu } from "./MessageMenu";
 import { Sources } from "./Sources";
 import { UserQuote } from "./UserQuote";
 
-export function MessageBubble({
+/** What a message needs of speech: which message is playing, and how to play one. */
+export type MessageSpeech = Pick<ReturnType<typeof useSpeech>, "activeId" | "status" | "play">;
+
+function MessageBubbleView({
   message,
   streaming,
   editing,
@@ -57,7 +60,7 @@ export function MessageBubble({
   message: UIMessage;
   streaming: boolean;
   editing: boolean;
-  speech: ReturnType<typeof useSpeech>;
+  speech: MessageSpeech;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
@@ -77,7 +80,15 @@ export function MessageBubble({
   const preferences = useChatPreferences();
   const stats = preferences.messageStats ? readMessageStats(message) : null;
   const [copied, setCopied] = useState(false);
-  const menu = useMeasuredPopoverAnchor();
+  // Taken apart here: the React Compiler treats an object that carries a ref as
+  // a ref itself, and reading one while rendering leaves the component unoptimized.
+  const {
+    anchorRef,
+    anchorRect,
+    visible: menuVisible,
+    open: showMenu,
+    close: closeMenu,
+  } = useMeasuredPopoverAnchor();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
   const ownFiles = useMemo(
@@ -125,11 +136,11 @@ export function MessageBubble({
     function openUserMenu() {
       if (actions.length === 0) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-      menu.open();
+      showMenu();
     }
 
     return (
-      <View ref={menu.anchorRef} collapsable={false} style={styles.userRow}>
+      <View ref={anchorRef} collapsable={false} style={styles.userRow}>
         {fileParts.length > 0 && !editing ? (
           <View style={styles.attachmentsRow}>
             {fileParts.map((part, i) => (
@@ -183,12 +194,12 @@ export function MessageBubble({
           ) : null}
         </View>
         <MessageMenu
-          from={menu.anchorRect}
-          visible={menu.visible}
+          from={anchorRect}
+          visible={menuVisible}
           actions={actions}
           placement="top"
           onSelect={onMenuSelect}
-          onClose={menu.close}
+          onClose={closeMenu}
         />
       </View>
     );
@@ -211,11 +222,11 @@ export function MessageBubble({
   function openAssistantMenu() {
     if (assistantActions.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    menu.open();
+    showMenu();
   }
 
   return (
-    <View ref={menu.anchorRef} collapsable={false} style={styles.assistantRow}>
+    <View ref={anchorRef} collapsable={false} style={styles.assistantRow}>
       <Pressable
         onLongPress={openAssistantMenu}
         delayLongPress={300}
@@ -346,16 +357,19 @@ export function MessageBubble({
         ) : null}
       </Pressable>
       <MessageMenu
-        from={menu.anchorRect}
-        visible={menu.visible}
+        from={anchorRect}
+        visible={menuVisible}
         actions={assistantActions}
         placement="bottom"
         onSelect={onAssistantMenuSelect}
-        onClose={menu.close}
+        onClose={closeMenu}
       />
     </View>
   );
 }
+
+/** A message that did not change is not drawn again while another one is written. */
+export const MessageBubble = memo(MessageBubbleView);
 
 const styles = StyleSheet.create({
   userRow: { alignItems: "flex-end", gap: 6 },
