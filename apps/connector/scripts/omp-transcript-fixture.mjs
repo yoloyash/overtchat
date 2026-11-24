@@ -13,11 +13,14 @@ const contextFile = path.join(config.directory, "provider-context.json");
 let context = JSON.parse(await readFile(contextFile, "utf8").catch(() => "[]"));
 const todosFile = path.join(config.directory, "provider-todos.json");
 let todoPhases = JSON.parse(await readFile(todosFile, "utf8").catch(() => "[]"));
-const models = ["A", "B"].map((name) => ({
-  provider: "fixture", id: `model-${name.toLowerCase()}`, name: `Model ${name}`,
-  reasoning: true, input: ["text"], contextWindow: 100000,
-  thinking: { efforts: ["low", "high"], defaultLevel: "high" },
-}));
+const models = [
+  ...["A", "B"].map((name) => ({
+    provider: "fixture", id: `model-${name.toLowerCase()}`, name: `Model ${name}`,
+    reasoning: true, input: ["text"], contextWindow: 100000,
+    thinking: { efforts: ["low", "high"], defaultLevel: "high" },
+  })),
+  { provider: "fixture", id: "model-plain", name: "Model Plain", reasoning: false, input: ["text"], contextWindow: 100000 },
+];
 const client = await ConnectorClient.create(config);
 configureProcessSpawner((_target, launch) => {
   const stdin = new PassThrough();
@@ -88,7 +91,13 @@ configureProcessSpawner((_target, launch) => {
           case "get_available_models": reply({ models }); break;
           case "get_available_commands": reply({ commands: [{ name: "compact", source: "builtin", description: "Compact context" }] }); break;
           case "get_session_stats": reply({ totalMessages: context.length }); break;
-          case "set_model": model = models.find((item) => item.id === command.modelId); reply(model); break;
+          case "set_model":
+            model = models.find((item) => item.id === command.modelId);
+            // Like Oh My Pi, a model that does not reason clears the level, and
+            // the next model does not bring it back.
+            if (!model.reasoning) level = undefined;
+            reply(model);
+            break;
           case "set_thinking_level": level = command.level; reply(); break;
           case "compact": {
             await new Promise((resolve) => setTimeout(resolve, 800));
