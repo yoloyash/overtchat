@@ -153,12 +153,16 @@ function ChainOfThoughtView({
   const lastTool = [...parts].reverse().find(isTool);
   // Reasoning stays inline when it is all the run did.
   const collapseThoughts = lastTool !== undefined;
-  const steps = parts.filter(
-    (part) =>
-      !isReasoning(part) ||
-      part.text.trim() !== "" ||
-      part.state === "streaming",
-  );
+  // Keyed by position in `parts`, so dropping an empty thought never shifts
+  // another step's open state onto its neighbour.
+  const steps = parts
+    .map((part, index) => ({ part, index }))
+    .filter(
+      ({ part }) =>
+        !isReasoning(part) ||
+        part.text.trim() !== "" ||
+        part.state === "streaming",
+    );
   const toolKind = lastTool
     ? isFileTool(lastTool)
       ? "file"
@@ -213,9 +217,9 @@ function ChainOfThoughtView({
       {/* Timeline — typed step nodes on a left rail, in original order. */}
       {open ? (
         <View style={styles.timeline}>
-          {steps.map((part, i) => (
+          {steps.map(({ part, index }, i) => (
             <Step
-              key={i}
+              key={index}
               part={part}
               isLast={i === steps.length - 1}
               collapseThoughts={collapseThoughts}
