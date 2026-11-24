@@ -4,6 +4,7 @@ import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import {
   catalogCapabilitiesFor,
   catalogContextWindowFor,
+  catalogImagePricingFor,
   catalogPricingFor,
 } from "@/lib/providers/server/model-catalog";
 import { listProviderModels } from "@/lib/providers/server/registry";
@@ -44,10 +45,10 @@ export async function POST(req: Request) {
         parsed.data.providerId,
         model.id,
       );
-      const catalogPricing = catalogPricingFor(
-        parsed.data.providerId,
-        model.id,
-      );
+      const catalogPricing =
+        modelType === "image"
+          ? catalogImagePricingFor(parsed.data.providerId, model.id)
+          : catalogPricingFor(parsed.data.providerId, model.id);
       return {
         ...model,
         ...(catalogContextWindow === undefined

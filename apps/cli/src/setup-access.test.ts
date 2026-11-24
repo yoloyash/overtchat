@@ -189,7 +189,7 @@ describe("access provisioning lifecycle", () => {
       [],
       undefined,
       null,
-      { dryRun: false },
+      { dryRun: false, identityProviderSecretStored: false },
     );
     expect(await readInstallationConfig(runtimePaths())).toMatchObject({
       access: { mode: "local" },
@@ -201,7 +201,7 @@ describe("access provisioning lifecycle", () => {
       [],
       undefined,
       null,
-      { dryRun: false },
+      { dryRun: false, identityProviderSecretStored: false },
     );
     const environment = await readFile(runtimePaths().secretsFile, "utf8");
     expect(environment).toContain('APP_BIND_ADDRESS="127.0.0.1"');
@@ -393,4 +393,96 @@ it("returns an error after persisting pending agents when setup has no terminal"
   vi.mocked(installManagedConnector).mockRejectedValue(new Error("connector startup failed"));
   await expect(setup({ ...options, defaults: true }, manifest)).rejects.toThrow("Agent Connections failed");
   expect(await readInstallationConfig(runtimePaths())).toMatchObject({ agents: { installed: true, pending: true } });
+});
+
+describe("identity provider lifecycle", () => {
+  const provider = {
+    issuerUrl: "https://id.example.com",
+    clientId: "overtchat",
+    name: "Pocket ID",
+    autoCreateUsers: false,
+    disablePasswordLogin: false,
+  };
+
+  it("keeps the client secret in the secrets file across runs and drops it with the provider", async () => {
+    vi.mocked(promptInstallationConfig).mockImplementation(async (initial) => ({
+      ...local(initial),
+      identityProvider: { ...provider, clientSecret: "first$ecret" },
+    }));
+    await setup(options, manifest);
+
+    const paths = runtimePaths();
+    let environment = await readFile(paths.secretsFile, "utf8");
+    expect(environment).toContain('OIDC_ISSUER_URL="https://id.example.com"');
+    expect(environment).toContain('OIDC_CLIENT_ID="overtchat"');
+    expect(environment).toContain('OIDC_PROVIDER_NAME="Pocket ID"');
+    expect(environment).toContain('OIDC_AUTO_CREATE_USERS="false"');
+    expect(environment).toContain('OIDC_DISABLE_PASSWORD_LOGIN="false"');
+    // Compose reads a doubled "$" as one.
+    expect(environment).toContain('OIDC_CLIENT_SECRET="first$$ecret"');
+    expect(await readFile(paths.stateFile, "utf8")).not.toContain("ecret");
+    expect((await readInstallationConfig(paths))?.identityProvider).toEqual(
+      provider,
+    );
+
+    // Kept as it is: the question is answered without typing the secret again.
+    vi.mocked(promptInstallationConfig).mockImplementation(async (initial) => ({
+      ...local(initial),
+      identityProvider: {
+        ...initial.identityProvider!,
+        disablePasswordLogin: true,
+      },
+    }));
+    await setup(options, manifest);
+    expect(promptInstallationConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ identityProvider: provider }),
+      [],
+      undefined,
+      null,
+      { dryRun: false, identityProviderSecretStored: true },
+    );
+    environment = await readFile(paths.secretsFile, "utf8");
+    expect(environment).toContain('OIDC_CLIENT_SECRET="first$$ecret"');
+    expect(environment).toContain('OIDC_DISABLE_PASSWORD_LOGIN="true"');
+
+    vi.mocked(promptInstallationConfig).mockImplementation(async (initial) => ({
+      ...local(initial),
+      identityProvider: undefined,
+    }));
+    await setup(options, manifest);
+    environment = await readFile(paths.secretsFile, "utf8");
+    expect(environment).toContain('OIDC_ISSUER_URL=""');
+    expect(environment).toContain('OIDC_CLIENT_SECRET=""');
+    expect(environment).toContain('OIDC_DISABLE_PASSWORD_LOGIN="false"');
+    expect(
+      (await readInstallationConfig(paths))?.identityProvider,
+    ).toBeUndefined();
+  });
+
+  it("stops when a provider is kept but its client secret is gone", async () => {
+    vi.mocked(promptInstallationConfig).mockImplementation(async (initial) => ({
+      ...local(initial),
+      identityProvider: provider,
+    }));
+
+    await expect(setup(options, manifest)).rejects.toThrow(
+      "This server has no client secret for Pocket ID. Run overtchat setup, choose Change its settings, and enter it.",
+    );
+  });
+
+  it("keeps the provider on an unattended run", async () => {
+    vi.mocked(promptInstallationConfig).mockImplementation(async (initial) => ({
+      ...local(initial),
+      identityProvider: { ...provider, clientSecret: "kept-secret" },
+    }));
+    await setup(options, manifest);
+    vi.mocked(promptInstallationConfig).mockClear();
+
+    await setup({ ...options, defaults: true }, manifest);
+
+    expect(promptInstallationConfig).not.toHaveBeenCalled();
+    const environment = await readFile(runtimePaths().secretsFile, "utf8");
+    expect(environment).toContain('OIDC_ISSUER_URL="https://id.example.com"');
+    expect(environment).toContain('OIDC_CLIENT_SECRET="kept-secret"');
+  });
 });

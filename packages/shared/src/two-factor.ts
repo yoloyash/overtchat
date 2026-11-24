@@ -15,6 +15,12 @@ export interface TwoFactorStatus {
   enabled: boolean;
   /** The server requires this user, an administrator, to use two-factor. */
   required: boolean;
+  /**
+   * False when the account can't sign in with a password, so there is none to
+   * change or protect: it signs in through the server's identity provider.
+   * Absent on servers before single sign-on, where every account can.
+   */
+  passwordSignIn?: boolean;
 }
 
 /**

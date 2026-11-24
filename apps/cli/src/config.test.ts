@@ -127,6 +127,32 @@ describe("existing installation adoption", () => {
     );
   });
 
+  it("keeps the identity provider an adopted installation signs in with", () => {
+    expect(
+      defaultInstallationConfig(existing(), manifest).identityProvider,
+    ).toBeUndefined();
+
+    const detected = existing();
+    detected.environment.set("OIDC_ISSUER_URL", "https://id.example.com");
+    detected.environment.set("OIDC_CLIENT_ID", "overtchat");
+    // Without its secret the app has the provider off; so does the manager.
+    expect(
+      defaultInstallationConfig(detected, manifest).identityProvider,
+    ).toBeUndefined();
+
+    detected.environment.set("OIDC_CLIENT_SECRET", "adopted-secret");
+    detected.environment.set("OIDC_DISABLE_PASSWORD_LOGIN", "true");
+    expect(defaultInstallationConfig(detected, manifest).identityProvider).toEqual({
+      issuerUrl: "https://id.example.com",
+      clientId: "overtchat",
+      name: "SSO",
+      autoCreateUsers: false,
+      disablePasswordLogin: true,
+    });
+    expect(initialSecrets(detected).oidcClientSecret).toBe("adopted-secret");
+    expect(initialSecrets(existing()).oidcClientSecret).toBe("");
+  });
+
   it("keeps a code sandbox that the adopted installation already runs", () => {
     expect(defaultInstallationConfig(null, manifest).sandbox).toEqual({ installed: false, tier: "slim" });
     expect(defaultInstallationConfig(existing({ sandboxTier: "full" }), manifest).sandbox).toEqual({
@@ -378,6 +404,32 @@ describe("managed installation state", () => {
       expect((await readInstallationSecrets(paths)).cloudCredential).toBe("oc_stored");
       expect(initialSecrets(null, { cloudCredential: "oc_stored" }).cloudCredential).toBe("oc_stored");
       expect(initialSecrets(null, {}).cloudCredential).toBe("");
+
+      // The file doubles "$" for Compose; reading it gives the secret back.
+      await writeFile(
+        paths.secretsFile,
+        'OIDC_CLIENT_SECRET="pa$$word \\"quoted\\" $$$$"\n',
+      );
+      expect((await readInstallationSecrets(paths)).oidcClientSecret).toBe(
+        'pa$word "quoted" $$',
+      );
+      const provider = {
+        issuerUrl: "https://id.example.com",
+        clientId: "overtchat",
+        name: "Pocket ID",
+        autoCreateUsers: false,
+        disablePasswordLogin: false,
+      };
+      await writeInstallationConfig(paths, {
+        ...config,
+        identityProvider: { ...provider, clientSecret: "typed-at-the-prompt" },
+      });
+      expect(await readFile(paths.stateFile, "utf8")).not.toContain(
+        "typed-at-the-prompt",
+      );
+      expect((await readInstallationConfig(paths))?.identityProvider).toEqual(
+        provider,
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

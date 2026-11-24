@@ -18,6 +18,9 @@ and operator choices into a managed Compose stack and optional Host Connector.
 - `src/config.ts`, `src/paths.ts`, and `src/compose.ts` own persisted
   installation state, managed locations, secrets/environment output, optional
   service profiles, and Compose rendering.
+- `src/identity-provider.ts` and `src/identity-provider-prompts.ts` own the
+  question about signing in through the operator's OpenID Connect provider.
+  Its client secret is kept in the secrets file, never in installation state.
 - `src/docker.ts` owns Docker discovery, existing-install detection, GPU
   support, and bundled-sidecar reconciliation.
 - `src/release.ts` validates the published manifest and handles CLI

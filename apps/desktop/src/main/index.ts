@@ -3,7 +3,7 @@ import path from "node:path";
 import { configureServerAuth } from "./auth";
 import { registerIpc } from "./ipc";
 import { installMenu } from "./menu";
-import { configurePermissions } from "./permissions";
+import { configurePermissions, requestNotificationAccess } from "./permissions";
 import { handleAppScheme, registerAppScheme } from "./protocol";
 import { flushSettings, loadSettings } from "./settings";
 import { getMainWindow, openMainWindow } from "./window";
@@ -55,6 +55,7 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     installMenu();
     openMainWindow();
+    requestNotificationAccess();
     startUpdates();
 
     app.on("activate", () => {

@@ -25,6 +25,7 @@ import { MobileAppDialog } from "@/components/MobileAppDialog";
 import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 import { UpdateActionTooltip } from "@/components/UpdateActionTooltip";
 import { toast } from "@/components/ui/toast";
+import { rememberSignedOut } from "@/lib/auth/signedOut";
 import { authClient } from "@/lib/auth/client";
 import { getApiOrigin } from "@/lib/api-url";
 import { useResetAuthState } from "@/lib/queries/auth";
@@ -80,6 +81,7 @@ export function AccountMenu() {
       }
       if (session?.user.id) clearComposerDraftsForUser(session.user.id);
       resetAuthState();
+      rememberSignedOut();
       await navigate({ to: "/login", replace: true });
     } catch (err) {
       toast.error({

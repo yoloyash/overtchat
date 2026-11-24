@@ -24,6 +24,7 @@ import {
 } from "@overtchat/agent-bridge";
 import {
   recordAgentSessionLastTurn,
+  moveAgentSessionProviderSession,
   updateAgentSessionMetadata,
 } from "@/lib/db/agentConnections";
 
@@ -658,7 +659,14 @@ export class HostConnectorBroker {
       return;
     }
     if (event.type === "session_metadata") {
-      const { providerModifiedAt, ...metadata } = event.patch;
+      const { providerModifiedAt, providerSessionId, providerSessionPath, ...metadata } =
+        event.patch;
+      if (providerSessionId !== undefined && providerSessionPath !== undefined) {
+        moveAgentSessionProviderSession(connectorId, event.sessionId, {
+          providerSessionId,
+          providerSessionPath,
+        });
+      }
       await updateAgentSessionMetadata(event.sessionId, {
         ...metadata,
         ...(providerModifiedAt !== undefined

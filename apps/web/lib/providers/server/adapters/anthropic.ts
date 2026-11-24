@@ -13,6 +13,7 @@ export const anthropicAdapter: ProviderAdapter = {
         providerName: "anthropic",
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
+        headers: config.headers,
         model: config.model,
         authentication: "api-key",
       }),
@@ -23,6 +24,10 @@ export const anthropicAdapter: ProviderAdapter = {
     };
   },
   listModels(connection) {
-    return listAnthropicModels(connection.baseUrl, connection.apiKey);
+    return listAnthropicModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      );
   },
 };

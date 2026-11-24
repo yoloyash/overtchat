@@ -198,6 +198,26 @@ export class ConnectorTimelineStore {
     });
   }
 
+  /**
+   * Record that a live session's provider carried it on under a new id. The
+   * history is the same conversation, so it stays and subscribers see nothing.
+   */
+  async moveSession(sessionId: string, providerSessionId: string): Promise<void> {
+    this.assertOpen();
+    await this.flushPending(sessionId);
+    this.assertOpen();
+    await this.enqueue(sessionId, async () => {
+      const state = await this.load(sessionId);
+      if (!state || state.providerSessionId === providerSessionId) return;
+      await this.writeCheckpoint({ ...state, providerSessionId });
+      this.assertHealthy();
+      state.providerSessionId = providerSessionId;
+      // The checkpoint holds every event applied so far.
+      state.events = [];
+      state.tailBytes = 0;
+    });
+  }
+
   async openSession(
     sessionId: string,
     providerSessionId: string,

@@ -1,5 +1,6 @@
 export {
   resolveAgentSessionDraftSelection,
+  resolveAgentSessionThinking,
   type AgentSessionDraftSelection,
 } from "@overtchat/shared/agent-creation";
 

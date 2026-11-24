@@ -9,12 +9,28 @@ import {
   catalogCapabilitiesFor,
   catalogContextWindowFor,
   catalogEntryFor,
+  catalogImagePricingFor,
   catalogPricingFor,
   resolveModelCapabilities,
   resolveModelContextWindow,
 } from "./model-catalog";
 
 describe("model catalog lookups with fixed metadata", () => {
+  it("keeps image generation rates apart from text rates", () => {
+    expect(catalogPricingFor("google", "gemini-3.1-flash-image")).toMatchObject({
+      input: 0.5,
+      output: 3,
+    });
+    expect(catalogImagePricingFor("google", "gemini-3.1-flash-image")).toEqual({
+      input: 0.5,
+      output: 60,
+      cacheRead: 0,
+      cacheWrite: 0,
+      tiered: false,
+    });
+    expect(catalogImagePricingFor("openai", "gpt-4")).toBeUndefined();
+  });
+
   it("looks up context limits by exact provider and model ID", () => {
     expect(catalogContextWindowFor("openai", "gpt-4o")).toBe(128_000);
     expect(

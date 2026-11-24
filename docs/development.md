@@ -141,22 +141,115 @@ npm run test -w apps/web -- lib/chat/markdown-math.test.tsx
 E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
 ```
 
+## Identity provider sign-in validation
+
+`lib/auth/oidc.ts` reads the operator's OpenID Connect provider from the
+environment once, at startup; `docs/deploy.md` lists the variables. With one
+configured, `lib/auth/server.ts` registers it with Better Auth as the provider
+`oidc`, whose callback is `/api/auth/callback/oidc`. The ID token is verified
+against the provider's keys. Accounts are matched by email on a first sign-in
+and by the provider's subject afterwards; account creation follows
+`OIDC_AUTO_CREATE_USERS` and never the public sign-up setting.
+`/api/sign-in-methods` tells every client, before login, whether to show the
+password form and what to call the provider. Turning passwords off is enforced
+by the server on `/sign-in/email`, not by hiding the form. Two-factor and
+sign-in approval only follow a password sign-in; `/api/two-factor` reports
+`passwordSignIn: false` for an account that cannot use one, and clients then
+hide the password and two-factor settings instead of requiring setup.
+
+Desktop and mobile cannot receive the provider's redirect, so they sign in
+through the system browser with a flow of our own, described in
+`packages/shared/src/sign-in.ts`:
+
+1. The app makes a secret and opens `/api/native-sign-in/start` with the
+   secret's SHA-256 challenge, a state, and where to return: a loopback port
+   the desktop app listens on, or `overtchat://login` on mobile. No other
+   return address is accepted.
+2. The server remembers the request and sends the browser to the provider.
+   The provider's callback signs the browser in and lands on
+   `/api/native-sign-in/finish`.
+3. Finish accepts only a session newer than the request, issues a code that
+   works once for two minutes, and returns the browser to the app. It signs
+   the browser out again unless it was signed in before the app's sign-in began.
+4. The app posts the code and its secret to
+   `/api/auth/native-sign-in/exchange` and receives its own session: a bearer
+   token on desktop, a cookie on mobile. A wrong secret spends the code.
+
+Starting needs no login and stores a row, so the server allows 60 starts a
+minute in total. Requests and codes are rows in `verification`, stored by hash
+(`lib/db/nativeSignIn.ts`). A code is useless without the secret, which never
+leaves the app, so another app that registers the same URL scheme or reads the
+loopback redirect cannot use it.
+
+```sh
+npm run test -w apps/web -- lib/auth/oidc.test.ts lib/auth/native-sign-in.test.ts
+npm run test -w apps/desktop --
+npm run test -w apps/mobile -- src/lib/auth/providerSignIn.test.ts
+E2E_PORT=4881 npm run test:e2e -w apps/web -- sign-in-methods.spec.ts
+```
+
+`oidc.test.ts` drives the real auth handler against an in-process provider
+(`lib/auth/fixtures/oidc-provider.ts`): linking, refusal, account creation,
+disabled accounts, passwords off, and the native flow's single use, secret
+check, and browser sign-out. For a change to the flow or a Better Auth
+upgrade, also sign in through a real provider. Keycloak starts with a ready
+realm:
+
+```sh
+docker run --rm -p 127.0.0.1:8081:8081 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  -e KC_HOSTNAME=http://localhost:8081 \
+  -v "$PWD/apps/web/lib/auth/fixtures/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro" \
+  quay.io/keycloak/keycloak:26.4 start-dev --import-realm --http-port 8081
+
+OIDC_ISSUER_URL=http://localhost:8081/realms/overtchat OIDC_CLIENT_ID=overtchat \
+  OIDC_CLIENT_SECRET=overtchat-development-secret OIDC_PROVIDER_NAME=Keycloak \
+  npm run dev:web
+```
+
+The realm's client redirects to `http://localhost:4717`; change `redirectUris`
+in the file for another port. Its users are `admin` (`admin@example.com`) and
+`newcomer` (`newcomer@example.com`), both with the password
+`development-password`. Give the OvertChat administrator the first address to
+see an account matched by email. `newcomer` is refused until
+`OIDC_AUTO_CREATE_USERS=true` or an administrator adds that address. Repeat
+with `OIDC_DISABLE_PASSWORD_LOGIN=true`: `POST /api/auth/sign-in/email`
+answers 403, and Security settings and **Settings → Users** offer no password
+actions. A browser opening the app without a session must arrive at the
+provider without a click, and Back from there must not return to the login
+page. After **Log out** the login page must stay, showing only the provider
+button, also after a reload; `components/auth/LoginForm.tsx` remembers the
+sign-out for the tab in session storage. A failed sign-in must stay on the
+page with its message. The desktop and mobile apps always show the button.
+
+From `npm run dev:desktop`, **Continue with Keycloak** must open the default
+browser rather than a window of the app, the browser must end on "You're
+signed in", and the app must stay signed in after a restart. Opening the
+server in that browser afterwards must still ask for a login. On a phone or
+emulator the provider opens in the system browser sheet, and closing it leaves
+the login screen ready for another try. The provider must be reachable from
+the device at the issuer address, so use a LAN or tunnel address for both the
+server and the provider instead of `localhost`. The system browser session is
+a native module: build the app again rather than reloading an older build.
+
 ## CI browser and desktop smoke diagnostics
 
 Web E2E runs inside the official Playwright image
 (`mcr.microsoft.com/playwright:v<version>-noble`), which includes Chromium and
 its system libraries. The job runs as the image's root user and installs only
-`vim-tiny`, for the workspace terminal test, under a two-minute step deadline.
+`vim-tiny`, for the workspace terminal test, under a five-minute step deadline.
 Inside the job, Redis is reached at `redis:6379`. The image tag must match the
 Playwright version in `package-lock.json`. Update both together; the job's
 browser check fails with the expected tag when they differ.
 
-Linux desktop dependency installation has a five-minute step deadline,
+Linux desktop dependency installation has a ten-minute step deadline,
 separate from test execution. Both jobs use `.github/apt-ci.conf`, which
-limits APT connection and stalled-download waits to 30 seconds, disables
-download retries, and makes incomplete package-index updates fail. These
-settings apply only to the disposable CI runners; they do not change operator
-installations.
+limits APT connection and stalled-download waits to 30 seconds. APT's default
+retries (three, with backoff) and package-index error handling stay on, so a
+dropped connection or one unreachable index does not fail the step when the
+packages can still be installed. The step deadlines leave room for those
+retries. These settings apply only to the disposable CI runners; they do not
+change operator installations.
 
 When a check fails, inspect the failed step first. A dependency-installation
 failure means the tests did not run. Diagnose the package source or runner
@@ -346,6 +439,9 @@ claiming compatibility with a particular backend version.
 
 The weekday `Refresh model catalog` workflow fetches models.dev, validates the
 generated catalog and manifest, and opens or updates `automation/model-catalog`.
+Text rates come from `api.json`. Image generation rates are published only in the
+experimental v2 feed, so the generator reads them from there into `image_cost`;
+it fails rather than dropping them if that feed moves or changes shape.
 To run the same validation locally:
 
 ```sh
@@ -399,6 +495,33 @@ level's fields in the request body; Off must produce no reasoning and On must
 produce some. `THINKING_LIVE_REPORT` writes a small JSON report without
 credentials or transcripts. The test does not modify saved models or chats,
 and ordinary unit runs skip it.
+
+## Model request headers validation
+
+A model's extra request headers live in `model_configs.headers` and are
+administrator-only, like its API key. The server sends them on everything it
+asks of that connection: chat, titles, the connection test, model discovery,
+the template check, and image generation. A header replaces any header of the
+same name the app would send, so it can also replace the authentication header.
+
+`{{CHAT_ID}}` in a value becomes the chat's ID, so every request of one
+conversation carries the same value. Chat IDs come from clients, so one that a
+header cannot carry is sent as its SHA-256 digest. Requests outside a chat get
+a fresh ID, because gateways that require such a header reject an empty one. A save that omits `headers` keeps the stored ones,
+which protects them from clients that predate the field; `null` removes them.
+The exception is a save that also changes the provider: headers may be
+credentials, so unsent ones do not follow the model to another provider.
+
+```sh
+npm run test -w apps/web -- lib/model-config lib/providers/server lib/db/modelConfigs.test.ts app/api/model-configs
+E2E_PORT=4791 npm run test:e2e -w apps/web -- model-request-headers.spec.ts
+```
+
+The browser test runs against a local gateway that refuses any request without
+a session header. To check a real one without an account, add a custom model
+for `https://opencode.ai/inference/go/v1` with any API key: **Test connection**
+reports a missing `x-opencode-session` header until the model has that header
+set to `{{CHAT_ID}}`, and an invalid credential afterwards.
 
 ## Chat attachment reading validation
 
@@ -1596,6 +1719,18 @@ to the internet. Before a sandbox version is published, tag a locally built imag
 as `ghcr.io/yoloyash/overtchat-sandbox:<version>` (or `overtchat-sandbox-full`) and
 run setup in development mode, which ignores pull failures.
 
+For sign-in with an identity provider, run `setup --dry-run` against a
+provider that answers (the Keycloak realm in
+[Identity provider sign-in validation](#identity-provider-sign-in-validation)
+needs an address other than `localhost`), and check that the preview's
+environment file carries the six `OIDC_*` values. A dry run writes no
+installation state; after a real setup, `installation.json` must not hold the
+client secret. In the generated stack, rerunning setup with **Keep** leaves
+the client secret as it was, **Turn it off** empties every value, and an
+unattended run changes nothing. A secret containing `$` must reach the app
+unchanged: the environment file doubles each `$`, which
+`docker compose config` shows as a single one in the app's environment.
+
 Installer binary and terminal checks are documented in [Release process](release.md).
 
 ## Agent transport validation
@@ -1957,26 +2092,69 @@ body.
 
 Who is told follows presence. Web and desktop clients post
 `/api/agent-presence` every half minute while visible, at once when that or
-the open session changes, and the desktop app also while the computer is in
-use with the window in the background. Nobody is told while a present client
-shows the session; otherwise the server sends the alert over the event stream
-of the client used most recently that wants alerts; phones get a push only
-when no such client is present. Push text names the session and what it needs
-when the device allows previews, and says only "An agent needs approval" or
-"An agent finished" otherwise. Every agent alert keeps the Android channel
-`agent-idle`, now named "Agent activity", so phones that predate this still
-show it. Notifications never carry an approval action.
+the open session changes, and the desktop app also with the window in the
+background. Each report carries `idleMs`, how long ago the client was used: a
+click, a key press, a scroll or the window gaining focus in a browser, and any
+input to the computer in the desktop app. A client is present while it was
+used within three minutes. Nobody is told while a present client shows the
+session. Otherwise the server sends the alert over the event stream of the
+present client used most recently that wants alerts, and phones stay quiet.
+With no such client, phones get a push and no client is told: a browser tab
+nobody has touched for three minutes counts as left, while the desktop app
+stays present for as long as the computer is in use. Servers that predate
+`idleMs` refuse a report that carries it; the client then leaves it out, and
+such a client counts as used whenever it reports in. Push text names the session and what it needs when the device
+allows previews, and says only "An agent needs approval" or "An agent
+finished" otherwise. Every agent alert keeps the Android channel `agent-idle`,
+now named "Agent activity", so phones that predate this still show it.
+Notifications never carry an approval action.
 
-Settings → General → Agent alerts is per device and off by default: a chime
-(rising for a request, falling for a finished turn) and system notifications,
-which need notification permission. In front, an alert is a toast with an
-Open button; in the background, a system notification whose click reveals the
-window. The favicon and the desktop dock or taskbar icon count sessions that
+Settings → General → Alerts is per device and covers agents and chat replies:
+a chime (rising for a request, falling for a finished turn or reply) and
+system notifications, which need notification permission. Both start on in
+the desktop app and off in a browser, which may only ask for permission from
+a click. A browser that has never chosen is offered them once, above the
+composer of an agent session or of a chat whose reply finished unseen
+(`apps/web/components/AlertsIntro.tsx`): "Enable notifications" asks the
+browser and turns both on, "Not now" leaves them to Settings, and either
+answer ends the offer on that device. When the browser later blocks
+the site, the system notifications switch shows off and says why. In front,
+an alert is a toast with an Open button; in the background, a system
+notification whose click reveals the window and which closes once its session
+is open. A window that can be seen but may not notify shows the toast
+instead. The favicon and the desktop dock or taskbar icon count sessions that
 need input, failed, or finished unseen, whatever the device wants. The
 desktop bridge gained optional `setBadge`, `revealWindow` and
 `getSystemIdleSeconds`; the UI treats them as absent on older apps. Mobile
 marks a session read when it is open in the foreground and whenever a turn
 ends while it is open.
+
+macOS asks whether the desktop app may notify the first time the app reaches
+for notifications, and shows none until that is answered. The app reaches for
+them at startup (`requestNotificationAccess` in
+`apps/desktop/src/main/permissions.ts`) so the question appears with the app
+in front, not with the first alert, which only comes with the window in the
+background. Electron does not report the answer, so a refusal in System
+Settings → Notifications leaves the switch on while nothing is shown.
+
+macOS refuses the request outright ("Notifications are not allowed for this
+application") for an ad-hoc signed build such as `package:mac` makes, and for
+a build run from `/tmp`, so neither can show the question or a notification.
+To check the question, sign the packaged app with a real identity, put it in
+an Applications folder, and start it with `ELECTRON_DEBUG_NOTIFICATIONS=1
+ELECTRON_ENABLE_LOGGING=1`: a refusal is logged at once, and a request that
+was put to the owner adds the app to System Settings → Notifications within
+seconds of launch. Use a bundle identifier of its own, since macOS asks once
+per identifier.
+
+A chat's reply is announced by the page that streamed it
+(`apps/web/lib/notifications/useChatReplyAlert.ts`), not by the server: when
+the reply runs to its end with the window in the background, the page plays
+the chime and shows a system notification with the start of the reply, which
+closes when the window is in front again. A reply that was watched, stopped
+by hand or failed says nothing, and neither does a manual compaction. The
+phone push for a finished reply is separate and unchanged: it does not look
+at presence. `apps/web/e2e/chat-reply-alerts.spec.ts` covers the page.
 
 Toasts sit at the top right, under the header row, so none covers the
 composer. An alert's toast shows the state, the session and two lines of the
@@ -1995,7 +2173,11 @@ is wanted and could not play, the notification makes the system's own sound.
 
 `apps/web/e2e/agent-notifications.spec.ts` streams scripted alerts and checks
 the heartbeat, the badge, both settings, both presentations, the toast's
-lifetime and which of the two sounds is heard. It records no trace: trace
+lifetime, the toast shown in place of a blocked notification, the
+notification closed when its session opens, and which of the two sounds is
+heard. `apps/web/e2e/agent-runtime.spec.ts` checks the offer in a session. A
+headless browser reports notifications as blocked whatever it was granted, so
+these tests give the page their own `Notification`. It records no trace: trace
 snapshots count as using the page, which lets it play sound. For the same
 reason the page reports what it showed and played itself; `page.evaluate`
 counts as using it too.

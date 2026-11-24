@@ -20,6 +20,7 @@ import {
   useAction,
   useUnsavedChanges,
 } from "@/components/settings/SettingsUI";
+import { useSignInMethods } from "@/lib/queries/signInMethods";
 import { toastSuccess } from "@/lib/toast";
 const roles = [
   { value: "user", label: "User" },
@@ -59,10 +60,20 @@ function CreateUser() {
   const [created, setCreated] = useState(false);
   const action = useAction();
   const client = useQueryClient();
+  const methods = useSignInMethods();
+  // With passwords off, the account is found by its email at the provider.
+  const provider =
+    methods.data?.password === false ? methods.data.sso?.name : undefined;
   useUnsavedChanges(!created && !!(name || email || password));
   return (
     <>
-      <Section description="Share the initial password privately. They can change it in Security settings.">
+      <Section
+        description={
+          provider
+            ? `They sign in with ${provider}, using this email address.`
+            : "Share the initial password privately. They can change it in Security settings."
+        }
+      >
         <Field
           editable={!action.busy && !created}
           label="Name"
@@ -79,14 +90,16 @@ function CreateUser() {
           // Another person's credentials must not autofill or save as the admin's.
           autoComplete="off"
         />
-        <Field
-          editable={!action.busy && !created}
-          label="Initial password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoComplete="off"
-        />
+        {!provider && (
+          <Field
+            editable={!action.busy && !created}
+            label="Initial password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="off"
+          />
+        )}
         <Choice
           disabled={action.busy || created}
           title="Role"
@@ -105,12 +118,12 @@ function CreateUser() {
           void action.run(async () => {
             if (!name.trim() || !email.trim())
               throw new Error("Enter a name and email address.");
-            if (password.length < 8 || password.length > 128)
+            if (!provider && (password.length < 8 || password.length > 128))
               throw new Error("Use an initial password of 8–128 characters.");
             const { error } = await getAuthClient().admin.createUser({
               name: name.trim(),
               email: email.trim(),
-              password,
+              ...(provider ? {} : { password }),
               role,
             });
             if (error)
@@ -134,6 +147,8 @@ function ManageUser({ user }: { user: SettingsUser }) {
   const session = getAuthClient().useSession();
   const self = user.id === session.data?.user.id;
   const [reset, setReset] = useState(false);
+  // With passwords off there is nothing to reset; accounts sign in elsewhere.
+  const passwords = useSignInMethods().data?.password !== false;
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -193,18 +208,22 @@ function ManageUser({ user }: { user: SettingsUser }) {
         )}
       </Section>
       {self ? (
-        <Label muted>Change your own password in Security settings.</Label>
+        passwords && (
+          <Label muted>Change your own password in Security settings.</Label>
+        )
       ) : (
         <>
-          <Section>
-            <Row
-              title="Reset password"
-              icon="key-outline"
-              expanded={reset}
-              onPress={() => setReset(!reset)}
-            />
-          </Section>
-          {reset && (
+          {passwords && (
+            <Section>
+              <Row
+                title="Reset password"
+                icon="key-outline"
+                expanded={reset}
+                onPress={() => setReset(!reset)}
+              />
+            </Section>
+          )}
+          {passwords && reset && (
             <>
               <Section
                 title="Reset password"

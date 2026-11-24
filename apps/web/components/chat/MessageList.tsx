@@ -36,6 +36,7 @@ import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
 import { ChatFindBar } from "./ChatFindBar";
 import { MessageBubble } from "./MessageBubble";
+import { QuoteSelectionButton } from "./QuoteSelectionButton";
 import { useChatFind } from "./useChatFind";
 
 export function MessageList({
@@ -59,6 +60,7 @@ export function MessageList({
   onContinue,
   onImageReference,
   onOpenUIAction,
+  onQuote,
   onEdit,
   onReconnect,
 }: {
@@ -82,6 +84,8 @@ export function MessageList({
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   onOpenUIAction?: (action: OpenUIAction) => void;
+  /** Stages selected transcript text as a quote for the next message. */
+  onQuote?: (text: string) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onReconnect: () => void;
 }) {
@@ -301,6 +305,10 @@ export function MessageList({
           })}
         </div>
       </div>
+
+      {onQuote && (
+        <QuoteSelectionButton scrollRef={scrollRef} onQuote={onQuote} />
+      )}
 
       {find.open && (
         <ChatFindBar

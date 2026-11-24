@@ -41,6 +41,12 @@ export default function ChatSettings() {
         description="Display preferences for this device."
       >
         <Toggle
+          title="Expand thinking and tools"
+          detail="Open each reply's thinking and tool steps without a tap."
+          value={prefs.expandActivity}
+          onChange={(expandActivity) => setChatPreferences({ expandActivity })}
+        />
+        <Toggle
           title="Message stats"
           detail="Token counts and generation speed below responses."
           value={prefs.messageStats}

@@ -16,6 +16,7 @@ import type {
   ChatReasoningLevel,
   ModelReasoningControls,
 } from "@overtchat/shared";
+import { formatQuotedMessage } from "@overtchat/shared";
 import {
   AlertCircle,
   AudioLines,
@@ -33,6 +34,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  Reply,
   Search,
   Settings2,
   Square,
@@ -85,6 +87,8 @@ import { serverUrl } from "@/lib/api-url";
 export interface ComposerHandle {
   addFiles: (files: readonly File[]) => void;
   addReference: (file: FileUIPart) => void;
+  /** Stages a passage that the next message replies to. */
+  addQuote: (text: string) => void;
   focus: (options?: FocusOptions) => void;
 }
 
@@ -223,6 +227,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     clearAttachments,
     addReadyParts,
   } = useChatAttachments();
+  const [quotes, setQuotes] = useState<{ id: number; text: string }[]>([]);
+  const nextQuoteIdRef = useRef(0);
 
   useImperativeHandle(
     ref,
@@ -236,6 +242,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
       addReference(file) {
         addReadyParts([file]);
+        textareaRef.current?.focus({ preventScroll: true });
+      },
+      addQuote(text) {
+        const id = nextQuoteIdRef.current;
+        nextQuoteIdRef.current += 1;
+        setQuotes((current) => [...current, { id, text }]);
         textareaRef.current?.focus({ preventScroll: true });
       },
       focus(options) {
@@ -625,9 +637,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const text = input.trim();
     if (uploading || textInputDisabled) return;
     if (streaming && text.toLowerCase() === "/compact" && !readyParts.length) return;
+    // Staged quotes alone do not send: they wait for something said about them.
     if (!text && readyParts.length === 0) return;
     if (!configured) return;
-    if (onSubmit(text, readyParts) === false) return;
+    // A typed command runs as itself and leaves the quotes staged.
+    const command =
+      text.toLowerCase() === "/compact" && readyParts.length === 0;
+    const message = command
+      ? text
+      : formatQuotedMessage(
+          quotes.map((quote) => quote.text),
+          text,
+        );
+    if (onSubmit(message, readyParts) === false) return;
+    if (!command) setQuotes([]);
     clearDraft();
     setDismissedQuery(null);
     setActiveIndex(0);
@@ -701,6 +724,38 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           )}
         >
           {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} configuredSize={imageConfiguredSize} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
+          {quotes.length > 0 && (
+            <ul
+              aria-label="Quoted text"
+              className="flex max-h-40 flex-col gap-1.5 overflow-y-auto"
+            >
+              {quotes.map((quote) => (
+                <li
+                  key={quote.id}
+                  className="flex items-center gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3 text-sm text-muted-foreground"
+                >
+                  <Reply className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
+                    “{quote.text}”
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Remove quote"
+                    title="Remove quote"
+                    className="shrink-0 rounded-md p-1 motion-colors hover:bg-accent hover:text-foreground"
+                    onClick={() => {
+                      setQuotes((current) =>
+                        current.filter((item) => item.id !== quote.id),
+                      );
+                      textareaRef.current?.focus({ preventScroll: true });
+                    }}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-1 pt-1">
               {attachments.map((att) => (
@@ -719,9 +774,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               textInputDisabled
                 ? "Resume voice to continue"
                 : configured
-                  ? projectFiles.length > 0
-                    ? "Message… / for commands, # for project files"
-                    : "Message… or / for commands"
+                  ? quotes.length > 0
+                    ? "Reply…"
+                    : projectFiles.length > 0
+                      ? "Message… / for commands, # for project files"
+                      : "Message… or / for commands"
                   : models === null || models.length > 0
                     ? "Loading model…"
                     : "No models configured"

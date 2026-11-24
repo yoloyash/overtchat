@@ -169,4 +169,5 @@ export const authKeys = {
   session: () => [...authKeys.all(), "session"] as const,
   twoFactor: () => [...authKeys.all(), "two-factor"] as const,
   signInRequests: () => [...authKeys.all(), "sign-in-requests"] as const,
+  signInMethods: () => [...authKeys.all(), "sign-in-methods"] as const,
 };

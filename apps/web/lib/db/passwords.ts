@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { account, session, user } from "@/lib/db/schema";
@@ -68,12 +69,16 @@ export function resetActorAuthorized(
   );
 }
 
-/** Commit the replacement credential and revoke every login together. */
+/**
+ * Commit the replacement credential and revoke every login together. An
+ * account that only signed in through the identity provider gets its first
+ * password this way.
+ */
 export function resetUserPassword(
   userId: string,
   passwordHash: string,
   actor?: ResetAuthorization,
-): "updated" | "not_found" | "no_password" | "unauthorized" {
+): "updated" | "not_found" | "unauthorized" {
   return db.transaction((tx) => {
     if (actor && !resetActorAuthorized(tx, actor)) return "unauthorized";
     if (
@@ -88,11 +93,25 @@ export function resetUserPassword(
         and(eq(account.userId, userId), eq(account.providerId, "credential")),
       )
       .get();
-    if (!credential) return "no_password";
-    tx.update(account)
-      .set({ password: passwordHash, updatedAt: new Date() })
-      .where(eq(account.id, credential.id))
-      .run();
+    const now = new Date();
+    if (credential) {
+      tx.update(account)
+        .set({ password: passwordHash, updatedAt: now })
+        .where(eq(account.id, credential.id))
+        .run();
+    } else {
+      tx.insert(account)
+        .values({
+          id: randomUUID(),
+          userId,
+          accountId: userId,
+          providerId: "credential",
+          password: passwordHash,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
     tx.delete(session).where(eq(session.userId, userId)).run();
     return "updated";
   });

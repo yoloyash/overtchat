@@ -3813,6 +3813,29 @@ test("keeps OMP history stable after compaction, model changes and connector res
     await expect(page.getByTestId("agent-effort-label")).toContainText("Low");
     await expect.poll(rows).toEqual(before);
 
+    // A model that does not reason leaves Oh My Pi with no effort level. The
+    // next model that reasons shows the level the session had before.
+    await page.getByTestId("agent-model-effort-trigger").click();
+    await menu.getByRole("menuitem", { name: /Model.*Model B/u }).click();
+    await menu.getByRole("menuitem", { name: /Model Plain/u }).click();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model Plain");
+    await expect(page.getByTestId("agent-effort-label")).toHaveCount(0);
+    await page.getByTestId("agent-model-effort-trigger").click();
+    const plainMenu = page.getByRole("menu", { name: "Model: Model Plain" });
+    await plainMenu.getByRole("menuitem", { name: /Model.*Model Plain/u }).click();
+    await plainMenu.getByRole("menuitem", { name: /Model B/u }).click();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect(page.getByTestId("agent-effort-label")).toHaveText("· Low");
+    await page.getByTestId("agent-model-effort-trigger").click();
+    await menu.getByRole("menuitem", { name: /Effort.*Low/u }).click();
+    await menu.getByRole("menuitem", { name: "High", exact: true }).click();
+    await expect(page.getByTestId("agent-effort-label")).toHaveText("· High");
+    await page.getByTestId("agent-model-effort-trigger").click();
+    await menu.getByRole("menuitem", { name: /Effort.*High/u }).click();
+    await menu.getByRole("menuitem", { name: "Low", exact: true }).click();
+    await expect(page.getByTestId("agent-effort-label")).toHaveText("· Low");
+    await expect.poll(rows).toEqual(before);
+
     await page.reload();
     await expect(answer).toBeVisible();
     await expect.poll(rows).toEqual(before);
@@ -4005,6 +4028,85 @@ test("agent context meter stays visible while unknown and renders a 1M reading a
   await expect(unknown).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(unknown).toBeVisible();
+});
+
+test("offers alerts once per device where an agent works, and turns them on from the click", async ({ page }, testInfo) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Alert Tester");
+  await page.locator("#email").fill("alerts@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  // The browser has not been asked yet; the test answers for it.
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    class FakeNotification {
+      static permission = "default";
+      static requestPermission = async () => {
+        FakeNotification.permission = sessionStorage.getItem("notification-answer") ?? "default";
+        return FakeNotification.permission;
+      };
+    }
+    Object.assign(window, { EventSource: FakeEventSource, Notification: FakeNotification });
+  });
+  const answer = (value: string) =>
+    page.evaluate((next) => sessionStorage.setItem("notification-answer", next), value);
+  const choices = () =>
+    page.evaluate(() =>
+      ["sound", "system", "intro"].map((name) => localStorage.getItem(`overtchat:agent-alert-${name}`)),
+    );
+  await page.goto(`/agents/${SESSION_ID}`);
+  const offer = page.getByRole("region", { name: "Alerts" });
+  await expect(offer).toContainText("Get notified when an agent needs you or a reply is ready.");
+  // It sits with the composer, above it.
+  const composer = page.getByTestId("agent-composer");
+  const [offerBox, composerBox] = [await offer.boundingBox(), await composer.boundingBox()];
+  expect(offerBox!.y + offerBox!.height).toBeLessThanOrEqual(composerBox!.y);
+  await page.screenshot({ path: testInfo.outputPath("agent-alerts-offer.png") });
+
+  // A prompt closed without an answer leaves the offer standing.
+  await offer.getByRole("button", { name: "Enable notifications" }).click();
+  await expect(offer).toBeVisible();
+  expect(await choices()).toEqual([null, null, null]);
+
+  // Refused: it says where to change that, and can only be dismissed.
+  await answer("denied");
+  await offer.getByRole("button", { name: "Enable notifications" }).click();
+  await expect(offer).toContainText("Your browser is blocking notifications for this site.");
+  await expect(offer.getByRole("button", { name: "Enable notifications" })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("agent-alerts-blocked.png") });
+  expect(await choices()).toEqual([null, null, null]);
+
+  // Allowed: both alerts come on and the offer is not made again.
+  await page.reload();
+  await answer("granted");
+  await offer.getByRole("button", { name: "Enable notifications" }).click();
+  await expect(offer).toHaveCount(0);
+  expect(await choices()).toEqual(["true", "true", "true"]);
+  await page.reload();
+  await expect(composer).toBeVisible();
+  await expect(offer).toHaveCount(0);
+
+  // "Not now" is an answer too, and Settings still has the switches.
+  await page.evaluate(() => {
+    for (const name of ["sound", "system", "intro"]) {
+      localStorage.removeItem(`overtchat:agent-alert-${name}`);
+    }
+  });
+  await page.reload();
+  await offer.getByRole("button", { name: "Not now" }).click();
+  await expect(offer).toHaveCount(0);
+  expect(await choices()).toEqual([null, null, "true"]);
+  await page.reload();
+  await expect(composer).toBeVisible();
+  await expect(offer).toHaveCount(0);
 });
 
 test("header branch picker lists, creates, and switches branches with stash and busy outcomes", async ({ page }) => {

@@ -31,7 +31,8 @@ export async function resetPassword(): Promise<void> {
       messages: {
         400: "The server rejected the email or password. Check the account email and password requirements.",
         404: "Account or recovery endpoint not found. Check the email and update the server if needed.",
-        409: "This account does not use a password.",
+        // From a server that could only replace a password an account had.
+        409: "This server can't give this account its first password. Update the server, then try again.",
       },
     },
   );

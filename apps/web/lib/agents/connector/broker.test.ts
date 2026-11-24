@@ -15,10 +15,13 @@ const notifications = vi.hoisted(() => ({
 vi.mock("@/lib/notifications/sender", () => notifications);
 const database = vi.hoisted(() => ({
   recordAgentSessionLastTurn: vi.fn(),
+  moveAgentSessionProviderSession: vi.fn(),
+  updateAgentSessionMetadata: vi.fn(),
 }));
 vi.mock("@/lib/db/agentConnections", () => ({
   recordAgentSessionLastTurn: database.recordAgentSessionLastTurn,
-  updateAgentSessionMetadata: vi.fn(),
+  moveAgentSessionProviderSession: database.moveAgentSessionProviderSession,
+  updateAgentSessionMetadata: database.updateAgentSessionMetadata,
 }));
 
 import { HostConnectorBroker } from "./broker";
@@ -125,6 +128,42 @@ describe("host connector daemon broker", () => {
     ]);
     expect(broker.sessionDirectoryEntry("session")).toMatchObject({ lastTurn });
     expect(database.recordAgentSessionLastTurn).toHaveBeenCalledWith("session", lastTurn);
+  });
+
+  it("moves a session to the provider session its connector reports", async () => {
+    const broker = new HostConnectorBroker(0);
+    const disconnect = broker.register("connector", ["session"], vi.fn());
+    await broker.acceptBatch("connector", "daemon-epoch", [
+      {
+        sequence: 1,
+        payload: {
+          type: "session_metadata",
+          sessionId: "session",
+          patch: {
+            providerSessionId: "continued",
+            providerSessionPath: "/sessions/continued.jsonl",
+          },
+        },
+      },
+      {
+        sequence: 2,
+        payload: { type: "session_metadata", sessionId: "session", patch: { name: "Title" } },
+      },
+    ]);
+
+    // Scoped to the reporting connector, which the database checks owns it.
+    expect(database.moveAgentSessionProviderSession.mock.calls).toEqual([
+      [
+        "connector",
+        "session",
+        { providerSessionId: "continued", providerSessionPath: "/sessions/continued.jsonl" },
+      ],
+    ]);
+    expect(database.updateAgentSessionMetadata.mock.calls).toEqual([
+      ["session", {}],
+      ["session", { name: "Title" }],
+    ]);
+    disconnect();
   });
 
   it("projects the global session directory without a detail subscription", async () => {

@@ -56,6 +56,8 @@ export interface ConnectionDraft {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** Extra request headers; sent with model discovery. */
+  headers?: Record<string, string> | null;
 }
 
 export interface ConnectionFieldsProps {
@@ -160,6 +162,7 @@ export function ConnectionFields({
           apiFormat: connection.apiFormat,
           baseUrl: connection.baseUrl,
           apiKey: connection.apiKey,
+          headers: connection.headers,
           modelType: imageModel ? "image" : "chat",
         });
         const discovered = imageModel

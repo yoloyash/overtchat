@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { modelConfigs, modelConfigUserCredentials } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers/catalog";
 import {
+  catalogImagePricingFor,
   catalogPricingFor,
   resolveModelCapabilities,
   resolveModelContextWindow,
@@ -29,10 +30,14 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
+    headers: row.headers,
     updatedAt: row.updatedAt.getTime(),
     model: row.model,
     pricing: row.pricing,
-    catalogPricing: catalogPricingFor(row.providerId, row.model) ?? null,
+    catalogPricing:
+      (row.modelType === "image"
+        ? catalogImagePricingFor(row.providerId, row.model)
+        : catalogPricingFor(row.providerId, row.model)) ?? null,
     contextWindow: row.contextWindow,
     discoveredContextWindow: row.discoveredContextWindow,
     discoveredCapabilities: row.discoveredCapabilities,

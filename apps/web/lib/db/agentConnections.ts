@@ -6,6 +6,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   notInArray,
   sql,
 } from "drizzle-orm";
@@ -800,6 +801,55 @@ export async function replaceAgentSessionProviderSession(
       updatedAt: now,
     })
     .where(eq(agentSessions.id, id));
+}
+
+/**
+ * Follows a session whose provider carried the conversation on under a new id
+ * and file. Only the connector that runs the session may move it. A row the
+ * session list already made for the new file is the same conversation without
+ * this session's history here, so it gives way.
+ */
+export function moveAgentSessionProviderSession(
+  connectorId: string,
+  id: string,
+  session: { providerSessionId: string; providerSessionPath: string },
+): void {
+  db.transaction((tx) => {
+    const owned = tx
+      .select({ workspaceId: agentSessions.workspaceId })
+      .from(agentSessions)
+      .innerJoin(
+        agentWorkspaces,
+        eq(agentSessions.workspaceId, agentWorkspaces.id),
+      )
+      .innerJoin(
+        agentConnections,
+        eq(agentWorkspaces.connectionId, agentConnections.id),
+      )
+      .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+      .where(
+        and(eq(agentSessions.id, id), eq(agentHosts.connectorId, connectorId)),
+      )
+      .get();
+    if (!owned) return;
+    tx.delete(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.workspaceId, owned.workspaceId),
+          eq(agentSessions.providerSessionPath, session.providerSessionPath),
+          ne(agentSessions.id, id),
+        ),
+      )
+      .run();
+    tx.update(agentSessions)
+      .set({
+        providerSessionId: session.providerSessionId,
+        providerSessionPath: session.providerSessionPath,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentSessions.id, id))
+      .run();
+  });
 }
 
 export async function updateAgentSessionMetadata(

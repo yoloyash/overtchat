@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   directoryStatus: vi.fn(),
   observe: vi.fn(),
   acquireLease: vi.fn(),
+  movedSession: vi.fn(),
   listWorkspaceDirectory: vi.fn(),
   readWorkspaceFile: vi.fn(),
   readWorkspaceFileDiff: vi.fn(),
@@ -39,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   registryOptions: null as {
     trackTurnChanges?: (descriptor: Record<string, unknown>) => unknown;
     runtimeExited?: (sessionId: string, runtime: unknown) => void | Promise<void>;
+    sessionMoved?: (sessionId: string, runtime: unknown) => void | Promise<void>;
     saveQueuedMessages?: (
       sessionId: string,
       messages: readonly AgentQueuedMessage[],
@@ -122,6 +124,7 @@ function runtime(snapshot: () => { status: string; activeTurn?: { startedAt: num
     }),
     observe: mocks.observe,
     acquireLease: mocks.acquireLease,
+    movedSession: mocks.movedSession,
   };
 }
 
@@ -211,6 +214,7 @@ beforeEach(() => {
   });
   mocks.observe.mockReturnValue(() => {});
   mocks.acquireLease.mockReturnValue(() => {});
+  mocks.movedSession.mockReturnValue(null);
   mocks.create.mockResolvedValue({
     runtime: runtime(),
     session: {
@@ -301,6 +305,68 @@ describe("connector daemon command identity", () => {
       await journal.close();
     },
   );
+
+  it("follows a session its provider moved, at open and while it runs", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const moved = (id: string) => ({
+      providerSessionId: id,
+      providerSessionPath: `/sessions/${id}.jsonl`,
+    });
+    const metadata = () =>
+      events.filter((event) => event.type === "session_metadata");
+    const live = runtime();
+    mocks.getOrStart.mockResolvedValue(live);
+    mocks.movedSession.mockReturnValue(moved("continued"));
+    const daemon = new ConnectorDaemon((event) => events.push(event), async () => [], journal, timelines);
+    const open = (requestId: string) =>
+      daemon.handle({ type: "request", requestId, request: { type: "open_session", session } });
+
+    // A server that cannot take the move is not sent one, but the connector
+    // still records the session it actually holds.
+    await open("before-capability");
+    expect(metadata()).toEqual([]);
+    expect(journal.sessionDescriptor("session")).toMatchObject(moved("continued"));
+    await expect(timelines.readTranscript("session", "continued")).resolves.toEqual([]);
+
+    await daemon.handle({
+      type: "sync",
+      connectionEpoch: "connection-1",
+      activeSessionIds: ["session"],
+      serverInfo: {
+        protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
+        capabilities: ["session-sync-v1", "session-move-v1"],
+      },
+    });
+    // Every open repeats the move until the server asks for the new session.
+    await open("stale-server");
+    expect(metadata()).toEqual([
+      { type: "session_metadata", sessionId: "session", patch: moved("continued") },
+    ]);
+    events.length = 0;
+    await daemon.handle({
+      type: "request",
+      requestId: "current-server",
+      request: { type: "open_session", session: { ...session, ...moved("continued") } },
+    });
+    expect(metadata()).toEqual([]);
+
+    // The provider moves the live session again.
+    mocks.get.mockReturnValue(live);
+    mocks.movedSession.mockReturnValue(moved("continued-again"));
+    await mocks.registryOptions!.sessionMoved!("session", live);
+    await vi.waitFor(() => {
+      expect(metadata()).toEqual([
+        { type: "session_metadata", sessionId: "session", patch: moved("continued-again") },
+      ]);
+    });
+    expect(journal.sessionDescriptor("session")).toMatchObject(moved("continued-again"));
+    await expect(timelines.readTranscript("session", "continued-again")).resolves.toEqual([]);
+
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
 
   it("restarts the provider when it cannot abort a running turn", async () => {
     const { journal, timelines } = await openJournal();

@@ -22,7 +22,11 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { groupMessageParts, isToolSettled } from "@overtchat/shared";
+import {
+  groupMessageParts,
+  isToolSettled,
+  splitQuotedMessage,
+} from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
@@ -37,6 +41,7 @@ import { unicodeCitation } from "@/lib/citations-remark";
 import { CODE_FILE_ALLOWED_TAGS, CODE_FILE_TAG, codeFileLinks } from "@/lib/chat/code-file-links";
 import type { MessageStats } from "@/lib/chat/stats";
 import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import type { useSpeech } from "@/lib/useSpeech";
 import {
   Citation,
@@ -129,6 +134,7 @@ export function MessageBubble({
 
   if (message.role === "user") {
     const text = textOf(message);
+    const { quotes, body } = splitQuotedMessage(text);
     const files = message.parts.filter(
       (p): p is Extract<typeof p, { type: "file" }> => p.type === "file",
     );
@@ -163,7 +169,14 @@ export function MessageBubble({
             data-chat-find-text=""
             className="min-w-0 max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground"
           >
-            {text}
+            {quotes.length > 0 && (
+              <div className={cn("flex flex-col gap-1.5", body && "mb-2")}>
+                {quotes.map((quote, i) => (
+                  <UserQuote key={i} text={quote} />
+                ))}
+              </div>
+            )}
+            {body}
           </div>
         )}
         <MessageActions show={canAct || readOnly}>
@@ -198,6 +211,33 @@ export function MessageBubble({
       showStats={showStats}
       stats={stats}
     />
+  );
+}
+
+const QUOTE_COLLAPSED_LINES = 4;
+const QUOTE_COLLAPSED_LENGTH = 320;
+
+/** A passage the message replies to; long ones open on request. */
+function UserQuote({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const long =
+    text.length > QUOTE_COLLAPSED_LENGTH ||
+    text.split("\n").length > QUOTE_COLLAPSED_LINES;
+  return (
+    <blockquote className="border-l-2 border-foreground/25 pl-2.5 text-muted-foreground">
+      <div className={cn(long && !expanded && "line-clamp-4")}>{text}</div>
+      {long && (
+        <button
+          type="button"
+          data-chat-find-ignore=""
+          className="mt-1 text-xs font-medium select-none motion-colors hover:text-foreground"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </blockquote>
   );
 }
 

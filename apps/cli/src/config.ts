@@ -5,6 +5,7 @@ import { atomicWrite } from "./atomic-file.js";
 import { protectWindowsDirectory } from "./windows.js";
 import type {
   ExistingInstallation,
+  IdentityProviderConfig,
   InstallationConfig,
   RuntimePaths,
   SttConfig,
@@ -28,6 +29,8 @@ export type InstallationSecrets = {
   sandboxToken: string;
   // Issued by OvertChat Cloud when this server is linked; empty otherwise.
   cloudCredential: string;
+  // The identity provider's secret for this server; empty without one.
+  oidcClientSecret: string;
 };
 
 function generatedSecret(): string {
@@ -39,6 +42,26 @@ function environmentFlag(value: string | undefined): boolean | undefined {
   return /^(1|true|yes)$/iu.test(value.trim());
 }
 
+/** The identity provider an adopted installation already signs in with. */
+function existingIdentityProvider(
+  environment: Map<string, string> | undefined,
+): IdentityProviderConfig | undefined {
+  const issuerUrl = environment?.get("OIDC_ISSUER_URL")?.trim();
+  const clientId = environment?.get("OIDC_CLIENT_ID")?.trim();
+  if (!issuerUrl || !clientId || !environment?.get("OIDC_CLIENT_SECRET")) {
+    return undefined;
+  }
+  return {
+    issuerUrl,
+    clientId,
+    name: environment.get("OIDC_PROVIDER_NAME")?.trim() || "SSO",
+    autoCreateUsers:
+      environmentFlag(environment.get("OIDC_AUTO_CREATE_USERS")) ?? false,
+    disablePasswordLogin:
+      environmentFlag(environment.get("OIDC_DISABLE_PASSWORD_LOGIN")) ?? false,
+  };
+}
+
 export function defaultInstallationConfig(
   existing: ExistingInstallation | null,
   manifest: ReleaseManifest,
@@ -47,6 +70,7 @@ export function defaultInstallationConfig(
   const searchUrl = environment?.get("SEARXNG_URL");
   const ttsUrl = environment?.get("KOKORO_URL");
   const sttUrl = environment?.get("STT_URL");
+  const identityProvider = existingIdentityProvider(environment);
   const preserveNewerApp =
     existing?.appVersion !== undefined &&
     /^\d+\.\d+\.\d+$/u.test(existing.appVersion) &&
@@ -91,6 +115,7 @@ export function defaultInstallationConfig(
       environmentFlag(process.env.DISABLE_UPDATE_CHECK) ??
       environmentFlag(existing?.environment.get("DISABLE_UPDATE_CHECK")) ??
       false,
+    ...(identityProvider ? { identityProvider } : {}),
     composeProject: existing?.composeProject ?? DEFAULT_COMPOSE_PROJECT,
     dataMountType: existing?.dataMountType ?? "volume",
     dataVolume: existing?.dataVolume ?? DEFAULT_DATA_VOLUME,
@@ -266,6 +291,11 @@ export function withoutProviderKeys(
     delete cloud.credential;
     persisted.access = { ...config.access, cloud };
   }
+  if (config.identityProvider?.clientSecret) {
+    const identityProvider = { ...config.identityProvider };
+    delete identityProvider.clientSecret;
+    persisted.identityProvider = identityProvider;
+  }
   return persisted;
 }
 
@@ -286,6 +316,10 @@ export function initialSecrets(
     voiceSharedSecret: previous.voiceSharedSecret || generatedSecret(),
     sandboxToken: previous.sandboxToken || generatedSecret(),
     cloudCredential: previous.cloudCredential ?? "",
+    oidcClientSecret:
+      previous.oidcClientSecret ||
+      existing?.environment.get("OIDC_CLIENT_SECRET") ||
+      "",
   };
 }
 
@@ -297,7 +331,8 @@ function parseEnv(contents: string): Map<string, string> {
     let value = match[2] ?? "";
     if (value.startsWith('"') && value.endsWith('"')) {
       try {
-        value = JSON.parse(value) as string;
+        // The file doubles each "$" so Compose reads it as written.
+        value = (JSON.parse(value) as string).replaceAll("$$", () => "$");
       } catch {
         // Preserve the raw value; the next write will normalize it.
       }
@@ -319,6 +354,7 @@ export async function readInstallationSecrets(
       voiceSharedSecret: values.get("VOICE_SHARED_SECRET"),
       sandboxToken: values.get("SANDBOX_TOKEN"),
       cloudCredential: values.get("OVERTCHAT_CLOUD_CREDENTIAL"),
+      oidcClientSecret: values.get("OIDC_CLIENT_SECRET"),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};

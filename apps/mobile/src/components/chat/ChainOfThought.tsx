@@ -4,7 +4,7 @@ import {
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 import { useLayoutState } from "@shopify/flash-list";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -51,9 +51,12 @@ import {
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
+import { agentThoughtPreview } from "@overtchat/shared/agent-presentation";
 import type { DynamicToolUIPart } from "ai";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
+import { useChatPreferences } from "@/lib/chatPreferences";
+import { sameItems, shallowEqual } from "@/lib/equal";
 import { useTheme } from "@/lib/theme";
 import { CalendarLogo } from "../CalendarLogo";
 import { GmailLogo } from "../GmailLogo";
@@ -110,10 +113,12 @@ function isTool(
  * One run of model "work" — interleaved reasoning + web tool calls — rendered
  * as a chain-of-thought timeline: a single live status line up top, then a
  * left-rail timeline where each part is its own typed step node, in order.
- * Adding a new activity kind (e.g. code execution) is one new step icon +
- * renderer; nothing else moves. Mirrors the web ChainOfThought, RN-native.
+ * When the run used tools, each reasoning step is a collapsed "Thought" row so
+ * the tool steps can be scanned without reading the thinking. Adding a new
+ * activity kind (e.g. code execution) is one new step icon + renderer;
+ * nothing else moves. Mirrors the web ChainOfThought, RN-native.
  */
-export function ChainOfThought({
+function ChainOfThoughtView({
   parts,
   active,
 }: {
@@ -121,7 +126,10 @@ export function ChainOfThought({
   active: boolean;
 }) {
   const { colors, fonts } = useTheme();
-  const [open, setOpen] = useLayoutState(false);
+  const { expandActivity } = useChatPreferences();
+  // A tap wins; until then the device preference decides, live.
+  const [toggled, setToggled] = useLayoutState<boolean | null>(null);
+  const open = toggled ?? expandActivity;
   const [duration, setDuration] = useState(0);
   const startedAtRef = useRef<number | null>(null);
   const settledRef = useRef(false);
@@ -148,6 +156,18 @@ export function ChainOfThought({
   }, [active]);
 
   const lastTool = [...parts].reverse().find(isTool);
+  // Reasoning stays inline when it is all the run did.
+  const collapseThoughts = lastTool !== undefined;
+  // Keyed by position in `parts`, so dropping an empty thought never shifts
+  // another step's open state onto its neighbour.
+  const steps = parts
+    .map((part, index) => ({ part, index }))
+    .filter(
+      ({ part }) =>
+        !isReasoning(part) ||
+        part.text.trim() !== "" ||
+        part.state === "streaming",
+    );
   const toolKind = lastTool
     ? isFileTool(lastTool)
       ? "file"
@@ -166,7 +186,7 @@ export function ChainOfThought({
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
   function toggle() {
-    setOpen((o) => !o);
+    setToggled(!open);
   }
 
   return (
@@ -204,8 +224,14 @@ export function ChainOfThought({
       {/* Timeline — typed step nodes on a left rail, in original order. */}
       {open ? (
         <View style={styles.timeline}>
-          {parts.map((part, i) => (
-            <Step key={i} part={part} isLast={i === parts.length - 1} />
+          {steps.map(({ part, index }, i) => (
+            <Step
+              key={index}
+              part={part}
+              isLast={i === steps.length - 1}
+              collapseThoughts={collapseThoughts}
+              expandByDefault={expandActivity}
+            />
           ))}
         </View>
       ) : null}
@@ -295,7 +321,7 @@ function ShimmerLabel({
   active: boolean;
   children: React.ReactNode;
 }) {
-  const opacity = useRef(new Animated.Value(1)).current;
+  const [opacity] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (!active) {
@@ -326,7 +352,17 @@ function ShimmerLabel({
 }
 
 /** A single timeline node: left rail (icon + connector) + the step's content. */
-function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
+function StepView({
+  part,
+  isLast,
+  collapseThoughts,
+  expandByDefault,
+}: {
+  part: ActivityPart;
+  isLast: boolean;
+  collapseThoughts: boolean;
+  expandByDefault: boolean;
+}) {
   const icon: RailIcon =
     isTool(part) && part.state === "output-error"
       ? "failed"
@@ -375,12 +411,32 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
-          <ThinkingContent content={part.text} />
+          collapseThoughts ? (
+            <ThoughtStep part={part} expandByDefault={expandByDefault} />
+          ) : (
+            <ThinkingContent content={part.text} />
+          )
         ) : null}
       </View>
     </View>
   );
 }
+
+// A streamed update hands every part over as a new object, changed or not, so
+// both compare parts by content: only the step that changed renders again.
+const Step = memo(
+  StepView,
+  (earlier, next) =>
+    earlier.isLast === next.isLast &&
+    earlier.collapseThoughts === next.collapseThoughts &&
+    earlier.expandByDefault === next.expandByDefault &&
+    shallowEqual(earlier.part, next.part),
+);
+
+export const ChainOfThought = memo(
+  ChainOfThoughtView,
+  (earlier, next) => earlier.active === next.active && sameItems(earlier.parts, next.parts),
+);
 
 type RailIcon =
   | "search"
@@ -585,6 +641,66 @@ function formatToolValue(value: unknown): string {
     }
   }
   return text.length > 20_000 ? `${text.slice(0, 20_000)}\n…` : text;
+}
+
+/** A reasoning step among tool steps: one line until opened. */
+function ThoughtStep({
+  part,
+  expandByDefault,
+}: {
+  part: ReasoningPart;
+  expandByDefault: boolean;
+}) {
+  const { colors, fonts } = useTheme();
+  const [toggled, setToggled] = useLayoutState<boolean | null>(null);
+  const open = toggled ?? expandByDefault;
+  const label = part.state === "streaming" ? "Thinking" : "Thought";
+  const preview = agentThoughtPreview(part.text);
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={preview || undefined}
+        accessibilityState={{ expanded: open }}
+        onPress={() => setToggled(!open)}
+        hitSlop={6}
+        style={({ pressed }) => [styles.thoughtHeader, { opacity: pressed ? 0.7 : 1 }]}
+      >
+        <View style={styles.thoughtTitle}>
+          <Text
+            style={[
+              styles.thoughtLabel,
+              { color: colors.foreground, fontFamily: fonts.sansMedium },
+            ]}
+          >
+            {label}
+          </Text>
+          {!open && !!preview && (
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.thoughtPreview,
+                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+              ]}
+            >
+              {preview}
+            </Text>
+          )}
+        </View>
+        <Feather
+          name={open ? "chevron-down" : "chevron-right"}
+          size={13}
+          color={colors.mutedForeground}
+        />
+      </Pressable>
+      {open ? (
+        <View style={styles.thoughtBody}>
+          <ThinkingContent content={part.text} />
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 /** A reasoning part's markdown, rendered as muted text inside a step. */
@@ -1458,6 +1574,22 @@ const styles = StyleSheet.create({
   },
   railLine: { width: 1, flex: 1, marginTop: 4 },
   stepBody: { flex: 1, paddingBottom: 12 },
+  thoughtHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 20,
+  },
+  thoughtTitle: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  thoughtLabel: { flexShrink: 0, fontSize: 13 },
+  thoughtPreview: { flex: 1, minWidth: 0, fontSize: 12 },
+  thoughtBody: { paddingTop: 6 },
 
   searchStep: { gap: 6 },
   searchHeader: {

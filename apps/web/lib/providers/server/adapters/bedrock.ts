@@ -49,6 +49,7 @@ export const bedrockAdapter: ProviderAdapter = {
             providerName: "bedrock",
             baseUrl: appendPath(mantleRoot, "anthropic/v1"),
             apiKey: config.apiKey,
+            headers: config.headers,
             model: config.model,
             authentication: "bearer",
           }),
@@ -61,6 +62,7 @@ export const bedrockAdapter: ProviderAdapter = {
             providerName: "bedrock",
             baseUrl: appendPath(mantleRoot, "openai/v1"),
             apiKey: config.apiKey,
+            headers: config.headers,
             model: config.model,
           }),
           // Mantle's proprietary GPT endpoint implements OpenAI's full
@@ -78,6 +80,7 @@ export const bedrockAdapter: ProviderAdapter = {
             providerName: "bedrock",
             baseUrl: config.baseUrl,
             apiKey: config.apiKey,
+            headers: config.headers,
             model: config.model,
             supportsImageInput: config.supportsImageInput,
           }),
@@ -89,6 +92,7 @@ export const bedrockAdapter: ProviderAdapter = {
     const models = await listOpenAIModels(
       connection.baseUrl,
       connection.apiKey,
+      connection.headers,
     );
     return models.filter((model) => isSupportedBedrockModel(model.id));
   },
