@@ -2142,7 +2142,7 @@
       "temperature": true
     },
     "gemini-2.5-flash-image": {
-      "context": 32768,
+      "context": 65536,
       "output": 32768,
       "cost": {
         "cache_read": 0.075,
@@ -2416,7 +2416,9 @@
       },
       "input_modalities": [
         "text",
-        "image"
+        "image",
+        "video",
+        "pdf"
       ],
       "output_modalities": [
         "text",
@@ -2628,6 +2630,7 @@
       "cost": {
         "cache_read": 0.03,
         "input": 0.3,
+        "input_audio": 0.3,
         "output": 2.5
       },
       "input_modalities": [
@@ -2999,6 +3002,7 @@
       "cost": {
         "cache_read": 0.03,
         "input": 0.3,
+        "input_audio": 0.3,
         "output": 2.5
       },
       "input_modalities": [
@@ -3117,12 +3121,8 @@
       "temperature": true
     },
     "lyria-3-clip-preview": {
-      "context": 1048576,
+      "context": 131072,
       "output": 65536,
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "input_modalities": [
         "text",
         "image"
@@ -3138,12 +3138,8 @@
       "temperature": true
     },
     "lyria-3-pro-preview": {
-      "context": 1048576,
+      "context": 131072,
       "output": 65536,
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "input_modalities": [
         "text",
         "image"

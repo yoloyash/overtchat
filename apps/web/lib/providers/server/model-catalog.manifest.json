@@ -1,10 +1,10 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-11-23T23:50:54.367Z",
+  "generatedAt": "2026-11-24T22:22:52.519Z",
   "sourceUrl": "https://models.dev/api.json",
-  "sourceSha256": "5c3aaea964b2a0583c7e6bbed5fd01222aa6b93788b8247b3d9414aa8eaf3afa",
+  "sourceSha256": "7bcfb768c0ee9f3a780c34690f8b1dea73a5aeff7abd0ae11858082b74acdef8",
   "imageCostSourceUrl": "https://models.dev/experimental/v2.0/api.json",
-  "imageCostSourceSha256": "3926f7e11e176d805b47d576ef053209de2a37e83daafd6ac40cbf690265b62b",
-  "catalogSha256": "fc5cc7f385c14f6f413ee79df6abe8f28af38cbc4662aa57d26c8e53ee208a3f",
+  "imageCostSourceSha256": "0cf54e9b525fa5cc4c5c5ea215d907c76216a16e808fcb80da7708dd0956fa8a",
+  "catalogSha256": "0950dd283d67aeaed95025356bb3e575dfa78e66d64ada407657d870fbe8afda",
   "modelCount": 315
 }
