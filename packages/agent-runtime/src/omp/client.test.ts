@@ -266,6 +266,49 @@ describe("OmpClient", () => {
     await client.stop();
   });
 
+  it("keeps the last thinking level while Oh My Pi reports none", async () => {
+    let level: string | undefined = "high";
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "negotiate_protocol") fake.reply(command, { protocolVersion: 2 });
+      else if (command.type === "set_thinking_level") {
+        level = command.level as string;
+        fake.reply(command);
+      } else fake.reply(command, { sessionId: "session", ...(level ? { thinkingLevel: level } : {}) });
+    });
+    const client = new OmpClient(process, "full");
+    announceReady(process);
+    await expect(client.getState()).resolves.toMatchObject({ thinkingLevel: "high" });
+
+    // A model that does not reason: Oh My Pi drops the level and keeps it
+    // dropped on the next model.
+    level = undefined;
+    await expect(client.getState()).resolves.toMatchObject({ thinkingLevel: "high" });
+
+    await client.setThinkingLevel("low");
+    await expect(client.getState()).resolves.toMatchObject({ thinkingLevel: "low" });
+    level = "medium";
+    await expect(client.getState()).resolves.toMatchObject({ thinkingLevel: "medium" });
+    await client.stop();
+  });
+
+  it("starts from the level the session was launched with, and reports none without one", async () => {
+    const respond = (command: Record<string, unknown>, fake: FakeAgentProcess) => {
+      if (command.type === "negotiate_protocol") fake.reply(command, { protocolVersion: 2 });
+      else fake.reply(command, { sessionId: "session" });
+    };
+    const launched = new FakeAgentProcess(respond);
+    const client = new OmpClient(launched, "full", "high");
+    announceReady(launched);
+    await expect(client.getState()).resolves.toMatchObject({ thinkingLevel: "high" });
+    await client.stop();
+
+    const plain = new FakeAgentProcess(respond);
+    const withoutLevel = new OmpClient(plain, "full");
+    announceReady(plain);
+    await expect(withoutLevel.getState()).resolves.not.toHaveProperty("thinkingLevel");
+    await withoutLevel.stop();
+  });
+
   it("sends typed image attachments with prompts and steering", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "negotiate_protocol") {
