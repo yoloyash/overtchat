@@ -56,6 +56,11 @@ async function promptSearch(
           hint: "private and runs on this server",
         },
         { value: "brave", label: "Brave Search API" },
+        {
+          value: "keenable",
+          label: "Keenable Search API",
+          hint: "API key optional",
+        },
         { value: "searxng", label: "Existing SearXNG" },
         {
           value: "disabled",
@@ -77,6 +82,22 @@ async function promptSearch(
           value?.trim() || hasCurrentKey
             ? undefined
             : "Enter your Brave Search API key.",
+      }),
+    );
+    return {
+      provider,
+      bundledInstalled: false,
+      apiKey: apiKey.trim() || current.apiKey,
+    };
+  }
+  if (provider === "keenable") {
+    const hasCurrentKey = Boolean(current.apiKey);
+    const apiKey = chosen(
+      await password({
+        message: hasCurrentKey
+          ? "Keenable API key (optional, leave blank to keep current)"
+          : "Keenable API key (optional, leave blank for keyless)",
+        mask: "•",
       }),
     );
     return {

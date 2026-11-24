@@ -14,6 +14,9 @@ export type { FetchedPage, WebSearchOutput, WebSearchResult } from "./web-client
 export { cleanDomain, faviconUrl } from "./web-client";
 
 const BUNDLED_SEARXNG_URL = "http://searxng:8080";
+const KEENABLE_API_URL = "https://api.keenable.ai";
+const KEENABLE_APP_TITLE = "OvertChat";
+const KEENABLE_TIMEOUT_MS = 15_000;
 const MAX_CONTENT_CHARS = 8_000;
 
 type FetchedWebPage = FetchedPage & { kind: "text" };
@@ -21,6 +24,7 @@ export type FetchedWebResource = FetchedWebPage | FetchImageResult;
 
 type SearchConfiguration = {
   braveApiKey?: string;
+  keenable?: { apiKey?: string };
   searxngUrl?: string;
 };
 
@@ -46,6 +50,15 @@ function configuredSearch(): SearchConfiguration {
       searxngUrl,
     };
   }
+  if (capability.provider === "keenable") {
+    const configuredSearxng = capability.baseUrl || process.env.SEARXNG_URL;
+    return {
+      keenable: { apiKey: keenableApiKey(capability.apiKey) },
+      searxngUrl:
+        configuredSearxng ||
+        (capability.bundledInstalled ? BUNDLED_SEARXNG_URL : undefined),
+    };
+  }
   if (capability.provider === "bundled") {
     return {
       searxngUrl: BUNDLED_SEARXNG_URL,
@@ -67,6 +80,7 @@ function sameSearchConfiguration(
 ): boolean {
   return (
     left.braveApiKey === right.braveApiKey &&
+    left.keenable?.apiKey === right.keenable?.apiKey &&
     left.searxngUrl === right.searxngUrl
   );
 }
@@ -91,11 +105,99 @@ function configuredSearchClient(): WebBasics {
   return client;
 }
 
+/**
+ * The capability row keeps one API key, and switching providers can leave a
+ * previous provider's key in place. Only keys in Keenable's `keen_` format are
+ * sent to Keenable, so a stored Brave key never leaves the server; anything
+ * else uses Keenable's keyless endpoint.
+ */
+function keenableApiKey(value: string | null | undefined): string | undefined {
+  const key = value?.trim();
+  return key && key.startsWith("keen_") ? key : undefined;
+}
+
+type KeenableResult = {
+  title?: unknown;
+  url?: unknown;
+  snippet?: unknown;
+  description?: unknown;
+  published_at?: unknown;
+};
+
+async function searchKeenable(
+  apiKey: string | undefined,
+  query: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<WebSearchOutput> {
+  const timeout = AbortSignal.timeout(KEENABLE_TIMEOUT_MS);
+  const response = await fetch(
+    `${KEENABLE_API_URL}${apiKey ? "/v1/search" : "/v1/search/public"}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Keenable-Title": KEENABLE_APP_TITLE,
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
+      },
+      body: JSON.stringify({
+        query,
+        max_results: Math.min(Math.max(Math.trunc(limit), 1), 50),
+      }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Keenable search failed with HTTP ${response.status}.`);
+  }
+  const payload = (await response.json()) as { results?: unknown };
+  if (!Array.isArray(payload.results)) {
+    throw new Error("Keenable search returned an invalid response.");
+  }
+  const sources = (payload.results as KeenableResult[]).flatMap((item) => {
+    if (typeof item?.url !== "string" || !item.url) return [];
+    const snippet =
+      (typeof item.snippet === "string" && item.snippet) ||
+      (typeof item.description === "string" && item.description) ||
+      undefined;
+    return [
+      {
+        url: item.url,
+        title: typeof item.title === "string" && item.title ? item.title : item.url,
+        ...(snippet ? { snippet } : {}),
+        ...(typeof item.published_at === "string"
+          ? { publishedDate: item.published_at }
+          : {}),
+      },
+    ];
+  });
+  if (!sources.length) throw new Error("Keenable search returned no results.");
+  return {
+    provider: "keenable",
+    authMode: apiKey ? "api_key" : "keyless",
+    sources: sources.slice(0, limit),
+  };
+}
+
 export async function searchWeb(
   query: string,
   limit = 5,
   signal?: AbortSignal,
 ): Promise<WebSearchOutput> {
+  const configuration = configuredSearch();
+  if (configuration.keenable) {
+    try {
+      return await searchKeenable(
+        configuration.keenable.apiKey,
+        query,
+        limit,
+        signal,
+      );
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      // Same fallback as Brave: the free chain answers when Keenable cannot.
+    }
+  }
   return configuredSearchClient().webSearch({
     query,
     limit,

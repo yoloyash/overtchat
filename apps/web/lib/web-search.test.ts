@@ -119,6 +119,134 @@ describe("configured web search provider", () => {
     );
   });
 
+  it("uses Keenable's keyless endpoint when no Keenable key is stored", async () => {
+    mocks.getCapability.mockReturnValue({
+      provider: "keenable",
+      apiKey: null,
+      bundledInstalled: false,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        results: [
+          {
+            url: "https://example.com/keenable",
+            title: "Keenable result",
+            description: "",
+            snippet: "Snippet text",
+            published_at: "2026-11-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(searchWeb("query", 3)).resolves.toEqual({
+      provider: "keenable",
+      authMode: "keyless",
+      sources: [
+        {
+          url: "https://example.com/keenable",
+          title: "Keenable result",
+          snippet: "Snippet text",
+          publishedDate: "2026-11-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const [rawUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(rawUrl).toBe("https://api.keenable.ai/v1/search/public");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({
+      "Content-Type": "application/json",
+      "X-Keenable-Title": "OvertChat",
+    });
+    expect(JSON.parse(String(init.body))).toEqual({
+      query: "query",
+      max_results: 3,
+    });
+  });
+
+  it("sends a stored Keenable key to the keyed endpoint", async () => {
+    mocks.getCapability.mockReturnValue({
+      provider: "keenable",
+      apiKey: "keen_test",
+      bundledInstalled: false,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        results: [{ url: "https://example.com/k", title: "K", snippet: "S" }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(searchWeb("query", 1)).resolves.toMatchObject({
+      provider: "keenable",
+      authMode: "api_key",
+    });
+    const [rawUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(rawUrl).toBe("https://api.keenable.ai/v1/search");
+    expect(init.headers).toMatchObject({ "X-API-Key": "keen_test" });
+  });
+
+  it("never sends a key left over from another provider to Keenable", async () => {
+    mocks.getCapability.mockReturnValue({
+      provider: "keenable",
+      apiKey: "retained-inactive-brave-key",
+      bundledInstalled: false,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        results: [{ url: "https://example.com/k", title: "K", snippet: "S" }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchWeb("query", 1);
+    const [rawUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(rawUrl).toBe("https://api.keenable.ai/v1/search/public");
+    expect(JSON.stringify(init.headers)).not.toContain(
+      "retained-inactive-brave-key",
+    );
+  });
+
+  it("falls back from Keenable to configured SearXNG", async () => {
+    mocks.getCapability.mockReturnValue({
+      provider: "keenable",
+      apiKey: null,
+      bundledInstalled: true,
+    });
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.hostname === "api.keenable.ai") {
+        return Response.json({ error: "rate limited" }, { status: 429 });
+      }
+      return Response.json({
+        results: [
+          {
+            url: "https://example.com/searxng-fallback",
+            title: "SearXNG fallback",
+            content: "Fallback after Keenable",
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(searchWeb("keenable fallback query", 1)).resolves.toEqual({
+      provider: "searxng",
+      sources: [
+        {
+          url: "https://example.com/searxng-fallback",
+          title: "SearXNG fallback",
+          snippet: "Fallback after Keenable",
+        },
+      ],
+    });
+    expect(
+      fetchMock.mock.calls.map(([input]) => new URL(String(input)).hostname),
+    ).toEqual(["api.keenable.ai", "searxng"]);
+  });
+
   it("falls back from Brave to configured SearXNG", async () => {
     mocks.getCapability.mockReturnValue({
       provider: "brave",

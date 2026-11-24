@@ -19,6 +19,7 @@ export type WebSearchProvider =
   | "duckduckgo"
   | "exa"
   | "firecrawl"
+  | "keenable"
   | "none"
   | "searxng";
 
@@ -27,6 +28,7 @@ const WEB_SEARCH_PROVIDER_LABELS: Record<WebSearchProvider, string> = {
   duckduckgo: "DuckDuckGo",
   exa: "Exa",
   firecrawl: "Firecrawl",
+  keenable: "Keenable",
   none: "No provider",
   searxng: "SearXNG",
 };

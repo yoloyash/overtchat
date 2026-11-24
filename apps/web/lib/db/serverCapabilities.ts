@@ -50,13 +50,18 @@ function environmentDefault(id: CapabilityId): ServerCapabilityInput {
       id,
       provider:
         provider === "brave" ||
+        provider === "keenable" ||
         provider === "searxng" ||
         provider === "disabled"
           ? provider
           : "bundled",
       bundledInstalled: installed.has("search"),
       baseUrl: nullable(process.env.SEARXNG_URL),
-      apiKey: nullable(process.env.BRAVE_SEARCH_API_KEY),
+      apiKey: nullable(
+        provider === "keenable"
+          ? process.env.KEENABLE_API_KEY
+          : process.env.BRAVE_SEARCH_API_KEY,
+      ),
       model: null,
       voice: null,
     };

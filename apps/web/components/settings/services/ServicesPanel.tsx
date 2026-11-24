@@ -54,6 +54,7 @@ const PROVIDERS: Record<AdminServerCapability["id"], ProviderOption[]> = {
   search: [
     { value: "bundled", label: "Bundled SearXNG", bundled: true },
     { value: "brave", label: "Brave Search API" },
+    { value: "keenable", label: "Keenable Search API" },
     { value: "searxng", label: "Existing SearXNG" },
     { value: "disabled", label: "Disabled" },
   ],
@@ -132,6 +133,7 @@ function needsBaseUrl(capability: CapabilityDraft): boolean {
 function needsApiKey(capability: CapabilityDraft): boolean {
   return (
     capability.provider === "brave" ||
+    capability.provider === "keenable" ||
     capability.provider === "openai-compatible"
   );
 }
@@ -290,7 +292,9 @@ function CapabilitySection({
           description={
             draft.apiKeySet
               ? "A key is configured. Leave this blank to keep it."
-              : undefined
+              : draft.provider === "keenable"
+                ? "Optional. Without a key, OvertChat uses Keenable's keyless endpoint (rate limited per IP). Queries are logged by Keenable with or without a key."
+                : undefined
           }
           htmlFor={`${draft.id}-api-key`}
         >
@@ -316,10 +320,10 @@ function CapabilitySection({
           controlAlign="end"
         >
           <span className="text-xs text-muted-foreground">
-            {draft.provider === "brave"
-              ? draft.bundledInstalled || draft.baseUrl
-                ? "Brave → SearXNG → Firecrawl → Exa → DuckDuckGo"
-                : "Brave → Firecrawl → Exa → DuckDuckGo"
+            {draft.provider === "brave" || draft.provider === "keenable"
+              ? `${draft.provider === "brave" ? "Brave" : "Keenable"} → ${
+                  draft.bundledInstalled || draft.baseUrl ? "SearXNG → " : ""
+                }Firecrawl → Exa → DuckDuckGo`
               : "SearXNG → Firecrawl → Exa → DuckDuckGo"}
           </span>
         </SettingsRow>

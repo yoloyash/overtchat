@@ -73,6 +73,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
     ...(draft.id === "search"
       ? [
           { value: "brave", label: "Brave Search API" },
+          { value: "keenable", label: "Keenable Search API" },
           { value: "searxng", label: "Existing SearXNG" },
         ]
       : [{ value: "openai-compatible", label: "OpenAI-compatible API" }]),
@@ -125,7 +126,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
             keyboardType="url"
           />
         )}
-        {["brave", "openai-compatible"].includes(draft.provider) && (
+        {["brave", "keenable", "openai-compatible"].includes(draft.provider) && (
           <Field
             editable={!action.busy}
             label="API key"
@@ -135,7 +136,9 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
             hint={
               draft.apiKeySet
                 ? "A key is saved. Leave blank to keep it."
-                : "Enter your provider key."
+                : draft.provider === "keenable"
+                  ? "Optional. Without a key, Keenable's keyless endpoint is used. Queries are logged with or without a key."
+                  : "Enter your provider key."
             }
           />
         )}
