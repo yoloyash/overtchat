@@ -1,42 +1,51 @@
 import { codeFileLinkName } from "@overtchat/shared";
-import type { MarkdownItInstance, MarkdownItToken as Token } from "markdown-it";
 
-function isFileLink(token: Token): boolean {
-  return token.type === "link_open" && codeFileLinkName(token.attrGet("href") ?? "") !== null;
-}
+// A link or image whose target may hold one level of parentheses, as in `b (2).csv`.
+const LINK = /!?\[[^\]\n]*\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 
 /**
- * Turns a paragraph of nothing but links to sandbox files into images, which
- * the renderer lays out as blocks: an image file shows in full and any other
- * file as a card. Links inside sentences stay inline.
+ * Puts each link on a line of only sandbox file links into a paragraph of its
+ * own, which the renderer draws as a block: an image file in full, any other
+ * file as a card. Links inside sentences, lists and code stay as written.
  */
-export function codeFileLinksPlugin(md: MarkdownItInstance) {
-  md.core.ruler.after("inline", "code_file_links", (state) => {
-    state.tokens.forEach((token, index) => {
-      if (token.type !== "inline" || state.tokens[index - 1]?.type !== "paragraph_open") return;
-      const children = token.children ?? [];
-      const replaced: Token[] = [];
-      let links = 0;
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        if (child.type === "softbreak" || child.type === "hardbreak") continue;
-        if (child.type === "text" && !child.content.trim()) continue;
-        if (!isFileLink(child)) return;
-        const close = children.findIndex((next, at) => at > i && next.type === "link_close");
-        if (close < 0) return;
-        const label = children.slice(i + 1, close);
-        const image = new state.Token("image", "img", 0);
-        image.attrs = [
-          ["src", child.attrGet("href") ?? ""],
-          ["alt", ""],
-        ];
-        image.children = label;
-        image.content = label.map((part) => part.content).join("");
-        replaced.push(image);
-        links++;
-        i = close;
-      }
-      if (links) token.children = replaced;
-    });
-  });
+export function separateFileLinks(markdown: string): string {
+  if (!markdown.includes("](")) return markdown;
+  const out: string[] = [];
+  let fence: string | null = null;
+  let separated = false;
+  for (const line of markdown.split("\n")) {
+    const mark = FENCE.exec(line)?.[1];
+    if (mark && (fence === null || (mark[0] === fence[0] && mark.length >= fence.length))) {
+      fence = fence === null ? mark : null;
+    }
+    const links = fence === null && !mark ? fileLinks(line) : null;
+    if (!links) {
+      // A paragraph that follows the separated links must not join the last one.
+      if (separated && line.trim()) out.push("");
+      separated = false;
+      out.push(line);
+      continue;
+    }
+    for (const link of links) {
+      if (out.length && out[out.length - 1].trim()) out.push("");
+      out.push(link);
+    }
+    separated = true;
+  }
+  return out.join("\n");
+}
+
+/** The links of a line that holds nothing but sandbox file links, else null. */
+function fileLinks(line: string): string[] | null {
+  if (!line || /^\s/.test(line)) return null;
+  const links: string[] = [];
+  let end = 0;
+  for (const match of line.matchAll(LINK)) {
+    if (line.slice(end, match.index).trim()) return null;
+    if (codeFileLinkName(match[1]) === null) return null;
+    links.push(match[0]);
+    end = match.index + match[0].length;
+  }
+  return links.length && !line.slice(end).trim() ? links : null;
 }

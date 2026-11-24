@@ -230,6 +230,7 @@ export function MessageBubble({
                 text={(seg.part as { text: string }).text}
                 sourceLookup={sourceLookup}
                 codeFiles={codeFiles ?? ownFiles}
+                streaming={streaming && isLast}
               />
             );
           }

@@ -32,6 +32,7 @@ raw.exec(`
     api_format TEXT DEFAULT 'openai-chat' NOT NULL,
     base_url TEXT NOT NULL,
     api_key TEXT,
+    headers TEXT,
     model TEXT NOT NULL,
     pricing TEXT,
     context_window INTEGER,
@@ -122,6 +123,42 @@ it("appends new models and preserves order when an old editor submits a configur
   expect(
     (await modelConfigDb.listModelConfigs()).map((model) => model.id),
   ).toEqual(["hidden-model", "chat-model", created.id]);
+});
+
+it("keeps request headers through saves that omit them and clears them on null", async () => {
+  const model = {
+    label: "Gateway",
+    providerId: "custom",
+    apiFormat: "openai-chat",
+    baseUrl: "https://gateway.test/v1",
+    model: "gateway",
+  };
+  const headers = { "x-session": "{{CHAT_ID}}", "X-Team": "search" };
+  const created = await modelConfigDb.createModelConfig(
+    ModelConfigSchema.parse({ ...model, headers }),
+  );
+  expect(created.headers).toEqual(headers);
+  expect(modelConfigDb.toAdminModelConfig(created).headers).toEqual(headers);
+
+  // A client that predates headers, or the list's enable toggle.
+  const renamed = await modelConfigDb.updateModelConfig(
+    created.id,
+    ModelConfigSchema.parse({ ...model, label: "Renamed" }),
+  );
+  expect(renamed).toMatchObject({ label: "Renamed", headers });
+
+  const cleared = await modelConfigDb.updateModelConfig(
+    created.id,
+    ModelConfigSchema.parse({ ...model, headers: null }),
+  );
+  expect(cleared?.headers).toBeNull();
+
+  const plain = await modelConfigDb.createModelConfig(
+    ModelConfigSchema.parse({ ...model, label: "No headers" }),
+  );
+  expect(plain.headers).toBeNull();
+  await modelConfigDb.deleteModelConfig(created.id);
+  await modelConfigDb.deleteModelConfig(plain.id);
 });
 
 describe("task model assignment", () => {

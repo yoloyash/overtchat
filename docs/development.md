@@ -141,6 +141,97 @@ npm run test -w apps/web -- lib/chat/markdown-math.test.tsx
 E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
 ```
 
+## Identity provider sign-in validation
+
+`lib/auth/oidc.ts` reads the operator's OpenID Connect provider from the
+environment once, at startup; `docs/deploy.md` lists the variables. With one
+configured, `lib/auth/server.ts` registers it with Better Auth as the provider
+`oidc`, whose callback is `/api/auth/callback/oidc`. The ID token is verified
+against the provider's keys. Accounts are matched by email on a first sign-in
+and by the provider's subject afterwards; account creation follows
+`OIDC_AUTO_CREATE_USERS` and never the public sign-up setting.
+`/api/sign-in-methods` tells every client, before login, whether to show the
+password form and what to call the provider. Turning passwords off is enforced
+by the server on `/sign-in/email`, not by hiding the form. Two-factor and
+sign-in approval only follow a password sign-in; `/api/two-factor` reports
+`passwordSignIn: false` for an account that cannot use one, and clients then
+hide the password and two-factor settings instead of requiring setup.
+
+Desktop and mobile cannot receive the provider's redirect, so they sign in
+through the system browser with a flow of our own, described in
+`packages/shared/src/sign-in.ts`:
+
+1. The app makes a secret and opens `/api/native-sign-in/start` with the
+   secret's SHA-256 challenge, a state, and where to return: a loopback port
+   the desktop app listens on, or `overtchat://login` on mobile. No other
+   return address is accepted.
+2. The server remembers the request and sends the browser to the provider.
+   The provider's callback signs the browser in and lands on
+   `/api/native-sign-in/finish`.
+3. Finish accepts only a session newer than the request, issues a code that
+   works once for two minutes, and returns the browser to the app. It signs
+   the browser out again unless it was signed in before the app's sign-in began.
+4. The app posts the code and its secret to
+   `/api/auth/native-sign-in/exchange` and receives its own session: a bearer
+   token on desktop, a cookie on mobile. A wrong secret spends the code.
+
+Starting needs no login and stores a row, so the server allows 60 starts a
+minute in total. Requests and codes are rows in `verification`, stored by hash
+(`lib/db/nativeSignIn.ts`). A code is useless without the secret, which never
+leaves the app, so another app that registers the same URL scheme or reads the
+loopback redirect cannot use it.
+
+```sh
+npm run test -w apps/web -- lib/auth/oidc.test.ts lib/auth/native-sign-in.test.ts
+npm run test -w apps/desktop --
+npm run test -w apps/mobile -- src/lib/auth/providerSignIn.test.ts
+E2E_PORT=4881 npm run test:e2e -w apps/web -- sign-in-methods.spec.ts
+```
+
+`oidc.test.ts` drives the real auth handler against an in-process provider
+(`lib/auth/fixtures/oidc-provider.ts`): linking, refusal, account creation,
+disabled accounts, passwords off, and the native flow's single use, secret
+check, and browser sign-out. For a change to the flow or a Better Auth
+upgrade, also sign in through a real provider. Keycloak starts with a ready
+realm:
+
+```sh
+docker run --rm -p 127.0.0.1:8081:8081 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  -e KC_HOSTNAME=http://localhost:8081 \
+  -v "$PWD/apps/web/lib/auth/fixtures/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro" \
+  quay.io/keycloak/keycloak:26.4 start-dev --import-realm --http-port 8081
+
+OIDC_ISSUER_URL=http://localhost:8081/realms/overtchat OIDC_CLIENT_ID=overtchat \
+  OIDC_CLIENT_SECRET=overtchat-development-secret OIDC_PROVIDER_NAME=Keycloak \
+  npm run dev:web
+```
+
+The realm's client redirects to `http://localhost:4717`; change `redirectUris`
+in the file for another port. Its users are `admin` (`admin@example.com`) and
+`newcomer` (`newcomer@example.com`), both with the password
+`development-password`. Give the OvertChat administrator the first address to
+see an account matched by email. `newcomer` is refused until
+`OIDC_AUTO_CREATE_USERS=true` or an administrator adds that address. Repeat
+with `OIDC_DISABLE_PASSWORD_LOGIN=true`: `POST /api/auth/sign-in/email`
+answers 403, and Security settings and **Settings → Users** offer no password
+actions. A browser opening the app without a session must arrive at the
+provider without a click, and Back from there must not return to the login
+page. After **Log out** the login page must stay, showing only the provider
+button, also after a reload; `components/auth/LoginForm.tsx` remembers the
+sign-out for the tab in session storage. A failed sign-in must stay on the
+page with its message. The desktop and mobile apps always show the button.
+
+From `npm run dev:desktop`, **Continue with Keycloak** must open the default
+browser rather than a window of the app, the browser must end on "You're
+signed in", and the app must stay signed in after a restart. Opening the
+server in that browser afterwards must still ask for a login. On a phone or
+emulator the provider opens in the system browser sheet, and closing it leaves
+the login screen ready for another try. The provider must be reachable from
+the device at the issuer address, so use a LAN or tunnel address for both the
+server and the provider instead of `localhost`. The system browser session is
+a native module: build the app again rather than reloading an older build.
+
 ## CI browser and desktop smoke diagnostics
 
 Web E2E runs inside the official Playwright image
@@ -404,6 +495,33 @@ level's fields in the request body; Off must produce no reasoning and On must
 produce some. `THINKING_LIVE_REPORT` writes a small JSON report without
 credentials or transcripts. The test does not modify saved models or chats,
 and ordinary unit runs skip it.
+
+## Model request headers validation
+
+A model's extra request headers live in `model_configs.headers` and are
+administrator-only, like its API key. The server sends them on everything it
+asks of that connection: chat, titles, the connection test, model discovery,
+the template check, and image generation. A header replaces any header of the
+same name the app would send, so it can also replace the authentication header.
+
+`{{CHAT_ID}}` in a value becomes the chat's ID, so every request of one
+conversation carries the same value. Chat IDs come from clients, so one that a
+header cannot carry is sent as its SHA-256 digest. Requests outside a chat get
+a fresh ID, because gateways that require such a header reject an empty one. A save that omits `headers` keeps the stored ones,
+which protects them from clients that predate the field; `null` removes them.
+The exception is a save that also changes the provider: headers may be
+credentials, so unsent ones do not follow the model to another provider.
+
+```sh
+npm run test -w apps/web -- lib/model-config lib/providers/server lib/db/modelConfigs.test.ts app/api/model-configs
+E2E_PORT=4791 npm run test:e2e -w apps/web -- model-request-headers.spec.ts
+```
+
+The browser test runs against a local gateway that refuses any request without
+a session header. To check a real one without an account, add a custom model
+for `https://opencode.ai/inference/go/v1` with any API key: **Test connection**
+reports a missing `x-opencode-session` header until the model has that header
+set to `{{CHAT_ID}}`, and an invalid credential afterwards.
 
 ## Chat attachment reading validation
 
@@ -1551,6 +1669,18 @@ reaches `http://sandbox:8080` with the shared token while the sandbox has no rou
 to the internet. Before a sandbox version is published, tag a locally built image
 as `ghcr.io/yoloyash/overtchat-sandbox:<version>` (or `overtchat-sandbox-full`) and
 run setup in development mode, which ignores pull failures.
+
+For sign-in with an identity provider, run `setup --dry-run` against a
+provider that answers (the Keycloak realm in
+[Identity provider sign-in validation](#identity-provider-sign-in-validation)
+needs an address other than `localhost`), and check that the preview's
+environment file carries the six `OIDC_*` values. A dry run writes no
+installation state; after a real setup, `installation.json` must not hold the
+client secret. In the generated stack, rerunning setup with **Keep** leaves
+the client secret as it was, **Turn it off** empties every value, and an
+unattended run changes nothing. A secret containing `$` must reach the app
+unchanged: the environment file doubles each `$`, which
+`docker compose config` shows as a single one in the app's environment.
 
 Installer binary and terminal checks are documented in [Release process](release.md).
 

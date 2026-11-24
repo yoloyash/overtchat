@@ -1,7 +1,7 @@
 {
   "name": "@overtchat/mobile",
   "main": "expo-router/entry",
-  "version": "1.27.0",
+  "version": "1.27.1",
   "private": true,
   "scripts": {
     "dev": "expo start --host=lan",
@@ -67,14 +67,14 @@
     "expo-splash-screen": "~56.0.16",
     "expo-status-bar": "~56.0.4",
     "expo-system-ui": "~56.0.5",
-    "markdown-it": "^14.3.3",
+    "expo-web-browser": "~56.0.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
+    "react-native-enriched-markdown": "1.2.0",
     "react-native-gesture-handler": "~2.31.1",
     "react-native-image-viewing": "^0.2.2",
     "react-native-keyboard-controller": "1.21.6",
-    "react-native-markdown-display": "^7.0.2",
     "react-native-popover-view": "^6.1.0",
     "react-native-reanimated": "4.3.1",
     "react-native-safe-area-context": "~5.7.0",
@@ -82,13 +82,33 @@
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-webview": "13.16.1",
-    "react-native-worklets": "0.8.3",
-    "refractor": "^5.0.0"
+    "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
     "linkedom": "^0.18.12",
     "typescript": "~6.0.3",
     "vitest": "4.1.12"
+  },
+  "enriched-markdown": {
+    "enableCodeHighlight": true,
+    "codeHighlightLanguages": [
+      "bash",
+      "c",
+      "css",
+      "go",
+      "html",
+      "java",
+      "javascript",
+      "json",
+      "markdown",
+      "python",
+      "rust",
+      "tsx",
+      "typescript",
+      "yaml"
+    ],
+    "enableMath": false,
+    "enableVideo": false
   }
 }

@@ -7,7 +7,11 @@ export const llamaCppAdapter = createOpenAICompatibleAdapter(
   "llamacpp",
   {
     listModels: (connection) =>
-      listLlamaCppModels(connection.baseUrl, connection.apiKey),
+      listLlamaCppModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      ),
     transformRequestBody: (body, config) => {
       const withRuntimeExtensions = body.stream === true
         ? {

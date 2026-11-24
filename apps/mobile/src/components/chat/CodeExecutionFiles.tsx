@@ -20,7 +20,7 @@ function categoryOf(file: CodeExecutionFile): AttachmentCategory {
 }
 
 /** Saves a run's file to a folder the user picks. */
-function useSaveFile() {
+export function useSaveFile() {
   const [saving, setSaving] = useState<string | null>(null);
 
   async function save(file: CodeExecutionFile) {

@@ -381,6 +381,8 @@ export async function runChat(
     apiFormat: modelConfig.apiFormat,
     baseUrl: modelConfig.baseUrl,
     apiKey: modelConfig.apiKey,
+    headers: modelConfig.headers,
+    chatId,
     model: modelConfig.model,
     providerOptions: modelConfig.providerOptions,
     toolCallingEnabled: modelConfig.toolCallingEnabled,
@@ -417,6 +419,7 @@ export async function runChat(
   const imageUsage: CompletedImageUsage[] = [];
   const imageTools = createImageTools({
     userId,
+    chatId,
     messages,
     supportsImageInput,
     options: imageGeneration,

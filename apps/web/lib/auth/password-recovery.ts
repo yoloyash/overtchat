@@ -71,11 +71,6 @@ export function passwordRecovery() {
           if (result === "not_found") {
             throw new APIError("NOT_FOUND", { message: "User not found." });
           }
-          if (result === "no_password") {
-            throw new APIError("CONFLICT", {
-              message: "This account does not use a password.",
-            });
-          }
           return ctx.json({ status: true });
         },
       ),

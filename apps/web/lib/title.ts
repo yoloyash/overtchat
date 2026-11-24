@@ -22,7 +22,8 @@ type TitleModelConfig = Pick<
   | "model"
   | "pricing"
   | "providerOptions"
->;
+> &
+  Partial<Pick<ModelConfigRow, "headers">>;
 
 export async function ensureChatTitle({
   chatId,
@@ -54,6 +55,8 @@ export async function ensureChatTitle({
         apiFormat: modelConfig.apiFormat,
         baseUrl: modelConfig.baseUrl,
         apiKey: modelConfig.apiKey,
+        headers: modelConfig.headers,
+        chatId,
         model: modelConfig.model,
         providerOptions: modelConfig.providerOptions,
       });

@@ -3,6 +3,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { rememberSignedOut } from "@/lib/auth/signedOut";
 import { authClient } from "@/lib/auth/client";
 import { useResetAuthState } from "@/lib/queries/auth";
 import { TwoFactorSetup } from "./TwoFactorSetup";
@@ -21,6 +22,7 @@ export function RequiredTwoFactorSetup({ email }: { email: string }) {
       return;
     }
     resetAuthState();
+    rememberSignedOut();
     await navigate({ to: "/login", replace: true });
   }
 

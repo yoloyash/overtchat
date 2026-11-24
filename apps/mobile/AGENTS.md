@@ -34,6 +34,14 @@ Advanced MCP and agent workspace setup can open the matching web settings page.
   only in `src/lib/queries/keys.ts`.
 - Chat rendering and input behavior live under `src/components/chat`; the
   drawer and its project/chat mutations live under `src/components/drawer`.
+- `MarkdownBody` draws replies, reasoning, documents and agent messages with
+  `react-native-enriched-markdown`, which lays Markdown out in native text
+  views and highlights fenced code natively. `CodeBlock` fences code that comes
+  from outside a reply for the same renderer. Keep the props it passes
+  (`markdownStyle`, `renderers`, handlers) at one identity between updates, or
+  the native view restyles the whole message on every streamed chunk. A file a
+  run returned replaces an image, or a line that is only its link, through
+  `renderers`.
 - The drawer has two halves, Chat and Agents, switched by a toggle that
   administrators see; `src/lib/agents/sidebarMode.ts` derives the half from
   the open route and remembers where each was left. The Agents half
@@ -70,8 +78,21 @@ and native validation are documented in
 `docs/development.md#authentication-upgrade-validation`. Changing servers must
 also reset the cached auth client.
 
+Signing in with the server's identity provider opens the system browser
+session (`src/lib/auth/providerSignIn.ts`) and returns through
+`overtchat://login` with a one-time code, which only the app that started the
+sign-in can trade for its session. Never load the provider in a web view. See
+`docs/development.md#identity-provider-sign-in-validation`.
+
 `src/polyfills.js` must load before the AI SDK streaming stack. Test streaming
 on both Android and iOS after changing the transport or its polyfills.
+
+Do not build highlighted code from one `<Text>` per token: Android lays out a
+text view in time quadratic in its styled fragments, which froze the app on
+blocks of a few hundred lines. The `enriched-markdown` block in `package.json`
+selects the renderer's native features; `npm ci` downloads its highlight
+grammars in a postinstall step that needs the npm registry and github.com, and
+a change to the block takes effect on the next native build.
 
 Navigation headers and safe-area behavior are owned by Expo Router. Android
 drawer behavior currently relies on `predictiveBackGestureEnabled: false` in

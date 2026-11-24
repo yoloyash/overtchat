@@ -1238,6 +1238,31 @@ describe("native agent screen workflows", () => {
     await click("Queue message");
     expect(mocks.send.mock.lastCall?.[0]).toEqual({ type: "compact" });
   });
+  it("shows the reported effort, or the model's default when the provider reports none", async () => {
+    const settings = () =>
+      container.querySelector(
+        'button[aria-label="Model, effort, and permissions"]',
+      )?.textContent;
+    const effort = () =>
+      container.querySelector('button[aria-label="Reasoning effort"]')
+        ?.textContent;
+    mocks.snapshot!.models = [{ ...model, defaultThinkingOptionId: "high" }];
+    await render();
+    expect(settings()).toContain("First model  High");
+    await click("Model, effort, and permissions");
+    expect(effort()).toContain("High");
+
+    mocks.snapshot!.state.thinkingLevel = "low";
+    await render();
+    expect(settings()).toContain("First model  Low");
+    expect(effort()).toContain("Low");
+
+    // A level the model does not offer is not shown as its effort.
+    mocks.snapshot!.state.thinkingLevel = "max";
+    await render();
+    expect(settings()).toContain("First model  High");
+    expect(effort()).toContain("High");
+  });
   it("changes models and reasoning and requires confirmation for full access", async () => {
     await render();
     await click("Model, effort, and permissions");

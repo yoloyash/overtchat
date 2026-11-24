@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ModelHeadersSchema } from "./headers";
 import { CustomImageOptionsSchema, customImageOptions } from "./image-options";
 import { REASONING_EFFORTS } from "@overtchat/shared";
 import { ReasoningOverrideSchema } from "./reasoning-override";
@@ -51,6 +52,9 @@ const ProviderConnectionObject = z.object({
     .string()
     .nullish()
     .transform((value) => value ?? null),
+  // Omitted means "unchanged" on a model update, so clients that predate
+  // request headers cannot clear them; null removes them.
+  headers: ModelHeadersSchema.optional(),
 });
 
 export const ProviderConnectionSchema = ProviderConnectionObject.superRefine(
@@ -291,6 +295,7 @@ export interface ModelDiscoveryInput {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey?: string | null;
+  headers?: Record<string, string> | null;
   modelType?: "chat" | "image";
 }
 
