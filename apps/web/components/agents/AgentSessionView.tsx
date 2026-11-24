@@ -51,6 +51,7 @@ import { latestAgentTaskList } from "@/lib/agents/presentation";
 import {
   agentForkDraftKey,
   agentSessionDraftRestoreKey,
+  resolveAgentSessionThinking,
 } from "@/lib/agents/sessionDraft";
 import { agentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import {
@@ -119,17 +120,6 @@ function currentModel(
   return typeof model?.provider === "string" &&
     typeof model.id === "string"
     ? { provider: model.provider, id: model.id }
-    : null;
-}
-
-function currentThinking(
-  snapshot: AgentRuntimeSnapshot,
-  model: AgentRuntimeSnapshot["models"][number] | undefined,
-): string | null {
-  const level = snapshot.state.thinkingLevel;
-  return typeof level === "string" &&
-    model?.thinkingOptions?.some((option) => option.id === level)
-    ? level
     : null;
 }
 
@@ -588,7 +578,10 @@ export function AgentSessionView({
           candidate.id === model.id,
       )
     : undefined;
-  const thinking = currentThinking(snapshot, selectedModel);
+  const thinking = resolveAgentSessionThinking(
+    selectedModel,
+    snapshot.state.thinkingLevel,
+  );
   const currentName = sessionName(snapshot) || initialSessionName;
   const availableCollaborationModes = collaborationModes(snapshot);
   const collaborationMode = currentCollaborationMode(snapshot);
