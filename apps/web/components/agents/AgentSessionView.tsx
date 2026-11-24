@@ -1,11 +1,11 @@
 "use client";
 
+import { AlertsIntro } from "@/components/AlertsIntro";
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { generateId } from "ai";
 import { agentRewindOptions } from "@overtchat/shared/agent-presentation";
 
 import { isAgentQuestion } from "@overtchat/shared/agent-interaction";
-import { AgentAlertsIntro } from "./AgentAlertsIntro";
 import { AgentQuestionCard } from "./AgentQuestionCard";
 import { AgentApprovalCard } from "./AgentApprovalCard";
 
@@ -750,7 +750,7 @@ export function AgentSessionView({
           <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
-              {!readOnly && <AgentAlertsIntro />}
+              {!readOnly && <AlertsIntro agents />}
               <AgentSessionContext
                 goal={goal}
                 tasks={tasks}

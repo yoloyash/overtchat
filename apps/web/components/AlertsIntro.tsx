@@ -30,11 +30,12 @@ function alertsNeverChosen(): boolean {
 }
 
 /**
- * Offers alerts once per device, where an agent is at work. A browser only
+ * Offers alerts once per device, where they would have helped: beside an
+ * agent at work, or in a chat whose reply finished unseen. A browser only
  * asks for notification permission from a click, so the offer is the click.
  * The desktop app has alerts on from the start and never shows this.
  */
-export function AgentAlertsIntro() {
+export function AlertsIntro({ agents }: { agents: boolean }) {
   const { sound, systemWanted, setSound, setSystem, access } = useAgentAlertChoices();
   const [answered, setAnswered] = useLocalStorage<boolean>(AGENT_ALERT_INTRO_KEY, false);
   const [untouched] = useState(alertsNeverChosen);
@@ -61,14 +62,16 @@ export function AgentAlertsIntro() {
 
   return (
     <section
-      aria-label="Agent alerts"
+      aria-label="Alerts"
       className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-2 text-sm"
     >
       <Bell className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <p className="min-w-0 flex-1 basis-56 text-muted-foreground">
         {blocked
-          ? "Your browser is blocking notifications for this site. Allow them there, then turn on Agent alerts in Settings."
-          : "Get notified when an agent needs you or finishes."}
+          ? "Your browser is blocking notifications for this site. Allow them there, then turn on Alerts in Settings."
+          : agents
+            ? "Get notified when an agent needs you or a reply is ready."
+            : "Get notified when a reply is ready."}
       </p>
       <div className="ml-auto flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="sm" onClick={() => setAnswered(true)}>
