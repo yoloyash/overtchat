@@ -405,6 +405,7 @@ export class AgentSessionRuntime {
     }
 
     client.onEvent((event) => {
+      if (this.adapter.sessionMoveEvent?.(event)) void this.checkMovedSession();
       // Provider-native reset/branch commands explicitly replace history. This
       // adapter signal stays internal; clients receive an ordinary full snapshot.
       if (event.type === "overtchat_history_replace" && Array.isArray(event.messages)) {
@@ -1159,7 +1160,7 @@ export class AgentSessionRuntime {
             ? stats.contextUsage : this.stats.contextUsage,
       };
       this.commands = runtimeCommands(this.adapter, commands);
-      this.followMovedSession();
+      this.followMovedSession(state);
       if (activityIsCurrent && !this.stopped) {
         this.status = this.providerBusy(state) ? "running" : "idle";
       }
@@ -1208,12 +1209,21 @@ export class AgentSessionRuntime {
     };
   }
 
-  private followMovedSession(): void {
+  /** Reads only the session identity; a turn in progress keeps its state. */
+  private async checkMovedSession(): Promise<void> {
+    try {
+      this.followMovedSession(await this.client.getState());
+    } catch {
+      // The state refresh that ends the turn checks again.
+    }
+  }
+
+  private followMovedSession(state: Record<string, unknown>): void {
     // A rewind changes the session on purpose and reports the result itself.
     if (!this.adapter.followsMovedSessions || this.providerSessionId === undefined || this.rewinding) return;
     let identity: AgentSessionIdentity;
     try {
-      identity = this.adapter.sessionIdentity(this.state);
+      identity = this.adapter.sessionIdentity(state);
     } catch {
       return;
     }

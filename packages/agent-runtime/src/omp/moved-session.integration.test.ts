@@ -62,7 +62,10 @@ describe.runIf(process.env.RUN_OMP_MOVED_SESSION_INTEGRATION === "1")("installed
       target: { transport: "local" as const }, executable, cwd: root, sessionId: "session",
       providerSessionId: sessionId, providerSessionPath: sessionPath, launchConfig: { model },
     };
-    const sessionMoved = vi.fn();
+    const statusWhenMoved: string[] = [];
+    const sessionMoved = vi.fn((_sessionId: string, runtime: AgentSessionRuntime) => {
+      statusWhenMoved.push(runtime.snapshot().status);
+    });
     // Stands in for a process that outlived the connector's side of its link.
     const holder = new AgentRuntimeRegistry({ resolveImages: async () => [] });
     const second = new AgentRuntimeRegistry({ resolveImages: async () => [], sessionMoved });
@@ -82,6 +85,9 @@ describe.runIf(process.env.RUN_OMP_MOVED_SESSION_INTEGRATION === "1")("installed
       expect(moved!.providerSessionId).not.toBe(sessionId);
       expect(path.dirname(moved!.providerSessionPath)).toBe(root);
       expect(sessionMoved).toHaveBeenCalledWith("session", resumed);
+      // Followed when OMP announced the move, not when the turn ended.
+      console.log("status when followed:", statusWhenMoved.join(","));
+      expect(statusWhenMoved).toEqual(["running"]);
       await second.stopAll();
       await holder.stopAll();
 

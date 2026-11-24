@@ -190,6 +190,8 @@ export const ompProviderAdapter: AgentProviderAdapter = {
   // still holds, or one that already went on in a sibling file, continues in
   // that sibling under a new id.
   followsMovedSessions: true,
+  sessionMoveEvent: (event) =>
+    event.type === "notice" && event.source === "session-persistence",
   startSession(target, launch) {
     return startOmp(target, {
       executable: launch.executable,

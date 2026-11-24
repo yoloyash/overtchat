@@ -781,11 +781,11 @@ export class ConnectorDaemon {
       this.assertStoresAvailable();
       await this.journal.recordSession(descriptor);
       this.assertStoresAvailable();
-      await this.attachTimeline(
-        runtime,
-        descriptor.providerSessionId,
-        descriptor.providerSessionPath,
-      );
+      // Same conversation and often mid-turn: re-key the timeline in place.
+      await this.flushCapture(sessionId);
+      await this.timelines.moveSession(sessionId, descriptor.providerSessionId);
+      capture.providerSessionId = descriptor.providerSessionId;
+      capture.providerSessionPath = descriptor.providerSessionPath;
       this.publishMovedSession(descriptor);
     });
   }

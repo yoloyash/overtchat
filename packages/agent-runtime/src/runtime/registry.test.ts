@@ -55,6 +55,7 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     listWorkspaceSessions: vi.fn(),
     fetchCatalog: mocks.fetchCatalog,
     followsMovedSessions: provider === "omp",
+    sessionMoveEvent: (event: AgentRuntimeEvent) => event.type === "notice",
     startSession: (_target: unknown, launch: Record<string, unknown>) => {
       mocks.launches.push(launch);
       return {
@@ -419,10 +420,17 @@ describe("agent runtime", () => {
     await runtime.refreshState();
     expect(sessionMoved).not.toHaveBeenCalled();
 
+    // The provider announces the move mid-turn; the runtime does not wait for
+    // the turn to end, and leaves the turn's own state alone.
     mocks.getState.mockResolvedValue({
       sessionId: "continued-session",
       sessionFile: "/sessions/continued-session.jsonl",
+      isStreaming: false,
     });
+    mocks.eventSubscriber?.({ type: "agent_start" });
+    mocks.eventSubscriber?.({ type: "notice", source: "session-persistence" });
+    await vi.waitFor(() => expect(sessionMoved).toHaveBeenCalledOnce());
+    expect(runtime.snapshot().status).toBe("running");
     await runtime.refreshState();
     await runtime.refreshState();
 

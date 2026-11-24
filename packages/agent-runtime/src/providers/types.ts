@@ -144,6 +144,12 @@ export interface AgentProviderAdapter {
    * instead of refusing it.
    */
   followsMovedSessions?: boolean;
+  /**
+   * An event after which the provider may already be on another session. The
+   * runtime then re-reads the session at once rather than when the turn ends,
+   * so nothing acts on the old one in between.
+   */
+  sessionMoveEvent?(event: AgentRuntimeEvent): boolean;
   probeConnection(
     draft: AgentConnectionDraft,
   ): Promise<AgentReadyConnectionProbe>;
