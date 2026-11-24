@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 let context: AudioContext | undefined;
 /** When each sound's current playback ends, on the audio clock. */
 const playingUntil = new Map<string, number>();
@@ -26,6 +28,19 @@ export function unlockAgentAlertSound(): void {
   if (audio && audio.state !== "running") {
     void audio.resume().catch(() => undefined);
   }
+}
+
+/** Readies the chime on a device that wants it, from the next click or key press. */
+export function useAgentAlertSoundUnlock(sound: boolean): void {
+  useEffect(() => {
+    if (!sound) return;
+    document.addEventListener("pointerdown", unlockAgentAlertSound);
+    document.addEventListener("keydown", unlockAgentAlertSound);
+    return () => {
+      document.removeEventListener("pointerdown", unlockAgentAlertSound);
+      document.removeEventListener("keydown", unlockAgentAlertSound);
+    };
+  }, [sound]);
 }
 
 /**

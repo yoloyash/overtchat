@@ -4063,8 +4063,8 @@ test("offers alerts once per device where an agent works, and turns them on from
       ["sound", "system", "intro"].map((name) => localStorage.getItem(`overtchat:agent-alert-${name}`)),
     );
   await page.goto(`/agents/${SESSION_ID}`);
-  const offer = page.getByRole("region", { name: "Agent alerts" });
-  await expect(offer).toContainText("Get notified when an agent needs you or finishes.");
+  const offer = page.getByRole("region", { name: "Alerts" });
+  await expect(offer).toContainText("Get notified when an agent needs you or a reply is ready.");
   // It sits with the composer, above it.
   const composer = page.getByTestId("agent-composer");
   const [offerBox, composerBox] = [await offer.boundingBox(), await composer.boundingBox()];

@@ -2060,14 +2060,15 @@ finished" otherwise. Every agent alert keeps the Android channel `agent-idle`,
 now named "Agent activity", so phones that predate this still show it.
 Notifications never carry an approval action.
 
-Settings → General → Agent alerts is per device: a chime (rising for a
-request, falling for a finished turn) and system notifications, which need
-notification permission. Both start on in the desktop app and off in a
-browser, which may only ask for permission from a click. A browser that has
-never chosen is offered them once, above the composer of an agent session
-(`apps/web/components/agents/AgentAlertsIntro.tsx`): "Enable notifications"
-asks the browser and turns both on, "Not now" leaves them to Settings, and
-either answer ends the offer on that device. When the browser later blocks
+Settings → General → Alerts is per device and covers agents and chat replies:
+a chime (rising for a request, falling for a finished turn or reply) and
+system notifications, which need notification permission. Both start on in
+the desktop app and off in a browser, which may only ask for permission from
+a click. A browser that has never chosen is offered them once, above the
+composer of an agent session or of a chat whose reply finished unseen
+(`apps/web/components/AlertsIntro.tsx`): "Enable notifications" asks the
+browser and turns both on, "Not now" leaves them to Settings, and either
+answer ends the offer on that device. When the browser later blocks
 the site, the system notifications switch shows off and says why. In front,
 an alert is a toast with an Open button; in the background, a system
 notification whose click reveals the window and which closes once its session
@@ -2096,6 +2097,15 @@ ELECTRON_ENABLE_LOGGING=1`: a refusal is logged at once, and a request that
 was put to the owner adds the app to System Settings → Notifications within
 seconds of launch. Use a bundle identifier of its own, since macOS asks once
 per identifier.
+
+A chat's reply is announced by the page that streamed it
+(`apps/web/lib/notifications/useChatReplyAlert.ts`), not by the server: when
+the reply runs to its end with the window in the background, the page plays
+the chime and shows a system notification with the start of the reply, which
+closes when the window is in front again. A reply that was watched, stopped
+by hand or failed says nothing, and neither does a manual compaction. The
+phone push for a finished reply is separate and unchanged: it does not look
+at presence. `apps/web/e2e/chat-reply-alerts.spec.ts` covers the page.
 
 Toasts sit at the top right, under the header row, so none covers the
 composer. An alert's toast shows the state, the session and two lines of the
