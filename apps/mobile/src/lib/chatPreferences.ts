@@ -4,12 +4,15 @@ export type ChatPreferences = {
   messageStats: boolean;
   contextMeter: boolean;
   sessionCost: boolean;
+  /** Open each reply's thinking and tool steps without a tap. */
+  expandActivity: boolean;
 };
 const KEY = "overtchat.chatDisplay";
 const defaults: ChatPreferences = {
   messageStats: false,
   contextMeter: true,
   sessionCost: true,
+  expandActivity: false,
 };
 function read(): ChatPreferences {
   try {
@@ -27,6 +30,10 @@ function read(): ChatPreferences {
         typeof saved.sessionCost === "boolean"
           ? saved.sessionCost
           : defaults.sessionCost,
+      expandActivity:
+        typeof saved.expandActivity === "boolean"
+          ? saved.expandActivity
+          : defaults.expandActivity,
     };
   } catch {
     return defaults;
