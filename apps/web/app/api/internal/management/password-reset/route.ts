@@ -39,11 +39,5 @@ export async function POST(request: Request) {
   const result = resetUserPassword(target.id, hash);
   if (result === "not_found")
     return Response.json({ error: "User not found." }, { status: 404 });
-  if (result !== "updated") {
-    return Response.json(
-      { error: "This account does not use a password." },
-      { status: 409 },
-    );
-  }
   return Response.json({ status: true });
 }

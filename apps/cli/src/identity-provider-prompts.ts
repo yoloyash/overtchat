@@ -161,7 +161,7 @@ export async function promptIdentityProvider(
   );
   if (disablePasswordLogin) {
     note(
-      `Everyone then signs in through ${name}, and needs the current desktop and mobile apps. If it stops working, run overtchat setup again and keep passwords; an administrator who has a password can then sign in.`,
+      `Everyone then signs in through ${name}, and needs the current desktop and mobile apps. If it stops working, run overtchat setup again and keep passwords, then sign in with a password. overtchat reset-password gives an administrator one.`,
       "Passwords off",
     );
   }
