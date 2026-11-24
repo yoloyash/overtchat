@@ -7,8 +7,8 @@ export { AGENT_PRESENCE_WINDOW_MS };
 
 export type AgentClientPresence = {
   clientId: string;
-  /** The last heartbeat, on the server's clock. */
-  at: number;
+  /** When the client was last used, on the server's clock. */
+  activeAt: number;
   visible: boolean;
   /** The agent session open in the client, if any. */
   viewing: string | null;
@@ -24,8 +24,9 @@ export type AgentNotificationPlan = {
 };
 
 /**
- * Nobody is told while a present client is looking at the session. Otherwise
- * the client used most recently is told, and phones only when no present
+ * A client is present while it was used within the presence window. Nobody
+ * is told while a present client is looking at the session. Otherwise the
+ * present client used most recently is told, and phones only when no present
  * client wants alerts.
  */
 export function planAgentNotification(
@@ -35,11 +36,11 @@ export function planAgentNotification(
 ): AgentNotificationPlan {
   let recipient: AgentClientPresence | null = null;
   for (const client of clients) {
-    if (now - client.at > AGENT_PRESENCE_WINDOW_MS) continue;
+    if (now - client.activeAt > AGENT_PRESENCE_WINDOW_MS) continue;
     if (client.visible && client.viewing === sessionId) {
       return { recipient: null, push: false };
     }
-    if (client.notify && (!recipient || client.at > recipient.at)) {
+    if (client.notify && (!recipient || client.activeAt > recipient.activeAt)) {
       recipient = client;
     }
   }
@@ -48,6 +49,8 @@ export function planAgentNotification(
 
 type Sink = (notification: AgentNotification) => void;
 type ClientRecord = Omit<AgentClientPresence, "notify"> & {
+  /** The last heartbeat, on the server's clock. */
+  at: number;
   wantsAlerts: boolean;
   /** The client's open event streams, oldest first; the newest is told. */
   sinks: Sink[];
@@ -59,13 +62,23 @@ export class AgentClientRegistry {
 
   record(
     userId: string,
-    presence: { clientId: string; visible: boolean; viewing: string | null; notify: boolean },
+    presence: {
+      clientId: string;
+      visible: boolean;
+      viewing: string | null;
+      notify: boolean;
+      /** How long ago the client was last used. Older clients do not say. */
+      idleMs?: number;
+    },
     now = Date.now(),
   ): void {
     const clients = this.clientsOf(userId);
     const record = clients.get(presence.clientId);
+    // A client that does not say counts as used whenever it reports in.
+    const activeAt = now - (presence.idleMs ?? 0);
     if (record) {
       record.at = now;
+      record.activeAt = activeAt;
       record.visible = presence.visible;
       record.viewing = presence.viewing;
       record.wantsAlerts = presence.notify;
@@ -73,6 +86,7 @@ export class AgentClientRegistry {
       clients.set(presence.clientId, {
         clientId: presence.clientId,
         at: now,
+        activeAt,
         visible: presence.visible,
         viewing: presence.viewing,
         wantsAlerts: presence.notify,
@@ -91,7 +105,16 @@ export class AgentClientRegistry {
     const clients = this.clientsOf(userId);
     let record = clients.get(clientId);
     if (!record) {
-      record = { clientId, at: now, visible: false, viewing: null, wantsAlerts: false, sinks: [] };
+      // Attached but not heard from yet: not known to be in use.
+      record = {
+        clientId,
+        at: now,
+        activeAt: -Infinity,
+        visible: false,
+        viewing: null,
+        wantsAlerts: false,
+        sinks: [],
+      };
       clients.set(clientId, record);
     }
     record.sinks.push(sink);
@@ -110,7 +133,7 @@ export class AgentClientRegistry {
       if (now - record.at > AGENT_PRESENCE_WINDOW_MS) continue;
       result.push({
         clientId: record.clientId,
-        at: record.at,
+        activeAt: record.activeAt,
         visible: record.visible,
         viewing: record.viewing,
         notify: record.wantsAlerts && record.sinks.length > 0,

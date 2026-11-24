@@ -160,6 +160,7 @@ export type AgentPresenceHeartbeat = {
   visible: boolean;
   viewing: string | null;
   notify: boolean;
+  idleMs?: number;
 };
 
 /**

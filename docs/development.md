@@ -2043,26 +2043,59 @@ body.
 
 Who is told follows presence. Web and desktop clients post
 `/api/agent-presence` every half minute while visible, at once when that or
-the open session changes, and the desktop app also while the computer is in
-use with the window in the background. Nobody is told while a present client
-shows the session; otherwise the server sends the alert over the event stream
-of the client used most recently that wants alerts; phones get a push only
-when no such client is present. Push text names the session and what it needs
-when the device allows previews, and says only "An agent needs approval" or
-"An agent finished" otherwise. Every agent alert keeps the Android channel
-`agent-idle`, now named "Agent activity", so phones that predate this still
-show it. Notifications never carry an approval action.
+the open session changes, and the desktop app also with the window in the
+background. Each report carries `idleMs`, how long ago the client was used: a
+click, a key press, a scroll or the window gaining focus in a browser, and any
+input to the computer in the desktop app. A client is present while it was
+used within three minutes. Nobody is told while a present client shows the
+session. Otherwise the server sends the alert over the event stream of the
+present client used most recently that wants alerts, and phones stay quiet.
+With no such client, phones get a push and no client is told: a browser tab
+nobody has touched for three minutes counts as left, while the desktop app
+stays present for as long as the computer is in use. Servers that predate
+`idleMs` refuse a report that carries it; the client then leaves it out, and
+such a client counts as used whenever it reports in. Push text names the session and what it needs when the device
+allows previews, and says only "An agent needs approval" or "An agent
+finished" otherwise. Every agent alert keeps the Android channel `agent-idle`,
+now named "Agent activity", so phones that predate this still show it.
+Notifications never carry an approval action.
 
-Settings → General → Agent alerts is per device and off by default: a chime
-(rising for a request, falling for a finished turn) and system notifications,
-which need notification permission. In front, an alert is a toast with an
-Open button; in the background, a system notification whose click reveals the
-window. The favicon and the desktop dock or taskbar icon count sessions that
+Settings → General → Agent alerts is per device: a chime (rising for a
+request, falling for a finished turn) and system notifications, which need
+notification permission. Both start on in the desktop app and off in a
+browser, which may only ask for permission from a click. A browser that has
+never chosen is offered them once, above the composer of an agent session
+(`apps/web/components/agents/AgentAlertsIntro.tsx`): "Enable notifications"
+asks the browser and turns both on, "Not now" leaves them to Settings, and
+either answer ends the offer on that device. When the browser later blocks
+the site, the system notifications switch shows off and says why. In front,
+an alert is a toast with an Open button; in the background, a system
+notification whose click reveals the window and which closes once its session
+is open. A window that can be seen but may not notify shows the toast
+instead. The favicon and the desktop dock or taskbar icon count sessions that
 need input, failed, or finished unseen, whatever the device wants. The
 desktop bridge gained optional `setBadge`, `revealWindow` and
 `getSystemIdleSeconds`; the UI treats them as absent on older apps. Mobile
 marks a session read when it is open in the foreground and whenever a turn
 ends while it is open.
+
+macOS asks whether the desktop app may notify the first time the app reaches
+for notifications, and shows none until that is answered. The app reaches for
+them at startup (`requestNotificationAccess` in
+`apps/desktop/src/main/permissions.ts`) so the question appears with the app
+in front, not with the first alert, which only comes with the window in the
+background. Electron does not report the answer, so a refusal in System
+Settings → Notifications leaves the switch on while nothing is shown.
+
+macOS refuses the request outright ("Notifications are not allowed for this
+application") for an ad-hoc signed build such as `package:mac` makes, and for
+a build run from `/tmp`, so neither can show the question or a notification.
+To check the question, sign the packaged app with a real identity, put it in
+an Applications folder, and start it with `ELECTRON_DEBUG_NOTIFICATIONS=1
+ELECTRON_ENABLE_LOGGING=1`: a refusal is logged at once, and a request that
+was put to the owner adds the app to System Settings → Notifications within
+seconds of launch. Use a bundle identifier of its own, since macOS asks once
+per identifier.
 
 Toasts sit at the top right, under the header row, so none covers the
 composer. An alert's toast shows the state, the session and two lines of the
@@ -2081,7 +2114,11 @@ is wanted and could not play, the notification makes the system's own sound.
 
 `apps/web/e2e/agent-notifications.spec.ts` streams scripted alerts and checks
 the heartbeat, the badge, both settings, both presentations, the toast's
-lifetime and which of the two sounds is heard. It records no trace: trace
+lifetime, the toast shown in place of a blocked notification, the
+notification closed when its session opens, and which of the two sounds is
+heard. `apps/web/e2e/agent-runtime.spec.ts` checks the offer in a session. A
+headless browser reports notifications as blocked whatever it was granted, so
+these tests give the page their own `Notification`. It records no trace: trace
 snapshots count as using the page, which lets it play sound. For the same
 reason the page reports what it showed and played itself; `page.evaluate`
 counts as using it too.
