@@ -23,65 +23,6 @@
       "reasoning": false,
       "temperature": false
     },
-    "gpt-3.5-turbo": {
-      "context": 16385,
-      "output": 4096,
-      "cost": {
-        "cache_read": 0,
-        "input": 0.5,
-        "output": 1.5
-      },
-      "input_modalities": [
-        "text"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": false,
-      "tool_call": false,
-      "reasoning": false,
-      "structured_output": false,
-      "temperature": true
-    },
-    "gpt-4": {
-      "context": 8192,
-      "output": 8192,
-      "cost": {
-        "input": 30,
-        "output": 60
-      },
-      "input_modalities": [
-        "text"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": false,
-      "tool_call": true,
-      "reasoning": false,
-      "structured_output": false,
-      "temperature": true
-    },
-    "gpt-4-turbo": {
-      "context": 128000,
-      "output": 4096,
-      "cost": {
-        "input": 10,
-        "output": 30
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": false,
-      "structured_output": false,
-      "temperature": true
-    },
     "gpt-4.1": {
       "context": 1047576,
       "output": 32768,
@@ -126,27 +67,6 @@
       "structured_output": true,
       "temperature": true
     },
-    "gpt-4.1-nano": {
-      "context": 1047576,
-      "output": 32768,
-      "cost": {
-        "cache_read": 0.025,
-        "input": 0.1,
-        "output": 0.4
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": false,
-      "structured_output": true,
-      "temperature": true
-    },
     "gpt-4o": {
       "context": 128000,
       "output": 16384,
@@ -159,26 +79,6 @@
         "text",
         "image",
         "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": false,
-      "structured_output": true,
-      "temperature": true
-    },
-    "gpt-4o-2024-05-13": {
-      "context": 128000,
-      "output": 4096,
-      "cost": {
-        "input": 5,
-        "output": 15
-      },
-      "input_modalities": [
-        "text",
-        "image"
       ],
       "output_modalities": [
         "text"
@@ -492,39 +392,6 @@
       "reasoning": true,
       "structured_output": true,
       "temperature": true,
-      "reasoning_controls": {
-        "toggle": true,
-        "defaultLevel": "medium",
-        "efforts": [
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ]
-      }
-    },
-    "gpt-5.3-codex-spark": {
-      "context": 128000,
-      "input": 100000,
-      "output": 32000,
-      "cost": {
-        "cache_read": 0.175,
-        "input": 1.75,
-        "output": 14
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": false,
       "reasoning_controls": {
         "toggle": true,
         "defaultLevel": "medium",
@@ -1515,103 +1382,6 @@
       "reasoning": false,
       "temperature": false
     },
-    "gpt-realtime-2.1": {
-      "context": 128000,
-      "input": 96000,
-      "output": 32000,
-      "cost": {
-        "cache_read": 0.4,
-        "input": 4,
-        "input_audio": 32,
-        "output": 24,
-        "output_audio": 64
-      },
-      "input_modalities": [
-        "text",
-        "audio",
-        "image"
-      ],
-      "output_modalities": [
-        "text",
-        "audio"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": false,
-      "temperature": false,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "medium",
-        "efforts": [
-          "minimal",
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ]
-      }
-    },
-    "o1": {
-      "context": 200000,
-      "output": 100000,
-      "cost": {
-        "cache_read": 7.5,
-        "input": 15,
-        "output": 60
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": false,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "medium",
-        "efforts": [
-          "low",
-          "medium",
-          "high"
-        ]
-      }
-    },
-    "o1-pro": {
-      "context": 200000,
-      "output": 100000,
-      "cost": {
-        "input": 150,
-        "output": 600
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": false,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "medium",
-        "efforts": [
-          "low",
-          "medium",
-          "high"
-        ]
-      }
-    },
     "o3": {
       "context": 200000,
       "output": 100000,
@@ -1643,71 +1413,12 @@
         ]
       }
     },
-    "o3-mini": {
-      "context": 200000,
-      "output": 100000,
-      "cost": {
-        "cache_read": 0.55,
-        "input": 1.1,
-        "output": 4.4
-      },
-      "input_modalities": [
-        "text"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": false,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": false,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "medium",
-        "efforts": [
-          "low",
-          "medium",
-          "high"
-        ]
-      }
-    },
     "o3-pro": {
       "context": 200000,
       "output": 100000,
       "cost": {
         "input": 20,
         "output": 80
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": false,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "medium",
-        "efforts": [
-          "low",
-          "medium",
-          "high"
-        ]
-      }
-    },
-    "o4-mini": {
-      "context": 200000,
-      "output": 100000,
-      "cost": {
-        "cache_read": 0.275,
-        "input": 1.1,
-        "output": 4.4
       },
       "input_modalities": [
         "text",
@@ -2073,7 +1784,7 @@
       "structured_output": true,
       "temperature": false,
       "reasoning_controls": {
-        "toggle": false,
+        "toggle": true,
         "defaultLevel": "high",
         "efforts": [
           "low",
@@ -2107,7 +1818,7 @@
       "structured_output": true,
       "temperature": false,
       "reasoning_controls": {
-        "toggle": false,
+        "toggle": true,
         "defaultLevel": "high",
         "efforts": [
           "low",
@@ -2141,7 +1852,7 @@
       "structured_output": true,
       "temperature": false,
       "reasoning_controls": {
-        "toggle": false,
+        "toggle": true,
         "defaultLevel": "high",
         "efforts": [
           "low",
@@ -2399,25 +2110,6 @@
       "output_modalities": [
         "text",
         "image"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "temperature": true
-    },
-    "gemini-2.5-computer-use-preview-10-2025": {
-      "context": 128000,
-      "output": 64000,
-      "cost": {
-        "input": 1.25,
-        "output": 10
-      },
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "output_modalities": [
-        "text"
       ],
       "attachment": true,
       "tool_call": true,
@@ -2740,41 +2432,6 @@
         "defaultLevel": "high",
         "efforts": [
           "minimal",
-          "high"
-        ]
-      }
-    },
-    "gemini-3.1-flash-lite-preview": {
-      "context": 1048576,
-      "output": 65536,
-      "cost": {
-        "cache_read": 0.025,
-        "input": 0.25,
-        "input_audio": 0.5,
-        "output": 1.5
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "video",
-        "audio",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": true,
-      "reasoning_controls": {
-        "toggle": false,
-        "defaultLevel": "high",
-        "efforts": [
-          "minimal",
-          "low",
-          "medium",
           "high"
         ]
       }
@@ -3226,6 +2883,41 @@
         ]
       }
     },
+    "gemini-4-neon": {
+      "context": 1048576,
+      "output": 65536,
+      "cost": {
+        "cache_read": 0.15,
+        "input": 3,
+        "input_audio": 3,
+        "output": 15
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
+    },
     "gemini-embedding-001": {
       "context": 2048,
       "output": 1,
@@ -3334,26 +3026,6 @@
           "high"
         ]
       }
-    },
-    "gemini-omni-flash-preview": {
-      "context": 131072,
-      "output": 65536,
-      "cost": {
-        "input": 1.5,
-        "output": 17.5
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "video"
-      ],
-      "output_modalities": [
-        "video"
-      ],
-      "attachment": true,
-      "tool_call": false,
-      "reasoning": true,
-      "temperature": true
     },
     "gemini-pro-latest": {
       "context": 1048576,
@@ -3618,7 +3290,7 @@
       "output": 65535,
       "cost": {
         "cache_read": 0.0825,
-        "cache_write": 0.33,
+        "cache_write": 0,
         "input": 0.33,
         "output": 2.75
       },
@@ -3642,7 +3314,7 @@
       "output": 10000,
       "cost": {
         "cache_read": 0.015,
-        "cache_write": 0.06,
+        "cache_write": 0,
         "input": 0.06,
         "output": 0.24
       },
@@ -3665,7 +3337,7 @@
       "output": 10000,
       "cost": {
         "cache_read": 0.00875,
-        "cache_write": 0.035,
+        "cache_write": 0,
         "input": 0.035,
         "output": 0.14
       },
@@ -3685,7 +3357,7 @@
       "output": 10000,
       "cost": {
         "cache_read": 0.2,
-        "cache_write": 0.8,
+        "cache_write": 0,
         "input": 0.8,
         "output": 3.2
       },
@@ -3707,10 +3379,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 1,
-        "cache_write": 12.5,
-        "input": 10,
-        "output": 50
+        "cache_read": 1.1,
+        "cache_write": 13.75,
+        "input": 11,
+        "output": 55
       },
       "input_modalities": [
         "text",
@@ -3730,10 +3402,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.25,
-        "cache_write": 12.5,
-        "input": 10,
-        "output": 50
+        "cache_read": 0.275,
+        "cache_write": 13.75,
+        "input": 11,
+        "output": 55
       },
       "input_modalities": [
         "text",
@@ -3753,10 +3425,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.2,
-        "cache_write": 10,
-        "input": 8,
-        "output": 40
+        "cache_read": 0.22,
+        "cache_write": 11,
+        "input": 8.8,
+        "output": 44
       },
       "input_modalities": [
         "text",
@@ -3776,10 +3448,10 @@
       "context": 200000,
       "output": 64000,
       "cost": {
-        "cache_read": 0.1,
-        "cache_write": 1.25,
-        "input": 1,
-        "output": 5
+        "cache_read": 0.11,
+        "cache_write": 1.375,
+        "input": 1.1,
+        "output": 5.5
       },
       "input_modalities": [
         "text",
@@ -3799,16 +3471,16 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.01,
-        "cache_write": 0.125,
-        "input": 0.1,
-        "output": 0.5,
+        "cache_read": 0.011,
+        "cache_write": 0.1375,
+        "input": 0.11,
+        "output": 0.55,
         "tiers": [
           {
-            "cache_read": 0.05,
-            "cache_write": 0.625,
-            "input": 0.5,
-            "output": 2.5,
+            "cache_read": 0.055,
+            "cache_write": 0.6875,
+            "input": 0.55,
+            "output": 2.75,
             "tier": {
               "size": 100000,
               "type": "context"
@@ -3856,10 +3528,10 @@
       "context": 200000,
       "output": 64000,
       "cost": {
-        "cache_read": 0.5,
-        "cache_write": 6.25,
-        "input": 5,
-        "output": 25
+        "cache_read": 0.55,
+        "cache_write": 6.875,
+        "input": 5.5,
+        "output": 27.5
       },
       "input_modalities": [
         "text",
@@ -3902,10 +3574,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.5,
-        "cache_write": 6.25,
-        "input": 5,
-        "output": 25
+        "cache_read": 0.55,
+        "cache_write": 6.875,
+        "input": 5.5,
+        "output": 27.5
       },
       "input_modalities": [
         "text",
@@ -3925,10 +3597,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.5,
-        "cache_write": 6.25,
-        "input": 5,
-        "output": 25
+        "cache_read": 0.55,
+        "cache_write": 6.875,
+        "input": 5.5,
+        "output": 27.5
       },
       "input_modalities": [
         "text",
@@ -3948,10 +3620,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.5,
-        "cache_write": 6.25,
-        "input": 5,
-        "output": 25
+        "cache_read": 0.55,
+        "cache_write": 6.875,
+        "input": 5.5,
+        "output": 27.5
       },
       "input_modalities": [
         "text",
@@ -3971,10 +3643,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.2,
-        "cache_write": 5,
-        "input": 4,
-        "output": 20
+        "cache_read": 0.22,
+        "cache_write": 5.5,
+        "input": 4.4,
+        "output": 22
       },
       "input_modalities": [
         "text",
@@ -3994,10 +3666,10 @@
       "context": 200000,
       "output": 64000,
       "cost": {
-        "cache_read": 0.3,
-        "cache_write": 3.75,
-        "input": 3,
-        "output": 15
+        "cache_read": 0.33,
+        "cache_write": 4.125,
+        "input": 3.3,
+        "output": 16.5
       },
       "input_modalities": [
         "text",
@@ -4040,10 +3712,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.2,
-        "cache_write": 2.5,
-        "input": 2,
-        "output": 10
+        "cache_read": 0.22,
+        "cache_write": 2.75,
+        "input": 2.2,
+        "output": 11
       },
       "input_modalities": [
         "text",
@@ -4063,10 +3735,10 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.1,
-        "cache_write": 2.5,
-        "input": 2,
-        "output": 10
+        "cache_read": 0.11,
+        "cache_write": 2.75,
+        "input": 2.2,
+        "output": 11
       },
       "input_modalities": [
         "text",
@@ -4969,7 +4641,7 @@
       "output": 65535,
       "cost": {
         "cache_read": 0.075,
-        "cache_write": 0.3,
+        "cache_write": 0,
         "input": 0.3,
         "output": 2.5
       },
@@ -7605,7 +7277,7 @@
       "output": 65535,
       "cost": {
         "cache_read": 0.0825,
-        "cache_write": 0.33,
+        "cache_write": 0,
         "input": 0.33,
         "output": 2.75
       },
@@ -7629,7 +7301,7 @@
       "output": 10000,
       "cost": {
         "cache_read": 0.015,
-        "cache_write": 0.06,
+        "cache_write": 0,
         "input": 0.06,
         "output": 0.24
       },
@@ -7653,7 +7325,7 @@
       "output": 10000,
       "cost": {
         "cache_read": 0.00875,
-        "cache_write": 0.035,
+        "cache_write": 0,
         "input": 0.035,
         "output": 0.14
       },
@@ -7698,7 +7370,7 @@
       "output": 10000,
       "cost": {
         "cache_read": 0.2,
-        "cache_write": 0.8,
+        "cache_write": 0,
         "input": 0.8,
         "output": 3.2
       },
@@ -8808,6 +8480,26 @@
       "attachment": false,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
+      "temperature": true
+    },
+    "writer.palmyra-vision-7b": {
+      "context": 4096,
+      "output": 4096,
+      "cost": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": false,
+      "reasoning": false,
       "structured_output": true,
       "temperature": true
     },
