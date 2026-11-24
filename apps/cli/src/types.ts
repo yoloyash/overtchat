@@ -82,6 +82,20 @@ export type AccessConfig = {
   cloud?: CloudAccess;
 };
 
+// The operator's OpenID Connect provider that people sign in through. The
+// client secret itself lives only in the secrets file; `clientSecret` carries
+// one typed at the prompt to setup and is never persisted.
+export type IdentityProviderConfig = {
+  issuerUrl: string;
+  clientId: string;
+  // What the sign-in button calls the provider.
+  name: string;
+  // A first sign-in creates the account instead of needing one to exist.
+  autoCreateUsers: boolean;
+  disablePasswordLogin: boolean;
+  clientSecret?: string;
+};
+
 export type InstallationConfig = {
   format: 1;
   instanceId?: string;
@@ -110,6 +124,7 @@ export type InstallationConfig = {
   // Only this exact Serve route may be changed or removed by the manager.
   managedTailscaleRoute?: TailscaleRoute;
   disableUpdateCheck?: boolean;
+  identityProvider?: IdentityProviderConfig;
   composeProject: string;
   dataMountType: "volume" | "bind";
   dataVolume: string;

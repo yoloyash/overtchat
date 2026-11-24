@@ -29,7 +29,7 @@ with accounts do not require a code. This is only for initial setup; use
 [password recovery](#password-recovery) if you cannot sign in afterward.
 
 ```sh
-overtchat setup     # change access, services, or update notifications
+overtchat setup     # change access, services, sign-in, or update notifications
 overtchat status    # check versions and service status
 overtchat update    # update the managed stack
 overtchat restart   # stop and start the managed stack
@@ -441,8 +441,22 @@ apps keep using codes and never receive approval requests.
 
 OvertChat can sign people in through one OpenID Connect provider that you
 run or trust, such as Authentik, Authelia, Keycloak, Pocket ID, or Microsoft
-Entra ID. It is configured from the app's environment and stays off until the
-issuer, client ID, and client secret are all set. A partial or unusable
+Entra ID.
+
+On a managed installation, run `overtchat setup` and choose **Set up now** at
+"Sign in with an identity provider?". Setup shows the redirect address to
+register with the provider, then asks for the issuer URL, the client ID and
+secret, the name on the sign-in button, whether a first sign-in creates an
+account, and whether to turn password sign-in off. It warns when it cannot
+read the provider's configuration from the server, and does not accept a
+`localhost` issuer, which the app's container could not reach. Rerun setup to
+change the settings, to turn the provider off, or to turn passwords back on;
+the saved client secret is kept unless you type a new one. Updates and
+unattended runs keep the choice. The settings below describe what each answer
+does.
+
+With Compose, it is configured from the app's environment and stays off until
+the issuer, client ID, and client secret are all set. A partial or unusable
 configuration leaves it off and says why in the app's logs.
 
 1. In the provider, create a confidential (web) client with the redirect
@@ -484,7 +498,8 @@ refuses password sign-ins and the apps show only the provider button. Password
 and two-factor settings, and the administrator's password resets, are hidden.
 New users are added by email address only. If the provider is unreachable, set
 the variable back to `false`, recreate the app container, and sign in with a
-password. That needs an administrator who has one: the account created during
+password; on a managed installation, rerun `overtchat setup` and keep
+passwords. That needs an administrator who has one: the account created during
 setup does, accounts created by a first sign-in do not, and
 [password recovery](#password-recovery) only replaces a password an account
 already has. Keep the setup administrator, or another administrator with a
