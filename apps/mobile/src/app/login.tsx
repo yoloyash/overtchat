@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -13,14 +14,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
 import {
+  PASSWORD_ONLY_SIGN_IN,
   SIGN_IN_APPROVAL_METHOD,
   TOTP_CODE_LENGTH,
   TWO_FACTOR_CLIENT_HEADER,
+  signInCancelled,
+  ssoErrorMessage,
   twoFactorErrorMessage,
   twoFactorSignInExpired,
 } from "@overtchat/shared";
 import { SignInApprovalStep } from "@/components/SignInApprovalStep";
 import { getAuthClient } from "@/lib/auth/client";
+import { signInWithProvider } from "@/lib/auth/providerSignIn";
+import { providerSignInDevice } from "@/lib/auth/providerSignInDevice";
+import { useSignInMethods } from "@/lib/queries/signInMethods";
 import { unexpectedSessionMessage } from "@/lib/auth/sessionResponseGuard";
 import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
@@ -54,10 +61,18 @@ export default function LoginScreen() {
   const session = authClient.useSession();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
   const serverNotice = unexpectedSessionMessage(session.error);
+  const signInMethods = useSignInMethods();
+  // A server that can't be asked gets the password form, as before.
+  const methods = signInMethods.isPending
+    ? null
+    : (signInMethods.data ?? PASSWORD_ONLY_SIGN_IN);
+  const sso = methods?.sso ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // The provider's sign-in is open in the browser; the password isn't in use.
+  const [inBrowser, setInBrowser] = useState(false);
   // Set after the password when the account uses two-factor.
   const [codeStep, setCodeStep] = useState<CodeStep | null>(null);
   // The server can ask the user's signed-in devices to approve this sign-in.
@@ -95,6 +110,25 @@ export default function LoginScreen() {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onProviderSignIn() {
+    if (submitting || !serverUrl || !sso) return;
+    setSubmitting(true);
+    setInBrowser(true);
+    setError("");
+    try {
+      const result = await signInWithProvider(serverUrl, providerSignInDevice);
+      if (result.ok) await session.refetch();
+      else if (!signInCancelled(result.error)) {
+        setError(ssoErrorMessage(result.error, sso.name));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setSubmitting(false);
+      setInBrowser(false);
     }
   }
 
@@ -239,7 +273,9 @@ export default function LoginScreen() {
                   ]}
                 />
               </View>
-            ) : (
+            ) : !methods ? (
+              <ActivityIndicator color={colors.mutedForeground} />
+            ) : !methods.password ? null : (
               <View style={styles.fields}>
                 <View style={styles.field}>
                   <Text
@@ -306,7 +342,7 @@ export default function LoginScreen() {
               </Text>
             )}
 
-            {codeStep !== "approval" && (
+            {codeStep !== "approval" && (codeStep || methods?.password) && (
               <Pressable
                 accessibilityRole="button"
                 disabled={submitting}
@@ -330,11 +366,54 @@ export default function LoginScreen() {
                     ? submitting
                       ? "Verifying…"
                       : "Verify"
-                    : submitting
+                    : submitting && !inBrowser
                       ? "Signing in…"
                       : "Sign in"}
                 </Text>
               </Pressable>
+            )}
+
+            {!codeStep && sso && (
+              <>
+                {methods?.password && (
+                  <View style={styles.divider}>
+                    <View style={[styles.rule, { backgroundColor: colors.border }]} />
+                    <Text
+                      style={[
+                        styles.dividerText,
+                        { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                      ]}
+                    >
+                      or
+                    </Text>
+                    <View style={[styles.rule, { backgroundColor: colors.border }]} />
+                  </View>
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={submitting}
+                  onPress={onProviderSignIn}
+                  style={({ pressed }) => [
+                    styles.cta,
+                    methods?.password
+                      ? { borderWidth: 1, borderColor: colors.input }
+                      : { backgroundColor: colors.primary },
+                    { borderRadius: radii.md, opacity: pressed || submitting ? 0.85 : 1 },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.ctaText,
+                      {
+                        color: methods?.password ? colors.foreground : colors.primaryForeground,
+                        fontFamily: fonts.sansSemiBold,
+                      },
+                    ]}
+                  >
+                    Continue with {sso.name}
+                  </Text>
+                </Pressable>
+              </>
             )}
 
             {codeStep ? (
@@ -370,7 +449,7 @@ export default function LoginScreen() {
                   </Pressable>
                 ))}
               </View>
-            ) : (
+            ) : !methods?.password ? null : (
               <Pressable
                 accessibilityRole="button"
                 hitSlop={8}
@@ -445,6 +524,9 @@ const styles = StyleSheet.create({
   ctaText: { fontSize: 15 },
   recoveryLink: { fontSize: 14, textAlign: "center" },
   links: { gap: 14 },
+  divider: { flexDirection: "row", alignItems: "center", gap: 12 },
+  rule: { flex: 1, height: StyleSheet.hairlineWidth },
+  dividerText: { fontSize: 12 },
   notice: { fontSize: 14, marginBottom: 6 },
   serverRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   serverText: { flex: 1, fontSize: 13 },
