@@ -140,7 +140,7 @@ function AgentThoughtRow({
       </Pressable>
       {open && (
         <View style={{ paddingHorizontal: 6, paddingBottom: 6 }}>
-          <MarkdownBody text={content} variant="thinking" fuzzyLinks={false} />
+          <MarkdownBody text={content} variant="thinking" />
         </View>
       )}
     </View>
@@ -270,7 +270,7 @@ export function AgentActivityGroup({
                 />
               ) : (
                 <View key={entry.id} style={{ paddingVertical: 4 }}>
-                  <MarkdownBody text={entry.content} variant="thinking" fuzzyLinks={false} />
+                  <MarkdownBody text={entry.content} variant="thinking" />
                 </View>
               );
             if (entry.type === "subagent")
@@ -479,7 +479,7 @@ export function AgentPlanCard({
     <Card icon="map-outline" title="Plan">
       {!!item.explanation && <AgentText muted>{item.explanation}</AgentText>}
       {item.text ? (
-        <MarkdownBody text={item.text} fuzzyLinks={false} />
+        <MarkdownBody text={item.text} />
       ) : (
         item.steps.map((step, index) => (
           <TaskRow

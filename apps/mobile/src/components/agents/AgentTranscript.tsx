@@ -596,7 +596,7 @@ const TranscriptItem = memo(function TranscriptItem({
     case "assistant_text":
       return (
         <View>
-          <MarkdownBody text={item.text} fuzzyLinks={false} />
+          <MarkdownBody text={item.text} />
           {actions}
         </View>
       );
@@ -678,7 +678,7 @@ const TranscriptItem = memo(function TranscriptItem({
                 .map((part) => text(part.text))
                 .join("\n")
             : "";
-      return body ? <MarkdownBody text={body} fuzzyLinks={false} /> : null;
+      return body ? <MarkdownBody text={body} /> : null;
     }
   }
 });
