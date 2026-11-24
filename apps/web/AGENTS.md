@@ -51,7 +51,9 @@ The operator's OpenID Connect provider is read from the environment in
 `lib/auth/oidc.ts`; there is one, and no settings UI for it. `/api/sign-in-methods`
 is public and tells every client what the login screen offers. Turning
 passwords off is enforced on the server's password sign-in, and clients hide
-what an account without a password cannot use. Desktop and mobile sign in
+what an account without a password cannot use. With passwords off, the login
+page in a browser goes straight to the provider unless the person just signed
+out or a sign-in failed. Desktop and mobile sign in
 through the system browser and trade a one-time code for their own session
 (`app/api/native-sign-in`, `lib/auth/native-sign-in.ts`); see
 `docs/development.md#identity-provider-sign-in-validation` before changing
