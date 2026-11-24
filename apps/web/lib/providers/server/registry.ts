@@ -18,6 +18,7 @@ import { openRouterAdapter } from "@/lib/providers/server/adapters/openrouter";
 import { sglangAdapter } from "@/lib/providers/server/adapters/sglang";
 import { vllmAdapter } from "@/lib/providers/server/adapters/vllm";
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
+import { connectionHeaders } from "@/lib/providers/server/request-headers";
 import type {
   ProviderAdapter,
   ProviderConnection,
@@ -65,7 +66,10 @@ export function createConfiguredLanguageModel(
   }
   let resolved: ReturnType<ProviderAdapter["createLanguageModel"]>;
   try {
-    resolved = adapter.createLanguageModel(config);
+    resolved = adapter.createLanguageModel({
+      ...config,
+      headers: connectionHeaders(config),
+    });
   } catch (error) {
     if (error instanceof ProviderConfigurationError) throw error;
     const message = error instanceof Error ? error.message : String(error);
@@ -149,7 +153,7 @@ export function listProviderModels(
 ): Promise<DiscoveredModel[]> {
   validateProviderConnection(connection);
   return getProviderAdapter(connection.providerId).listModels(
-    connection,
+    { ...connection, headers: connectionHeaders(connection) },
     options,
   );
 }

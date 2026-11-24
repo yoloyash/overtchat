@@ -33,7 +33,11 @@ export function createOpenAICompatibleAdapter(
   const listModels =
     options.listModels ??
     ((connection: ProviderConnection) =>
-      listOpenAIModels(connection.baseUrl, connection.apiKey));
+      listOpenAIModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      ));
   const transformRequestBody = options.transformRequestBody;
   return {
     id,
@@ -44,6 +48,7 @@ export function createOpenAICompatibleAdapter(
           providerName: id,
           baseUrl: config.baseUrl,
           apiKey: config.apiKey,
+          headers: config.headers,
           model: config.model,
           supportsImageInput: config.supportsImageInput,
           ...(transformRequestBody

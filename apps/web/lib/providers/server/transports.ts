@@ -11,11 +11,14 @@ import {
 } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
 import { openAICompatibleToolImagesMiddleware } from "@/lib/providers/server/openai-compatible-tool-images";
+import { fetchWithHeaders } from "@/lib/providers/server/request-headers";
 
 interface TransportConfig {
   providerName: string;
   baseUrl: string;
   apiKey: string | null | undefined;
+  /** Extra request headers, placeholders already filled. */
+  headers?: Record<string, string> | null;
   model: string;
   supportsImageInput?: boolean;
   transformRequestBody?: (
@@ -30,6 +33,7 @@ export function createOpenAIResponsesModel(
     name: config.providerName,
     baseURL: config.baseUrl,
     apiKey: credential(config.apiKey),
+    ...customFetch(config),
   }).responses(config.model);
 }
 
@@ -40,6 +44,7 @@ export function createOpenAICompatibleChatModel(
     name: config.providerName,
     baseURL: config.baseUrl,
     apiKey: credential(config.apiKey),
+    ...customFetch(config),
     // OpenAI-compatible servers do not include usage in streamed responses
     // unless the client requests it. vLLM and llama.cpp support this standard
     // stream option, and the final usage chunk supplies the context meter's
@@ -117,6 +122,7 @@ export function createOpenResponsesModel(
     name: config.providerName,
     url: config.url,
     apiKey: credential(config.apiKey),
+    ...customFetch(config),
   })(config.model);
 }
 
@@ -130,6 +136,7 @@ export function createAnthropicMessagesModel(
     ...(config.authentication === "bearer"
       ? { authToken: apiKey }
       : { apiKey }),
+    ...customFetch(config),
   }).messages(config.model);
 }
 
@@ -140,7 +147,12 @@ export function createGoogleGenerativeModel(
     name: `${config.providerName}.generative-ai`,
     baseURL: config.baseUrl,
     apiKey: credential(config.apiKey),
+    ...customFetch(config),
   }).chat(config.model);
+}
+
+function customFetch(config: Pick<TransportConfig, "headers">) {
+  return config.headers ? { fetch: fetchWithHeaders(config.headers) } : {};
 }
 
 function credential(apiKey: string | null | undefined): string {
