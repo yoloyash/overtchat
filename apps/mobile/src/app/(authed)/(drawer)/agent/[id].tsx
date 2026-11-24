@@ -1,3 +1,4 @@
+import { resolveAgentSessionThinking } from "@overtchat/shared/agent-creation";
 import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Keyboard, View } from "react-native";
@@ -120,6 +121,8 @@ function AgentSession({
   const { id: modelId, model } = snapshot
     ? sessionModel(snapshot)
     : { id: "", model: undefined };
+  const thinking =
+    resolveAgentSessionThinking(model, snapshot?.state.thinkingLevel) ?? "";
   const modes = snapshot ? sessionModes(snapshot) : [];
   const modeId = text(snapshot?.state.modeId);
   const mode = modes.find((item) => item.id === modeId);
@@ -516,7 +519,7 @@ function AgentSession({
           onBeforeDictate={stopSpeech}
           provider={snapshot?.provider}
           modelLabel={model?.label || modelId || "Model"}
-          thinkingLabel={thinkingLabel(model, text(snapshot?.state.thinkingLevel))}
+          thinkingLabel={thinkingLabel(model, thinking)}
           permission={
             mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined
           }
@@ -548,7 +551,7 @@ function AgentSession({
         modelId={modelId}
         modes={modes}
         modeId={modeId}
-        thinking={text(snapshot?.state.thinkingLevel)}
+        thinking={thinking}
         disabled={!ready || mutation.isPending}
         onModel={(model) =>
           void execute({ type: "set_model", modelId: model.id })
