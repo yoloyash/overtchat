@@ -14,6 +14,7 @@ export interface PingArgs {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string;
+  headers: Record<string, string> | null;
   model: string;
   providerOptions: Record<string, unknown> | null;
   toolCallingEnabled: boolean;

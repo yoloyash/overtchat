@@ -12,6 +12,7 @@ import {
 } from "@overtchat/shared";
 import type { CompletedImageUsage } from "@/lib/db/chatTurns";
 import { getImageModelConfig } from "@/lib/db/modelConfigs";
+import { connectionHeaders } from "@/lib/providers/server/request-headers";
 import { readFetchedImage, storeFetchedImage } from "@/lib/db/uploads";
 import {
   runImageProvider,
@@ -35,6 +36,7 @@ export { getImageCapability } from "./capability";
 
 function imageConnection(
   config: ReturnType<typeof getImageModelConfig>,
+  chatId: string | undefined,
 ): ImageConnection {
   if (
     !config ||
@@ -51,6 +53,7 @@ function imageConnection(
     providerId: config.providerId,
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
+    headers: connectionHeaders({ headers: config.headers, chatId }),
     model: config.model,
     ...(config.providerId === "custom"
       ? { providerOptions: config.providerOptions }
@@ -109,12 +112,15 @@ export function withImageReferences(
 
 export function createImageTools({
   userId,
+  chatId,
   messages,
   supportsImageInput,
   options,
   onUsage,
 }: {
   userId: string;
+  /** The chat these tools run in, for the `{{CHAT_ID}}` header placeholder. */
+  chatId?: string;
   messages: UIMessage[];
   supportsImageInput: boolean;
   options?: ImageGenerationOptions;
@@ -124,7 +130,7 @@ export function createImageTools({
   // Snapshot the provider for this turn so configuration changes cannot expose
   // editing for one backend and execute against another.
   const config = getImageModelConfig();
-  const connection = config ? imageConnection(config) : undefined;
+  const connection = config ? imageConnection(config, chatId) : undefined;
   const customOptions =
     connection?.providerId === "custom"
       ? customImageOptions(connection.providerOptions)

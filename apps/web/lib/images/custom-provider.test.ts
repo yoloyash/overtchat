@@ -27,6 +27,7 @@ const requests: Array<{
   path: string;
   auth?: string;
   contentType?: string;
+  session?: string | string[];
   body: string;
 }> = [];
 beforeAll(async () => {
@@ -37,6 +38,7 @@ beforeAll(async () => {
       path: req.url!,
       auth: req.headers.authorization,
       contentType: req.headers["content-type"],
+      session: req.headers["x-gateway-session"],
       body,
     });
     if (hold) return;
@@ -97,6 +99,19 @@ describe("custom OpenAI Images HTTP contract", () => {
     });
     expect(image.data).toEqual(Buffer.from(png, "base64"));
     expect(image.mediaType).toBe("image/png");
+  });
+  it("sends the connection's request headers, which can replace authentication", async () => {
+    await runImageProvider(
+      {
+        ...connection(),
+        apiKey: "saved-key",
+        headers: { "x-gateway-session": "abc", authorization: "Basic xyz" },
+      },
+      input,
+    );
+    expect(requests[0].session).toBe("abc");
+    expect(requests[0].auth).toBe("Basic xyz");
+    expect(requests[0].contentType).toBe("application/json");
   });
   it("uses backend defaults regardless of model/user size or quality suggestions", async () => {
     await runImageProvider(connection(), input);

@@ -17,6 +17,7 @@ export const deepSeekAdapter: ProviderAdapter = {
         providerName: "deepseek",
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
+        headers: config.headers,
         model: config.model,
         supportsImageInput: config.supportsImageInput,
         transformRequestBody: (body) =>
@@ -28,7 +29,11 @@ export const deepSeekAdapter: ProviderAdapter = {
     };
   },
   listModels(connection) {
-    return listOpenAIModels(connection.baseUrl, connection.apiKey);
+    return listOpenAIModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      );
   },
 };
 

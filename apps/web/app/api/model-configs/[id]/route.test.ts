@@ -64,6 +64,46 @@ describe("model updates", () => {
       apiKey: "existing-secret",
     });
   });
+  it("keeps stored request headers unless the client sends them", async () => {
+    // Older clients and the list's enable toggle do not know about headers.
+    await PATCH(request({ ...existing, enabled: false }), params);
+    expect("headers" in mocks.update.mock.calls[0][1]).toBe(false);
+
+    await PATCH(
+      request({ ...existing, headers: { " X-Session ": "{{CHAT_ID}}" } }),
+      params,
+    );
+    expect(mocks.update.mock.calls[1][1].headers).toEqual({
+      "X-Session": "{{CHAT_ID}}",
+    });
+
+    await PATCH(request({ ...existing, headers: null }), params);
+    expect(mocks.update.mock.calls[2][1].headers).toBeNull();
+  });
+  it("drops unsent request headers when the model moves to another provider", async () => {
+    mocks.get.mockResolvedValue({ ...existing, headers: { "X-Token": "secret" } });
+    await PATCH(
+      request({
+        ...existing,
+        providerId: "anthropic",
+        baseUrl: "https://api.anthropic.com/v1",
+        providerOptions: null,
+      }),
+      params,
+    );
+    expect(mocks.update.mock.calls[0][1].headers).toBeNull();
+  });
+  it("names the request header that cannot be saved", async () => {
+    const response = await PATCH(
+      request({ ...existing, headers: { Host: "elsewhere.example" } }),
+      params,
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "The Host request header is set by the app and cannot be changed",
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
   it.each([{ enabled: false }, { enabled: false, label: "incomplete" }, {}])(
     "rejects malformed/incomplete updates",
     async (body) => {
