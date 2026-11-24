@@ -17,19 +17,17 @@ export type AgentClientPresence = {
 };
 
 export type AgentNotificationPlan = {
-  /** The clients to tell, if any. */
-  recipients: string[];
-  /** Whether phones get a push as well. */
+  /** The one client to tell, or none. */
+  recipient: string | null;
+  /** Whether phones get a push instead. */
   push: boolean;
 };
 
 /**
  * A client is present while it was used within the presence window. Nobody
  * is told while a present client is looking at the session. Otherwise the
- * present client used most recently is told and phones stay quiet. With no
- * such client, every connected client that wants alerts is told, since a tab
- * in the background is still the way to reach that computer, and phones are
- * told too.
+ * present client used most recently is told, and phones only when no present
+ * client wants alerts.
  */
 export function planAgentNotification(
   clients: readonly AgentClientPresence[],
@@ -37,21 +35,16 @@ export function planAgentNotification(
   now: number,
 ): AgentNotificationPlan {
   let recipient: AgentClientPresence | null = null;
-  const connected: string[] = [];
   for (const client of clients) {
-    const present = now - client.activeAt <= AGENT_PRESENCE_WINDOW_MS;
-    if (present && client.visible && client.viewing === sessionId) {
-      return { recipients: [], push: false };
+    if (now - client.activeAt > AGENT_PRESENCE_WINDOW_MS) continue;
+    if (client.visible && client.viewing === sessionId) {
+      return { recipient: null, push: false };
     }
-    if (!client.notify) continue;
-    connected.push(client.clientId);
-    if (present && (!recipient || client.activeAt > recipient.activeAt)) {
+    if (client.notify && (!recipient || client.activeAt > recipient.activeAt)) {
       recipient = client;
     }
   }
-  return recipient
-    ? { recipients: [recipient.clientId], push: false }
-    : { recipients: connected, push: true };
+  return { recipient: recipient?.clientId ?? null, push: !recipient };
 }
 
 type Sink = (notification: AgentNotification) => void;
@@ -134,13 +127,10 @@ export class AgentClientRegistry {
     };
   }
 
-  /** Every client still attached or heard from within the presence window. */
   clients(userId: string, now = Date.now()): AgentClientPresence[] {
     const result: AgentClientPresence[] = [];
     for (const record of this.users.get(userId)?.values() ?? []) {
-      if (record.sinks.length === 0 && now - record.at > AGENT_PRESENCE_WINDOW_MS) {
-        continue;
-      }
+      if (now - record.at > AGENT_PRESENCE_WINDOW_MS) continue;
       result.push({
         clientId: record.clientId,
         activeAt: record.activeAt,

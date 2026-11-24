@@ -1915,11 +1915,11 @@ input to the computer in the desktop app. A client is present while it was
 used within three minutes. Nobody is told while a present client shows the
 session. Otherwise the server sends the alert over the event stream of the
 present client used most recently that wants alerts, and phones stay quiet.
-With no such client, every connected client that wants alerts is sent it, so
-a tab left in the background still notifies that computer, and phones get a
-push as well. Servers that predate `idleMs` refuse a report that carries it;
-the client then leaves it out, and such a client counts as used whenever it
-reports in. Push text names the session and what it needs when the device
+With no such client, phones get a push and no client is told: a browser tab
+nobody has touched for three minutes counts as left, while the desktop app
+stays present for as long as the computer is in use. Servers that predate
+`idleMs` refuse a report that carries it; the client then leaves it out, and
+such a client counts as used whenever it reports in. Push text names the session and what it needs when the device
 allows previews, and says only "An agent needs approval" or "An agent
 finished" otherwise. Every agent alert keeps the Android channel `agent-idle`,
 now named "Agent activity", so phones that predate this still show it.

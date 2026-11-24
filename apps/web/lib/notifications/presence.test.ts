@@ -34,7 +34,7 @@ describe("planning who hears about a session", () => {
         "s",
         now,
       ),
-    ).toEqual({ recipients: ["new"], push: false });
+    ).toEqual({ recipient: "new", push: false });
   });
 
   it("tells nobody while a client in use shows the session", () => {
@@ -47,49 +47,35 @@ describe("planning who hears about a session", () => {
         "s",
         now,
       ),
-    ).toEqual({ recipients: [], push: false });
-    // Not when that client is hidden, shows another session, or was left open.
-    for (const other of [
-      client({ viewing: "s", visible: false }),
-      client({ viewing: "t" }),
-    ]) {
-      expect(planAgentNotification([other], "s", now)).toEqual({
-        recipients: ["tab"],
-        push: false,
-      });
-    }
+    ).toEqual({ recipient: null, push: false });
+    // Not when that client is hidden or shows another session.
     expect(
-      planAgentNotification([client({ viewing: "s", activeAt: idle })], "s", now),
-    ).toEqual({ recipients: ["tab"], push: true });
+      planAgentNotification([client({ viewing: "s", visible: false })], "s", now)
+        .recipient,
+    ).toBe("tab");
+    expect(
+      planAgentNotification([client({ viewing: "t" })], "s", now).recipient,
+    ).toBe("tab");
   });
 
-  it("tells every connected client and the phones when none is in use", () => {
+  it("pushes when no client in use wants alerts", () => {
     expect(planAgentNotification([], "s", now)).toEqual({
-      recipients: [],
+      recipient: null,
       push: true,
     });
     expect(
       planAgentNotification(
         [
+          client({ notify: false }),
+          // Still reporting in, but nobody has touched them for a while.
           client({ clientId: "background-tab", activeAt: idle, visible: false }),
-          client({ clientId: "left-open", activeAt: idle - 60_000 }),
-          client({ clientId: "alerts-off", activeAt: idle, notify: false }),
+          client({ clientId: "left-open", activeAt: idle }),
+          client({ clientId: "left-open-viewer", activeAt: idle, viewing: "s" }),
         ],
         "s",
         now,
       ),
-    ).toEqual({ recipients: ["background-tab", "left-open"], push: true });
-    // A client in use that wants no alerts leaves them to the others.
-    expect(
-      planAgentNotification(
-        [
-          client({ clientId: "alerts-off", notify: false }),
-          client({ clientId: "background-tab", activeAt: idle, visible: false }),
-        ],
-        "s",
-        now,
-      ),
-    ).toEqual({ recipients: ["background-tab"], push: true });
+    ).toEqual({ recipient: null, push: true });
   });
 });
 
@@ -164,18 +150,10 @@ describe("the client registry", () => {
     expect(registry.clients("u", 2_000)[0]?.activeAt).toBe(2_000);
   });
 
-  it("keeps a quiet client while its stream is attached, and forgets it after", () => {
+  it("forgets clients that stopped reporting in", () => {
     const registry = new AgentClientRegistry();
-    const later = 1_000 + AGENT_PRESENCE_WINDOW_MS + 1;
-    registry.record("u", { clientId: "closed", visible: true, viewing: null, notify: true }, 1_000);
-    registry.record("u", { clientId: "background", visible: false, viewing: null, notify: true }, 1_000);
-    const stop = registry.subscribe("u", "background", vi.fn(), 1_000);
-    registry.record("u", { clientId: "new", visible: true, viewing: null, notify: true }, later);
-    expect(registry.clients("u", later)).toEqual([
-      { clientId: "background", activeAt: 1_000, visible: false, viewing: null, notify: true },
-      { clientId: "new", activeAt: later, visible: true, viewing: null, notify: false },
-    ]);
-    stop();
-    expect(registry.clients("u", later).map((c) => c.clientId)).toEqual(["new"]);
+    registry.record("u", { clientId: "old", visible: true, viewing: null, notify: true }, 1_000);
+    registry.record("u", { clientId: "new", visible: true, viewing: null, notify: true }, 1_000 + AGENT_PRESENCE_WINDOW_MS + 1);
+    expect(registry.clients("u", 1_000 + AGENT_PRESENCE_WINDOW_MS + 1).map((c) => c.clientId)).toEqual(["new"]);
   });
 });
