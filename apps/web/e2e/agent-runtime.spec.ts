@@ -3814,7 +3814,7 @@ test("keeps OMP history stable after compaction, model changes and connector res
     await expect.poll(rows).toEqual(before);
 
     // A model that does not reason leaves Oh My Pi with no effort level. The
-    // next model that reasons shows its default.
+    // next model that reasons shows the level the session had before.
     await page.getByTestId("agent-model-effort-trigger").click();
     await menu.getByRole("menuitem", { name: /Model.*Model B/u }).click();
     await menu.getByRole("menuitem", { name: /Model Plain/u }).click();
@@ -3825,6 +3825,10 @@ test("keeps OMP history stable after compaction, model changes and connector res
     await plainMenu.getByRole("menuitem", { name: /Model.*Model Plain/u }).click();
     await plainMenu.getByRole("menuitem", { name: /Model B/u }).click();
     await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect(page.getByTestId("agent-effort-label")).toHaveText("· Low");
+    await page.getByTestId("agent-model-effort-trigger").click();
+    await menu.getByRole("menuitem", { name: /Effort.*Low/u }).click();
+    await menu.getByRole("menuitem", { name: "High", exact: true }).click();
     await expect(page.getByTestId("agent-effort-label")).toHaveText("· High");
     await page.getByTestId("agent-model-effort-trigger").click();
     await menu.getByRole("menuitem", { name: /Effort.*High/u }).click();

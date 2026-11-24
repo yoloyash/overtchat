@@ -61,7 +61,13 @@ export class OmpClient {
   private persistenceNotice: string | undefined;
   private chunk: { id: string; count: number; byteLength: number; parts: Buffer[] } | undefined;
 
-  constructor(process: AgentProcess, private readonly modeId: string) {
+  // Oh My Pi reports no thinking level while its model does not reason, and
+  // does not restore one on the next model that does. The session keeps the
+  // last level it had, starting with the one it was launched with.
+  private thinkingLevel: string | undefined;
+
+  constructor(process: AgentProcess, private readonly modeId: string, thinkingLevel?: string) {
+    this.thinkingLevel = thinkingLevel;
     this.transport = new JsonlRpcTransport(process, "Oh My Pi");
     this.ready = new Promise<void>((resolve, reject) => {
       this.resolveReady = resolve;
@@ -104,8 +110,10 @@ export class OmpClient {
     const model = state.model;
     const nativeProvider = model && typeof model === "object" ? Reflect.get(model, "provider") : undefined;
     const nativeModelId = model && typeof model === "object" ? Reflect.get(model, "id") : undefined;
+    if (typeof state.thinkingLevel === "string") this.thinkingLevel = state.thinkingLevel;
     return {
       ...state,
+      ...(this.thinkingLevel ? { thinkingLevel: this.thinkingLevel } : {}),
       ...(typeof nativeProvider === "string" && typeof nativeModelId === "string"
         ? { model: { provider: "omp", id: `${nativeProvider}/${nativeModelId}` } }
         : {}),
@@ -321,7 +329,11 @@ export class OmpClient {
     return this.request({ type: "set_model", provider: modelId.slice(0, separator), modelId: modelId.slice(separator + 1) });
   }
 
-  setThinkingLevel(level: string): Promise<unknown> { return this.request({ type: "set_thinking_level", level }); }
+  async setThinkingLevel(level: string): Promise<unknown> {
+    const result = await this.request({ type: "set_thinking_level", level });
+    this.thinkingLevel = level;
+    return result;
+  }
 
   setMode(modeId: string): Promise<unknown> {
     ompApprovalMode(modeId);
@@ -486,5 +498,5 @@ export function buildOmpArgs(launch: OmpLaunch): string[] {
 export function startOmp(target: HostTarget, launch: OmpLaunch): OmpClient {
   const modeId = launch.modeId ?? "full";
   const args = buildOmpArgs(launch);
-  return new OmpClient(spawnOnHost(target, { command: launch.executable, args, cwd: launch.cwd, env: launch.env }), modeId);
+  return new OmpClient(spawnOnHost(target, { command: launch.executable, args, cwd: launch.cwd, env: launch.env }), modeId, launch.thinkingOptionId);
 }
