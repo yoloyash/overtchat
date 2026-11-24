@@ -498,7 +498,10 @@ instead. `OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR` applies to administrators who
 have a password, and to nobody once passwords are off.
 
 **Turning passwords off.** With `OIDC_DISABLE_PASSWORD_LOGIN=true` the server
-refuses password sign-ins and the apps show only the provider button. Password
+refuses password sign-ins and the apps show only the provider button. In a
+browser the login page goes straight to the provider, so someone already
+signed in there is let in without a click. It stays on the button after
+signing out and when a sign-in fails. Password
 and two-factor settings, and the administrator's password resets, are hidden.
 New users are added by email address only. If the provider is unreachable, set
 the variable back to `false`, recreate the app container, and sign in with a

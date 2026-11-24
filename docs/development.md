@@ -213,9 +213,14 @@ in the file for another port. Its users are `admin` (`admin@example.com`) and
 `development-password`. Give the OvertChat administrator the first address to
 see an account matched by email. `newcomer` is refused until
 `OIDC_AUTO_CREATE_USERS=true` or an administrator adds that address. Repeat
-with `OIDC_DISABLE_PASSWORD_LOGIN=true`: the login screen shows only the
-provider button, `POST /api/auth/sign-in/email` answers 403, and Security
-settings and **Settings → Users** offer no password actions.
+with `OIDC_DISABLE_PASSWORD_LOGIN=true`: `POST /api/auth/sign-in/email`
+answers 403, and Security settings and **Settings → Users** offer no password
+actions. A browser opening the app without a session must arrive at the
+provider without a click, and Back from there must not return to the login
+page. After **Log out** the login page must stay, showing only the provider
+button, also after a reload; `components/auth/LoginForm.tsx` remembers the
+sign-out for the tab in session storage. A failed sign-in must stay on the
+page with its message. The desktop and mobile apps always show the button.
 
 From `npm run dev:desktop`, **Continue with Keycloak** must open the default
 browser rather than a window of the app, the browser must end on "You're

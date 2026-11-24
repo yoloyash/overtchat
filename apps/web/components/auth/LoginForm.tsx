@@ -8,12 +8,13 @@ import {
   type SignInMethods,
 } from "@overtchat/shared";
 import { useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
+import { forgetSignedOut, signedOutHere } from "@/lib/auth/signedOut";
 import { desktopBridge } from "@/lib/desktop";
 import { useResetAuthState } from "@/lib/queries/auth";
 import { TwoFactorCodeForm } from "./TwoFactorCodeForm";
@@ -35,10 +36,23 @@ export function LoginForm({
     ssoError && sso ? ssoErrorMessage(ssoError, sso.name) : "",
   );
   const [submitting, setSubmitting] = useState(false);
-  const [ssoPending, setSsoPending] = useState(false);
   // The desktop app's sign-in happens in another program, which the person
   // may close without finishing; they can start again at any time.
   const inBrowser = Boolean(desktopBridge()?.signInWithProvider);
+  // With the provider as the only way in, this page has one thing to offer,
+  // so a browser goes straight there. Not after signing out or a failed
+  // sign-in, which would loop, and not in the desktop app, where it would
+  // open another program unasked.
+  const [straightToProvider] = useState(
+    () =>
+      Boolean(sso) &&
+      !methods.password &&
+      !ssoError &&
+      !signedOutHere() &&
+      !desktopBridge(),
+  );
+  const [ssoPending, setSsoPending] = useState(straightToProvider);
+  const wentStraight = useRef(false);
   const browserSignIn = useRef(0);
   const [showRecovery, setShowRecovery] = useState(false);
   // The second step's methods, once the password is accepted.
@@ -78,6 +92,7 @@ export function LoginForm({
 
   async function signInWithProvider() {
     if (!sso) return;
+    forgetSignedOut();
     setSsoPending(true);
     setError("");
     const bridge = desktopBridge();
@@ -94,17 +109,42 @@ export function LoginForm({
       }
       return;
     }
-    const { error } = await authClient.signIn.social({
+    await redirectToProvider(sso.name);
+  }
+
+  async function redirectToProvider(name: string, unasked = false) {
+    const { data, error } = await authClient.signIn.social({
       provider: SSO_PROVIDER_ID,
       callbackURL: "/",
       errorCallbackURL: "/login",
+      disableRedirect: unasked,
     });
-    // Otherwise the browser is on its way to the provider.
-    if (error) {
-      setError(ssoErrorMessage(error.code ?? "", sso.name));
+    if (error || (unasked && !data?.url)) {
+      setError(ssoErrorMessage(error?.code ?? "", name));
       setSsoPending(false);
+      return;
     }
+    // Asked for, the browser is already on its way to the provider. Sent
+    // unasked, it replaces this page, so Back leaves instead of returning
+    // here to be sent on again.
+    if (unasked && data?.url) window.location.replace(data.url);
   }
+
+  useEffect(() => {
+    if (!straightToProvider || !sso || wentStraight.current) return;
+    wentStraight.current = true;
+    void redirectToProvider(sso.name, true);
+  }, [straightToProvider, sso]);
+
+  useEffect(() => {
+    // Back from the provider's page, the browser may restore this one as it
+    // was left: waiting. Offer the button again.
+    function restored(event: PageTransitionEvent) {
+      if (event.persisted) setSsoPending(false);
+    }
+    window.addEventListener("pageshow", restored);
+    return () => window.removeEventListener("pageshow", restored);
+  }, []);
 
   if (twoFactorMethods) {
     return (
