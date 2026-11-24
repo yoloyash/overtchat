@@ -17,6 +17,12 @@ it at `overtchat://app`; the server is only an API. Validation is in
   third-party at `overtchat://app`, so `src/main/auth.ts` keeps Better Auth's
   bearer token, encrypted with `safeStorage`, and adds it to requests for the
   saved server. The renderer never sees it.
+- Signing in with the server's identity provider happens in the default
+  browser, never in a window of the app, so the provider sees a browser it
+  trusts and the person's saved sign-ins. `src/main/browser-sign-in.ts` listens
+  on a loopback port only while a sign-in is in progress and trades the
+  returned code for the session; see
+  `docs/development.md#identity-provider-sign-in-validation`.
 - A server must report the app's `CLIENT_API_LEVEL` from `/api/ping`. Older and
   newer servers get a blocking screen, never a degraded UI.
 - Routes live in the URL hash, so the protocol handler serves only real files.

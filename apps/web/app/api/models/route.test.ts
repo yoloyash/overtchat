@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   listProviderModels: vi.fn(),
   catalogContextWindowFor: vi.fn(),
   catalogCapabilitiesFor: vi.fn(),
+  catalogImagePricingFor: vi.fn(),
   catalogPricingFor: vi.fn(),
 }));
 
@@ -18,6 +19,7 @@ vi.mock("@/lib/providers/server/registry", () => ({
 vi.mock("@/lib/providers/server/model-catalog", () => ({
   catalogContextWindowFor: mocks.catalogContextWindowFor,
   catalogCapabilitiesFor: mocks.catalogCapabilitiesFor,
+  catalogImagePricingFor: mocks.catalogImagePricingFor,
   catalogPricingFor: mocks.catalogPricingFor,
 }));
 
@@ -62,6 +64,36 @@ describe("model discovery route", () => {
             }
           : undefined,
     );
+  });
+
+  it("offers image rates when discovering image models", async () => {
+    mocks.catalogImagePricingFor.mockReturnValue({
+      input: 5,
+      output: 30,
+      cacheRead: 0,
+      cacheWrite: 0,
+      tiered: false,
+    });
+    const res = await POST(
+      new Request("http://server.test/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          providerId: "openrouter",
+          apiFormat: "auto",
+          baseUrl: "https://openrouter.ai/api/v1",
+          apiKey: "router-key",
+          modelType: "image",
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const { models } = (await res.json()) as {
+      models: { catalogPricing?: { output: number } }[];
+    };
+    expect(models[0]?.catalogPricing?.output).toBe(30);
+    expect(mocks.catalogPricingFor).not.toHaveBeenCalled();
   });
 
   it("forwards the model type to discovery without storing it on the connection", async () => {

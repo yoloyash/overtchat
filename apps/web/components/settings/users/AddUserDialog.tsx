@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { authClient } from "@/lib/auth/client";
+import { signInMethodsQuery } from "@/lib/queries/auth";
 import {
   SettingsActions,
   SettingsNotice,
@@ -38,6 +40,9 @@ export function AddUserDialog({
   const [role, setRole] = useState<Role>("user");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { data: methods } = useQuery(signInMethodsQuery);
+  // With passwords off, the account is found by its email at the provider.
+  const provider = methods?.password === false ? methods.sso?.name : undefined;
 
   function reset() {
     setName("");
@@ -54,7 +59,7 @@ export function AddUserDialog({
     setError("");
     const { error } = await authClient.admin.createUser({
       email,
-      password,
+      ...(provider ? {} : { password }),
       name: name.trim(),
       role,
     });
@@ -94,7 +99,9 @@ export function AddUserDialog({
             Add user
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Share the password with them out-of-band. They can change it later.
+            {provider
+              ? `They sign in with ${provider}, using this email address.`
+              : "Share the password with them out-of-band. They can change it later."}
           </Dialog.Description>
 
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
@@ -124,20 +131,22 @@ export function AddUserDialog({
                 }}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-password">Password</Label>
-              <Input
-                id="new-password"
-                type="text"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError("");
-                }}
-              />
-            </div>
+            {!provider && (
+              <div className="space-y-1.5">
+                <Label htmlFor="new-password">Password</Label>
+                <Input
+                  id="new-password"
+                  type="text"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError("");
+                  }}
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="new-role">Role</Label>
               <Select

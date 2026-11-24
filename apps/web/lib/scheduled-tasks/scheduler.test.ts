@@ -100,28 +100,33 @@ describe("the scheduler", () => {
   });
 
   it("runs a task by hand beside the schedule, and counts it against the share", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const tasks = Array.from({ length: SCHEDULED_TASK_CONCURRENCY }, () => make());
     const { held, run } = heldRunner();
-    const claim = runScheduledTaskNow(tasks[0].id, "a", run);
-    expect(claim.trigger).toBe("manual");
-    expect(() => runScheduledTaskNow(tasks[0].id, "a", run)).toThrow(
-      "This task is already running.",
-    );
-    expect(() => runScheduledTaskNow(tasks[0].id, "b", run)).toThrow(
-      "Scheduled task not found.",
-    );
+    try {
+      const claim = runScheduledTaskNow(tasks[0].id, "a", run);
+      expect(claim.trigger).toBe("manual");
+      expect(() => runScheduledTaskNow(tasks[0].id, "a", run)).toThrow(
+        "This task is already running.",
+      );
+      expect(() => runScheduledTaskNow(tasks[0].id, "b", run)).toThrow(
+        "Scheduled task not found.",
+      );
 
-    // Two places left; the task already running is skipped, not queued.
-    const claims = tickScheduledTasks(at("2026-11-16T13:00:01Z"), run);
-    expect(claims.map((item) => item.task.id).sort()).toEqual(
-      tasks.slice(1).map((task) => task.id).sort(),
-    );
-    expect(store.listScheduledTaskRuns(tasks[0].id, "a")[0]).toMatchObject({
-      status: "skipped",
-      error: store.RUN_ERROR_OVERLAP,
-    });
-    for (const item of held) item.finish();
-    await settle();
+      // Two places left; the task already running is skipped, not queued.
+      const claims = tickScheduledTasks(at("2026-11-16T13:00:01Z"), run);
+      expect(claims.map((item) => item.task.id).sort()).toEqual(
+        tasks.slice(1).map((task) => task.id).sort(),
+      );
+      expect(store.listScheduledTaskRuns(tasks[0].id, "a")[0]).toMatchObject({
+        status: "skipped",
+        error: store.RUN_ERROR_OVERLAP,
+      });
+    } finally {
+      for (const item of held) item.finish();
+      await settle();
+    }
   });
 
   it("drops old history about once an hour", () => {

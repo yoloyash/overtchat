@@ -210,6 +210,7 @@ export function DocumentViewer({
           key={`${toolCallId}:${saved?.version ?? "draft"}:${sourceShown}`}
           document={document}
           source={sourceShown}
+          writing={writing}
           bottomInset={insets.bottom}
         />
       </View>
@@ -220,10 +221,12 @@ export function DocumentViewer({
 function DocumentBody({
   document,
   source,
+  writing,
   bottomInset,
 }: {
   document: ShownDocument;
   source: boolean;
+  writing: boolean;
   bottomInset: number;
 }) {
   const { colors, fonts } = useTheme();
@@ -234,7 +237,7 @@ function DocumentBody({
         contentContainerStyle={[styles.bodyContent, { paddingBottom: 24 + bottomInset }]}
       >
         {source ? (
-          <CodeBlock code={document.content} language={sourceLanguage(document)} />
+          <CodeBlock code={document.content} language={sourceLanguage(document)} streaming={writing} />
         ) : (
           <MarkdownBody text={document.content} />
         )}

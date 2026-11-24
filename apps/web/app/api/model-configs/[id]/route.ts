@@ -56,7 +56,13 @@ export async function PATCH(
       { status: 400 },
     );
   }
-  const input = restoreNewerProvider(req, parsed.data, existing);
+  const restored = restoreNewerProvider(req, parsed.data, existing);
+  // Headers a client did not send stay with the provider they were entered
+  // for; they may be credentials and must not follow the model to another.
+  const input =
+    restored.headers === undefined && restored.providerId !== existing.providerId
+      ? { ...restored, headers: null }
+      : restored;
   try {
     if (input.modelType !== "image")
       createConfiguredLanguageModel(connectionForValidation(input));

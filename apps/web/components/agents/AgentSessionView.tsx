@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertsIntro } from "@/components/AlertsIntro";
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { generateId } from "ai";
 import { agentRewindOptions } from "@overtchat/shared/agent-presentation";
@@ -51,6 +52,7 @@ import { latestAgentTaskList } from "@/lib/agents/presentation";
 import {
   agentForkDraftKey,
   agentSessionDraftRestoreKey,
+  resolveAgentSessionThinking,
 } from "@/lib/agents/sessionDraft";
 import { agentComposerDraftScope } from "@/lib/chat/composer-drafts";
 import {
@@ -119,17 +121,6 @@ function currentModel(
   return typeof model?.provider === "string" &&
     typeof model.id === "string"
     ? { provider: model.provider, id: model.id }
-    : null;
-}
-
-function currentThinking(
-  snapshot: AgentRuntimeSnapshot,
-  model: AgentRuntimeSnapshot["models"][number] | undefined,
-): string | null {
-  const level = snapshot.state.thinkingLevel;
-  return typeof level === "string" &&
-    model?.thinkingOptions?.some((option) => option.id === level)
-    ? level
     : null;
 }
 
@@ -588,7 +579,10 @@ export function AgentSessionView({
           candidate.id === model.id,
       )
     : undefined;
-  const thinking = currentThinking(snapshot, selectedModel);
+  const thinking = resolveAgentSessionThinking(
+    selectedModel,
+    snapshot.state.thinkingLevel,
+  );
   const currentName = sessionName(snapshot) || initialSessionName;
   const availableCollaborationModes = collaborationModes(snapshot);
   const collaborationMode = currentCollaborationMode(snapshot);
@@ -756,6 +750,7 @@ export function AgentSessionView({
           <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
+              {!readOnly && <AlertsIntro agents />}
               <AgentSessionContext
                 goal={goal}
                 tasks={tasks}

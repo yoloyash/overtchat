@@ -48,6 +48,9 @@ export interface DesktopWindowControls {
   close(): Promise<void>;
 }
 
+/** How a sign-in through the system browser ended; `error` is a server code. */
+export type DesktopSignInResult = { ok: true } | { ok: false; error: string };
+
 export interface DesktopBridge {
   windowControls?: DesktopWindowControls;
   /** Subscribes to menu commands and returns an unsubscribe function. */
@@ -65,4 +68,10 @@ export interface DesktopBridge {
   revealWindow?(): Promise<void>;
   /** Seconds since the user last touched the computer. */
   getSystemIdleSeconds?(): Promise<number>;
+  /**
+   * Signs in with the server's identity provider in the system browser, which
+   * has the user's passkeys and provider session, and keeps the session for
+   * the app. Settles when the browser hands back or the user starts over.
+   */
+  signInWithProvider?(): Promise<DesktopSignInResult>;
 }

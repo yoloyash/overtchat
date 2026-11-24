@@ -25,6 +25,7 @@ export async function POST(
     apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
+    headers: row.headers,
     model: row.model,
     providerOptions: row.providerOptions,
     toolCallingEnabled: row.toolCallingEnabled,

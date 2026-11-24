@@ -880,6 +880,8 @@ export const modelConfigs = sqliteTable(
       .notNull(),
     baseUrl: text("base_url").notNull(),
     apiKey: text("api_key"),
+    /** Extra request headers for this connection; values may hold `{{CHAT_ID}}`. */
+    headers: text("headers", { mode: "json" }).$type<Record<string, string>>(),
     model: text("model").notNull(),
     pricing: text("pricing", { mode: "json" }).$type<ModelPricing>(),
     contextWindow: integer("context_window"),

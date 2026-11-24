@@ -17,6 +17,10 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { DEFAULT_MODEL_SYSTEM_PROMPT } from "@/lib/model-config/defaults";
 import {
+  CHAT_ID_PLACEHOLDER,
+  modelHeadersFromRows,
+} from "@/lib/model-config/headers";
+import {
   ModelConfigSchema,
   supportsLocalReasoningConfig,
   type AdminModelConfig,
@@ -49,6 +53,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "../SettingsRows";
+import { RepeatablePairs, pairs, type Pair } from "../RepeatablePairs";
 
 export interface ModelEditorProps {
   /** When provided, editor loads the existing config from cache; otherwise a new one is being created. */
@@ -124,6 +129,13 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     return [...new Set(keys)];
   }, [isEditing, list, draft.providerId, draft.baseUrl]);
 
+  const [headerRows, setHeaderRows] = useState<Pair[]>(() =>
+    pairs(existing?.headers ?? {}, false),
+  );
+  const { headers, error: headersError } = useMemo(
+    () => modelHeadersFromRows(headerRows),
+    [headerRows],
+  );
   const [providerOptionsText, setProviderOptionsText] = useState(() =>
     existing?.providerOptions
       ? JSON.stringify(existing.providerOptions, null, 2)
@@ -186,6 +198,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !!draft.baseUrl &&
     !!draft.model &&
     pricingIsValid &&
+    !headersError &&
     (isImage || !providerOptionsError) &&
     !(requiresKey && !draft.apiKey && !perUser);
   const stillEditingOriginalConnection =
@@ -230,6 +243,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       apiFormat: draft.apiFormat,
       baseUrl: draft.baseUrl,
       apiKey: draft.apiKey ?? "",
+      headers,
       model: draft.model,
       providerOptions: parsedOptions,
       toolCallingEnabled: draft.toolCallingEnabled,
@@ -239,6 +253,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     draft.apiFormat,
     draft.baseUrl,
     draft.apiKey,
+    headers,
     draft.model,
     draft.toolCallingEnabled,
     providerOptionsText,
@@ -282,8 +297,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       return;
     }
 
+    if (headersError) {
+      setSaveError(headersError);
+      return;
+    }
+
     const parsed = ModelConfigSchema.safeParse({
       ...draft,
+      headers,
       pricing,
       label: draft.label.trim() || defaultLabelFor(draft.model),
       discoveredContextWindow:
@@ -415,9 +436,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               baseUrl: draft.baseUrl,
               apiKey: draft.apiKey ?? "",
               model: draft.model,
+              headers,
             }}
             onChange={(next) => {
               if (next.providerId) setImageOptionsError(false);
+              // Like the API key, headers belong to the provider they were
+              // entered for and must not follow the form to another one.
+              if (next.providerId && next.providerId !== draft.providerId)
+                setHeaderRows([]);
               setDraft((current) => {
                 const connectionIdentityChanged =
                   (next.providerId !== undefined &&
@@ -465,6 +491,24 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             autoFetchModels={!isEditing}
           />
 
+          <RepeatablePairs
+            label="Request headers"
+            description={
+              <>
+                Extra HTTP headers for gateways that need them.{" "}
+                <code>{CHAT_ID_PLACEHOLDER}</code> in a value becomes the
+                conversation&apos;s ID.
+              </>
+            }
+            rows={headerRows}
+            keyPlaceholder="Header"
+            valuePlaceholder="Value"
+            addLabel="Add header"
+            allowEmpty
+            error={headersError}
+            onChange={setHeaderRows}
+          />
+
           {!isImage && (
             <>
               <SettingsRow
@@ -497,9 +541,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 controlAlign="end"
               >
                 <ConnectionTester
-                  key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${draft.toolCallingEnabled}|${providerOptionsText}`}
+                  key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${draft.toolCallingEnabled}|${providerOptionsText}|${JSON.stringify(headers)}`}
                   args={pingArgs}
-                  disabled={requiresKey && !draft.apiKey}
+                  disabled={(requiresKey && !draft.apiKey) || !!headersError}
                 />
               </SettingsRow>
             </>
@@ -657,6 +701,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                         apiFormat: draft.apiFormat,
                         baseUrl: draft.baseUrl,
                         apiKey: draft.apiKey,
+                        headers,
                         model: draft.model,
                       }
                     : undefined

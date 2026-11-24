@@ -31,7 +31,16 @@ export function TwoFactorPrompt() {
   const [open, setOpen] = useState(() => !alreadyPrompted());
   const { data: status } = useQuery({ ...twoFactorQuery, enabled: open });
 
-  if (!open || !status || status.enabled || status.required) return null;
+  // An account without a password has nothing for a second factor to guard.
+  if (
+    !open ||
+    !status ||
+    status.enabled ||
+    status.required ||
+    status.passwordSignIn === false
+  ) {
+    return null;
+  }
 
   function close() {
     try {

@@ -17,7 +17,10 @@ import { resolve } from "node:path";
 import type { ModelReasoningControls } from "@overtchat/shared";
 import {
   createModelCatalogManifest,
+  MODEL_CATALOG_IMAGE_COST_SOURCE_URL,
   MODEL_CATALOG_SOURCE_URL,
+  type ModelCatalogImageCost,
+  readModelCatalogImageCost,
   validateModelCatalogArtifacts,
 } from "../lib/providers/server/model-catalog-artifacts";
 import { catalogReasoningControlsFor } from "../lib/providers/server/model-catalog-reasoning";
@@ -43,6 +46,7 @@ interface CatalogEntry {
   input?: number;
   output?: number;
   cost?: { [key: string]: JsonValue };
+  image_cost?: ModelCatalogImageCost;
   input_modalities?: string[];
   output_modalities?: string[];
   attachment?: boolean;
@@ -63,27 +67,25 @@ async function main() {
     "lib/providers/server/model-catalog.manifest.json",
   );
 
-  const response = await fetch(MODEL_CATALOG_SOURCE_URL);
-  if (!response.ok) {
-    throw new Error(
-      `Could not fetch ${MODEL_CATALOG_SOURCE_URL}: ${response.status} ${response.statusText}`,
-    );
-  }
-
-  const sourceText = await response.text();
-  const upstream: unknown = JSON.parse(sourceText);
-  if (!isRecord(upstream)) {
-    throw new Error(
-      `${MODEL_CATALOG_SOURCE_URL} did not return a provider object`,
-    );
-  }
+  const { text: sourceText, providers: upstream } = await fetchProviders(
+    MODEL_CATALOG_SOURCE_URL,
+  );
+  const { text: imageCostSourceText, providers: imageCostUpstream } =
+    await fetchProviders(MODEL_CATALOG_IMAGE_COST_SOURCE_URL);
 
   const output: Record<string, Record<string, CatalogEntry>> = {};
+  let imageCostCount = 0;
 
   for (const [providerId, sourceProviderId] of PROVIDERS) {
     const sourceProvider = upstream[sourceProviderId];
     if (!isRecord(sourceProvider) || !isRecord(sourceProvider.models)) {
       throw new Error(`models.dev provider "${sourceProviderId}" has no models`);
+    }
+    const imageCostProvider = imageCostUpstream[sourceProviderId];
+    if (!isRecord(imageCostProvider) || !isRecord(imageCostProvider.models)) {
+      throw new Error(
+        `models.dev v2 provider "${sourceProviderId}" has no models`,
+      );
     }
 
     const models: Record<string, CatalogEntry> = {};
@@ -116,6 +118,15 @@ async function main() {
 
       if (isRecord(sourceModel.cost)) {
         entry.cost = copyJsonObject(sourceModel.cost);
+      }
+
+      const imageCostModel = imageCostProvider.models[sourceKey];
+      const imageCost = isRecord(imageCostModel)
+        ? readModelCatalogImageCost(imageCostModel.cost)
+        : undefined;
+      if (imageCost) {
+        entry.image_cost = imageCost;
+        imageCostCount += 1;
       }
 
       const modalities = isRecord(sourceModel.modalities)
@@ -155,6 +166,12 @@ async function main() {
     output[providerId] = models;
   }
 
+  if (imageCostCount === 0) {
+    throw new Error(
+      `${MODEL_CATALOG_IMAGE_COST_SOURCE_URL} returned no image generation rates`,
+    );
+  }
+
   const catalogText = `${JSON.stringify(output, null, 2)}\n`;
   const modelCount = Object.values(output).reduce(
     (count, models) => count + Object.keys(models).length,
@@ -178,6 +195,7 @@ async function main() {
   const manifest = createModelCatalogManifest({
     catalogText,
     sourceText,
+    imageCostSourceText,
     generatedAt: new Date().toISOString(),
     modelCount,
   });
@@ -188,6 +206,23 @@ async function main() {
   writeFileSync(manifestPath, manifestText);
   console.log(`wrote ${outputPath} (${modelCount} models)`);
   console.log(`wrote ${manifestPath}`);
+}
+
+async function fetchProviders(
+  url: string,
+): Promise<{ text: string; providers: Record<string, unknown> }> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Could not fetch ${url}: ${response.status} ${response.statusText}`,
+    );
+  }
+  const text = await response.text();
+  const providers: unknown = JSON.parse(text);
+  if (!isRecord(providers)) {
+    throw new Error(`${url} did not return a provider object`);
+  }
+  return { text, providers };
 }
 
 function copyBoolean(

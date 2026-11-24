@@ -35,6 +35,10 @@ import {
   DEFAULT_SESSION_COST_ENABLED,
   SESSION_COST_STORAGE_KEY,
 } from "@/lib/chat/session-cost";
+import {
+  DEFAULT_EXPAND_ACTIVITY,
+  EXPAND_ACTIVITY_STORAGE_KEY,
+} from "@/lib/chat/activity-expansion";
 
 type ThemeValue = "light" | "dark" | "system";
 
@@ -69,6 +73,10 @@ export function GeneralForm() {
   const [sessionCostEnabled, setSessionCostEnabled] = useLocalStorage<boolean>(
     SESSION_COST_STORAGE_KEY,
     DEFAULT_SESSION_COST_ENABLED,
+  );
+  const [expandActivity, setExpandActivity] = useLocalStorage<boolean>(
+    EXPAND_ACTIVITY_STORAGE_KEY,
+    DEFAULT_EXPAND_ACTIVITY,
   );
   const [fontId, setFontId] = useLocalStorage<FontId>(
     FONT_STORAGE_KEY,
@@ -164,6 +172,22 @@ export function GeneralForm() {
         title="Messages"
         description="Choose which details appear in your conversations."
       >
+        <SettingsRow
+          title="Expand thinking and tools"
+          description="Open each reply's thinking and tool steps without a click."
+          htmlFor="expand-activity"
+          align="center"
+          controlAlign="end"
+          layout="toggle"
+        >
+          <Switch
+            id="expand-activity"
+            checked={expandActivity}
+            onCheckedChange={(next) => setExpandActivity(next)}
+            aria-label="Expand thinking and tools"
+          />
+        </SettingsRow>
+
         <SettingsRow
           title="Message stats"
           description="Show token counts and speed stats on assistant messages."

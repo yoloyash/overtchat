@@ -17,6 +17,7 @@ export const googleAdapter: ProviderAdapter = {
         providerName: "google",
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
+        headers: config.headers,
         model: config.model,
       }),
       providerOptionsKey: "google",
@@ -26,6 +27,10 @@ export const googleAdapter: ProviderAdapter = {
     };
   },
   listModels(connection) {
-    return listGoogleModels(connection.baseUrl, connection.apiKey);
+    return listGoogleModels(
+        connection.baseUrl,
+        connection.apiKey,
+        connection.headers,
+      );
   },
 };
