@@ -21,9 +21,9 @@ import {
   Text,
   View,
 } from "react-native";
+import { sameMap, sameSet, useStable } from "@/lib/equal";
 import { useTheme } from "@/lib/theme";
-import type { useSpeech } from "@/lib/useSpeech";
-import { MessageBubble } from "./MessageBubble";
+import { MessageBubble, type MessageSpeech } from "./MessageBubble";
 import {
   contextStatusLabel,
   isManualCompactionMessage,
@@ -55,6 +55,11 @@ function recentOpenUICards(messages: UIMessage[]): Set<string> {
   return keys;
 }
 
+/** Form states are small nested values, compared as written. */
+function sameSerialized(a: ReadonlyMap<string, unknown>, b: ReadonlyMap<string, unknown>) {
+  return a.size === b.size && JSON.stringify([...a]) === JSON.stringify([...b]);
+}
+
 export function MessageList({
   messages,
   streaming,
@@ -82,7 +87,7 @@ export function MessageList({
   contextStatus?: ContextStatus | null;
   error: Error | undefined;
   editingId: string | null;
-  speech: ReturnType<typeof useSpeech>;
+  speech: MessageSpeech;
   refreshing?: boolean;
   onRefresh?: () => void;
   onReconnect?: () => void;
@@ -96,10 +101,19 @@ export function MessageList({
   localAnchorRequestKey: number;
   readOnly?: boolean;
 }) {
-  const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
-  const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
-  const replacedEmails = useMemo(() => replacedGmailEmailIds(messages), [messages]);
-  const liveOpenUI = useMemo(() => recentOpenUICards(messages), [messages]);
+  // Every streamed update is a new list of messages, so these are rebuilt each
+  // time. Holding on to the earlier one while its content is unchanged keeps
+  // the messages that receive them from rendering again.
+  const openuiStates = useStable(
+    useMemo(() => collectOpenUIStates(messages), [messages]),
+    sameSerialized,
+  );
+  const codeFiles = useStable(useMemo(() => codeExecutionFileIndex(messages), [messages]), sameMap);
+  const replacedEmails = useStable(
+    useMemo(() => replacedGmailEmailIds(messages), [messages]),
+    sameSet,
+  );
+  const liveOpenUI = useStable(useMemo(() => recentOpenUICards(messages), [messages]), sameSet);
   const { colors, fonts } = useTheme();
   const latestMessage = messages.at(-1);
   const latestMessageId = latestMessage?.id;

@@ -64,7 +64,7 @@ import {
   type ModelPickerSheetRef,
 } from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
-import { getAuthClient } from "@/lib/auth/client";
+import { useAuthSession } from "@/lib/auth/client";
 import { useCapabilities } from "@/lib/queries/capabilities";
 import { useChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
@@ -84,6 +84,7 @@ import {
 } from "@/lib/reasoningPreferences";
 import { useOpenUIEnabled, useWebSearchEnabled } from "@/lib/toolPreferences";
 import { useSpeech } from "@/lib/useSpeech";
+import { useStableEvent } from "@/lib/useStableEvent";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 import {
@@ -91,6 +92,9 @@ import {
   isContextStatus,
   type ContextStatus,
 } from "@overtchat/shared";
+
+// One empty list for every render, so the picker is not handed a new one each time.
+const NO_MODELS: NonNullable<ReturnType<typeof useModelConfigs>["data"]> = [];
 
 export default function ChatScreen() {
   const { activeChatId, isNewChat, activeProjectId } = useChatSession();
@@ -199,7 +203,7 @@ function ChatSurface({
   const { startNewChat } = useChatSession();
   const qc = useQueryClient();
   const baseURL = useMemo(() => getApiBase(), []);
-  const session = getAuthClient().useSession();
+  const session = useAuthSession();
   const isAdmin =
     (session.data?.user as { role?: string | null } | undefined)?.role ===
     "admin";
@@ -344,8 +348,12 @@ function ChatSurface({
     onRefresh: setMessages,
     onPersisted: handleGenerationSettled,
   });
+  // Read by a refresh that finishes later. Updated after each render rather
+  // than during it, which the React Compiler requires of a ref.
   const voiceBusyRef = useRef(voice.busy);
-  voiceBusyRef.current = voice.busy;
+  useEffect(() => {
+    voiceBusyRef.current = voice.busy;
+  });
   const generation = useChatGenerationRecovery({
     baseURL,
     chatId,
@@ -381,11 +389,10 @@ function ChatSurface({
   const streaming = status === "streaming" || status === "submitted";
   // Tool call whose document version the viewer shows.
   const [documentTarget, setDocumentTarget] = useState<string | null>(null);
-  const closeDocument = useCallback(() => setDocumentTarget(null), []);
-  const documentViewer = useMemo(
-    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
-    [documentTarget],
-  );
+  // Left to the React Compiler, which memoizes both. It rejects the whole
+  // component when these are wrapped by hand.
+  const closeDocument = () => setDocumentTarget(null);
+  const documentViewer = { activeToolCallId: documentTarget, open: setDocumentTarget };
   const configured = Boolean(selectedId);
   const modelLoading =
     modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
@@ -774,6 +781,92 @@ function ChatSurface({
     );
   }
 
+  // Handlers for the message list and the composer. Each keeps one identity, so
+  // an update to the reply being written does not redraw every other message
+  // and the composer along with it.
+  const reconnect = useStableEvent(() => {
+    if (!voice.busy && !streaming) void generation.reconcile().catch(() => undefined);
+  });
+  const playMessage = useStableEvent(async (id: string, text: string) => {
+    if (voice.busy) {
+      toastError("End live voice before playing a message.");
+      return;
+    }
+    await speech.play(id, text);
+  });
+  const { activeId: speechActiveId, status: speechStatus } = speech;
+  const messageSpeech = useMemo(
+    () => ({ activeId: speechActiveId, status: speechStatus, play: playMessage }),
+    [speechActiveId, speechStatus, playMessage],
+  );
+  const refreshNow = useStableEvent(onRefreshMessages);
+  const startEdit = useStableEvent((id: string) => {
+    if (!voice.busy && !streaming) setEditingId(id);
+  });
+  const cancelEdit = useStableEvent(() => setEditingId(null));
+  const saveEdit = useStableEvent(handleSaveEdit);
+  const regenerateMessage = useStableEvent(handleRegenerate);
+  const continueMessage = useStableEvent(handleContinue);
+  const submitOpenUIAction = useStableEvent((action: OpenUIAction) =>
+    handleSubmit(action.message, [], action),
+  );
+  const referenceImage = useStableEvent((file: FileUIPart) => {
+    addReference(file);
+    setImageOptions({ size: "auto", quality: "auto" });
+  });
+  const selectModel = useStableEvent((modelId: string) => {
+    if (voice.busy) {
+      void voice.end().then((ended) => {
+        if (!ended) return;
+        setSearchRequested(false);
+        setImageOptions(undefined);
+        setSelectedId(modelId);
+      });
+      return;
+    }
+    setSearchRequested(false);
+    setOpenuiRequested(false);
+    setImageOptions(undefined);
+    setSelectedId(modelId);
+  });
+  const selectReasoningLevel = useStableEvent((level: Parameters<typeof setReasoningLevel>[1]) => {
+    if (!selectedId) return;
+    if (voice.busy) {
+      void voice.end().then((ended) => {
+        if (ended) setReasoningLevel(selectedId, level);
+      });
+      return;
+    }
+    setReasoningLevel(selectedId, level);
+  });
+  const submit = useStableEvent(handleSubmit);
+  const stopSpeech = useStableEvent(() => speech.stop());
+  const endVoice = useStableEvent(() => {
+    void voice.end();
+  });
+  const startVoice = useStableEvent(() => {
+    if (
+      !selectedId ||
+      streaming ||
+      voice.busy ||
+      attachments.length ||
+      uploading ||
+      chatQueue.messages.length
+    ) {
+      return;
+    }
+    speech.stop();
+    Keyboard.dismiss();
+    void voice.start({
+      chatId,
+      projectId,
+      modelConfigId: selectedId,
+      webSearchEnabled: searchAvailable,
+      reasoningLevel,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+  });
+
   return (
     <DocumentViewerProvider value={documentViewer}>
     <KeyboardAvoidingView
@@ -834,30 +927,26 @@ function ChatSurface({
           streaming={streaming}
           status={status}
           error={error}
-          onReconnect={() => {
-            if (!voice.busy && !streaming) void generation.reconcile().catch(() => undefined);
-          }}
+          onReconnect={reconnect}
           editingId={editingId}
-          speech={{ ...speech, play: async (id, text) => {
-            if (voice.busy) { toastError("End live voice before playing a message."); return; }
-            await speech.play(id, text);
-          } }}
+          speech={messageSpeech}
           refreshing={refreshingMessages}
-          onRefresh={isNew || voice.busy ? undefined : onRefreshMessages}
-          onStartEdit={(id) => !voice.busy && !streaming && setEditingId(id)}
-          onCancelEdit={() => setEditingId(null)}
-          onSaveEdit={handleSaveEdit}
+          onRefresh={isNew || voice.busy ? undefined : refreshNow}
+          onStartEdit={startEdit}
+          onCancelEdit={cancelEdit}
+          onSaveEdit={saveEdit}
           onOpenUIAction={
             !voice.busy && !streaming && configured && chatQueue.messages.length === 0
-              ? (action) => handleSubmit(action.message, [], action)
+              ? submitOpenUIAction
               : undefined
           }
-          onRegenerate={handleRegenerate}
-          onContinue={handleContinue}
-          onImageReference={!voice.busy && imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
-            addReference(file);
-            setImageOptions({ size: "auto", quality: "auto" });
-          } : undefined}
+          onRegenerate={regenerateMessage}
+          onContinue={continueMessage}
+          onImageReference={
+            !voice.busy && imageAvailable && imageCapability?.supportsEditing !== false
+              ? referenceImage
+              : undefined
+          }
           localAnchorRequestKey={localAnchorRequestKey}
         />
       )}
@@ -894,32 +983,9 @@ function ChatSurface({
             voiceUnavailableReason={voiceUnavailableReason}
             textInputDisabled={voice.status === "ending"}
             endVoiceDisabled={voice.cleanupPending}
-            onStartVoice={() => {
-              if (
-                !selectedId ||
-                streaming ||
-                voice.busy ||
-                attachments.length ||
-                uploading ||
-                chatQueue.messages.length
-              ) {
-                return;
-              }
-              speech.stop();
-              Keyboard.dismiss();
-              void voice.start({
-                chatId,
-                projectId,
-                modelConfigId: selectedId,
-                webSearchEnabled: searchAvailable,
-                reasoningLevel,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              });
-            }}
-            onEndVoice={() => {
-              void voice.end();
-            }}
-            onBeforeDictate={() => speech.stop()}
+            onStartVoice={startVoice}
+            onEndVoice={endVoice}
+            onBeforeDictate={stopSpeech}
             configured={configured}
             modelLoading={modelLoading}
             streaming={streaming}
@@ -957,44 +1023,21 @@ function ChatSurface({
               void addFiles(uris.map(pastedImageToPickedFile));
             }}
             chatQueue={chatQueue}
-            onSubmit={handleSubmit}
+            onSubmit={submit}
             onStop={handleStop}
           />
       </View>
 
       <ModelPickerSheet
         ref={pickerRef}
-        models={models ?? []}
+        models={models ?? NO_MODELS}
         selectedId={selectedId}
         loading={modelsPending}
         error={modelsError}
         reasoningControls={reasoningControls}
         reasoningLevel={reasoningLevel}
-        onSelect={(modelId) => {
-          if (voice.busy) {
-            void voice.end().then((ended) => {
-              if (!ended) return;
-              setSearchRequested(false);
-              setImageOptions(undefined);
-              setSelectedId(modelId);
-            });
-            return;
-          }
-          setSearchRequested(false);
-          setOpenuiRequested(false);
-          setImageOptions(undefined);
-          setSelectedId(modelId);
-        }}
-        onSelectReasoningLevel={(level) => {
-          if (!selectedId) return;
-          if (voice.busy) {
-            void voice.end().then((ended) => {
-              if (ended) setReasoningLevel(selectedId, level);
-            });
-            return;
-          }
-          setReasoningLevel(selectedId, level);
-        }}
+        onSelect={selectModel}
+        onSelectReasoningLevel={selectReasoningLevel}
       />
 
       <AddToChatSheet

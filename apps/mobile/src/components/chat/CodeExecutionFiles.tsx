@@ -19,26 +19,34 @@ function categoryOf(file: CodeExecutionFile): AttachmentCategory {
   return "document";
 }
 
+/**
+ * Downloads a run's file and writes it to a folder the user picks, reporting
+ * the outcome. Outside the hook because the React Compiler leaves a hook
+ * holding try/catch with a throw unoptimized.
+ */
+async function saveFile(file: CodeExecutionFile) {
+  try {
+    // Download first, so a failed request does not leave the folder picker open.
+    const response = await authFetch(`${getApiBase()}${file.url}`);
+    if (!response.ok) throw new Error(`Download failed (${response.status})`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const directory = await Directory.pickDirectoryAsync();
+    directory.createFile(file.name, file.mediaType).write(bytes);
+    toastSuccess("File saved");
+  } catch (error) {
+    if (!(error instanceof Error && /cancel/i.test(error.message)))
+      toastError("Could not save file", error);
+  }
+}
+
 /** Saves a run's file to a folder the user picks. */
 export function useSaveFile() {
   const [saving, setSaving] = useState<string | null>(null);
 
   async function save(file: CodeExecutionFile) {
     setSaving(file.id);
-    try {
-      // Download first, so a failed request does not leave the folder picker open.
-      const response = await authFetch(`${getApiBase()}${file.url}`);
-      if (!response.ok) throw new Error(`Download failed (${response.status})`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      const directory = await Directory.pickDirectoryAsync();
-      directory.createFile(file.name, file.mediaType).write(bytes);
-      toastSuccess("File saved");
-    } catch (error) {
-      if (!(error instanceof Error && /cancel/i.test(error.message)))
-        toastError("Could not save file", error);
-    } finally {
-      setSaving(null);
-    }
+    await saveFile(file);
+    setSaving(null);
   }
 
   return { saving, save };

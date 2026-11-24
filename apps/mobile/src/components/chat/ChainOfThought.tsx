@@ -4,7 +4,7 @@ import {
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 import { useLayoutState } from "@shopify/flash-list";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -51,6 +51,7 @@ import {
 import type { DynamicToolUIPart } from "ai";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
+import { sameItems, shallowEqual } from "@/lib/equal";
 import { useTheme } from "@/lib/theme";
 import { CalendarLogo } from "../CalendarLogo";
 import { GmailLogo } from "../GmailLogo";
@@ -108,7 +109,7 @@ function isTool(
  * Adding a new activity kind (e.g. code execution) is one new step icon +
  * renderer; nothing else moves. Mirrors the web ChainOfThought, RN-native.
  */
-export function ChainOfThought({
+function ChainOfThoughtView({
   parts,
   active,
 }: {
@@ -283,7 +284,7 @@ function ShimmerLabel({
   active: boolean;
   children: React.ReactNode;
 }) {
-  const opacity = useRef(new Animated.Value(1)).current;
+  const [opacity] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (!active) {
@@ -314,7 +315,7 @@ function ShimmerLabel({
 }
 
 /** A single timeline node: left rail (icon + connector) + the step's content. */
-function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
+function StepView({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon: RailIcon =
     isTool(part) && part.state === "output-error"
       ? "failed"
@@ -365,6 +366,18 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
     </View>
   );
 }
+
+// A streamed update hands every part over as a new object, changed or not, so
+// both compare parts by content: only the step that changed renders again.
+const Step = memo(
+  StepView,
+  (earlier, next) => earlier.isLast === next.isLast && shallowEqual(earlier.part, next.part),
+);
+
+export const ChainOfThought = memo(
+  ChainOfThoughtView,
+  (earlier, next) => earlier.active === next.active && sameItems(earlier.parts, next.parts),
+);
 
 type RailIcon =
   | "search"

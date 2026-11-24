@@ -4,7 +4,7 @@ import type { ImageGenerationOptions, ModelBrandIconId } from "@overtchat/shared
 import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
 import { TextInputWrapper } from "expo-paste-input";
-import { useState } from "react";
+import { memo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -33,7 +33,21 @@ const AUDIO_LINES_PATHS = [
   "M22 10v3",
 ] as const;
 
-export function Composer({
+/**
+ * Runs a task with the busy flag up, lowering it however the task ends. It
+ * lives outside the component because the React Compiler leaves a component
+ * holding try/finally unoptimized.
+ */
+async function whileBusy<T>(setBusy: (busy: boolean) => void, task: () => Promise<T>): Promise<T> {
+  setBusy(true);
+  try {
+    return await task();
+  } finally {
+    setBusy(false);
+  }
+}
+
+function ComposerView({
   chatQueue,
   voiceInstalled = false,
   voiceEligible = false,
@@ -128,10 +142,8 @@ export function Composer({
     if (streaming && text.toLowerCase() === "/compact" && !attachments.length) return;
     if (!text && attachments.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-    setSubmitting(true);
-    try {
-      if (await onSubmit(text, attachments) !== false) setInput(current => current.trim() === text ? "" : current);
-    } finally { setSubmitting(false); }
+    const sent = await whileBusy(setSubmitting, async () => onSubmit(text, attachments));
+    if (sent !== false) setInput(current => current.trim() === text ? "" : current);
   }
 
   function toggleMic() {
@@ -739,3 +751,6 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
 });
+
+/** The composer does not depend on the reply being written, so it sits out those updates. */
+export const Composer = memo(ComposerView);
