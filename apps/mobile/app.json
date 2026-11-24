@@ -13,6 +13,9 @@
       "buildNumber": "36",
       "config": {
         "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSPhotoLibraryAddUsageDescription": "Allow overtchat to save images from chats to your photos."
       }
     },
     "android": {
