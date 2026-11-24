@@ -162,12 +162,16 @@ export function ChainOfThought({
   const lastTool = [...parts].reverse().find(isTool);
   // Reasoning stays inline when it is all the run did.
   const collapseThoughts = lastTool !== undefined;
-  const steps = parts.filter(
-    (part) =>
-      !isReasoning(part) ||
-      part.text.trim() !== "" ||
-      part.state === "streaming",
-  );
+  // Keyed by position in `parts`, so dropping an empty thought never shifts
+  // another step's open state onto its neighbour.
+  const steps = parts
+    .map((part, index) => ({ part, index }))
+    .filter(
+      ({ part }) =>
+        !isReasoning(part) ||
+        part.text.trim() !== "" ||
+        part.state === "streaming",
+    );
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
 
@@ -228,9 +232,9 @@ export function ChainOfThought({
       >
         <div className="overflow-hidden">
           <div className="pt-1">
-            {steps.map((part, i) => (
+            {steps.map(({ part, index }, i) => (
               <Step
-                key={i}
+                key={index}
                 part={part}
                 isLast={i === steps.length - 1}
                 collapseThoughts={collapseThoughts}
