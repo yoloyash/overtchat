@@ -141,6 +141,80 @@ npm run test -w apps/web -- lib/chat/markdown-math.test.tsx
 E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
 ```
 
+## Identity provider sign-in validation
+
+`lib/auth/oidc.ts` reads the operator's OpenID Connect provider from the
+environment once, at startup; `docs/deploy.md` lists the variables. With one
+configured, `lib/auth/server.ts` registers it with Better Auth as the provider
+`oidc`, whose callback is `/api/auth/callback/oidc`. The ID token is verified
+against the provider's keys. Accounts are matched by email on a first sign-in
+and by the provider's subject afterwards; account creation follows
+`OIDC_AUTO_CREATE_USERS` and never the public sign-up setting.
+`/api/sign-in-methods` tells every client, before login, whether to show the
+password form and what to call the provider. Turning passwords off is enforced
+by the server on `/sign-in/email`, not by hiding the form. Two-factor and
+sign-in approval only follow a password sign-in; `/api/two-factor` reports
+`passwordSignIn: false` for an account that cannot use one, and clients then
+hide the password and two-factor settings instead of requiring setup.
+
+Desktop and mobile cannot receive the provider's redirect, so they sign in
+through the system browser with a flow of our own, described in
+`packages/shared/src/sign-in.ts`:
+
+1. The app makes a secret and opens `/api/native-sign-in/start` with the
+   secret's SHA-256 challenge, a state, and where to return: a loopback port
+   the desktop app listens on, or `overtchat://login` on mobile. No other
+   return address is accepted.
+2. The server remembers the request and sends the browser to the provider.
+   The provider's callback signs the browser in and lands on
+   `/api/native-sign-in/finish`.
+3. Finish accepts only a session newer than the request, issues a code that
+   works once for two minutes, and returns the browser to the app. It signs
+   the browser out again unless it was signed in before the app's sign-in began.
+4. The app posts the code and its secret to
+   `/api/auth/native-sign-in/exchange` and receives its own session: a bearer
+   token on desktop, a cookie on mobile. A wrong secret spends the code.
+
+Starting needs no login and stores a row, so the server allows 60 starts a
+minute in total. Requests and codes are rows in `verification`, stored by hash
+(`lib/db/nativeSignIn.ts`). A code is useless without the secret, which never
+leaves the app, so another app that registers the same URL scheme or reads the
+loopback redirect cannot use it.
+
+```sh
+npm run test -w apps/web -- lib/auth/oidc.test.ts lib/auth/native-sign-in.test.ts
+E2E_PORT=4881 npm run test:e2e -w apps/web -- sign-in-methods.spec.ts
+```
+
+`oidc.test.ts` drives the real auth handler against an in-process provider
+(`lib/auth/fixtures/oidc-provider.ts`): linking, refusal, account creation,
+disabled accounts, passwords off, and the native flow's single use, secret
+check, and browser sign-out. For a change to the flow or a Better Auth
+upgrade, also sign in through a real provider. Keycloak starts with a ready
+realm:
+
+```sh
+docker run --rm -p 127.0.0.1:8081:8081 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  -e KC_HOSTNAME=http://localhost:8081 \
+  -v "$PWD/apps/web/lib/auth/fixtures/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro" \
+  quay.io/keycloak/keycloak:26.4 start-dev --import-realm --http-port 8081
+
+OIDC_ISSUER_URL=http://localhost:8081/realms/overtchat OIDC_CLIENT_ID=overtchat \
+  OIDC_CLIENT_SECRET=overtchat-development-secret OIDC_PROVIDER_NAME=Keycloak \
+  npm run dev:web
+```
+
+The realm's client redirects to `http://localhost:4717`; change `redirectUris`
+in the file for another port. Its users are `admin` (`admin@example.com`) and
+`newcomer` (`newcomer@example.com`), both with the password
+`development-password`. Give the OvertChat administrator the first address to
+see an account matched by email. `newcomer` is refused until
+`OIDC_AUTO_CREATE_USERS=true` or an administrator adds that address. Repeat
+with `OIDC_DISABLE_PASSWORD_LOGIN=true`: the login screen shows only the
+provider button, `POST /api/auth/sign-in/email` answers 403, and Security
+settings and **Settings → Users** offer no password actions.
+
 ## CI browser and desktop smoke diagnostics
 
 Web E2E runs inside the official Playwright image

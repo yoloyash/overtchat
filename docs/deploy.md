@@ -437,6 +437,66 @@ from turning it off. Other users can still choose. Two-factor sign-in needs the
 current web, desktop, and mobile apps; older apps ask the user to update. Older
 apps keep using codes and never receive approval requests.
 
+## Sign in with an identity provider
+
+OvertChat can sign people in through one OpenID Connect provider that you
+run or trust, such as Authentik, Authelia, Keycloak, Pocket ID, or Microsoft
+Entra ID. It is configured from the app's environment and stays off until the
+issuer, client ID, and client secret are all set. A partial or unusable
+configuration leaves it off and says why in the app's logs.
+
+1. In the provider, create a confidential (web) client with the redirect
+   address `<BETTER_AUTH_URL>/api/auth/callback/oidc`, for example
+   `https://chat.example.com/api/auth/callback/oidc`, and the `openid`,
+   `profile`, and `email` scopes. `BETTER_AUTH_URL` must be the address people
+   open; the app derives the redirect address from it.
+2. Set the variables below and recreate the app container. The login screen
+   then shows **Continue with** and the provider's name.
+
+| Variable | Meaning |
+| --- | --- |
+| `OIDC_ISSUER_URL` | The provider's issuer, for example `https://id.example.com` or `https://id.example.com/realms/home`. The app reads `/.well-known/openid-configuration` below it, so the address must be reachable from the app container as well as from browsers. |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | The client you created. Keep the secret in `.env`; quote it with single quotes if it contains `$`. |
+| `OIDC_PROVIDER_NAME` | What the button calls the provider. Defaults to `SSO`. |
+| `OIDC_AUTO_CREATE_USERS` | `true` creates an account, with the user role, the first time someone signs in. Off by default: only people who already have an account can sign in. |
+| `OIDC_DISABLE_PASSWORD_LOGIN` | `true` turns password sign-in off for everyone. Ignored unless the provider is configured. |
+
+**Who can sign in.** A first sign-in is matched to the OvertChat account with
+the same email address; afterwards the account is recognized by the provider's
+own ID for that person, so a later email change at the provider does not move
+them to another account. Without `OIDC_AUTO_CREATE_USERS`, add people in
+**Settings → Users** first, using the email address the provider reports. With
+it, anyone the provider lets through gets an account, so restrict who may use
+the client in the provider. Disabled accounts stay refused either way.
+
+Matching by email means OvertChat trusts the provider's email addresses,
+verified or not. Anyone who can sign in to the provider with an administrator's
+email address becomes that administrator. Only connect a provider where people
+cannot choose their own email address, or where you control who has an account.
+
+**Two-factor.** A sign-in through the provider does not ask for OvertChat's
+two-factor code or sign-in approval; require a second factor at the provider
+instead. `OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR` applies to administrators who
+have a password, and to nobody once passwords are off.
+
+**Turning passwords off.** With `OIDC_DISABLE_PASSWORD_LOGIN=true` the server
+refuses password sign-ins and the apps show only the provider button. Password
+and two-factor settings, and the administrator's password resets, are hidden.
+New users are added by email address only. If the provider is unreachable, set
+the variable back to `false`, recreate the app container, and sign in with a
+password. That needs an administrator who has one: the account created during
+setup does, accounts created by a first sign-in do not, and
+[password recovery](#password-recovery) only replaces a password an account
+already has. Keep the setup administrator, or another administrator with a
+password, before turning passwords off.
+
+Signing out of OvertChat does not sign out of the provider.
+
+Refusals are shown on the login screen. "Doesn't have an OvertChat account on
+this server" means no account has that email address and
+`OIDC_AUTO_CREATE_USERS` is off. "Didn't share your email address" means the
+provider's client is missing the `email` scope or claim.
+
 ## Choose how to access OvertChat
 
 First-time installation and `overtchat setup` use the same access question.
@@ -1305,6 +1365,10 @@ authentication for `http://localhost:4718`. To use a LAN IP or domain, set the
 browser address accordingly and recreate the app container. Changing the auth
 address does not change which network interfaces listen. Use the guided manager
 for automatic coordination of these settings.
+
+The source Compose file passes the `OIDC_*` variables from `.env` to the app;
+see [Sign in with an identity provider](#sign-in-with-an-identity-provider).
+With [Minimal Compose](#minimal-compose), uncomment them in the file.
 
 For manual Compose, `DISABLE_UPDATE_CHECK=true` disables release notifications.
 Guided installations expose this preference in `overtchat setup`.
