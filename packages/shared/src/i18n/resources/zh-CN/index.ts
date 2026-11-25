@@ -1,9 +1,18 @@
 import type { Translation } from "../../catalog";
-import { common } from "./common";
 import { accent } from "./accent";
-import { settings } from "./settings";
 import { agents } from "./agents";
-import { scheduled } from "./scheduled";
 import { auth } from "./auth";
+import { common } from "./common";
+import { projects } from "./projects";
+import { scheduled } from "./scheduled";
+import { settings } from "./settings";
 
-export const zhCN: Translation = { common, accent, settings, agents, scheduled, auth };
+export const zhCN: Translation = {
+  accent,
+  agents,
+  auth,
+  common,
+  projects,
+  scheduled,
+  settings,
+};
