@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -22,6 +23,7 @@ export function UserCredentials({
   modelId: string;
   defaultBaseUrl: string;
 }) {
+  const { t } = useTranslation();
   const { data: users = [], error: usersError, isSuccess: usersLoaded } = useUsers();
   const {
     data: credentials = [],
@@ -36,15 +38,17 @@ export function UserCredentials({
 
   return (
     <SettingsSection
-      title="People"
-      description="Each person can chat with their own key and endpoint. Leave a field empty to use the model's own."
+      title={t("models.userCredentials.title")}
+      description={t("models.userCredentials.description")}
     >
       {error && (
         <SettingsNotice tone="error">
-          {getErrorMessage(error, "Couldn't load people")}
+          {getErrorMessage(error, t("models.userCredentials.loadError"))}
         </SettingsNotice>
       )}
-      {!ready && !error && <SettingsNotice>Loading people…</SettingsNotice>}
+      {!ready && !error && (
+        <SettingsNotice>{t("models.userCredentials.loading")}</SettingsNotice>
+      )}
       {ready && users.map((u) => (
         <UserCredentialRow
           key={u.id}
@@ -69,6 +73,7 @@ function UserCredentialRow({
   defaultBaseUrl: string;
   credential?: Pick<AdminModelUserCredential, "apiKey" | "baseUrl">;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -98,25 +103,37 @@ function UserCredentialRow({
       setEditing(false);
       setApiKey("");
       toast.success({
-        title: removing ? "Using the model's own credentials" : "Credential saved",
+        title: removing
+          ? t("models.userCredentials.removedTitle")
+          : t("models.userCredentials.savedTitle"),
         description: who,
       });
     } catch (err) {
       toast.error({
-        title: "Couldn't save credential",
-        description: getErrorMessage(err, "Request failed"),
+        title: t("models.userCredentials.saveErrorTitle"),
+        description: getErrorMessage(
+          err,
+          t("models.userCredentials.saveErrorFallback"),
+        ),
       });
     }
   }
 
-  const status = hasOwn
-    ? [
-        credential?.apiKey ? `own key ${maskKey(credential.apiKey)}` : null,
-        credential?.baseUrl ? `own endpoint ${credential.baseUrl}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "Uses the model's key and endpoint";
+  const status =
+    credential?.apiKey && credential?.baseUrl
+      ? t("models.userCredentials.statusOwnBoth", {
+          maskedKey: maskKey(credential.apiKey),
+          baseUrl: credential.baseUrl,
+        })
+      : credential?.apiKey
+        ? t("models.userCredentials.statusOwnKey", {
+            maskedKey: maskKey(credential.apiKey),
+          })
+        : credential?.baseUrl
+          ? t("models.userCredentials.statusOwnEndpoint", {
+              baseUrl: credential.baseUrl,
+            })
+          : t("models.userCredentials.statusDefault");
 
   return (
     <SettingsRow
@@ -135,29 +152,31 @@ function UserCredentialRow({
         >
           <PasswordInput
             id={inputId}
-            aria-label={`API key for ${who}`}
+            aria-label={t("models.userCredentials.apiKeyLabel", { who })}
             autoComplete="new-password"
-            placeholder="Leave empty to use the model's key"
+            placeholder={t("models.userCredentials.apiKeyPlaceholder")}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
           <Input
-            aria-label={`Endpoint for ${who}`}
-            placeholder={`Leave empty to use ${defaultBaseUrl}`}
+            aria-label={t("models.userCredentials.endpointLabel", { who })}
+            placeholder={t("models.userCredentials.endpointPlaceholder", {
+              baseUrl: defaultBaseUrl,
+            })}
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
-              Cancel
+              {t("models.userCredentials.cancel")}
             </Button>
             <Button
               type="submit"
               size="sm"
               disabled={setMut.isPending}
-              aria-label={`Save credential for ${who}`}
+              aria-label={t("models.userCredentials.saveLabel", { who })}
             >
-              Save
+              {t("models.userCredentials.save")}
             </Button>
           </div>
         </form>
@@ -169,20 +188,26 @@ function UserCredentialRow({
               variant="outline"
               size="sm"
               disabled={setMut.isPending}
-              aria-label={`Remove credential for ${who}`}
+              aria-label={t("models.userCredentials.removeLabel", { who })}
               onClick={() => void save(true)}
             >
-              Remove
+              {t("models.userCredentials.remove")}
             </Button>
           )}
           <Button
             type="button"
             variant="outline"
             size="sm"
-            aria-label={`${hasOwn ? "Change" : "Set up"} credential for ${who}`}
+            aria-label={
+              hasOwn
+                ? t("models.userCredentials.changeLabel", { who })
+                : t("models.userCredentials.setUpLabel", { who })
+            }
             onClick={startEditing}
           >
-            {hasOwn ? "Change" : "Set up"}
+            {hasOwn
+              ? t("models.userCredentials.change")
+              : t("models.userCredentials.setUp")}
           </Button>
         </div>
       )}
