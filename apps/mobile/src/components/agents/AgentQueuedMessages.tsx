@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -29,11 +30,12 @@ export function AgentQueuedMessages({
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   if (!messages.length) return null;
   return (
     <ScrollView
-      accessibilityLabel="Pending messages"
+      accessibilityLabel={t("agents.composer.pendingMessages")}
       style={{ maxHeight: 160 }}
       contentContainerStyle={{ gap: 8 }}
       keyboardShouldPersistTaps="handled"
@@ -42,6 +44,11 @@ export function AgentQueuedMessages({
         const sending = message.status === "sending";
         const uncertain = message.status === "uncertain";
         const imageCount = message.images?.length ?? 0;
+        const statusLabel = uncertain
+          ? t("agents.mobile.composer.deliveryUnknown")
+          : sending
+            ? t("agents.composer.sending")
+            : t("agents.composer.queued");
         return (
           <View
             key={message.id}
@@ -86,7 +93,7 @@ export function AgentQueuedMessages({
                 }}
               >
                 {message.message ||
-                  `${imageCount} attached ${imageCount === 1 ? "image" : "images"}`}
+                  t("agents.composer.attachedImages", { count: imageCount })}
               </Text>
               <Text
                 style={{
@@ -95,14 +102,12 @@ export function AgentQueuedMessages({
                   fontSize: 11,
                 }}
               >
-                {uncertain
-                  ? "Delivery unknown — check the chat before resending"
-                  : sending
-                    ? "Sending"
-                    : "Queued"}
                 {imageCount
-                  ? ` · ${imageCount} ${imageCount === 1 ? "image" : "images"}`
-                  : ""}
+                  ? t("agents.composer.queuedStatusWithImages", {
+                      status: statusLabel,
+                      count: imageCount,
+                    })
+                  : statusLabel}
               </Text>
             </View>
             {!sending && (
@@ -115,22 +120,22 @@ export function AgentQueuedMessages({
                 }}
               >
                 <Action
-                  label="Edit queued message"
+                  label={t("agents.composer.editQueued")}
                   icon="pencil-outline"
                   disabled={disabled || editDisabled}
                   onPress={() => onEdit(message)}
                 />
                 {supportsSteer && running && !uncertain && (
                   <Action
-                    label="Steer with queued message"
+                    label={t("agents.composer.steerWithQueued")}
                     icon="return-up-forward-outline"
-                    text="Steer"
+                    text={t("agents.composer.steer")}
                     disabled={disabled}
                     onPress={() => onSteer(message.id)}
                   />
                 )}
                 <Action
-                  label="Delete queued message"
+                  label={t("agents.composer.deleteQueued")}
                   icon="trash-outline"
                   disabled={disabled}
                   onPress={() => onRemove(message.id)}

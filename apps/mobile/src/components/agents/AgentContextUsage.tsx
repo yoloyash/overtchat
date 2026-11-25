@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import type { AgentSessionStats } from "@overtchat/agent-bridge";
 import { getContextMeterValues } from "@overtchat/shared/context-meter";
@@ -20,6 +21,7 @@ export function AgentContextButton({
   usage: ContextUsage;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   const values = contextValues(usage);
   return (
@@ -27,8 +29,10 @@ export function AgentContextButton({
       accessibilityRole="button"
       accessibilityLabel={
         values?.percentage !== undefined
-          ? `Context: ${values.percentage}% used. Show details`
-          : "Context usage unavailable. Show details"
+          ? t("agents.mobile.contextUsage.triggerPercent", {
+              percentage: values.percentage,
+            })
+          : t("agents.mobile.contextUsage.triggerUnavailable")
       }
       onPress={onPress}
       style={({ pressed }) => ({
@@ -56,6 +60,7 @@ export function AgentContextSheet({
   onClose: () => void;
   stale?: boolean;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const values = contextValues(usage);
   const limit =
@@ -63,16 +68,16 @@ export function AgentContextSheet({
       ? usage.contextWindow
       : undefined;
   const rows = [
-    ["Used", values?.usedTokens],
-    ["Remaining", values?.remainingTokens],
-    ["Context window", limit],
+    ["used", t("agents.mobile.contextUsage.used"), values?.usedTokens],
+    ["remaining", t("agents.mobile.contextUsage.remaining"), values?.remainingTokens],
+    ["window", t("agents.mobile.contextUsage.contextWindow"), limit],
   ] as const;
   return (
     <AgentSheet
-      title="Context usage"
+      title={t("agents.mobile.contextUsage.title")}
       visible={visible}
       onClose={onClose}
-      closeLabel="Close context usage"
+      closeLabel={t("agents.mobile.contextUsage.closeLabel")}
       snapPoints={["45%", "70%"]}
     >
       <View
@@ -86,14 +91,14 @@ export function AgentContextSheet({
         <ContextRing values={values} size={40} />
         <AgentText title>
           {values?.percentage !== undefined
-            ? `${values.percentage}% used`
-            : "Usage unavailable"}
+            ? t("chat.usage.percentUsed", { percentage: values.percentage })
+            : t("agents.mobile.contextUsage.unavailable")}
         </AgentText>
       </View>
       <View style={{ gap: 16 }}>
-        {rows.map(([label, value]) => (
+        {rows.map(([key, label, value]) => (
           <View
-            key={label}
+            key={key}
             style={{
               flexDirection: "row",
               justifyContent: "space-between",
@@ -111,7 +116,9 @@ export function AgentContextSheet({
             >
               {value === undefined
                 ? "—"
-                : `${Math.round(value).toLocaleString()} tokens`}
+                : t("agents.context.tokensUsed", {
+                    used: Math.round(value).toLocaleString(),
+                  })}
             </Text>
           </View>
         ))}
@@ -119,13 +126,13 @@ export function AgentContextSheet({
       {values?.percentage === undefined && (
         <AgentText muted>
           {values
-            ? "The agent hasn't reported a context limit."
-            : "The agent hasn't reported context usage yet."}
+            ? t("agents.mobile.contextUsage.noLimit")
+            : t("agents.mobile.contextUsage.notReported")}
         </AgentText>
       )}
       {stale && (
         <AgentText muted>
-          Last reported usage. Updates resume when connected.
+          {t("agents.mobile.contextUsage.stale")}
         </AgentText>
       )}
     </AgentSheet>

@@ -1,4 +1,6 @@
 import React, { act } from "react";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -63,11 +65,23 @@ afterEach(async () => {
 });
 
 it("isolates delayed draft moves by their original server and account", async () => {
-  await act(async () => root.render(<Probe id="new:scope-test" />));
+  await act(async () =>
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <Probe id="new:scope-test" />
+      </I18nextProvider>,
+    ),
+  );
   const old = current;
   native.server = "https://b.example";
   native.user = "bob";
-  await act(async () => root.render(<Probe key="b" id="created:scope-test" />));
+  await act(async () =>
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <Probe key="b" id="created:scope-test" />
+      </I18nextProvider>,
+    ),
+  );
   await act(async () =>
     current.setDraft({ message: "Bob's draft", images: [] }, true),
   );
@@ -90,7 +104,13 @@ it("isolates delayed draft moves by their original server and account", async ()
 });
 
 it("keeps newer drafts when an earlier submission finishes, in memory and on disk", async () => {
-  await act(async () => root.render(<Probe id="new:revision-test" />));
+  await act(async () =>
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <Probe id="new:revision-test" />
+      </I18nextProvider>,
+    ),
+  );
   await act(async () =>
     current.setDraft({ message: "Original", images: [] }, true),
   );
@@ -115,7 +135,11 @@ it("keeps newer drafts when an earlier submission finishes, in memory and on dis
     old.saveDraftToSession("created:revision-test", submitted),
   );
   await act(async () =>
-    root.render(<Probe key="created" id="created:revision-test" />),
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <Probe key="created" id="created:revision-test" />
+      </I18nextProvider>,
+    ),
   );
   await act(async () =>
     current.setDraft({ message: "Follow-up", images: [] }, true),

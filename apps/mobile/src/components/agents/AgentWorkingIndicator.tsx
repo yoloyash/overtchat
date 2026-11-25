@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import Animated, {
   ReduceMotion,
@@ -12,11 +13,13 @@ import { formatAgentElapsed } from "@/lib/agents/transcript";
 import { useTheme } from "@/lib/theme";
 
 export function AgentWorkingIndicator({
-  label = "Agent working",
+  label,
 }: {
   label?: string;
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
+  const resolvedLabel = label ?? t("agents.mobile.transcript.agentWorking");
   return (
     <View
       style={{
@@ -28,7 +31,7 @@ export function AgentWorkingIndicator({
       }}
     >
       <ActivityIndicator
-        accessibilityLabel={label}
+        accessibilityLabel={resolvedLabel}
         accessibilityRole="progressbar"
         size="small"
         color={colors.foreground}
@@ -39,24 +42,26 @@ export function AgentWorkingIndicator({
 }
 
 function useElapsed(startedAt: number | null | undefined) {
+  const { t } = useTranslation();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (startedAt == null) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [startedAt]);
-  return startedAt == null ? null : formatAgentElapsed(now - startedAt);
+  return startedAt == null ? null : formatAgentElapsed(now - startedAt, t);
 }
 
 /** The running turn's header. "Worked for …" takes its place when the turn ends. */
 export function AgentRunHeader({ startedAt }: { startedAt?: number | null }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const elapsed = useElapsed(startedAt);
   return (
     <View
       accessible
       // Announce the state once; a ticking clock would be re-read every second.
-      accessibilityLabel="Working"
+      accessibilityLabel={t("agents.activity.status.working")}
       testID="agent-run-header"
       style={{
         minHeight: 40,
@@ -75,7 +80,9 @@ export function AgentRunHeader({ startedAt }: { startedAt?: number | null }) {
           fontVariant: ["tabular-nums"],
         }}
       >
-        {elapsed ? `Working for ${elapsed}` : "Working"}
+        {elapsed
+          ? t("agents.activity.workingFor", { elapsed })
+          : t("agents.activity.status.working")}
       </Text>
     </View>
   );

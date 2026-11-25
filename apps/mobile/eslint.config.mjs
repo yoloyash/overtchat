@@ -13,6 +13,10 @@ const TRANSLATED = [
   "src/lib/voice/**/*.{ts,tsx}",
   "src/lib/useDictation.ts",
   "src/lib/useSpeech.ts",
+  "src/app/(authed)/(drawer)/agent/**",
+  "src/app/(authed)/(drawer)/agents/**",
+  "src/components/agents/**",
+  "src/lib/agents/**",
 ];
 
 // The typecheck covers code quality here; this config only parses TypeScript

@@ -1,5 +1,6 @@
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Linking, View } from "react-native";
 import type {
   AgentRuntimeSnapshot,
@@ -32,6 +33,7 @@ export function AgentInteraction({
   error?: string;
   onRespond: (response: Response) => void;
 }) {
+  const { t } = useTranslation();
   const [linkError, setLinkError] = useState<string>();
   const approval = approvalDetails(request);
   const tool = approval.choices.length > 0;
@@ -41,7 +43,7 @@ export function AgentInteraction({
       title={approval.title}
       visible={visible}
       onClose={onClose}
-      closeLabel="Close request"
+      closeLabel={t("agents.mobile.interaction.closeLabel")}
       snapPoints={["70%", "90%"]}
       footer={
         tool ? (
@@ -60,30 +62,33 @@ export function AgentInteraction({
         !approval.sections.some(
           (section) =>
             section.kind === "diff" ||
-            ["Before", "After"].includes(section.label),
+            [
+              t("agents.toolDetails.before"),
+              t("agents.toolDetails.after"),
+            ].includes(section.label),
         ) && (
           <AgentText muted>
-            The agent did not provide a change preview.
+            {t("agents.mobile.interaction.noChangePreview")}
           </AgentText>
         )}
       {request.method === "external" &&
         (url ? (
           <AgentButton
-            label="Open authorization page"
+            label={t("agents.dialogs.openAuthPage")}
             onPress={() => {
               void Linking.openURL(url).catch(() =>
-                setLinkError("Couldn't open the authorization page."),
+                setLinkError(t("agents.mobile.interaction.openAuthFailed")),
               );
             }}
           />
         ) : (
           <AgentText danger>
-            The agent did not provide a valid authorization URL.
+            {t("agents.mobile.interaction.invalidAuthUrl")}
           </AgentText>
         ))}
       {request.method !== "external" && !tool && (
         <AgentText muted>
-          This interaction requires the web app. You can cancel it here.
+          {t("agents.mobile.interaction.webAppRequired")}
         </AgentText>
       )}
       {!!(error || linkError) && (
@@ -93,13 +98,13 @@ export function AgentInteraction({
         <View style={{ gap: 4 }}>
           {request.method === "external" && (
             <AgentButton
-              label="Submit response"
+              label={t("agents.mobile.interaction.submitResponse")}
               disabled={pending || !url}
               onPress={() => onRespond({ confirmed: true })}
             />
           )}
           <AgentButton
-            label="Cancel request"
+            label={t("agents.mobile.interaction.cancelRequest")}
             disabled={pending}
             onPress={() => onRespond({ cancelled: true })}
           />

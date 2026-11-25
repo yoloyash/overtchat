@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Text, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -25,6 +26,7 @@ export function AgentSessionHeaderTitle({
   workspaceName: string;
   working?: boolean;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const { width } = useWindowDimensions();
   return (
@@ -39,7 +41,11 @@ export function AgentSessionHeaderTitle({
       <View
         accessible
         accessibilityLabel={
-          provider ? `${agentProviderMetadata(provider).label} agent` : "Agent"
+          provider
+            ? t("agents.newSession.providerAgent", {
+                provider: agentProviderMetadata(provider).label,
+              })
+            : t("agents.setup.agent")
         }
       >
         {provider ? (

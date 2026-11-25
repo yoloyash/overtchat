@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { ApiError } from "@overtchat/shared";
 import {
   applyEnvelopeToReplica,
@@ -158,7 +159,7 @@ export class AgentSessionStream {
         (data.sync !== undefined && !isAgentSessionSync(data.sync)) ||
         (isAgentSessionSync(data.sync) && data.sync.reset && data.sync.snapshot.sessionId !== this.options.id)
       ) {
-        throw new Error("The server returned an invalid agent session.");
+        throw new Error(i18n.t("agents.mobile.errors.invalidSession"));
       }
       commit(
         replicaFromOpenResult(
@@ -181,7 +182,7 @@ export class AgentSessionStream {
         !stream.body ||
         !stream.headers.get("content-type")?.includes("text/event-stream")
       ) {
-        throw new Error("The server did not return an agent event stream.");
+        throw new Error(i18n.t("agents.mobile.errors.missingEventStream"));
       }
       this.options.onStatus("connected");
       const parse = createEventParser((event, text) => {
@@ -190,7 +191,8 @@ export class AgentSessionStream {
         const value: unknown = JSON.parse(text);
         if (event === "sync" && isAgentSessionSync(value)) {
           const next = applySyncToReplica(this.replica, value);
-          if (!next) throw new Error("Agent session needs to resynchronize.");
+          if (!next)
+            throw new Error(i18n.t("agents.mobile.errors.needsResync"));
           commit(next);
         } else if (
           event !== "sync" &&
@@ -202,10 +204,10 @@ export class AgentSessionStream {
               ? applyLegacyEnvelopeToReplica(this.replica, value)
               : applyEnvelopeToReplica(this.replica, value);
           if (update.type === "reconcile")
-            throw new Error("Agent session needs to resynchronize.");
+            throw new Error(i18n.t("agents.mobile.errors.needsResync"));
           if (update.type === "applied") commit(update.replica);
         } else {
-          throw new Error("The server returned an invalid agent event.");
+          throw new Error(i18n.t("agents.mobile.errors.invalidEvent"));
         }
         this.attempt = 0;
       });
@@ -222,11 +224,14 @@ export class AgentSessionStream {
         await reader.cancel().catch(() => {});
         reader.releaseLock();
       }
-      if (current()) throw new Error("Agent connection closed. Reconnecting…");
+      if (current())
+        throw new Error(i18n.t("agents.mobile.errors.connectionClosed"));
     } catch (error) {
       if (!current()) return;
       const message =
-        error instanceof Error ? error.message : "Agent connection failed.";
+        error instanceof Error
+          ? error.message
+          : i18n.t("agents.mobile.errors.connectionFailed");
       if (
         error instanceof AgentHttpError &&
         [401, 403, 404].includes(error.status)

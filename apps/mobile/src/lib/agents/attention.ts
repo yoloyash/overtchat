@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import {
   agentProviderMetadata,
   type AgentSessionListItem,
@@ -156,7 +157,7 @@ function statusEntries(
   }
   return entries.length
     ? entries
-    : [{ kind: "empty", key: "empty", text: "No sessions yet." }];
+    : [{ kind: "empty", key: "empty", text: i18n.t("sidebar.agents.noSessionsYet") }];
 }
 
 function workspaceEntries(
@@ -181,7 +182,11 @@ function workspaceEntries(
     });
     if (collapsed) continue;
     if (items.length === 0) {
-      entries.push({ kind: "empty", key: `${group.key}:empty`, text: "No sessions yet." });
+      entries.push({
+        kind: "empty",
+        key: `${group.key}:empty`,
+        text: i18n.t("sidebar.agents.noSessionsYet"),
+      });
       continue;
     }
     for (const entry of items) {
@@ -195,5 +200,5 @@ function workspaceEntries(
   }
   return entries.length
     ? entries
-    : [{ kind: "empty", key: "empty", text: "No workspaces yet." }];
+    : [{ kind: "empty", key: "empty", text: i18n.t("agents.mobile.drawer.noWorkspacesYet") }];
 }

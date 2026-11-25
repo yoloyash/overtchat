@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { apiError } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
 import { AgentHttpError } from "./stream";
@@ -12,9 +13,13 @@ export async function agentFetch(
       error?: string;
     } | null;
     throw new AgentHttpError(
-      apiError(response.status, body, response.status === 404
-        ? "This agent session or workspace is no longer available."
-        : "Could not complete the agent request. Please try again.").message,
+      apiError(
+        response.status,
+        body,
+        response.status === 404
+          ? i18n.t("agents.mobile.errors.unavailable")
+          : i18n.t("agents.errors.requestFailed"),
+      ).message,
       response.status,
     );
   }
