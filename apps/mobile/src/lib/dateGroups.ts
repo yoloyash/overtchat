@@ -1,5 +1,3 @@
-import { i18n } from "@overtchat/shared/i18n";
-
 const DAY_MS = 86_400_000;
 
 export type DateBucket =
@@ -42,7 +40,7 @@ function bucketFor(ts: number, startOfToday: number): DateBucket {
 export function groupByDate<T extends { updatedAt: number }>(
   items: T[],
   now: number = Date.now(),
-): { bucket: DateBucket; label: string; items: T[] }[] {
+): { bucket: DateBucket; items: T[] }[] {
   const startOfToday = startOfDay(now);
   const map = new Map<DateBucket, T[]>();
   for (const item of items) {
@@ -54,7 +52,7 @@ export function groupByDate<T extends { updatedAt: number }>(
   return ORDER.flatMap((bucket) => {
     const list = map.get(bucket);
     return list && list.length
-      ? [{ bucket, label: i18n.t(DATE_BUCKET_KEYS[bucket]), items: list }]
+      ? [{ bucket, items: list }]
       : [];
   });
 }

@@ -29,7 +29,7 @@ import {
   type AgentSessionSort,
 } from "@/lib/agents/search";
 import { groupWorkspaces } from "@/lib/agents/workspaces";
-import { groupByDate, type DateBucket } from "@/lib/dateGroups";
+import { DATE_BUCKET_KEYS, groupByDate } from "@/lib/dateGroups";
 import { useAgentConnections } from "@/lib/queries/agents";
 import { useTheme } from "@/lib/theme";
 import { useNow } from "@/lib/useNow";
@@ -38,14 +38,6 @@ type Picker = "host" | "workspace" | "provider" | "sort";
 
 /** The value a sheet uses for "every machine", "every folder", "every agent". */
 const ALL = "";
-
-const DATE_BUCKET_KEYS = {
-  Today: "sidebar.dateGroups.today",
-  Yesterday: "sidebar.dateGroups.yesterday",
-  "Last 7 days": "sidebar.dateGroups.last7Days",
-  "Last 30 days": "sidebar.dateGroups.last30Days",
-  Older: "sidebar.dateGroups.older",
-} as const satisfies Record<DateBucket, string>;
 
 /** What a history row says under its setup: the request, the error, or the reply. */
 export function agentHistorySnippet(
@@ -121,8 +113,8 @@ export default function AgentHistoryScreen() {
         })),
         now,
       ).map((bucket) => ({
-        key: bucket.label,
-        title: t(DATE_BUCKET_KEYS[bucket.label]),
+        key: bucket.bucket,
+        title: t(DATE_BUCKET_KEYS[bucket.bucket]),
         data: bucket.items,
       })),
     [results, sort, now, t],
