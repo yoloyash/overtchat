@@ -10,6 +10,8 @@ export type ChatListItem = {
   kind: ChatKind;
   projectId: string | null;
   updatedAt: number;
+  /** The scheduled task whose run started this chat, when one did. */
+  scheduledTaskName?: string;
 };
 
 export function useChats() {

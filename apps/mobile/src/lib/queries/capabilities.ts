@@ -7,7 +7,12 @@ export function useCapabilities() {
   return useQuery({
     queryKey: queryKeys.capabilities(),
     queryFn: async (): Promise<{
-      capabilities: { images?: ImageCapability; voice?: VoiceCapability; chatPinning?: boolean };
+      capabilities: {
+        images?: ImageCapability;
+        voice?: VoiceCapability;
+        chatPinning?: boolean;
+        scheduledTasks?: boolean;
+      };
     }> => {
       const response = await authFetch(`${getApiBase()}/api/capabilities`);
       if (!response.ok) throw new Error("Could not load server capabilities.");

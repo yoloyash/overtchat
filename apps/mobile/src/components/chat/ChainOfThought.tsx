@@ -177,7 +177,9 @@ function ChainOfThoughtView({
           ? "mail"
           : isCalendarToolPart(lastTool)
             ? "calendar"
-            : "web"
+            : isScheduledTaskToolPart(lastTool)
+              ? "scheduled"
+              : "web"
     : null;
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
@@ -245,7 +247,7 @@ function StatusIcon({
   color,
 }: {
   active: boolean;
-  toolKind: "web" | "file" | "code" | "mail" | "calendar" | null;
+  toolKind: "web" | "file" | "code" | "mail" | "calendar" | "scheduled" | null;
   failed: boolean;
   color: string;
 }) {
@@ -289,6 +291,11 @@ function StatusIcon({
       <View style={styles.statusIcon}>
         <CalendarLogo size={15} />
       </View>
+    );
+  }
+  if (toolKind === "scheduled") {
+    return (
+      <Ionicons name="calendar-outline" size={15} color={color} style={styles.statusIcon} />
     );
   }
   if (toolKind === "web") {
@@ -373,7 +380,9 @@ function StepView({
                   ? "mail"
                   : isCalendarToolPart(part) || isScheduledTaskToolPart(part)
                     ? "calendar"
-                    : isMcpTool(part)
+                    : isScheduledTaskToolPart(part)
+                      ? "scheduled"
+                      : isMcpTool(part)
                       ? "tool"
                       : "brain";
 
@@ -437,6 +446,7 @@ type RailIcon =
   | "code"
   | "mail"
   | "calendar"
+  | "scheduled"
   | "tool"
   | "brain"
   | "failed";
@@ -463,6 +473,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <GmailLogo size={11} />
         ) : icon === "calendar" ? (
           <CalendarLogo size={11} />
+        ) : icon === "scheduled" ? (
+          <Ionicons name="calendar-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (

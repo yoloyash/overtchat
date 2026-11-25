@@ -4,6 +4,7 @@ import {
   BottomSheetModal,
   BottomSheetScrollView,
   BottomSheetTextInput,
+  type BottomSheetScrollViewMethods,
 } from "@gorhom/bottom-sheet";
 import {
   useCallback,
@@ -36,6 +37,22 @@ export function SelectionSheet<T extends string>({
 }) {
   const ref = useRef<BottomSheetModal>(null);
   const presented = useRef(false);
+  const scroll = useRef<BottomSheetScrollViewMethods>(null);
+  // A long list opens with the current choice in view, once per opening.
+  // The row is measured as the sheet mounts and scrolled to after the sheet
+  // has settled; the sheet drops a scroll asked for in that same moment, so
+  // it is asked for a tick later.
+  const positioned = useRef(false);
+  const selectedY = useRef<number | null>(null);
+  const showSelected = useCallback(() => {
+    if (positioned.current || selectedY.current === null) return;
+    positioned.current = true;
+    // Already on the first screenful: leave the title and search in view.
+    if (selectedY.current < 8 * 52) return;
+    // Two rows stay above it, so it reads as part of a list.
+    const y = Math.max(0, selectedY.current - 2 * 52);
+    setTimeout(() => scroll.current?.scrollTo({ y, animated: false }), 0);
+  }, []);
   const [search, setSearch] = useState("");
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
@@ -45,6 +62,8 @@ export function SelectionSheet<T extends string>({
       Keyboard.dismiss();
       setSearch("");
       presented.current = true;
+      positioned.current = false;
+      selectedY.current = null;
       ref.current?.present();
     } else if (!visible && presented.current) {
       presented.current = false;
@@ -81,6 +100,9 @@ export function SelectionSheet<T extends string>({
       enableDynamicSizing={!searchable}
       topInset={insets.top}
       enablePanDownToClose
+      onChange={(index) => {
+        if (index >= 0) showSelected();
+      }}
       onDismiss={() => {
         presented.current = false;
         onClose();
@@ -95,6 +117,7 @@ export function SelectionSheet<T extends string>({
       handleIndicatorStyle={{ backgroundColor: colors.mutedForeground }}
     >
       <BottomSheetScrollView
+        ref={scroll}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingHorizontal: 16,
@@ -165,6 +188,13 @@ export function SelectionSheet<T extends string>({
               disabled: !!disabled,
             }}
             disabled={disabled}
+            onLayout={
+              searchable && value === option.value
+                ? (event) => {
+                    if (!search) selectedY.current = event.nativeEvent.layout.y;
+                  }
+                : undefined
+            }
             onPress={() => {
               if (!presented.current) return;
               presented.current = false;
