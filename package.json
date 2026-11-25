@@ -32,6 +32,7 @@
     "test:e2e": "npm run test:e2e -w apps/web --",
     "test:e2e:ui": "npm run test:e2e:ui -w apps/web --",
     "start": "npm run start -w apps/web --",
+    "i18n:untranslated": "node scripts/i18n-untranslated.mjs",
     "deps:check": "node .github/scripts/check-single-instance-deps.mjs",
     "deps:lockfile": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
     "db:generate": "npm run db:generate -w apps/web --",

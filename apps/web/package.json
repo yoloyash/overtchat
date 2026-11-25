@@ -70,6 +70,7 @@
     "docx": "^9.14.0",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
+    "i18next": "^27.2.9",
     "js-tiktoken": "^1.0.21",
     "katex": "0.18.2",
     "linkedom": "^0.18.12",
@@ -81,6 +82,7 @@
     "qrcode.react": "^4.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-i18next": "^18.0.3",
     "react-simple-code-editor": "^0.14.1",
     "redis": "^5.12.1",
     "remark": "^15.0.1",
@@ -112,12 +114,13 @@
     "@vitest/ui": "4.1.12",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "0.28.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "eslint-plugin-i18next": "^6.1.5",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
     "typescript": "^5",
-    "vitest": "4.1.12",
-    "esbuild": "0.28.1"
+    "vitest": "4.1.12"
   }
 }

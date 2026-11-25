@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import { authClient } from "@/lib/auth/client";
 import { playAgentAlertSound } from "@/lib/notifications/sound";
 import {
-  AGENT_ALERT_BLOCKED,
   requestNotificationAccess,
   useAgentAlertChoices,
 } from "@/lib/notifications/useAgentAlertChoices";
@@ -19,9 +19,10 @@ export function AgentAlertsSection() {
   const { data: session } = authClient.useSession();
   const { sound, setSound, system, systemWanted, setSystem, access } =
     useAgentAlertChoices();
-  const [refused, setRefused] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const [refused, setRefused] = useState<"unsupported" | "blocked" | null>(null);
   // Turned on here, then taken away in the browser's own settings.
-  const problem = refused ?? (systemWanted && !system ? AGENT_ALERT_BLOCKED : null);
+  const problem = refused ?? (systemWanted && !system ? "blocked" : null);
   const agents = session?.user?.role === "admin";
 
   function toggleSound(next: boolean) {
@@ -39,15 +40,13 @@ export function AgentAlertsSection() {
     }
     const result = access === "granted" ? access : await requestNotificationAccess();
     if (result === "unsupported") {
-      setRefused(
-        "System notifications need a supported browser over HTTPS, or the desktop app.",
-      );
+      setRefused("unsupported");
       return;
     }
     if (result !== "granted") {
       // Asked and refused: stop wanting it until the switch is used again.
       setSystem(false);
-      setRefused(AGENT_ALERT_BLOCKED);
+      setRefused("blocked");
       return;
     }
     setSystem(true);
@@ -55,19 +54,19 @@ export function AgentAlertsSection() {
 
   return (
     <SettingsSection
-      title="Alerts"
+      title={t("settings.alerts.title")}
       description={
         agents
-          ? "When a chat reply is ready in the background, and when an agent needs you, finishes or fails. Only on this device, and only while OvertChat is open; otherwise your phone is told."
-          : "When a chat reply is ready in the background. Only on this device, and only while OvertChat is open."
+          ? t("settings.alerts.descriptionWithAgents")
+          : t("settings.alerts.description")
       }
     >
       <SettingsRow
-        title="Play a sound"
+        title={t("settings.alerts.sound.title")}
         description={
           agents
-            ? "A short chime: rising when an agent needs you, falling when it or a reply is done."
-            : "A short chime when a reply is done."
+            ? t("settings.alerts.sound.descriptionWithAgents")
+            : t("settings.alerts.sound.description")
         }
         htmlFor="agent-alert-sound"
         align="center"
@@ -78,16 +77,17 @@ export function AgentAlertsSection() {
           id="agent-alert-sound"
           checked={sound}
           onCheckedChange={toggleSound}
-          aria-label="Play a sound"
+          aria-label={t("settings.alerts.sound.title")}
         />
       </SettingsRow>
       <SettingsRow
-        title="System notifications"
+        title={t("settings.alerts.system.title")}
         description={
-          problem ??
-          (agents
-            ? "Shown while the window is in the background. In front, agent alerts appear in the corner instead."
-            : "Shown while the window is in the background.")
+          problem
+            ? t(`settings.alerts.system.${problem}`)
+            : agents
+              ? t("settings.alerts.system.descriptionWithAgents")
+              : t("settings.alerts.system.description")
         }
         htmlFor="agent-alert-system"
         align="center"
@@ -98,7 +98,7 @@ export function AgentAlertsSection() {
           id="agent-alert-system"
           checked={system}
           onCheckedChange={(next) => void toggleSystem(next)}
-          aria-label="System notifications"
+          aria-label={t("settings.alerts.system.title")}
         />
       </SettingsRow>
     </SettingsSection>
