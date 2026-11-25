@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { UIMessage } from "ai";
 
 type MessagePart = UIMessage["parts"][number];
@@ -63,7 +64,7 @@ export function describeMemoryToolPart(
       status: "error",
       key,
       value,
-      error: part.errorText || "The memory tool failed.",
+      error: part.errorText || i18n.t("chat.steps.memory.toolFailed"),
     };
   }
 
@@ -73,7 +74,7 @@ export function describeMemoryToolPart(
       status: "error",
       key,
       value,
-      error: "The memory change was denied.",
+      error: i18n.t("chat.steps.memory.denied"),
     };
   }
 
@@ -90,7 +91,7 @@ export function describeMemoryToolPart(
       status: "error",
       key,
       value,
-      error: error ?? "The memory could not be updated.",
+      error: error ?? i18n.t("chat.steps.memory.updateFailed"),
     };
   }
 
@@ -107,38 +108,66 @@ export function hasSuccessfulMemoryMutation(message: UIMessage): boolean {
 
 export function memoryToolStatusLabel(detail: MemoryToolDisplay): string {
   if (detail.status === "running") {
-    return detail.action === "set" ? "Updating…" : "Removing…";
+    return i18n.t(
+      detail.action === "set"
+        ? "chat.steps.memory.status.updating"
+        : "chat.steps.memory.status.removing",
+    );
   }
-  if (detail.status === "error") return "Failed";
-  if (detail.status === "missing") return "Not found";
-  if (detail.status === "incomplete") return "Did not complete";
-  return detail.action === "set" ? "Updated" : "Removed";
+  if (detail.status === "error") return i18n.t("chat.steps.memory.status.failed");
+  if (detail.status === "missing") {
+    return i18n.t("chat.steps.memory.status.notFound");
+  }
+  if (detail.status === "incomplete") {
+    return i18n.t("chat.steps.memory.status.incomplete");
+  }
+  return i18n.t(
+    detail.action === "set"
+      ? "chat.steps.memory.status.updated"
+      : "chat.steps.memory.status.removed",
+  );
 }
 
 export function memoryToolArtifactLabel(
   details: readonly MemoryToolDisplay[],
 ): string {
   if (details.some((detail) => detail.status === "running")) {
-    if (details.length > 1) return "Updating memories…";
-    return details[0]?.action === "delete"
-      ? "Removing memory…"
-      : "Updating memory…";
+    if (details.length > 1) {
+      return i18n.t("chat.steps.memory.artifact.updatingMany");
+    }
+    return i18n.t(
+      details[0]?.action === "delete"
+        ? "chat.steps.memory.artifact.removingOne"
+        : "chat.steps.memory.artifact.updatingOne",
+    );
   }
   if (details.some((detail) => detail.status === "error")) {
-    return details.some((detail) => detail.status === "success")
-      ? "Memories updated with errors"
-      : "Memory update failed";
+    return i18n.t(
+      details.some((detail) => detail.status === "success")
+        ? "chat.steps.memory.artifact.updatedWithErrors"
+        : "chat.steps.memory.artifact.updateFailed",
+    );
   }
   if (details.every((detail) => detail.status === "missing")) {
-    return details.length > 1 ? "Memories not found" : "Memory not found";
+    return i18n.t(
+      details.length > 1
+        ? "chat.steps.memory.artifact.notFoundMany"
+        : "chat.steps.memory.artifact.notFoundOne",
+    );
   }
   if (details.some((detail) => detail.status === "incomplete")) {
-    return "Memory update did not complete";
+    return i18n.t("chat.steps.memory.artifact.incomplete");
   }
   if (details.length > 1) {
-    return details.every((detail) => detail.action === "delete")
-      ? "Memories removed"
-      : "Memories updated";
+    return i18n.t(
+      details.every((detail) => detail.action === "delete")
+        ? "chat.steps.memory.artifact.removedMany"
+        : "chat.steps.memory.artifact.updatedMany",
+    );
   }
-  return details[0]?.action === "delete" ? "Memory removed" : "Memory updated";
+  return i18n.t(
+    details[0]?.action === "delete"
+      ? "chat.steps.memory.artifact.removedOne"
+      : "chat.steps.memory.artifact.updatedOne",
+  );
 }

@@ -1,19 +1,33 @@
+import { i18n } from "@overtchat/shared/i18n";
+
 const DAY_MS = 86_400_000;
 
 export type DateBucket =
-  | "Today"
-  | "Yesterday"
-  | "Last 7 days"
-  | "Last 30 days"
-  | "Older";
+  | "today"
+  | "yesterday"
+  | "last7Days"
+  | "last30Days"
+  | "older";
 
 const ORDER: DateBucket[] = [
-  "Today",
-  "Yesterday",
-  "Last 7 days",
-  "Last 30 days",
-  "Older",
+  "today",
+  "yesterday",
+  "last7Days",
+  "last30Days",
+  "older",
 ];
+
+const BUCKET_LABEL_KEYS = {
+  today: "sidebar.dateGroups.today",
+  yesterday: "sidebar.dateGroups.yesterday",
+  last7Days: "sidebar.dateGroups.last7Days",
+  last30Days: "sidebar.dateGroups.last30Days",
+  older: "sidebar.dateGroups.older",
+} as const;
+
+export function dateBucketLabel(bucket: DateBucket): string {
+  return i18n.t(BUCKET_LABEL_KEYS[bucket]);
+}
 
 function startOfDay(now: number): number {
   const d = new Date(now);
@@ -22,17 +36,17 @@ function startOfDay(now: number): number {
 }
 
 function bucketFor(ts: number, startOfToday: number): DateBucket {
-  if (ts >= startOfToday) return "Today";
-  if (ts >= startOfToday - DAY_MS) return "Yesterday";
-  if (ts >= startOfToday - 7 * DAY_MS) return "Last 7 days";
-  if (ts >= startOfToday - 30 * DAY_MS) return "Last 30 days";
-  return "Older";
+  if (ts >= startOfToday) return "today";
+  if (ts >= startOfToday - DAY_MS) return "yesterday";
+  if (ts >= startOfToday - 7 * DAY_MS) return "last7Days";
+  if (ts >= startOfToday - 30 * DAY_MS) return "last30Days";
+  return "older";
 }
 
 export function groupByDate<T extends { updatedAt: number }>(
   items: T[],
   now: number = Date.now(),
-): { label: DateBucket; items: T[] }[] {
+): { key: DateBucket; label: string; items: T[] }[] {
   const startOfToday = startOfDay(now);
   const map = new Map<DateBucket, T[]>();
   for (const item of items) {
@@ -41,8 +55,10 @@ export function groupByDate<T extends { updatedAt: number }>(
     list.push(item);
     map.set(b, list);
   }
-  return ORDER.flatMap((label) => {
-    const list = map.get(label);
-    return list && list.length ? [{ label, items: list }] : [];
+  return ORDER.flatMap((key) => {
+    const list = map.get(key);
+    return list && list.length
+      ? [{ key, label: dateBucketLabel(key), items: list }]
+      : [];
   });
 }

@@ -31,6 +31,7 @@ export function RepeatablePairs({
   keyPlaceholder,
   valuePlaceholder,
   addLabel,
+  removeLabel,
   allowEmpty = false,
   error,
   onChange,
@@ -41,6 +42,7 @@ export function RepeatablePairs({
   keyPlaceholder: string;
   valuePlaceholder: string;
   addLabel: string;
+  removeLabel: string;
   /** Lets the last row be removed, for lists that start with no rows. */
   allowEmpty?: boolean;
   error?: string;
@@ -88,7 +90,7 @@ export function RepeatablePairs({
               className="font-mono"
             />
             <RemoveButton
-              label={t("settings.pairs.removeRow", { label })}
+              label={removeLabel}
               disabled={
                 !allowEmpty &&
                 rows.length === 1 &&

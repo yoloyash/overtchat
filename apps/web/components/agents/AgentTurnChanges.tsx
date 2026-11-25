@@ -206,7 +206,7 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
         <p className="px-3 pb-2 text-xs text-muted-foreground">
           {t("agents.messages.andMoreFiles", {
             count: unlisted,
-            formattedCount: unlisted.toLocaleString("en-US"),
+            formattedCount: unlisted.toLocaleString(),
           })}
         </p>
       )}

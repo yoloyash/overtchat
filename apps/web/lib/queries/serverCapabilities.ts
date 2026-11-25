@@ -1,6 +1,7 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   queryOptions,
   useMutation,
@@ -24,7 +25,7 @@ export const serverCapabilitiesQuery = queryOptions({
   queryKey: serverCapabilityKeys.list(),
   queryFn: async (): Promise<AdminServicesSnapshot> => {
     const response = await fetch(apiUrl("/api/server-capabilities"));
-    if (!response.ok) throw apiError(response.status, await response.json().catch(() => null), "Could not load server services.");
+    if (!response.ok) throw apiError(response.status, await response.json().catch(() => null), i18n.t("services.page.loadError"));
     return (await response.json()) as AdminServicesSnapshot;
   },
 });
@@ -48,7 +49,7 @@ export function useUpdateServerCapability() {
         error?: string;
       };
       if (!response.ok || !body.capability || !body.voice) {
-        throw apiError(response.status, body, "Could not complete the service request.");
+        throw apiError(response.status, body, i18n.t("services.errors.serviceRequestFailed"));
       }
       return { capability: body.capability, voice: body.voice };
     },
@@ -87,7 +88,7 @@ export function useTestServerCapability() {
         throw apiError(
           response.status,
           body,
-          "Could not connect to the provider.",
+          i18n.t("services.errors.connectFailed"),
           input.id === "stt" || input.id === "tts" ? input.id : undefined,
         );
       }

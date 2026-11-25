@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { ToolState } from "./tools";
 
 export const RUN_PYTHON_TOOL_NAME = "run_python" as const;
@@ -61,12 +62,18 @@ export function isCodeExecutionPart(part: {
 
 /** A run's status in its activity step, such as "Done · 1.2s" or "Exit code 1". */
 export function codeRunStatus(part: CodeExecutionPart): string {
-  if (part.state === "output-error") return "Failed";
+  if (part.state === "output-error") return i18n.t("chat.activity.codeRun.failed");
   const output = part.output;
-  if (!output) return "Running…";
-  if (output.timedOut) return "Timed out";
-  if (output.exitCode === 0) return `Done · ${(output.durationMs / 1000).toFixed(1)}s`;
-  return output.signal ? `Stopped (${output.signal})` : `Exit code ${output.exitCode}`;
+  if (!output) return i18n.t("chat.activity.codeRun.running");
+  if (output.timedOut) return i18n.t("chat.activity.codeRun.timedOut");
+  if (output.exitCode === 0) {
+    return i18n.t("chat.activity.codeRun.done", {
+      duration: (output.durationMs / 1000).toFixed(1),
+    });
+  }
+  return output.signal
+    ? i18n.t("chat.activity.codeRun.stopped", { signal: output.signal })
+    : i18n.t("chat.activity.codeRun.exitCode", { code: String(output.exitCode) });
 }
 
 const SHARED_FILE_URL = /^\/api\/share\/[0-9a-f-]{36}\/files\/([a-zA-Z0-9_-]+)$/;

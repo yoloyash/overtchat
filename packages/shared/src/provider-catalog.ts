@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { ModelBrandIconId } from "./models";
 
 export const PROVIDER_IDS = [
@@ -124,7 +125,9 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   },
   custom: {
     id: "custom",
-    label: "Custom",
+    get label() {
+      return i18n.t("models.page.providerCustom");
+    },
     iconId: null,
     defaultBaseUrl: "",
     defaultApiFormat: "openai-chat",
@@ -140,22 +143,32 @@ export const API_FORMATS: Record<
   "openai-images": {
     id: "openai-images",
     label: "OpenAI Images",
-    description: "For OpenAI-compatible /images/generations endpoints.",
+    get description() {
+      return i18n.t("models.connection.apiFormatDescriptions.openai-images");
+    },
   },
   "openai-chat": {
     id: "openai-chat",
     label: "OpenAI Chat Completions",
-    description: "For OpenAI-compatible /chat/completions endpoints.",
+    get description() {
+      return i18n.t("models.connection.apiFormatDescriptions.openai-chat");
+    },
   },
   "openai-responses": {
     id: "openai-responses",
     label: "OpenAI Responses",
-    description: "For Open Responses-compatible /responses endpoints.",
+    get description() {
+      return i18n.t("models.connection.apiFormatDescriptions.openai-responses");
+    },
   },
   "anthropic-messages": {
     id: "anthropic-messages",
     label: "Anthropic Messages",
-    description: "For Anthropic-compatible /messages endpoints.",
+    get description() {
+      return i18n.t(
+        "models.connection.apiFormatDescriptions.anthropic-messages",
+      );
+    },
   },
 };
 

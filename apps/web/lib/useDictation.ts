@@ -7,6 +7,7 @@ import {
   speechErrorMessage,
   type SpeechErrorCode,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api-url";
 
@@ -138,7 +139,7 @@ export function useDictation(onResult: (text: string) => void): Dictation {
           const failure = apiError(
             res.status,
             await res.text().catch(() => ""),
-            "Couldn't transcribe this recording. Please try again.",
+            i18n.t("chat.dictation.errors.transcribeFailed"),
             "stt",
           );
           setError(
@@ -168,7 +169,7 @@ export function useDictation(onResult: (text: string) => void): Dictation {
           kind: "other",
           message: getErrorMessage(
             e,
-            "Couldn't transcribe this recording. Please try again.",
+            i18n.t("chat.dictation.errors.transcribeFailed"),
           ),
         });
       } finally {

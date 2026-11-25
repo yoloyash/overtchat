@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 export type ToolState =
   | "input-streaming"
   | "input-available"
@@ -22,12 +23,14 @@ export type WebSearchProvider =
   | "none"
   | "searxng";
 
-const WEB_SEARCH_PROVIDER_LABELS: Record<WebSearchProvider, string> = {
+const WEB_SEARCH_PROVIDER_LABELS: Record<
+  Exclude<WebSearchProvider, "none">,
+  string
+> = {
   brave: "Brave",
   duckduckgo: "DuckDuckGo",
   exa: "Exa",
   firecrawl: "Firecrawl",
-  none: "No provider",
   searxng: "SearXNG",
 };
 
@@ -76,6 +79,7 @@ export function webSearchProviderLabel(
   output: PersistedWebSearchOutput | undefined,
 ): string | undefined {
   if (!output || Array.isArray(output)) return undefined;
+  if (output.provider === "none") return i18n.t("chat.activity.noSearchProvider");
   return WEB_SEARCH_PROVIDER_LABELS[output.provider];
 }
 

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 export { htmlPreviewDocument, MAX_PREVIEW_LENGTH } from "@overtchat/shared";
 
 export function svgPreviewSource(source: string, isIncomplete = false): string {
@@ -19,9 +20,7 @@ export function svgPreviewSource(source: string, isIncomplete = false): string {
     root.localName !== "svg" ||
     (root.namespaceURI && root.namespaceURI !== "http://www.w3.org/2000/svg")
   ) {
-    throw new Error(
-      "This SVG could not be rendered. Its source is still available.",
-    );
+    throw new Error(i18n.t("chat.codePreview.svgRenderError"));
   }
   root.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   // Display this only as an image, never as inline DOM or an object/embed.

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { z } from "zod";
 
 /** Replaced in a header value with the ID of the conversation a request is for. */
@@ -45,7 +46,9 @@ export const ModelHeadersSchema = z
     if (entries.length > MAX_MODEL_HEADERS) {
       context.addIssue({
         code: "custom",
-        message: `A model can send at most ${MAX_MODEL_HEADERS} request headers`,
+        message: i18n.t("models.editor.errors.tooManyHeaders", {
+          max: MAX_MODEL_HEADERS,
+        }),
       });
       return z.NEVER;
     }
@@ -66,21 +69,27 @@ function headerIssue(
   value: string,
   seen: Set<string>,
 ): string | undefined {
-  if (!name) return "Request header names cannot be empty";
+  if (!name) return i18n.t("models.editor.errors.emptyHeaderName");
   if (name.length > MAX_HEADER_NAME_LENGTH || !HEADER_NAME.test(name)) {
-    return `"${name.slice(0, 40)}" is not a valid request header name`;
+    return i18n.t("models.editor.errors.invalidHeaderName", {
+      name: name.slice(0, 40),
+    });
   }
   const lower = name.toLowerCase();
   if (RESERVED_HEADER_NAMES.has(lower)) {
-    return `The ${name} request header is set by the app and cannot be changed`;
+    return i18n.t("models.editor.errors.reservedHeaderName", { name });
   }
-  if (seen.has(lower)) return `The ${name} request header is listed twice`;
-  if (!value) return `The ${name} request header needs a value`;
+  if (seen.has(lower)) {
+    return i18n.t("models.editor.errors.duplicateHeaderName", { name });
+  }
+  if (!value) {
+    return i18n.t("models.editor.errors.missingHeaderValue", { name });
+  }
   if (value.length > MAX_HEADER_VALUE_LENGTH) {
-    return `The ${name} request header value is too long`;
+    return i18n.t("models.editor.errors.headerValueTooLong", { name });
   }
   if (!HEADER_VALUE.test(value)) {
-    return `The ${name} request header value has characters HTTP headers cannot carry`;
+    return i18n.t("models.editor.errors.invalidHeaderValue", { name });
   }
   return undefined;
 }
@@ -100,7 +109,7 @@ export function modelHeadersFromRows(
     if (seen.has(name.toLowerCase())) {
       return {
         headers: null,
-        error: `The ${name} request header is listed twice`,
+        error: i18n.t("models.editor.errors.duplicateHeaderName", { name }),
       };
     }
     seen.add(name.toLowerCase());

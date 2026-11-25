@@ -102,6 +102,5 @@ export const settings = {
   pairs: {
     keyLabel: "{{label}} key {{index}}",
     valueLabel: "{{label}} value {{index}}",
-    removeRow: "Remove {{label}} row",
   },
 } as const;

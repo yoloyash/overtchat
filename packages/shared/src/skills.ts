@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { ToolState } from "./tools";
 
 /**
@@ -25,12 +26,16 @@ export const CHAT_SKILL_IDS = [
 export type ChatSkillId = (typeof CHAT_SKILL_IDS)[number];
 
 /** How each skill is named to people and to models. */
-export const CHAT_SKILL_NAMES: Record<ChatSkillId, string> = {
-  gmail: "Gmail",
-  calendar: "Google Calendar",
-  interactive_ui: "Interactive UI",
-  scheduled_tasks: "Scheduled tasks",
-};
+const CHAT_SKILL_NAME_KEYS = {
+  gmail: "chat.activity.skills.names.gmail",
+  calendar: "chat.activity.skills.names.calendar",
+  interactive_ui: "chat.activity.skills.names.interactive_ui",
+  scheduled_tasks: "chat.activity.skills.names.scheduled_tasks",
+} as const;
+
+export function chatSkillName(id: ChatSkillId): string {
+  return i18n.t(CHAT_SKILL_NAME_KEYS[id]);
+}
 
 export function isChatSkillId(value: unknown): value is ChatSkillId {
   return (
@@ -75,11 +80,23 @@ export function viewSkillActivityLabel(
   active: boolean,
 ): string {
   const id = part.input?.id;
-  const name = isChatSkillId(id) ? CHAT_SKILL_NAMES[id] : "a";
-  if (active) return `Loading ${name} skill…`;
-  if (part.state === "output-error") return "Skill could not load";
-  if (part.state !== "output-available") return "Skill load did not complete";
-  return viewedSkillId(part) ? `Loaded ${name} skill` : "Skill unavailable";
+  const known = isChatSkillId(id);
+  const name = known ? chatSkillName(id) : undefined;
+  if (active) {
+    return name
+      ? i18n.t("chat.activity.skills.loadingNamed", { name })
+      : i18n.t("chat.activity.skills.loadingUnknown");
+  }
+  if (part.state === "output-error") {
+    return i18n.t("chat.activity.skills.failed");
+  }
+  if (part.state !== "output-available") {
+    return i18n.t("chat.activity.skills.incomplete");
+  }
+  if (!viewedSkillId(part)) return i18n.t("chat.activity.skills.unavailable");
+  return name
+    ? i18n.t("chat.activity.skills.loadedNamed", { name })
+    : i18n.t("chat.activity.skills.loadedUnknown");
 }
 
 type SkillMessage = {

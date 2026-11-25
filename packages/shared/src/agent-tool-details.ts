@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import {
   describeAgentTool,
   type AgentToolActivity,
@@ -54,7 +55,7 @@ export function argumentSections(
   if (value === null || typeof value !== "object")
     return [
       {
-        label: prefix || "Input",
+        label: prefix || i18n.t("agents.activity.input"),
         value: typeof value === "string" ? value : String(value),
         kind: "code",
       },
@@ -62,7 +63,7 @@ export function argumentSections(
   if (depth > 8)
     return [
       {
-        label: prefix || "Input",
+        label: prefix || i18n.t("agents.activity.input"),
         value: JSON.stringify(value, null, 2),
         kind: "code",
       },
@@ -71,15 +72,22 @@ export function argumentSections(
   if (!entries.length)
     return [
       {
-        label: prefix || "Input",
-        value: Array.isArray(value) ? "Empty list" : "No values",
+        label: prefix || i18n.t("agents.activity.input"),
+        value: Array.isArray(value)
+          ? i18n.t("agents.toolDetails.emptyList")
+          : i18n.t("agents.toolDetails.noValues"),
         kind: "text",
       },
     ];
   return entries.flatMap(([key, child]) =>
     argumentSections(
       child,
-      [prefix, Array.isArray(value) ? `Item ${Number(key) + 1}` : label(key)]
+      [
+        prefix,
+        Array.isArray(value)
+          ? i18n.t("agents.toolDetails.itemIndex", { index: Number(key) + 1 })
+          : label(key),
+      ]
         .filter(Boolean)
         .join(" · "),
       depth + 1,
@@ -103,46 +111,54 @@ export function toolDetails(tool: AgentToolActivity): ToolDetails {
       sections.push({ label: title, value, kind });
     }
   }
-  if (category === "shell") take(["command", "cmd"], "Command");
-  take(["filePath", "file_path", "path"], "Path");
-  take(["cwd", "workdir", "workingDirectory"], "Working directory");
-  take(["patch", "diff", "unifiedDiff", "unified_diff"], "Changes", "diff");
-  take(["oldString", "old_string", "oldText", "old_text"], "Before");
-  take(["newString", "new_string", "newText", "new_text"], "After");
-  take(["content", "text", "fileText", "file_text"], "Content");
+  if (category === "shell") take(["command", "cmd"], i18n.t("agents.toolDetails.command"));
+  take(["filePath", "file_path", "path"], i18n.t("agents.toolDetails.path"));
+  take(["cwd", "workdir", "workingDirectory"], i18n.t("agents.toolDetails.workingDirectory"));
+  take(["patch", "diff", "unifiedDiff", "unified_diff"], i18n.t("agents.activity.changes"), "diff");
+  take(["oldString", "old_string", "oldText", "old_text"], i18n.t("agents.toolDetails.before"));
+  take(["newString", "new_string", "newText", "new_text"], i18n.t("agents.toolDetails.after"));
+  take(["content", "text", "fileText", "file_text"], i18n.t("agents.activity.content"));
   const remaining = Object.fromEntries(
     Object.entries(args).filter(([key]) => !used.has(key)),
   );
   if (Object.keys(remaining).length)
     sections.push(...argumentSections(remaining));
   else if (typeof tool.args === "string" && tool.args)
-    sections.push({ label: "Input", value: tool.args, kind: "code" });
+    sections.push({ label: i18n.t("agents.activity.input"), value: tool.args, kind: "code" });
   if (tool.output)
     sections.push({
-      label: tool.isError ? "Error output" : "Output",
+      label: tool.isError
+        ? i18n.t("agents.toolDetails.errorOutput")
+        : i18n.t("agents.activity.output"),
       value: readableToolText(tool.output),
       kind: "code",
     });
   if (tool.terminalInputs.length)
     sections.push({
-      label: "Terminal input",
+      label: i18n.t("agents.toolDetails.terminalInput"),
       value: tool.terminalInputs.join("\n"),
       kind: "code",
     });
   if (tool.exitCode !== null)
     sections.push({
-      label: "Exit code",
+      label: i18n.t("agents.toolDetails.exitCode"),
       value: String(tool.exitCode),
       kind: "text",
     });
   if (tool.cancelled)
-    sections.push({ label: "Status", value: "Cancelled", kind: "text" });
+    sections.push({
+      label: i18n.t("agents.toolDetails.status"),
+      value: i18n.t("agents.toolDetails.cancelled"),
+      kind: "text",
+    });
   if (tool.truncated)
     sections.push({
-      label: "Output limit",
+      label: i18n.t("agents.toolDetails.outputLimit"),
       value: tool.fullOutputPath
-        ? `Output was truncated by the agent. Full output on the host: ${tool.fullOutputPath}`
-        : "Output was truncated by the agent.",
+        ? i18n.t("agents.toolDetails.truncatedWithPath", {
+            path: tool.fullOutputPath,
+          })
+        : i18n.t("agents.toolDetails.truncated"),
       kind: "text",
     });
   return { category, sections };
@@ -180,16 +196,17 @@ export function approvalDetails(
   if (description && !message.includes(description))
     message = [message, description].filter(Boolean).join("\n\n");
   const suppliedTitle = text(request.title);
-  let title = suppliedTitle || "Permission required";
+  let title = suppliedTitle || i18n.t("agents.approval.permissionRequired");
   if (request.approvalKind === "tool") {
-    const shortTitle =
+    const shortTitle = i18n.t(
       detail.type === "shell"
-        ? "Run command?"
+        ? "agents.approval.titles.shell"
         : detail.type === "edit"
-          ? "Allow file changes?"
+          ? "agents.approval.titles.edit"
           : detail.type === "write"
-            ? "Write file?"
-            : "Allow tool use?";
+            ? "agents.approval.titles.write"
+            : "agents.approval.titles.other",
+    );
     if (
       ["shell", "edit", "write"].includes(text(detail.type)) ||
       suppliedTitle.length > 100
@@ -218,18 +235,20 @@ export function approvalDetails(
     if (suppliedChoices.length) choices.push(...suppliedChoices);
     else {
       choices.push({
-        label: "Allow once",
+        label: i18n.t("agents.approval.choices.allowOnce"),
         value: text(request.approveValue) || "Approve",
         kind: "allow",
       });
       if (request.alwaysValue)
         choices.push({
-          label: text(request.alwaysLabel) || "Allow always",
+          label:
+            text(request.alwaysLabel) ||
+            i18n.t("agents.approval.choices.allowAlways"),
           value: text(request.alwaysValue),
           kind: "always",
         });
       choices.push({
-        label: "Deny",
+        label: i18n.t("agents.approval.choices.deny"),
         value: text(request.denyValue) || "Deny",
         kind: "deny",
       });
@@ -276,7 +295,7 @@ export function approvalDetails(
       sections.push({
         label: destination ? `${path} → ${destination}` : path,
         value:
-          text(change.patch) || "No change preview was provided for this file.",
+          text(change.patch) || i18n.t("agents.approval.noChangePreview"),
         kind: text(change.patch) ? "diff" : "text",
       });
     }

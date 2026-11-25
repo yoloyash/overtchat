@@ -6,23 +6,15 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useTranslation } from "react-i18next";
 import { Pencil, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { groupByDate, type DateBucket } from "@/lib/dateGroups";
+import { dateBucketLabel, groupByDate, type DateBucket } from "@/lib/dateGroups";
 import { useChats } from "@/lib/queries/chats";
 import { useChatsSearch, type SearchHit } from "@/lib/queries/search";
 import { motionClasses } from "@/lib/motion";
 
 type Chat = { id: string; title: string | null; updatedAt: number };
 
-const DATE_BUCKET_KEYS = {
-  Today: "sidebar.dateGroups.today",
-  Yesterday: "sidebar.dateGroups.yesterday",
-  "Last 7 days": "sidebar.dateGroups.last7Days",
-  "Last 30 days": "sidebar.dateGroups.last30Days",
-  Older: "sidebar.dateGroups.older",
-} as const satisfies Record<DateBucket, string>;
-
 type Row =
-  | { kind: "label"; label: DateBucket | "Results" }
+  | { kind: "label"; bucket: DateBucket | "results" }
   | { kind: "new" }
   | { kind: "chat"; chat: Chat }
   | { kind: "hit"; hit: SearchHit };
@@ -96,14 +88,14 @@ export function SearchChatsPalette({
     if (q.length < 2) {
       const groups = groupByDate(chats);
       for (const g of groups) {
-        out.push({ kind: "label", label: g.label });
+        out.push({ kind: "label", bucket: g.key });
         for (const c of g.items) out.push({ kind: "chat", chat: c });
       }
       return out;
     }
 
     if (hits && hits.length) {
-      out.push({ kind: "label", label: "Results" });
+      out.push({ kind: "label", bucket: "results" });
       for (const h of hits) out.push({ kind: "hit", hit: h });
     }
     return out;
@@ -208,12 +200,12 @@ export function SearchChatsPalette({
               if (row.kind === "label") {
                 return (
                   <div
-                    key={`l-${row.label}-${i}`}
+                    key={`l-${row.bucket}-${i}`}
                     className="mt-2 mb-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase first:mt-1"
                   >
-                    {row.label === "Results"
+                    {row.bucket === "results"
                       ? t("sidebar.searchPalette.results")
-                      : t(DATE_BUCKET_KEYS[row.label])}
+                      : dateBucketLabel(row.bucket)}
                   </div>
                 );
               }

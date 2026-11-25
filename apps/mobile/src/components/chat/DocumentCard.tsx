@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import {
-  DOCUMENT_TYPE_LABELS,
+  documentTypeLabel,
   DOCUMENT_TYPES,
   isDocumentOutput,
   type DocumentToolPart,
@@ -62,7 +62,7 @@ export function DocumentCard({
       : creating
         ? "Stopped before it was saved"
         : "Update stopped"
-    : `${DOCUMENT_TYPE_LABELS[type]} · ${creating ? "Created" : "Updated"} · Version ${output?.version ?? 1}`;
+    : `${documentTypeLabel(type)} · ${creating ? "Created" : "Updated"} · Version ${output?.version ?? 1}`;
   const openable = Boolean(viewer && (output || (live && creating)));
 
   return (

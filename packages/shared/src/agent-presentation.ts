@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import {
   agentForkMessageId,
   agentTurnChangesOf,
@@ -305,17 +306,38 @@ export function foldAgentTranscript(
 }
 
 export function agentWorkLabel(durationMs: number | null): string {
-  if (durationMs === null) return "Worked";
+  if (durationMs === null) return i18n.t("agents.messages.worked");
   const seconds = Math.max(1, Math.round(durationMs / 1000));
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainder = seconds % 60;
-  const duration = [
-    hours ? `${hours}h` : "",
-    minutes ? `${minutes}m` : "",
-    remainder ? `${remainder}s` : "",
-  ].filter(Boolean).join(" ");
-  return `Worked for ${duration}`;
+  const duration =
+    hours && minutes && remainder
+      ? i18n.t("agents.activity.elapsedHoursMinutesSeconds", {
+          hours,
+          minutes,
+          seconds: remainder,
+        })
+      : hours && minutes
+        ? i18n.t("agents.activity.elapsedHoursMinutes", { hours, minutes })
+        : hours && remainder
+          ? i18n.t("agents.activity.elapsedHoursSeconds", {
+              hours,
+              seconds: remainder,
+            })
+          : hours
+            ? i18n.t("agents.activity.elapsedHours", { hours })
+            : minutes && remainder
+              ? i18n.t("agents.activity.elapsedMinutesSeconds", {
+                  minutes,
+                  seconds: remainder,
+                })
+              : minutes
+                ? i18n.t("agents.activity.elapsedMinutes", { minutes })
+                : i18n.t("agents.activity.elapsedSeconds", {
+                    seconds: remainder,
+                  });
+  return i18n.t("agents.messages.workedFor", { duration });
 }
 
 export type AgentToolStatus =
@@ -661,9 +683,10 @@ export function presentOmpSystemNotice(
     const id = attributes.get("id") || null;
     const status = attributes.get("status") || null;
     if (id) {
+      const normalized = normalizedOmpJobStatus(status);
       return {
         level: ompNotificationLevel(status),
-        message: `Background job ${id} ${normalizedOmpJobStatus(status)}`,
+        message: formatOmpBackgroundJobNotice(id, normalized),
       };
     }
   }
@@ -673,10 +696,28 @@ export function presentOmpSystemNotice(
   if (backgroundJob?.[1] && backgroundJob[2]) {
     return {
       level: ompNotificationLevel(backgroundJob[2]),
-      message: `Background job ${backgroundJob[1]} ${normalizedOmpJobStatus(backgroundJob[2])}`,
+      message: formatOmpBackgroundJobNotice(
+        backgroundJob[1],
+        normalizedOmpJobStatus(backgroundJob[2]),
+      ),
     };
   }
   return firstLine ? { level: "info", message: firstLine } : null;
+}
+
+function formatOmpBackgroundJobNotice(id: string, status: string): string {
+  switch (status) {
+    case "completed":
+      return i18n.t("agents.notifications.backgroundJob.completed", { id });
+    case "failed":
+      return i18n.t("agents.notifications.backgroundJob.failed", { id });
+    case "canceled":
+      return i18n.t("agents.notifications.backgroundJob.canceled", { id });
+    case "stopped":
+      return i18n.t("agents.notifications.backgroundJob.stopped", { id });
+    default:
+      return i18n.t("agents.notifications.backgroundJob.other", { id, status });
+  }
 }
 
 const MAX_ERROR_SUMMARY_LENGTH = 240;
@@ -688,9 +729,9 @@ export function presentAgentError(value: string): AgentErrorPresentation {
       details,
     );
   let summary = contextLimit
-    ? "Context limit exceeded. Compact the conversation or reduce the maximum output tokens."
+    ? i18n.t("agents.errors.contextLimitExceeded")
     : (details.split(/\r?\n/u).find((line) => line.trim())?.trim() ??
-      "The agent command failed.");
+      i18n.t("agents.errors.commandFailed"));
   if (summary.length > MAX_ERROR_SUMMARY_LENGTH) {
     summary = `${summary.slice(0, MAX_ERROR_SUMMARY_LENGTH - 3).trimEnd()}...`;
   }
@@ -856,22 +897,44 @@ export function projectAgentTranscript(
     if (role === "compactionSummary") {
       const active = record.status === "running";
       const failed = record.status === "failed";
-      const label = active ? "Compacting context…"
-        : failed ? "Context compaction failed"
-        : record.status === "interrupted" ? "Context compaction stopped"
-        : record.status === "skipped" ? "Context compaction skipped"
-        : record.trigger === "auto" ? "Context automatically compacted"
-        : record.trigger === "manual" ? "Context manually compacted"
-        : "Context compacted";
-      const tokens = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0
-        ? value.toLocaleString("en-US") : null;
+      const label = i18n.t(
+        active
+          ? "agents.compaction.running"
+          : failed
+            ? "agents.compaction.failed"
+            : record.status === "interrupted"
+              ? "agents.compaction.stopped"
+              : record.status === "skipped"
+                ? "agents.compaction.skipped"
+                : record.trigger === "auto"
+                  ? "agents.compaction.auto"
+                  : record.trigger === "manual"
+                    ? "agents.compaction.manual"
+                    : "agents.compaction.done",
+      );
+      const tokens = (value: unknown) =>
+        typeof value === "number" && Number.isFinite(value) && value >= 0
+          ? value.toLocaleString()
+          : null;
       const before = tokens(record.tokensBefore);
       const after = tokens(record.tokensAfter);
       items.push({
-        type: "compaction", key: `compaction:${identity}`, active, failed, label,
-        detail: active || failed || record.status === "interrupted" || record.status === "skipped" ? null
-          : before !== null && after !== null ? `${before} → ${after} tokens`
-          : before !== null ? `From ${before} tokens` : null,
+        type: "compaction",
+        key: `compaction:${identity}`,
+        active,
+        failed,
+        label,
+        detail:
+          active ||
+          failed ||
+          record.status === "interrupted" ||
+          record.status === "skipped"
+            ? null
+            : before !== null && after !== null
+              ? i18n.t("agents.compaction.tokensBeforeAfter", { before, after })
+              : before !== null
+                ? i18n.t("agents.compaction.tokensBefore", { before })
+                : null,
       });
       return;
     }
@@ -1237,7 +1300,7 @@ function humanizeToolName(name: string): string {
     .replace(/[._:/-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!normalized) return "Tool";
+  if (!normalized) return i18n.t("agents.activity.toolLabels.other");
   return normalized
     .split(" ")
     .map((part) => part[0].toUpperCase() + part.slice(1))
@@ -1251,14 +1314,14 @@ export function describeAgentTool(
   if (hasName(name, ["bash", "shell", "terminal", "exec", "execute"])) {
     return {
       category: "shell",
-      label: "Terminal",
+      label: i18n.t("agents.activity.toolLabels.shell"),
       summary: stringArgument(tool.args, ["command", "cmd"]),
     };
   }
   if (hasName(name, ["read", "read_file", "readfile"])) {
     return {
       category: "read",
-      label: "Read",
+      label: i18n.t("agents.activity.toolLabels.read"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
@@ -1273,14 +1336,14 @@ export function describeAgentTool(
   ) {
     return {
       category: "edit",
-      label: "Edit",
+      label: i18n.t("agents.activity.toolLabels.edit"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
   if (hasName(name, ["write", "write_file", "create_file"])) {
     return {
       category: "write",
-      label: "Write",
+      label: i18n.t("agents.activity.toolLabels.write"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
@@ -1298,7 +1361,7 @@ export function describeAgentTool(
   ) {
     return {
       category: "search",
-      label: "Search",
+      label: i18n.t("agents.activity.toolLabels.search"),
       summary: stringArgument(tool.args, [
         "query",
         "pattern",
@@ -1310,7 +1373,7 @@ export function describeAgentTool(
   if (hasName(name, ["fetch", "web_fetch", "webfetch", "fetch_url"])) {
     return {
       category: "fetch",
-      label: "Fetch",
+      label: i18n.t("agents.activity.toolLabels.fetch"),
       summary: stringArgument(tool.args, ["url"]),
     };
   }
@@ -1339,34 +1402,69 @@ export function agentToolStepLabel(
   const running = status === "running";
   switch (category) {
     case "shell":
-      return running ? "Running" : "Terminal";
+      return i18n.t(
+        running
+          ? "agents.activity.toolStepRunning.shell"
+          : "agents.activity.toolStepDone.shell",
+      );
     case "read":
-      return running ? "Reading" : "Read";
+      return i18n.t(
+        running
+          ? "agents.activity.toolStepRunning.read"
+          : "agents.activity.toolStepDone.read",
+      );
     case "edit":
-      return running ? "Editing" : "Edited";
+      return i18n.t(
+        running
+          ? "agents.activity.toolStepRunning.edit"
+          : "agents.activity.toolStepDone.edit",
+      );
     case "write":
-      return running ? "Writing" : "Wrote";
+      return i18n.t(
+        running
+          ? "agents.activity.toolStepRunning.write"
+          : "agents.activity.toolStepDone.write",
+      );
     case "search":
-      return running ? "Searching" : "Searched";
+      return i18n.t(
+        running
+          ? "agents.activity.toolStepRunning.search"
+          : "agents.activity.toolStepDone.search",
+      );
     case "fetch":
-      return running ? "Fetching" : "Fetched";
+      return i18n.t(
+        running
+          ? "agents.activity.toolStepRunning.fetch"
+          : "agents.activity.toolStepDone.fetch",
+      );
     case "other":
-      return running ? "Running tool" : "Tool";
+      return i18n.t(
+        running
+          ? "agents.activity.toolStepRunning.other"
+          : "agents.activity.toolStepDone.other",
+      );
   }
 }
 
-function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString()} ${count === 1 ? one : many}`;
-}
+type SummaryClause = { lead: string; inline: string };
 
-function naturalList(parts: string[]): string {
-  if (parts.length <= 1) return parts[0] ?? "";
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
-}
-
-function capitalize(value: string): string {
-  return value ? value[0].toUpperCase() + value.slice(1) : value;
+function naturalSummaryList(parts: SummaryClause[]): string {
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0].lead;
+  if (parts.length === 2) {
+    return i18n.t("agents.activity.summary.listTwo", {
+      first: parts[0].lead,
+      second: parts[1].inline,
+    });
+  }
+  const items = [
+    parts[0].lead,
+    ...parts.slice(1, -1).map((part) => part.inline),
+  ].join(i18n.t("agents.activity.summary.listSep"));
+  return i18n.t("agents.activity.summary.listMany", {
+    items,
+    last: parts.at(-1)!.inline,
+  });
 }
 
 /** Codex reports inProgress/pendingInit; Claude Code reports running. */
@@ -1386,30 +1484,36 @@ export function describeSubagentActivity(
     .join(" · ") || null;
   if (activity.action === "task") {
     return {
-      label: running
-        ? "Running subagent"
-        : activity.status === "failed"
-          ? "Subagent failed"
-          : activity.status === "stopped"
-            ? "Subagent stopped"
-            : "Ran subagent",
+      label: i18n.t(
+        running
+          ? "agents.activity.subagent.running"
+          : activity.status === "failed"
+            ? "agents.activity.subagent.failed"
+            : activity.status === "stopped"
+              ? "agents.activity.subagent.stopped"
+              : "agents.activity.subagent.ran",
+      ),
       summary,
     };
   }
   const label =
     activity.action === "spawnAgent"
-      ? running
-        ? "Starting subagent"
-        : "Started subagent"
+      ? i18n.t(
+          running
+            ? "agents.activity.subagent.starting"
+            : "agents.activity.subagent.started",
+        )
       : activity.action === "sendInput"
-        ? "Sent subagent input"
+        ? i18n.t("agents.activity.subagent.sentInput")
         : activity.action === "wait"
-          ? running
-            ? "Waiting for subagents"
-            : "Waited for subagents"
+          ? i18n.t(
+              running
+                ? "agents.activity.subagent.waiting"
+                : "agents.activity.subagent.waited",
+            )
           : activity.action === "closeAgent"
-            ? "Closed subagent"
-            : `${count} ${count === 1 ? "subagent" : "subagents"}`;
+            ? i18n.t("agents.activity.subagent.closed")
+            : i18n.t("agents.activity.subagent.count", { count });
   return { label, summary };
 }
 
@@ -1430,15 +1534,23 @@ export function describeAgentActivity(
         (entry) => entry.activity.status === "failed",
       );
       return {
-        label: running
-          ? `Running ${plural(subagents.length, "subagent")}`
-          : `Used ${plural(subagents.length, "subagent")}`,
+        label: i18n.t(
+          running
+            ? "agents.activity.subagent.runningCount"
+            : "agents.activity.subagent.usedCount",
+          {
+            count: subagents.length,
+            formattedCount: subagents.length.toLocaleString(),
+          },
+        ),
         secondary: null,
         status: running ? "running" : failed ? "failed" : "completed",
       };
     }
     return {
-      label: active ? "Thinking" : "Thoughts",
+      label: i18n.t(
+        active ? "agents.activity.thinking" : "agents.activity.thoughts",
+      ),
       secondary: null,
       status: active ? "running" : "completed",
     };
@@ -1485,25 +1597,74 @@ export function describeAgentActivity(
     }
   }
 
-  const summary = [
-    editedFiles.size ? `edited ${plural(editedFiles.size, "file")}` : null,
-    commandCount ? `ran ${plural(commandCount, "command")}` : null,
-    readFiles.size ? `read ${plural(readFiles.size, "file")}` : null,
-    searchCount ? `searched ${plural(searchCount, "time")}` : null,
-    otherToolCount
-      ? `used ${plural(otherToolCount, "other tool")}`
-      : null,
-  ].filter((part): part is string => part !== null);
+  const summary: SummaryClause[] = [];
+  if (editedFiles.size) {
+    const opts = {
+      count: editedFiles.size,
+      formattedCount: editedFiles.size.toLocaleString(),
+    };
+    summary.push({
+      lead: i18n.t("agents.activity.summary.editedLead", opts),
+      inline: i18n.t("agents.activity.summary.edited", opts),
+    });
+  }
+  if (commandCount) {
+    const opts = {
+      count: commandCount,
+      formattedCount: commandCount.toLocaleString(),
+    };
+    summary.push({
+      lead: i18n.t("agents.activity.summary.ranLead", opts),
+      inline: i18n.t("agents.activity.summary.ran", opts),
+    });
+  }
+  if (readFiles.size) {
+    const opts = {
+      count: readFiles.size,
+      formattedCount: readFiles.size.toLocaleString(),
+    };
+    summary.push({
+      lead: i18n.t("agents.activity.summary.readLead", opts),
+      inline: i18n.t("agents.activity.summary.read", opts),
+    });
+  }
+  if (searchCount) {
+    const opts = {
+      count: searchCount,
+      formattedCount: searchCount.toLocaleString(),
+    };
+    summary.push({
+      lead: i18n.t("agents.activity.summary.searchedLead", opts),
+      inline: i18n.t("agents.activity.summary.searched", opts),
+    });
+  }
+  if (otherToolCount) {
+    const opts = {
+      count: otherToolCount,
+      formattedCount: otherToolCount.toLocaleString(),
+    };
+    summary.push({
+      lead: i18n.t("agents.activity.summary.otherLead", opts),
+      inline: i18n.t("agents.activity.summary.other", opts),
+    });
+  }
   const failed = statuses.filter((candidate) => candidate === "failed").length;
   const stopped = statuses.filter((candidate) => candidate === "stopped").length;
-  const suffix = failed
-    ? `, ${plural(failed, "failed", "failed")}`
+  const baseSummary = naturalSummaryList(summary);
+  const label = failed
+    ? i18n.t("agents.activity.summary.withFailed", {
+        summary: baseSummary,
+        formattedCount: failed.toLocaleString(),
+      })
     : stopped
-      ? `, ${plural(stopped, "stopped", "stopped")}`
-      : "";
+      ? i18n.t("agents.activity.summary.withStopped", {
+          summary: baseSummary,
+          formattedCount: stopped.toLocaleString(),
+        })
+      : baseSummary;
 
   return {
-    label: `${capitalize(naturalList(summary))}${suffix}`,
+    label,
     secondary: null,
     status,
   };
@@ -1605,20 +1766,24 @@ export function formatAgentToolDetail(tool: AgentToolActivity): string {
     const command = presentation.summary ?? formatUnknown(tool.args);
     const sections = [command ? `$ ${command}` : ""];
     if (tool.output) sections.push(tool.output.replace(/^\n+/, ""));
-    if (tool.cancelled) sections.push("Command cancelled.");
+    if (tool.cancelled) sections.push(i18n.t("agents.activity.commandCancelled"));
     else if (tool.exitCode !== null && tool.exitCode !== 0) {
-      sections.push(`Command exited with code ${tool.exitCode}.`);
+      sections.push(
+        i18n.t("agents.activity.commandExitedWithCode", { code: tool.exitCode }),
+      );
     }
     if (tool.truncated && tool.fullOutputPath) {
-      sections.push(`Output truncated. Full output: ${tool.fullOutputPath}`);
+      sections.push(
+        i18n.t("agents.activity.outputTruncated", { path: tool.fullOutputPath }),
+      );
     }
     return sections.filter(Boolean).join("\n\n");
   }
 
   const input = formatUnknown(tool.args);
   const sections = [
-    input ? `Input\n${input}` : "",
-    tool.output ? `Output\n${tool.output}` : "",
+    input ? `${i18n.t("agents.activity.input")}\n${input}` : "",
+    tool.output ? `${i18n.t("agents.activity.output")}\n${tool.output}` : "",
   ];
   return sections.filter(Boolean).join("\n\n");
 }
@@ -1649,13 +1814,17 @@ export function agentRewindOptions(
     {
       enabled: capabilities.rewindConversation,
       mode: "conversation",
-      label: "Rewind conversation",
+      label: i18n.t("agents.rewind.conversation"),
     },
-    { enabled: capabilities.rewindFiles, mode: "files", label: "Rewind files" },
+    {
+      enabled: capabilities.rewindFiles,
+      mode: "files",
+      label: i18n.t("agents.rewind.files"),
+    },
     {
       enabled: capabilities.rewindBoth,
       mode: "both",
-      label: "Rewind conversation and files",
+      label: i18n.t("agents.rewind.both"),
     },
   ];
   return options.flatMap(({ enabled, mode, label }) =>

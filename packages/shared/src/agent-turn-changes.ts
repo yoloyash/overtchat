@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { AgentTurnChanges } from "@overtchat/agent-bridge";
 
 export type AgentTurnChangesFileNode = {
@@ -139,7 +140,10 @@ export function agentTurnChangesDirectories(
 }
 
 export function agentTurnChangesLabel(files: number): string {
-  return `${files.toLocaleString("en-US")} changed ${files === 1 ? "file" : "files"}`;
+  return i18n.t("agents.messages.changedFilesCount", {
+    count: files,
+    formattedCount: files.toLocaleString(),
+  });
 }
 
 /** 950, 1.2k, 15k, 2.4m: line counts stay narrow enough to line up. */

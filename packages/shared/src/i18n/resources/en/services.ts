@@ -69,6 +69,8 @@ export const services = {
   errors: {
     updateUnchanged: "The provider was not changed.",
     connectFailed: "Could not connect to the provider.",
+    loadCapabilitiesFailed: "Could not load server capabilities.",
+    serviceRequestFailed: "Could not complete the service request.",
   },
   voice: {
     title: "Realtime voice",

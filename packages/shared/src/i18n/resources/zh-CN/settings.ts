@@ -100,6 +100,5 @@ export const settings: Translation["settings"] = {
   pairs: {
     keyLabel: "{{label}} 键 {{index}}",
     valueLabel: "{{label}} 值 {{index}}",
-    removeRow: "移除{{label}}行",
   },
 };

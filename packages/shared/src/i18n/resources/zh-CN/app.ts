@@ -69,6 +69,7 @@ export const app: Translation["app"] = {
     meta: "分享的对话 · {{date}}",
     unavailableTitle: "无法查看分享的对话",
     unavailableDescription: "此链接已被移除或不存在。",
+    loadFailed: "无法加载分享的对话。",
   },
   accountMenu: {
     loading: "加载中…",

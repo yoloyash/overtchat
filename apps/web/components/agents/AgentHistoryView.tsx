@@ -40,7 +40,7 @@ import {
   type AgentSessionSort,
 } from "@/lib/agents/search";
 import { agentHostLabel, groupAgentWorkspaces } from "@/lib/agents/workspaces";
-import { groupByDate, type DateBucket } from "@/lib/dateGroups";
+import { dateBucketLabel, groupByDate } from "@/lib/dateGroups";
 import { useAgentConnections } from "@/lib/queries/agentConnections";
 import { useNow } from "@/lib/useNow";
 import { cn } from "@/lib/utils";
@@ -69,17 +69,6 @@ function withSearch(
 const SORT_KEYS: Record<AgentSessionSort, "sortActivity" | "sortCreated"> = {
   activity: "sortActivity",
   created: "sortCreated",
-};
-
-const DATE_BUCKET_KEYS: Record<
-  DateBucket,
-  "today" | "yesterday" | "last7Days" | "last30Days" | "older"
-> = {
-  Today: "today",
-  Yesterday: "yesterday",
-  "Last 7 days": "last7Days",
-  "Last 30 days": "last30Days",
-  Older: "older",
 };
 
 /**
@@ -361,11 +350,9 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
           ) : (
             <>
               {buckets.map((bucket) => {
-                const bucketLabel = t(
-                  `agents.history.dateBucket.${DATE_BUCKET_KEYS[bucket.label]}`,
-                );
+                const bucketLabel = dateBucketLabel(bucket.key);
                 return (
-                <section key={bucket.label} aria-label={bucketLabel}>
+                <section key={bucket.key} aria-label={bucketLabel}>
                   <h2 className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                     {bucketLabel}
                   </h2>

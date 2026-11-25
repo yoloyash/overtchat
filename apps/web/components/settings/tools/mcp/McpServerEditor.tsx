@@ -267,6 +267,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               keyPlaceholder={t("tools.mcp.editor.keyPlaceholder")}
               valuePlaceholder={t("tools.mcp.editor.valuePlaceholder")}
               addLabel={t("tools.mcp.editor.addEnvVar")}
+              removeLabel={t("tools.mcp.editor.removeEnvVarRow")}
               onChange={setEnvironment}
             />
 
@@ -323,6 +324,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               keyPlaceholder={t("tools.mcp.editor.headerPlaceholder")}
               valuePlaceholder={t("tools.mcp.editor.valuePlaceholder")}
               addLabel={t("tools.mcp.editor.addHeader")}
+              removeLabel={t("tools.mcp.editor.removeHttpHeaderRow")}
               onChange={setHeaders}
             />
 
@@ -332,6 +334,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               keyPlaceholder={t("tools.mcp.editor.headerPlaceholder")}
               valuePlaceholder={t("tools.mcp.editor.envVarPlaceholder")}
               addLabel={t("tools.mcp.editor.addEnvHeader")}
+              removeLabel={t("tools.mcp.editor.removeEnvHeaderRow")}
               onChange={setEnvHeaders}
             />
 

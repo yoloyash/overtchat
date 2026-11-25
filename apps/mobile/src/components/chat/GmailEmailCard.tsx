@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
-  GMAIL_EMAIL_STATUS_LABELS,
+  gmailEmailStatusLabel,
   describeGmailEmail,
   getErrorMessage,
   gmailEmailResult,
@@ -96,7 +96,7 @@ export function GmailEmailCard({
             {email.subject}
           </Text>
           <Text numberOfLines={1} style={[styles.meta, muted]}>
-            {[GMAIL_EMAIL_STATUS_LABELS[email.status], email.recipients]
+            {[gmailEmailStatusLabel(email.status), email.recipients]
               .filter(Boolean)
               .join(" · ")}
           </Text>

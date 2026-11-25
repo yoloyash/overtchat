@@ -69,6 +69,7 @@ export const app = {
     meta: "Shared conversation · {{date}}",
     unavailableTitle: "Shared chat unavailable",
     unavailableDescription: "This link was removed or does not exist.",
+    loadFailed: "Could not load the shared chat.",
   },
   accountMenu: {
     loading: "Loading…",

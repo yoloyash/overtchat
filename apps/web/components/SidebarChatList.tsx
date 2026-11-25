@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { ChatKind } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
-import { groupByDate, type DateBucket } from "@/lib/dateGroups";
+import { groupByDate } from "@/lib/dateGroups";
 import {
   useDeleteChat,
   useMoveChat,
@@ -33,14 +33,6 @@ import { motionClasses } from "@/lib/motion";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 import { apiUrl } from "@/lib/api-url";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
-
-const DATE_BUCKET_KEYS = {
-  Today: "sidebar.dateGroups.today",
-  Yesterday: "sidebar.dateGroups.yesterday",
-  "Last 7 days": "sidebar.dateGroups.last7Days",
-  "Last 30 days": "sidebar.dateGroups.last30Days",
-  Older: "sidebar.dateGroups.older",
-} as const satisfies Record<DateBucket, string>;
 
 interface Chat {
   id: string;
@@ -93,9 +85,9 @@ export function SidebarChatList({
   return (
     <div>
       {groups.map((g) => (
-        <div key={g.label}>
+        <div key={g.key}>
           <div className="mt-4 mb-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {t(DATE_BUCKET_KEYS[g.label])}
+            {g.label}
           </div>
           <ul className="flex flex-col gap-0.5">
             {g.items.map((c) => (

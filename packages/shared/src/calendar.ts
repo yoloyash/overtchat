@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import { conversationUsesSkill } from "./skills";
 import type { ToolState } from "./tools";
 
@@ -167,9 +168,15 @@ function list(value: unknown): Record<string, unknown>[] {
   return records;
 }
 
-function count(total: number, noun: string, more = false): string {
-  if (total === 0) return `No ${noun}s`;
-  return `${total}${more ? "+" : ""} ${noun}${total === 1 && !more ? "" : "s"}`;
+function countCalendars(total: number): string {
+  if (total === 0) return i18n.t("chat.steps.calendar.calendarsZero");
+  return i18n.t("chat.steps.calendar.calendars", { count: total });
+}
+
+function countEvents(total: number, more = false): string {
+  if (total === 0) return i18n.t("chat.steps.calendar.eventsZero");
+  if (more) return i18n.t("chat.steps.calendar.eventsMore", { count: total });
+  return i18n.t("chat.steps.calendar.events", { count: total });
 }
 
 /**
@@ -206,7 +213,7 @@ function eventRow(
   const more = typeof event.moreGuests === "number" ? event.moreGuests : 0;
   return [
     {
-      title: text(event.title) ?? "(no title)",
+      title: text(event.title) ?? i18n.t("chat.steps.calendar.noTitle"),
       start: text(event.start),
       end: text(event.end),
       allDay: event.allDay === true,
@@ -218,16 +225,36 @@ function eventRow(
   ];
 }
 
-const TITLES: Record<
-  CalendarToolDisplay["action"],
-  [running: string, done: string]
-> = {
-  calendars: ["Listing calendars", "Listed calendars"],
-  events: ["Checking calendar", "Checked calendar"],
-  create: ["Adding event", "Added event to calendar"],
-  update: ["Changing event", "Changed event"],
-  delete: ["Deleting event", "Deleted event"],
-};
+const TITLE_KEYS = {
+  calendars: [
+    "chat.steps.calendar.titles.calendarsRunning",
+    "chat.steps.calendar.titles.calendarsDone",
+  ],
+  events: [
+    "chat.steps.calendar.titles.eventsRunning",
+    "chat.steps.calendar.titles.eventsDone",
+  ],
+  create: [
+    "chat.steps.calendar.titles.createRunning",
+    "chat.steps.calendar.titles.createDone",
+  ],
+  update: [
+    "chat.steps.calendar.titles.updateRunning",
+    "chat.steps.calendar.titles.updateDone",
+  ],
+  delete: [
+    "chat.steps.calendar.titles.deleteRunning",
+    "chat.steps.calendar.titles.deleteDone",
+  ],
+} as const;
+
+const ACTIVE_TITLE_KEYS = {
+  calendars: "chat.steps.calendar.active.calendars",
+  events: "chat.steps.calendar.active.events",
+  create: "chat.steps.calendar.active.create",
+  update: "chat.steps.calendar.active.update",
+  delete: "chat.steps.calendar.active.delete",
+} as const;
 
 /**
  * Projects a saved or streaming calendar tool call for display. It reads the
@@ -257,10 +284,10 @@ export function describeCalendarToolPart(
   const base = {
     action,
     status,
-    title: TITLES[action][status === "running" ? 0 : 1],
+    title: i18n.t(TITLE_KEYS[action][status === "running" ? 0 : 1]),
     error:
       status === "error"
-        ? (text(part.errorText) ?? "Google Calendar request failed")
+        ? (text(part.errorText) ?? i18n.t("chat.steps.calendar.requestFailed"))
         : undefined,
   } as const;
   const account = text(output?.account);
@@ -268,7 +295,7 @@ export function describeCalendarToolPart(
   if (action === "calendars") {
     return {
       ...base,
-      note: output ? count(list(output.calendars).length, "calendar") : undefined,
+      note: output ? countCalendars(list(output.calendars).length) : undefined,
       rows: [],
     };
   }
@@ -279,7 +306,7 @@ export function describeCalendarToolPart(
       ...base,
       detail: text(input?.query),
       note: output
-        ? count(events.length, "event", output.hasMore === true)
+        ? countEvents(events.length, output.hasMore === true)
         : undefined,
       rows: events.flatMap((event) => eventRow(event, account)),
     };
@@ -297,10 +324,12 @@ export function calendarActivityLabel(
   active: boolean,
 ): string {
   const display = describeCalendarToolPart(part);
-  if (active) return `${TITLES[display.action][0]}…`;
-  if (display.status === "error") return "Google Calendar request failed";
+  if (active) return i18n.t(ACTIVE_TITLE_KEYS[display.action]);
+  if (display.status === "error") {
+    return i18n.t("chat.steps.calendar.requestFailed");
+  }
   if (display.status === "running") {
-    return "Google Calendar request did not complete";
+    return i18n.t("chat.steps.calendar.requestIncomplete");
   }
   return display.title;
 }

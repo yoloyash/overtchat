@@ -520,6 +520,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             keyPlaceholder={t("models.editor.headersKeyPlaceholder")}
             valuePlaceholder={t("models.editor.headersValuePlaceholder")}
             addLabel={t("models.editor.headersAddLabel")}
+            removeLabel={t("models.editor.removeHeaderRow")}
             allowEmpty
             error={headersError}
             onChange={setHeaderRows}

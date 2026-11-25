@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { ToolState } from "./tools";
 
 /**
@@ -106,25 +107,35 @@ export function parseTaskSchedule(value: unknown): TaskSchedule | null {
   }
 }
 
-const DAY_NAMES = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
+const DAY_KEYS = [
+  "scheduled.days.sunday",
+  "scheduled.days.monday",
+  "scheduled.days.tuesday",
+  "scheduled.days.wednesday",
+  "scheduled.days.thursday",
+  "scheduled.days.friday",
+  "scheduled.days.saturday",
 ] as const;
 
-function ordinal(day: number): string {
+const MONTHLY_ORDINAL_KEYS = {
+  st: "scheduled.describe.monthly.st",
+  nd: "scheduled.describe.monthly.nd",
+  rd: "scheduled.describe.monthly.rd",
+  th: "scheduled.describe.monthly.th",
+} as const;
+
+function ordinalSuffix(day: number): keyof typeof MONTHLY_ORDINAL_KEYS {
   const tens = day % 100;
-  if (tens >= 11 && tens <= 13) return `${day}th`;
-  return `${day}${["th", "st", "nd", "rd"][day % 10] ?? "th"}`;
+  if (tens >= 11 && tens <= 13) return "th";
+  return (["th", "st", "nd", "rd"] as const)[day % 10] ?? "th";
 }
 
 function list(items: string[]): string {
   if (items.length <= 1) return items.join("");
-  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+  return i18n.t("scheduled.describe.dayListAnd", {
+    list: items.slice(0, -1).join(i18n.t("scheduled.describe.dayListSep")),
+    last: items.at(-1),
+  });
 }
 
 /** A wall-clock time the way the reader's locale writes it. */
@@ -147,8 +158,10 @@ export function describeTaskSchedule(
 ): string {
   if (schedule.frequency === "hourly") {
     return schedule.minute === 0
-      ? "Every hour"
-      : `Every hour at :${String(schedule.minute).padStart(2, "0")}`;
+      ? i18n.t("scheduled.describe.everyHour")
+      : i18n.t("scheduled.describe.everyHourAt", {
+          minute: String(schedule.minute).padStart(2, "0"),
+        });
   }
   const time = formatTaskTime(schedule.hour, schedule.minute, locale);
   switch (schedule.frequency) {
@@ -160,18 +173,24 @@ export function describeTaskSchedule(
         year: "numeric",
         timeZone: "UTC",
       }).format(new Date(Date.UTC(year, month - 1, day)));
-      return `Once on ${date} at ${time}`;
+      return i18n.t("scheduled.describe.once", { date, time });
     }
     case "daily":
-      return `Every day at ${time}`;
+      return i18n.t("scheduled.describe.daily", { time });
     case "weekdays":
-      return `Weekdays at ${time}`;
+      return i18n.t("scheduled.describe.weekdays", { time });
     case "weekly":
       return schedule.daysOfWeek.length === 7
-        ? `Every day at ${time}`
-        : `Every ${list(schedule.daysOfWeek.map((day) => DAY_NAMES[day]))} at ${time}`;
+        ? i18n.t("scheduled.describe.daily", { time })
+        : i18n.t("scheduled.describe.weekly", {
+            days: list(schedule.daysOfWeek.map((day) => i18n.t(DAY_KEYS[day]))),
+            time,
+          });
     case "monthly":
-      return `Monthly on the ${ordinal(schedule.dayOfMonth)} at ${time}`;
+      return i18n.t(MONTHLY_ORDINAL_KEYS[ordinalSuffix(schedule.dayOfMonth)], {
+        day: schedule.dayOfMonth,
+        time,
+      });
   }
 }
 
@@ -186,14 +205,17 @@ export type ScheduledTaskRunStatus =
   (typeof SCHEDULED_TASK_RUN_STATUSES)[number];
 
 /** What each run status is called in a task's history. */
-export const SCHEDULED_TASK_RUN_LABELS: Record<ScheduledTaskRunStatus, string> =
-  {
-    running: "Running",
-    success: "Finished",
-    error: "Failed",
-    skipped: "Skipped",
-    interrupted: "Stopped",
-  };
+const RUN_STATUS_KEYS = {
+  running: "scheduled.runs.status.running",
+  success: "scheduled.runs.status.success",
+  error: "scheduled.runs.status.error",
+  skipped: "scheduled.runs.status.skipped",
+  interrupted: "scheduled.runs.status.interrupted",
+} as const;
+
+export function scheduledTaskRunLabel(status: ScheduledTaskRunStatus): string {
+  return i18n.t(RUN_STATUS_KEYS[status]);
+}
 
 export const SCHEDULED_TASK_RUN_TRIGGERS = ["schedule", "manual"] as const;
 export type ScheduledTaskRunTrigger =
@@ -370,35 +392,41 @@ export function scheduledTaskActivityLabel(
 ): string {
   const action = part.type.slice("tool-".length) as ScheduledTaskToolName;
   if (active) {
-    return {
-      list_scheduled_tasks: "Checking scheduled tasks…",
-      create_scheduled_task: "Scheduling a task…",
-      update_scheduled_task: "Updating a scheduled task…",
-      delete_scheduled_task: "Deleting a scheduled task…",
-    }[action];
+    const keys = {
+      list_scheduled_tasks: "scheduled.activity.checking",
+      create_scheduled_task: "scheduled.activity.scheduling",
+      update_scheduled_task: "scheduled.activity.updating",
+      delete_scheduled_task: "scheduled.activity.deleting",
+    } as const;
+    return i18n.t(keys[action]);
   }
   const output = toolOutput(part);
   if (!output) {
-    return {
-      list_scheduled_tasks: "Could not check scheduled tasks",
-      create_scheduled_task: "Could not schedule the task",
-      update_scheduled_task: "Could not update the task",
-      delete_scheduled_task: "Could not delete the task",
-    }[action];
+    const keys = {
+      list_scheduled_tasks: "scheduled.activity.checkFailed",
+      create_scheduled_task: "scheduled.activity.scheduleFailed",
+      update_scheduled_task: "scheduled.activity.updateFailed",
+      delete_scheduled_task: "scheduled.activity.deleteFailed",
+    } as const;
+    return i18n.t(keys[action]);
   }
   const name = scheduledTaskOfToolPart(part)?.name;
   switch (action) {
     case "list_scheduled_tasks": {
       const count = Array.isArray(output.tasks) ? output.tasks.length : 0;
-      return count === 1
-        ? "Checked 1 scheduled task"
-        : `Checked ${count} scheduled tasks`;
+      return i18n.t("scheduled.activity.checked", { count });
     }
     case "create_scheduled_task":
-      return name ? `Scheduled “${name}”` : "Scheduled a task";
+      return name
+        ? i18n.t("scheduled.activity.scheduledNamed", { name })
+        : i18n.t("scheduled.activity.scheduled");
     case "update_scheduled_task":
-      return name ? `Updated “${name}”` : "Updated a scheduled task";
+      return name
+        ? i18n.t("scheduled.activity.updatedNamed", { name })
+        : i18n.t("scheduled.activity.updated");
     case "delete_scheduled_task":
-      return name ? `Deleted “${name}”` : "Deleted a scheduled task";
+      return name
+        ? i18n.t("scheduled.activity.deletedNamed", { name })
+        : i18n.t("scheduled.activity.deleted");
   }
 }

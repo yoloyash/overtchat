@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { UIMessage } from "ai";
 import {
   codeExecutionFiles,
@@ -41,7 +42,7 @@ export function conversationFiles(messages: readonly UIMessage[]): ConversationF
           uploads.set(id, {
             id,
             url: part.url,
-            name: part.filename || "Attachment",
+            name: part.filename || i18n.t("chat.queue.attachmentFallback"),
             mediaType: part.mediaType,
           });
         }

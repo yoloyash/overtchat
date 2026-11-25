@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { apiUrl, getApiOrigin } from "@/lib/api-url";
 import type { SharedConversationPage } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import type { ChatShare, SharedConversation } from "@/lib/sharing";
 import { shareKeys } from "./keys";
 
@@ -65,7 +66,7 @@ export const publicShareQuery = (id: string) =>
       if (response.status === 404 && !pageParam) return null;
       if (!response.ok)
         throw new Error(
-          (await response.text()) || "Could not load the shared chat.",
+          (await response.text()) || i18n.t("app.share.loadFailed"),
         );
       return response.json();
     },

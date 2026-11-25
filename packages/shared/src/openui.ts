@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { ToolState } from "./tools";
 import type { UIMessage } from "ai";
 
@@ -179,7 +180,7 @@ export function withOpenUIFallback(messages: UIMessage[]): UIMessage[] {
             type: "text" as const,
             text:
               openUIFallbackText(part) ||
-              "Interactive UI is unavailable in this client.",
+              i18n.t("chat.openui.unavailableInClient"),
           }
         : part,
     ),

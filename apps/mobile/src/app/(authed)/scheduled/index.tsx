@@ -2,7 +2,7 @@ import {
   describeTaskSchedule,
   formatScheduledRunTime,
   formatUpdatedAt,
-  SCHEDULED_TASK_RUN_LABELS,
+  scheduledTaskRunLabel,
   scheduledTaskIsCompleted,
   type ScheduledTask,
   type ScheduledTaskRun,
@@ -42,7 +42,7 @@ function taskStatus(task: ScheduledTask): string {
 
 function runDetail(run: ScheduledTaskRun): string {
   return [
-    SCHEDULED_TASK_RUN_LABELS[run.status],
+    scheduledTaskRunLabel(run.status),
     run.trigger === "manual" ? "Run by hand" : null,
     run.chatId && !run.seen && run.status !== "running" ? "New" : null,
     run.error,
@@ -154,7 +154,7 @@ function TaskCard({
             title={
               lastRun.status === "running"
                 ? "Running now"
-                : `${SCHEDULED_TASK_RUN_LABELS[lastRun.status]} ${formatUpdatedAt(lastRun.startedAt).toLowerCase()}`
+                : `${scheduledTaskRunLabel(lastRun.status)} ${formatUpdatedAt(lastRun.startedAt).toLowerCase()}`
             }
             detail={lastRun.error ?? undefined}
             navigation={!!lastRun.chatId}

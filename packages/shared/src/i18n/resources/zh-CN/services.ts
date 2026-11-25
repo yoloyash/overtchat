@@ -70,6 +70,8 @@ export const services: Translation["services"] = {
   errors: {
     updateUnchanged: "服务商未更改。",
     connectFailed: "无法连接到服务商。",
+    loadCapabilitiesFailed: "无法加载服务器能力。",
+    serviceRequestFailed: "无法完成服务请求。",
   },
   voice: {
     title: "实时语音",

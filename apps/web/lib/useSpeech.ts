@@ -1,6 +1,7 @@
 "use client";
 
 import { ApiError, apiError, getErrorMessage } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api-url";
 
@@ -110,7 +111,7 @@ export function useSpeech() {
       // Wired once so external controls (media-chrome's pause button) keep
       // status in sync.
       audio.onended = () => stop();
-      audio.onerror = () => fail("Playback failed.");
+      audio.onerror = () => fail(i18n.t("chat.speech.playbackFailed"));
       audio.onpause = () => {
         if (audio.src && !audio.ended) setStatus("paused");
       };
@@ -134,7 +135,7 @@ export function useSpeech() {
       urlRef.current = url;
 
       audio.src = url;
-      audio.play().catch(() => fail("Couldn't start playback."));
+      audio.play().catch(() => fail(i18n.t("chat.speech.startPlaybackFailed")));
 
       void streamIntoMediaSource(mediaSource, text, ac, {
         onComplete: () => setCanSeek(true),
@@ -202,7 +203,7 @@ async function streamIntoMediaSource(
       throw apiError(
         res.status,
         await res.text().catch(() => ""),
-        "Couldn't play speech. Please try again.",
+        i18n.t("chat.speech.playFailed"),
         "tts",
       );
     if (!res.body) throw new Error("The speech service returned empty audio.");
@@ -217,7 +218,7 @@ async function streamIntoMediaSource(
       try {
         sb.appendBuffer(chunk);
       } catch {
-        h.onError("Audio buffer error.");
+        h.onError(i18n.t("chat.speech.audioBufferError"));
       }
     };
     sb.addEventListener("updateend", () => {
@@ -284,7 +285,7 @@ async function playBlobFallback(
       throw apiError(
         res.status,
         await res.text().catch(() => ""),
-        "Couldn't play speech. Please try again.",
+        i18n.t("chat.speech.playFailed"),
         "tts",
       );
     const blob = await res.blob();
@@ -305,5 +306,5 @@ async function playBlobFallback(
 }
 
 function networkErrorMessage(err: unknown): string {
-  return getErrorMessage(err, "Couldn't play speech. Please try again.");
+  return getErrorMessage(err, i18n.t("chat.speech.playFailed"));
 }

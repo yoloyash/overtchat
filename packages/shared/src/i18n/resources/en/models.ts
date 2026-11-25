@@ -101,6 +101,7 @@ export const models = {
     headersKeyPlaceholder: "Header",
     headersValuePlaceholder: "Value",
     headersAddLabel: "Add header",
+    removeHeaderRow: "Remove request headers row",
     toolCallingTitle: "Tool calling",
     toolCallingSupported:
       "This model or endpoint reports tool support. Test the connection to verify the configured template and parser.",
@@ -165,6 +166,18 @@ export const models = {
       updateAppForProvider:
         "Update the app to edit models that use {{provider}}.",
       invalidInput: "Invalid input",
+      tooManyHeaders: "A model can send at most {{max}} request headers",
+      emptyHeaderName: "Request header names cannot be empty",
+      invalidHeaderName: '"{{name}}" is not a valid request header name',
+      reservedHeaderName:
+        "The {{name}} request header is set by the app and cannot be changed",
+      duplicateHeaderName: "The {{name}} request header is listed twice",
+      missingHeaderValue: "The {{name}} request header needs a value",
+      headerValueTooLong: "The {{name}} request header value is too long",
+      invalidHeaderValue:
+        "The {{name}} request header value has characters HTTP headers cannot carry",
+      loadDefaultModelFailed: "Couldn't load default model",
+      saveDefaultModelFailed: "Couldn't save default model",
     },
   },
   connection: {
@@ -240,6 +253,8 @@ export const models = {
       'Optional JSON object, such as {"seed": 7}. Use this for backend-specific quality or sampling settings. Model, prompt, size, response format, and image count are managed separately.',
     invalidJsonObject: "Enter a JSON object.",
     invalidValidJsonObject: "Enter a valid JSON object.",
+    reservedExtraParam: "{{key}} cannot be set in extra image parameters.",
+    extraParamsTooLarge: "Extra image parameters must be at most 16 KiB.",
   },
   advanced: {
     title: "Advanced",
@@ -335,6 +350,14 @@ export const models = {
       xhigh: "Extra high",
       max: "Max",
     },
+    unknownLevel: 'Unknown thinking level "{{level}}". Use {{levels}}.',
+    missingOnOffOrEffort:
+      "Configure both on and off, or at least one effort level.",
+    missingDefaultLevel: "Choose the server's default thinking level.",
+    defaultLevelNotConfigured:
+      "The default thinking level must be one of the configured levels.",
+    onOnlyDefaultWithEfforts:
+      'With effort levels configured, "on" is only offered as the default level.',
   },
   userCredentials: {
     title: "People",
