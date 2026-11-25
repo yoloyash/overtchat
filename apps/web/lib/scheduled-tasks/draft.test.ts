@@ -37,6 +37,7 @@ describe("a task draft", () => {
       date: "2026-12-01",
       timeZone: "Asia/Kolkata",
       webSearchEnabled: true,
+      projectId: null,
     });
     expect(scheduleOfDraft(draft)).toEqual({ frequency: "daily", hour: 9, minute: 0 });
   });
@@ -65,6 +66,12 @@ describe("a task draft", () => {
 
   it("leaves the model empty when the task's model was deleted", () => {
     const draft = taskDraftOf({ ...task({ frequency: "hourly", minute: 0 }), modelConfigId: null }, NOW);
+    // The project a task runs in is part of what the form shows and saves.
+    expect(draft.projectId).toBeNull();
+    expect(
+      taskDraftOf({ ...task({ frequency: "hourly", minute: 0 }), projectId: "p" }, NOW)
+        .projectId,
+    ).toBe("p");
     expect(taskDraftProblem(draft)).toBe("Choose a model.");
   });
 

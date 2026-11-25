@@ -182,6 +182,59 @@ describe("the scheduled tasks skill", () => {
     expect(store.listScheduledTasks("a")).toEqual([]);
   });
 
+  it("puts a task in a project by its name, moves it and takes it out", async () => {
+    const tools = toolsFor();
+    const { task } = await call(tools, "create_scheduled_task", {
+      name: "Project digest",
+      prompt: "Summarize what changed in the project's files.",
+      schedule: { frequency: "daily", time: "09:00" },
+      project: " project ",
+    });
+    expect(task).toMatchObject({ project: "Project" });
+    expect(store.getScheduledTask(task!.id, "a")?.projectId).toBe("p");
+    // Listed with its project, so the model can say where a task runs.
+    expect((await call(tools, "list_scheduled_tasks", {})).tasks?.[0]).toMatchObject({
+      project: "Project",
+    });
+
+    const out = await call(tools, "update_scheduled_task", {
+      task_id: task!.id,
+      project: null,
+    });
+    expect(out.task).not.toHaveProperty("project");
+    expect(store.getScheduledTask(task!.id, "a")?.projectId).toBeNull();
+    // Leaving the field out changes nothing about the project.
+    await call(tools, "update_scheduled_task", { task_id: task!.id, project: "Project" });
+    await call(tools, "update_scheduled_task", { task_id: task!.id, name: "Digest" });
+    expect(store.getScheduledTask(task!.id, "a")?.projectId).toBe("p");
+  });
+
+  it("names the user's own projects when the one asked for is not among them", async () => {
+    const create = (tools: Tools, project: string) =>
+      call(tools, "create_scheduled_task", {
+        name: "Digest",
+        prompt: "Summarize the project.",
+        schedule: { frequency: "daily", time: "09:00" },
+        project,
+      });
+    // Another person's project is not found, and is not named.
+    await expect(create(toolsFor(), "Theirs")).rejects.toThrow(
+      'No project is named "Theirs". The user\'s projects: Project.',
+    );
+    await expect(create(toolsFor("b"), "Project")).rejects.toThrow(
+      'No project is named "Project". The user\'s projects: Theirs.',
+    );
+    expect(store.listScheduledTasks("a")).toEqual([]);
+    expect(store.listScheduledTasks("b")).toEqual([]);
+  });
+
+  it("tells the model which project the chat is in", () => {
+    expect(scheduledTasksPrompt("UTC", "Garden")).toContain(
+      'This chat is in the project "Garden"',
+    );
+    expect(scheduledTasksPrompt("UTC")).not.toContain("This chat is in the project");
+  });
+
   it("tells the model the user's time zone, or to ask for it", () => {
     expect(scheduledTasksPrompt("Asia/Kolkata")).toContain(
       "The user's time zone is Asia/Kolkata; use it unless they name another.",

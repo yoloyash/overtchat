@@ -332,7 +332,11 @@ export async function runChat(
           parsedRequest.scheduledTasksSupported === true &&
           !temporary &&
           !options.unattended
-            ? { timeZone, modelConfigId: modelConfig.id }
+            ? {
+                timeZone,
+                modelConfigId: modelConfig.id,
+                ...(project ? { project: project.name } : {}),
+              }
             : null,
       })
     : [];
@@ -686,7 +690,12 @@ export async function runChat(
         staleStreamId,
         voiceSessionId: options.voiceSessionId,
         truncateFromMessageId,
-        ...(options.unattended ? { title: options.unattended.title } : {}),
+        ...(options.unattended
+          ? {
+              title: options.unattended.title,
+              scheduledTaskName: options.unattended.title,
+            }
+          : {}),
         ...(continueMessage ? { continueMessage } : {}),
         userMessage: persistUserMessage
           ? { id: last.id, parts: last.parts, metadata: last.metadata as Record<string, unknown> | undefined }

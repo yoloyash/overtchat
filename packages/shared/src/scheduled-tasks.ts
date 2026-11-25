@@ -305,6 +305,8 @@ export interface ScheduledTaskToolTask {
   /** ISO 8601 with the task's own offset. */
   nextRuns: string[];
   model?: string;
+  /** The project its runs start in, when it has one. */
+  project?: string;
 }
 
 export interface ScheduledTaskToolOutput {

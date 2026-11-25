@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6eef29f0-5bed-45b5-8682-5dcc37d100dc",
+  "id": "e903f3ab-99ae-40b0-81c2-a5ed2ebe6e5f",
   "prevId": "a8f52db1-4e03-4e1c-9a45-d2ff3fe4ef50",
   "tables": {
     "account": {
@@ -921,6 +921,13 @@
         },
         "model_config_id": {
           "name": "model_config_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scheduled_task_name": {
+          "name": "scheduled_task_name",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

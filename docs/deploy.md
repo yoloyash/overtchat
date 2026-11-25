@@ -1085,7 +1085,14 @@ is made on the **Scheduled** page in the sidebar, or by asking in any chat
 ("every weekday at 8, send me a news briefing"); the model then asks for
 whatever is missing and sets it up. Each run opens a new chat named after the
 task, on the model the task was given, and is marked as new until it is opened.
-Phones with notifications on are told when a run finishes or fails.
+The chat keeps a calendar mark that says a task wrote it. Phones with
+notifications on are told when a run finishes or fails, and so is an open web
+or desktop window on a device where alerts are turned on in Settings.
+
+A task can be given one of the person's projects. Its runs then start in that
+project, with the project's instructions and files, and their chats are filed
+there. Deleting the project switches the task off, and the Scheduled page says
+why; switched back on, it runs outside any project.
 
 The server keeps the schedule, so nothing needs to be open for a task to run,
 but the server itself must be running at that time:

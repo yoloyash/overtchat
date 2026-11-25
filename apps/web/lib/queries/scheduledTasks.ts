@@ -71,7 +71,11 @@ export function scheduledTaskActivityInterval(
  * Runs in progress and finished runs nobody has opened. Nothing pushes these
  * to a page: a run starts on the server's clock, so the page asks.
  */
-export function useScheduledTaskActivity(enabled: boolean) {
+export function useScheduledTaskActivity(
+  enabled: boolean,
+  /** Keep asking while the page is hidden, for a page that will alert. */
+  whileHidden = false,
+) {
   return useQuery({
     queryKey: scheduledTaskKeys.activity(),
     queryFn: async () =>
@@ -83,6 +87,7 @@ export function useScheduledTaskActivity(enabled: boolean) {
     enabled,
     refetchOnWindowFocus: "always",
     refetchInterval: (query) => scheduledTaskActivityInterval(query.state.data),
+    refetchIntervalInBackground: whileHidden,
     retry: false,
   });
 }

@@ -13,6 +13,10 @@ export async function GET(
   const { id } = await params;
   const chat = await getChat(id, session.user.id);
   if (!chat) return new Response("Not found", { status: 404 });
+  // Left out for a chat a person started, so older clients see no change.
+  const origin = chat.scheduledTaskName
+    ? { scheduledTaskName: chat.scheduledTaskName }
+    : {};
 
   const url = new URL(req.url);
   const supportsOpenUI = url.searchParams.get("openui") === "1";
@@ -35,11 +39,11 @@ export async function GET(
     }
     const page = await getMessagesPage(id, { cursor, limit });
     page.messages = withGmailEmailState(session.user.id, page.messages);
-    return Response.json({ ...page, messages: supportsOpenUI ? page.messages : withOpenUIFallback(page.messages), projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId });
+    return Response.json({ ...page, messages: supportsOpenUI ? page.messages : withOpenUIFallback(page.messages), projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId, ...origin });
   }
 
   // Compatibility path for existing mobile clients. New clients should use
   // cursor pagination so opening a chat never transfers unbounded history.
   const messages = withGmailEmailState(session.user.id, await getMessages(id));
-  return Response.json({ messages: supportsOpenUI ? messages : withOpenUIFallback(messages), projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId });
+  return Response.json({ messages: supportsOpenUI ? messages : withOpenUIFallback(messages), projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId, ...origin });
 }

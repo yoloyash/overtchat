@@ -87,4 +87,22 @@ describe("chat message history route", () => {
       kind: "voice",
     });
   });
+
+  it("says which scheduled task started a chat, and nothing for other chats", async () => {
+    mocks.getChat.mockResolvedValue({
+      id: "chat",
+      projectId: null,
+      kind: "text",
+      modelConfigId: null,
+      scheduledTaskName: "Morning news",
+    });
+    mocks.getMessages.mockResolvedValue([]);
+    const response = await GET(
+      new Request("http://server.test/api/chat/chat/messages"),
+      context,
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      scheduledTaskName: "Morning news",
+    });
+  });
 });

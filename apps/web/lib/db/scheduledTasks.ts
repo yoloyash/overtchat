@@ -142,6 +142,30 @@ export function scheduledTaskModelLabel(
     .get()?.label;
 }
 
+/** The name of the project a task runs in, while it still exists. */
+export function scheduledTaskProjectName(
+  projectId: string | null,
+): string | undefined {
+  if (!projectId) return undefined;
+  return db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get()?.name;
+}
+
+/** The owner's projects, for a task to be put in one by name. */
+export function scheduledTaskProjects(
+  userId: string,
+): { id: string; name: string }[] {
+  return db
+    .select({ id: projects.id, name: projects.name })
+    .from(projects)
+    .where(eq(projects.userId, userId))
+    .orderBy(projects.name)
+    .all();
+}
+
 function activeCount(tx: Tx, userId: string, exceptId?: string): number {
   return (
     tx

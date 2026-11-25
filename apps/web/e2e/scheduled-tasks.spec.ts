@@ -167,8 +167,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 const sidebar = (page: Page) => page.locator("[data-desktop-sidebar]");
-const scheduledLink = (page: Page) =>
-  sidebar(page).getByRole("link", { name: /^Scheduled/ });
+// By where it goes: a chat a task wrote is a link that starts "Scheduled" too.
+const scheduledLink = (page: Page) => sidebar(page).locator('a[href="/scheduled"]');
 const taskRow = (page: Page, name: string) =>
   page.getByRole("list", { name: "Scheduled tasks" }).getByRole("listitem").filter({
     has: page.getByRole("heading", { name, exact: true }),
@@ -185,6 +185,10 @@ async function createTask(page: Page, name: string, prompt: string) {
 
 test("a task made on the Scheduled page runs by itself into a new chat", async ({ page }) => {
   test.setTimeout(120_000);
+  // This device chose to be told when something finishes.
+  await page.addInitScript(() =>
+    localStorage.setItem("overtchat:agent-alert-sound", "true"),
+  );
   await page.goto("/");
   await scheduledLink(page).click();
   await expect(page.getByRole("heading", { name: "Scheduled", exact: true })).toBeVisible();
@@ -204,7 +208,10 @@ test("a task made on the Scheduled page runs by itself into a new chat", async (
   await expect(row.getByRole("switch", { name: "Morning news is on" })).toBeChecked();
   expect(chatRequests).toHaveLength(0);
 
-  // Its time comes. Nothing in the browser asks for the run.
+  // Its time comes while the owner is somewhere else in the app. Nothing in
+  // the browser asks for the run.
+  await sidebar(page).locator('a[href="/"]').first().click();
+  await page.waitForURL((url) => url.pathname === "/");
   execute("UPDATE scheduled_tasks SET next_run_at = ?", Date.now() - 1000);
   await expect.poll(() => runs().map((run) => run.status)).toEqual(["success"]);
   expect(chatRequests).toHaveLength(1);
@@ -218,21 +225,21 @@ test("a task made on the Scheduled page runs by itself into a new chat", async (
   expect(task.enabled).toBe(1);
   expect(task.next_run_at).toBeGreaterThan(Date.now());
 
-  // The open page finds out by itself: the chat is listed under the task's
-  // name, marked as new, and the Scheduled link carries the same mark.
+  // The open page finds out by itself and says so, since nobody was watching
+  // the run: the window is in front, so it is a toast rather than a chime.
+  const told = page.getByRole("dialog", { name: "A scheduled task finished" });
+  await expect(told).toBeVisible({ timeout: 45_000 });
+  await expect(told).toContainText("Morning news");
+  // The chat is listed under the task's name, marked as new and as the work
+  // of a scheduled task, and the Scheduled link carries the same new mark.
   const chat = sidebar(page).getByRole("link", { name: "Morning news" });
-  await expect(chat).toBeVisible({ timeout: 45_000 });
+  await expect(chat).toBeVisible();
   await expect(chat.getByRole("img", { name: "New result" })).toBeVisible();
+  await expect(chat.getByRole("img", { name: "Scheduled task" })).toBeVisible();
   await expect(scheduledLink(page).getByRole("img", { name: "1 new result" })).toBeVisible();
-  await expect(row).toContainText("Finished");
-  await row.getByRole("button", { name: "Runs" }).click();
-  const history = row.getByRole("list", { name: "Runs of Morning news" });
-  await expect(history.getByRole("listitem")).toHaveCount(1);
-  await expect(history.getByRole("listitem")).toContainText("Finished");
-  await expect(history.getByRole("listitem")).toContainText("New");
 
-  // Opening the chat reads the result.
-  await history.getByRole("link").click();
+  // Opening the chat from the toast reads the result.
+  await told.getByRole("button", { name: "Open" }).click();
   await page.waitForURL("**/chat/*");
   await expect(page.getByText("Summarize this morning's news.", { exact: true })).toBeVisible();
   await expect(
@@ -243,9 +250,21 @@ test("a task made on the Scheduled page runs by itself into a new chat", async (
   await expect.poll(() => runs()[0].seen_at).not.toBeNull();
   // The task named the chat; no title was generated over it.
   expect(query<{ title: string }>("SELECT title FROM chats")).toEqual([{ title: "Morning news" }]);
+  // Read, it still says where it came from, in the list and above the chat.
+  await expect(chat.getByRole("img", { name: "Scheduled task" })).toBeVisible();
 
-  // Run now starts a second run beside the schedule.
-  await scheduledLink(page).click();
+  // The way back to the task is above the chat. Its history has the run.
+  await page.getByRole("link", { name: "Scheduled task: Morning news" }).click();
+  await page.waitForURL("**/scheduled");
+  await expect(row).toContainText("Finished");
+  await row.getByRole("button", { name: "Runs" }).click();
+  const history = row.getByRole("list", { name: "Runs of Morning news" });
+  await expect(history.getByRole("listitem")).toHaveCount(1);
+  await expect(history.getByRole("listitem")).toContainText("Finished");
+  await expect(history.getByRole("listitem")).not.toContainText("New");
+
+  // Run now starts a second run beside the schedule. This page shows it
+  // ending in its own list, so nothing else announces it.
   await row.getByRole("button", { name: "Actions for Morning news" }).click();
   await page.getByRole("menuitem", { name: "Run now" }).click();
   await expect(page.getByText("Running now", { exact: true }).first()).toBeVisible();
@@ -255,6 +274,9 @@ test("a task made on the Scheduled page runs by itself into a new chat", async (
   await expect(sidebar(page).getByRole("link", { name: "Morning news" })).toHaveCount(2, {
     timeout: 15_000,
   });
+  await expect(history.getByRole("listitem")).toHaveCount(2);
+  await expect(history.getByRole("listitem").first()).toContainText("New");
+  await expect(page.getByText("A scheduled task finished")).toHaveCount(0);
 
   // Paused, its time passes without a run.
   await row.getByRole("switch", { name: "Morning news is on" }).click();
@@ -358,4 +380,44 @@ test("a chat sets a task up through the scheduled tasks skill", async ({ page })
   await expect(taskRow(page, "Pull request review")).toContainText(
     "Weekdays at 8:00 AM · Scheduled test",
   );
+});
+
+test("a task runs in the project it is given, and stops when the project is deleted", async ({ page }) => {
+  test.setTimeout(60_000);
+  const created = await page.request.post("/api/projects", {
+    data: { name: "Garden", instructions: "Always answer about the garden." },
+  });
+  const { project } = (await created.json()) as { project: { id: string } };
+
+  await page.goto("/scheduled");
+  await page.getByRole("button", { name: "New task" }).click();
+  const dialog = page.getByRole("dialog", { name: "New scheduled task" });
+  await dialog.getByLabel("Name").fill("Garden digest");
+  await dialog.getByLabel("Instructions").fill("Say what needs watering.");
+  await dialog.getByLabel("Project").click();
+  await page.getByRole("option", { name: "Garden" }).click();
+  await dialog.getByRole("button", { name: "Schedule", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const row = taskRow(page, "Garden digest");
+  await expect(row).toContainText("Every day at 9:00 AM · Scheduled test · Garden");
+
+  // The run starts in the project: its chat is filed there and the model is
+  // given the project's instructions.
+  await row.getByRole("button", { name: "Actions for Garden digest" }).click();
+  await page.getByRole("menuitem", { name: "Run now" }).click();
+  await expect.poll(() => runs().map((run) => run.status)).toEqual(["success"]);
+  expect(
+    query<{ project_id: string; scheduled_task_name: string }>(
+      "SELECT project_id, scheduled_task_name FROM chats",
+    ),
+  ).toEqual([{ project_id: project.id, scheduled_task_name: "Garden digest" }]);
+  expect(text(chatRequests[0].messages[0])).toContain("Always answer about the garden.");
+
+  // Without its project the task would run as something else, so it stops.
+  expect((await page.request.delete(`/api/projects/${project.id}`)).ok()).toBeTruthy();
+  await page.reload();
+  await expect(row).toContainText("The project this task ran in was deleted.");
+  await expect(row.getByRole("switch", { name: "Garden digest is on" })).not.toBeChecked();
+  await page.waitForTimeout(1500);
+  expect(runs()).toHaveLength(1);
 });

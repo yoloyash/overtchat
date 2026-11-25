@@ -40,6 +40,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { motionClasses } from "@/lib/motion";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useModelPreferences } from "@/lib/queries/modelPreferences";
+import { useProjects } from "@/lib/queries/projects";
 import {
   useCreateScheduledTask,
   useUpdateScheduledTask,
@@ -65,6 +66,9 @@ const DAYS = [
   { short: "S", name: "Saturday" },
 ];
 
+/** The picker's value for a task outside any project. */
+const NO_PROJECT = "none";
+
 function browserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
@@ -87,6 +91,7 @@ export function ScheduledTaskDialog({
 }) {
   const { data: models } = useModelConfigs();
   const { data: preferences } = useModelPreferences();
+  const { data: projects } = useProjects();
   const createTask = useCreateScheduledTask();
   const updateTask = useUpdateScheduledTask();
   const [edited, setEdited] = useState<ScheduledTaskDraft | null>(null);
@@ -138,6 +143,7 @@ export function ScheduledTaskDialog({
       schedule,
       timeZone: draft.timeZone,
       webSearchEnabled: draft.webSearchEnabled,
+      projectId: draft.projectId,
     };
     try {
       if (task) {
@@ -410,6 +416,41 @@ export function ScheduledTaskDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+              {((projects?.length ?? 0) > 0 || draft.projectId) && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-project">Project</Label>
+                  <Select
+                    value={draft.projectId ?? NO_PROJECT}
+                    onValueChange={(value) =>
+                      change({
+                        projectId: value === NO_PROJECT ? null : (value as string),
+                      })
+                    }
+                  >
+                    <SelectTrigger id="task-project" className="w-full">
+                      <SelectValue>
+                        {draft.projectId
+                          ? (projects?.find(
+                              (project) => project.id === draft.projectId,
+                            )?.name ?? "Project")
+                          : "None"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PROJECT}>None</SelectItem>
+                      {(projects ?? []).map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Runs start in the project, with its instructions and files.
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-4">
                 <div>
