@@ -281,16 +281,18 @@ test("the interface language follows the saved choice", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
-test.describe("with a Chinese system language", () => {
-  test.use({ locale: "zh-CN" });
-
-  test("System shows the interface in Chinese", async ({ page }) => {
-    await page.goto("/settings/general");
-    await expect(page.getByRole("heading", { name: "外观" })).toBeVisible();
-    await expect(
-      page
-        .getByRole("combobox", { name: "语言" })
-        .locator('[data-slot="select-value"]'),
-    ).toHaveText("跟随系统");
-  });
+test("System follows the browser's language", async ({ page }) => {
+  // Set after the English sign-up above, which finds its fields by English labels.
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["zh-CN", "en"],
+    }),
+  );
+  await page.goto("/settings/general");
+  await expect(page.getByRole("heading", { name: "外观" })).toBeVisible();
+  await expect(
+    page
+      .getByRole("combobox", { name: "语言" })
+      .locator('[data-slot="select-value"]'),
+  ).toHaveText("跟随系统");
 });
