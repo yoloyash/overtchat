@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -22,6 +23,7 @@ import { toastError, toastSuccess } from "@/lib/toast";
  */
 export default function SignInRequestScreen() {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
   const requests = useSignInRequests({ enabled: true });
@@ -44,21 +46,24 @@ export default function SignInRequestScreen() {
     try {
       const result = await decideSignInRequest(request.id, decision);
       if (result === "approved") {
-        toastSuccess("Sign-in approved", request.device);
+        toastSuccess(t("auth.signInRequest.toast.approvedTitle"), request.device);
       } else if (result === "denied") {
-        toastSuccess("Sign-in denied", "If this wasn't you, change your password.");
+        toastSuccess(
+          t("auth.signInRequest.toast.deniedTitle"),
+          t("auth.signInRequest.toast.deniedDescription"),
+        );
       } else if (result === "mismatch") {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         toastError(
-          "Sign-in blocked",
-          "That number didn't match. If you were signing in, try again; if not, change your password.",
+          t("auth.signInRequest.toast.mismatchTitle"),
+          t("auth.signInRequest.toast.mismatchDescription"),
         );
       } else {
-        toastError("This request expired");
+        toastError(t("auth.signInRequest.toast.expiredTitle"));
       }
       close();
     } catch (error) {
-      toastError("Couldn't answer the sign-in request", error);
+      toastError(t("auth.signInRequest.toast.errorTitle"), error);
     } finally {
       setAnswering(false);
       void queryClient.invalidateQueries({
@@ -72,7 +77,7 @@ export default function SignInRequestScreen() {
       edges={["bottom"]}
       style={[styles.root, { backgroundColor: colors.background }]}
     >
-      <Stack.Screen options={{ title: "Sign-in request" }} />
+      <Stack.Screen options={{ title: t("auth.mobile.signInRequest.screenTitle") }} />
       {!request ? (
         <View style={styles.center}>
           {requests.isPending ? (
@@ -82,11 +87,11 @@ export default function SignInRequestScreen() {
               <Text
                 style={[styles.body, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}
               >
-                This sign-in request is no longer waiting. It was answered or expired.
+                {t("auth.mobile.signInRequest.expiredBody")}
               </Text>
               <Pressable accessibilityRole="button" hitSlop={8} onPress={close}>
                 <Text style={[styles.link, { color: colors.primary, fontFamily: fonts.sansMedium }]}>
-                  Close
+                  {t("common.mobile.actions.close")}
                 </Text>
               </Pressable>
             </>
@@ -99,7 +104,7 @@ export default function SignInRequestScreen() {
             <Text
               style={[styles.title, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
             >
-              Is this you signing in?
+              {t("auth.signInRequest.title")}
             </Text>
             <Text
               style={[styles.body, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}
@@ -110,7 +115,7 @@ export default function SignInRequestScreen() {
           </View>
 
           <Text style={[styles.prompt, { color: colors.foreground, fontFamily: fonts.sansMedium }]}>
-            Pick the number shown on the sign-in screen.
+            {t("auth.signInRequest.instruction")}
           </Text>
           <View style={styles.choices}>
             {request.choices.map((number) => (
@@ -149,13 +154,13 @@ export default function SignInRequestScreen() {
             ]}
           >
             <Text style={[styles.denyText, { color: colors.destructive, fontFamily: fonts.sansSemiBold }]}>
-              No, it&apos;s not me
+              {t("auth.signInRequest.deny")}
             </Text>
           </Pressable>
           <Text
             style={[styles.footnote, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}
           >
-            If you didn&apos;t just try to sign in, someone may know your password.
+            {t("auth.mobile.signInRequest.footnote")}
           </Text>
         </View>
       )}

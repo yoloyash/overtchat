@@ -160,4 +160,32 @@ export const auth = {
       saved: "I saved them",
     },
   },
+  mobile: {
+    unexpectedSessionResponse:
+      "The server didn't answer like OvertChat. A proxy or Wi-Fi sign-in page may be in the way.",
+    login: {
+      approvalDescription:
+        "Open OvertChat on a computer or another device where you're signed in, and pick this number.",
+      verifyFailed: "Could not verify the code.",
+      recoveryAlertMessage:
+        "Contact your server administrator to reset your password. Another administrator can also help if you are an admin.\n\nIf all administrators are locked out, the server owner can run overtchat reset-password on the server, or overtchat reset-two-factor for a lost authenticator.",
+      changeServerShort: "Change",
+    },
+    requiredTwoFactor: {
+      description:
+        "This server requires administrators to sign in with a code from an authenticator app, as well as their password. Set it up on the web, then come back.",
+      setupOnWeb: "Set up on the web",
+      doneSetup: "I've set it up",
+      signingOut: "Signing out…",
+    },
+    signInRequest: {
+      screenTitle: "Sign-in request",
+      expiredBody:
+        "This sign-in request is no longer waiting. It was answered or expired.",
+      footnote:
+        "If you didn't just try to sign in, someone may know your password.",
+      loadError: "Could not load sign-in requests.",
+      answerError: "Couldn't answer the sign-in request. Try again.",
+    },
+  },
 } as const;

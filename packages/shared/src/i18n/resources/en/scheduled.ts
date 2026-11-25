@@ -182,4 +182,17 @@ export const scheduled = {
     deletedNamed: "Deleted “{{name}}”",
     deleted: "Deleted a scheduled task",
   },
+  mobile: {
+    emptyDescription:
+      "Add one here, or ask in any chat: “Every weekday at 8, send me a news briefing.”",
+    runOnScheduleLabel: "Run {{name}} on its schedule",
+    notFound: "This task no longer exists.",
+    whenSection: "When",
+    runsWithSection: "Runs with",
+    usePhoneTimeZone: "Tap to use this phone's time zone, {{timeZone}}.",
+    backToTasks: "Back to tasks",
+    deleteTask: "Delete task",
+    deleteDialogMessage:
+      "{{name}} will stop running. The chats it wrote are kept.",
+  },
 } as const;

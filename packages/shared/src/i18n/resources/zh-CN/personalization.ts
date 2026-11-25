@@ -88,4 +88,29 @@ export const personalization: Translation["personalization"] = {
       error: "清空记忆失败。",
     },
   },
+  mobile: {
+    openOnWeb: "在网页端打开",
+    profile: {
+      description: "留空的字段不会添加到模型上下文中。",
+      enabledDescription:
+        "在对话中包含你的个人资料和记忆，并允许模型在你要求时管理记忆。临时对话绝不使用。",
+      saveError: "无法保存个性化设置。",
+      saveLabel: "保存个性化设置",
+    },
+    memories: {
+      description:
+        "当你明确要求模型记住或忘记某些内容时，模型可以修改这些条目。你的个人资料和记忆共享 4 KiB 上下文预算。",
+      deleteError: "无法删除记忆",
+      clearError: "无法清空记忆",
+      usageAccessibility:
+        "已使用 {{percent}}%，已用 {{bytes}} / {{limit}} 字节上下文，{{entries}} / {{entryLimit}} 条记忆",
+      usageDetail:
+        "{{bytes}} / {{limit}} 字节 · {{entries}} / {{entryLimit}} 条记忆",
+      clearAllLabel: "清空所有记忆",
+      addShort: "添加",
+      noMatches: "没有与“{{query}}”匹配的记忆。",
+      saveError: "无法保存记忆。",
+      keyHint: "请以字母开头，仅使用小写字母、数字或下划线。",
+    },
+  },
 };

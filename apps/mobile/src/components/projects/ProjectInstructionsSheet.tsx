@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -36,6 +37,7 @@ export const ProjectInstructionsSheet = forwardRef<
   { project: ProjectListItem }
 >(function ProjectInstructionsSheet({ project }, ref) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const keyboardHeight = useKeyboardState((state) =>
@@ -82,10 +84,10 @@ export const ProjectInstructionsSheet = forwardRef<
       { instructions: draft.trim() ? draft : null },
       {
         onSuccess: () => {
-          toastSuccess("Instructions saved");
+          toastSuccess(t("projects.instructions.toast.saved"));
           sheetRef.current?.dismiss();
         },
-        onError: (e) => toastError("Couldn't save instructions", e),
+        onError: (e) => toastError(t("projects.mobile.instructions.saveError"), e),
       },
     );
   }
@@ -112,7 +114,7 @@ export const ProjectInstructionsSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          Instructions
+          {t("projects.instructions.title")}
         </Text>
         <Text
           style={[
@@ -120,14 +122,15 @@ export const ProjectInstructionsSheet = forwardRef<
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          Added to every chat in {project.name}: context, tone, or preferences
-          the model should always follow.
+          {t("projects.mobile.instructions.sheetSubtitle", {
+            name: project.name,
+          })}
         </Text>
         <BottomSheetTextInput
-          accessibilityLabel="Instructions"
+          accessibilityLabel={t("projects.instructions.title")}
           value={draft}
           onChangeText={setDraft}
-          placeholder="e.g. Always respond in concise bullet points. Assume the reader is a senior engineer."
+          placeholder={t("projects.instructions.placeholder")}
           placeholderTextColor={colors.mutedForeground}
           multiline
           autoFocus
@@ -147,7 +150,7 @@ export const ProjectInstructionsSheet = forwardRef<
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Cancel"
+            accessibilityLabel={t("projects.actions.cancel")}
             disabled={pending}
             onPress={() => sheetRef.current?.dismiss()}
             style={({ pressed }) => [
@@ -165,12 +168,12 @@ export const ProjectInstructionsSheet = forwardRef<
                 { color: colors.foreground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              Cancel
+              {t("projects.actions.cancel")}
             </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Save instructions"
+            accessibilityLabel={t("projects.mobile.instructions.saveLabel")}
             disabled={!canSave}
             onPress={save}
             style={({ pressed }) => [
@@ -195,7 +198,7 @@ export const ProjectInstructionsSheet = forwardRef<
                   },
                 ]}
               >
-                Save
+                {t("projects.actions.save")}
               </Text>
             )}
           </Pressable>

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useQuery } from "@tanstack/react-query";
 import type { PublicModelConfig } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
@@ -8,7 +9,7 @@ export function useModelConfigs() {
     queryKey: queryKeys.modelConfigs(),
     queryFn: async (): Promise<PublicModelConfig[]> => {
       const res = await authFetch(`${getApiBase()}/api/model-configs`);
-      if (!res.ok) throw new Error(`Failed to load models (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.loadModels", { status: res.status }));
       const json = (await res.json()) as { modelConfigs: PublicModelConfig[] };
       return json.modelConfigs;
     },

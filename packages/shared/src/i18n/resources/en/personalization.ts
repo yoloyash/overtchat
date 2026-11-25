@@ -91,4 +91,30 @@ export const personalization = {
       error: "Failed to clear memories.",
     },
   },
+  mobile: {
+    openOnWeb: "Open on web",
+    profile: {
+      description: "Empty fields are not added to model context.",
+      enabledDescription:
+        "Include your profile and memories in chats, and allow models to manage memory when asked. Temporary chats never use it.",
+      saveError: "Couldn't save personalization.",
+      saveLabel: "Save personalization",
+    },
+    memories: {
+      description:
+        "Models can change these entries when you explicitly ask them to remember or forget something. Your profile and memories share a 4 KiB context budget.",
+      deleteError: "Couldn't delete memory",
+      clearError: "Couldn't clear memories",
+      usageAccessibility:
+        "{{percent}}% used, {{bytes}} of {{limit}} context bytes, {{entries}} of {{entryLimit}} memories",
+      usageDetail:
+        "{{bytes}} of {{limit}} bytes · {{entries}} of {{entryLimit}} memories",
+      clearAllLabel: "Clear all memories",
+      addShort: "Add",
+      noMatches: "No memories match “{{query}}”.",
+      saveError: "Couldn't save memory.",
+      keyHint:
+        "Start with a letter and use lowercase letters, numbers, or underscores.",
+    },
+  },
 } as const;

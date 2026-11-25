@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { AgentAttentionCounts } from "@overtchat/shared/agent-attention";
@@ -7,20 +9,24 @@ import { useTheme } from "@/lib/theme";
 
 const MODES: {
   mode: SidebarMode;
-  label: string;
+  labelKey: "sidebar.mode.chat" | "sidebar.mode.agents";
   icon: React.ComponentProps<typeof Ionicons>["name"];
 }[] = [
-  { mode: "chat", label: "Chat", icon: "chatbubbles-outline" },
-  { mode: "agents", label: "Agents", icon: "terminal-outline" },
+  { mode: "chat", labelKey: "sidebar.mode.chat", icon: "chatbubbles-outline" },
+  { mode: "agents", labelKey: "sidebar.mode.agents", icon: "terminal-outline" },
 ];
 
 /** How the Agents half announces what waits there while Chat is shown. */
 export function agentsToggleBadgeLabel(counts: AgentAttentionCounts): string {
   if (counts.needsYou > 0) {
-    return `${counts.needsYou} ${counts.needsYou === 1 ? "needs" : "need"} you`;
+    return i18n.t("sidebar.mobile.mode.badgeNeedsYou", {
+      count: counts.needsYou,
+    });
   }
   if (counts.unread > 0) {
-    return `${counts.unread} finished to review`;
+    return i18n.t("sidebar.mobile.mode.badgeUnread", {
+      count: counts.unread,
+    });
   }
   return "";
 }
@@ -41,20 +47,31 @@ export function DrawerModeToggle({
 }) {
   const theme = useTheme();
   const { colors, fonts, radii } = theme;
+  const { t } = useTranslation();
   return (
     <View
       accessibilityRole="tablist"
       style={[styles.group, { backgroundColor: colors.muted, borderRadius: radii.lg }]}
     >
-      {MODES.map(({ mode: option, label, icon }) => {
+      {MODES.map(({ mode: option, labelKey, icon }) => {
         const selected = option === mode;
-        const badge = option === "agents" && !selected ? agentsToggleBadgeLabel(agentCounts) : "";
+        const label = t(labelKey);
+        const showAgentsBadge = option === "agents" && !selected;
+        const accessibilityLabel =
+          showAgentsBadge && agentCounts.needsYou > 0
+            ? t("sidebar.mode.needsYou", { label, count: agentCounts.needsYou })
+            : showAgentsBadge && agentCounts.unread > 0
+              ? t("sidebar.mode.unreadToReview", {
+                  label,
+                  count: agentCounts.unread,
+                })
+              : label;
         return (
           <Pressable
             key={option}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            accessibilityLabel={badge ? `${label}, ${badge}` : label}
+            accessibilityLabel={accessibilityLabel}
             onPress={() => onSelect(option)}
             style={({ pressed }) => [
               styles.option,
@@ -84,7 +101,7 @@ export function DrawerModeToggle({
             >
               {label}
             </Text>
-            {badge && agentCounts.needsYou > 0 ? (
+            {showAgentsBadge && agentCounts.needsYou > 0 ? (
               <View
                 style={[
                   styles.count,
@@ -98,7 +115,7 @@ export function DrawerModeToggle({
                   {agentCounts.needsYou > 9 ? "9+" : agentCounts.needsYou}
                 </Text>
               </View>
-            ) : badge ? (
+            ) : showAgentsBadge && agentCounts.unread > 0 ? (
               <View
                 style={[styles.dot, { backgroundColor: agentSessionStateColor("unread", theme) }]}
               />

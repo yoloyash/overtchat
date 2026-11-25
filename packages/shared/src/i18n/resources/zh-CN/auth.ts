@@ -154,4 +154,30 @@ export const auth: Translation["auth"] = {
       saved: "我已保存",
     },
   },
+  mobile: {
+    unexpectedSessionResponse:
+      "服务器未返回正常的 OvertChat 响应，可能被代理或 Wi-Fi 登录页拦截。",
+    login: {
+      approvalDescription:
+        "在已登录 OvertChat 的电脑或其他设备上打开应用，并选择此数字。",
+      verifyFailed: "无法验证该验证码。",
+      recoveryAlertMessage:
+        "请联系你的服务器管理员重置密码。如果你是管理员，也可以请其他管理员协助处理。\n\n如果所有管理员都无法登录，服务器所有者可以在服务器上运行 overtchat reset-password，或在丢失身份验证器时运行 overtchat reset-two-factor。",
+      changeServerShort: "切换",
+    },
+    requiredTwoFactor: {
+      description:
+        "此服务器要求管理员登录时除密码外，还需输入身份验证器应用的验证码。请在网页端完成设置后再返回。",
+      setupOnWeb: "前往网页端设置",
+      doneSetup: "我已完成设置",
+      signingOut: "正在退出登录…",
+    },
+    signInRequest: {
+      screenTitle: "登录请求",
+      expiredBody: "此登录请求已不再等待处理，可能已被回应或已过期。",
+      footnote: "如果刚才不是你尝试登录，可能有人已经知道了你的密码。",
+      loadError: "无法加载登录请求。",
+      answerError: "无法回应登录请求，请重试。",
+    },
+  },
 };

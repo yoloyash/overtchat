@@ -147,4 +147,50 @@ export const projects = {
       saveFallback: "The file was not added to the project.",
     },
   },
+  mobile: {
+    renamedToast: "Renamed",
+    renameError: "Couldn't rename project",
+    changeModelError: "Couldn't change the default model",
+    deleteError: "Couldn't delete project",
+    notFound: "Project not found",
+    renameProjectLabel: "Rename {{name}}",
+    chatCount_one: "{{count}} chat",
+    chatCount_other: "{{count}} chats",
+    settingsHeading: "SETTINGS",
+    instructionsPlaceholderDetail:
+      "Add context the model should always follow",
+    accountDefaultWithModel: "Account default · {{model}}",
+    chatsHeading: "CHATS",
+    chatsHeadingCount: "CHATS · {{count}}",
+    emptyChatsDescription:
+      "Chats here share this project's instructions, files, and default model.",
+    deleteDialogMessage:
+      "{{name}} will be deleted. Chats inside it will move to your main list.",
+    instructions: {
+      saveError: "Couldn't save instructions",
+      sheetSubtitle:
+        "Added to every chat in {{name}}: context, tone, or preferences the model should always follow.",
+      saveLabel: "Save instructions",
+    },
+    files: {
+      heading: "FILES",
+      headingCount: "FILES · {{count}} OF {{max}}",
+      imageNotAllowedTitle: "{{name}} is an image",
+      imageNotAllowedMessage: "Project files are documents and text.",
+      addError: "Couldn't add {{filename}}",
+      removeError: "Couldn't remove {{filename}}",
+      retryLoadLabel: "Retry loading project files",
+      loadErrorTap: "Couldn't load files. Tap to retry.",
+      metaFromChat: " · from <chatLink>{{chat}}</chatLink>",
+      metaFromUnnamedChat: " · from <chatLink>a chat</chatLink>",
+      uploadingLabel: "Uploading {{name}}",
+      addFilesHint:
+        "Reference material the model can read in every chat here",
+      addFilesExistingDetail:
+        "The model reads and searches these when a question needs them.",
+      removeConfirmTitle: "Remove from project?",
+      removeConfirmMessage:
+        "{{filename}} will no longer be available to chats in this project. Messages that attached it keep their copy.",
+    },
+  },
 } as const;

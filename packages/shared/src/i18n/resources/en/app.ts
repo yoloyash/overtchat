@@ -210,4 +210,83 @@ export const app = {
     closeSearch: "Close search",
     searchModels: "Search models",
   },
+  mobile: {
+    welcome: {
+      tagline: "Your chat. Your endpoint. Your data.",
+      getStarted: "Get started",
+    },
+    server: {
+      title: "Connect to a server",
+      subtitle: "Enter your server address or scan it from the web app.",
+      urlLabel: "Server URL",
+      connect: "Connect",
+      connecting: "Connecting…",
+      scanQrCode: "Scan QR code",
+      errors: {
+        emptyUrl: "Enter a server URL.",
+        invalidUrl: "Enter a valid HTTP or HTTPS server address.",
+        httpStatus: "Server returned {{status}}.",
+        notOvertChat: "That doesn't look like an overtchat server.",
+        unreachable:
+          "Couldn’t reach this server. Check the address and your connection, then retry.",
+      },
+    },
+    qrScanner: {
+      title: "Scan server QR code",
+      instructions:
+        "On the web, open your account menu → Get the mobile app → Connect your phone.",
+      footer: "Scan to connect and sign in.",
+      checkingPermission: "Checking camera permission…",
+      permissionPrompt:
+        "Allow camera access to scan your server’s QR code. You can also go back and enter the address manually.",
+      allowCamera: "Allow camera",
+      openSettings: "Open settings",
+      errors: {
+        checkPermission:
+          "Could not check camera permission. Try again or enter the server address manually.",
+        notServerAddress:
+          "That code isn’t a server address. Open Connect your phone in the web app’s mobile dialog and scan that code.",
+        localOnly:
+          "This address only works on the server. Run overtchat setup and choose “On my home network”, then open the network address to scan again.",
+        cameraMount:
+          "Could not start the camera. Try again or enter the server address manually.",
+        openPermissions:
+          "Could not open camera permissions. Enable camera access in your device settings or enter the address manually.",
+      },
+    },
+    errorBoundary: {
+      title: "Something went wrong",
+      body: "This screen couldn't be shown. If it keeps happening, update the app.",
+      goBack: "Go back",
+    },
+    selectionSheet: {
+      closeLabel: "Close {{title}}",
+      searchPlaceholder: "Search",
+      searchLabel: "Search {{title}}",
+      noMatches: "No matching options",
+    },
+    notifications: {
+      serverUpdateRequired:
+        "Update your OvertChat server to enable notifications.",
+      saveFailed:
+        "Couldn't save notification settings on your server. Try again.",
+      channels: {
+        chatResponses: "Chat responses",
+        agentActivity: "Agent activity",
+        signInRequests: "Sign-in requests",
+      },
+      permissionDisabled:
+        "Notifications are disabled in your phone's settings. Enable them there, then try again.",
+      notConfigured: "This app build isn't configured for push notifications.",
+      registerFailed:
+        "Couldn't register for push notifications. Check your connection and the app's push configuration.",
+      introTitle: "Know when it’s ready",
+      introBody:
+        "Get notified when your response is ready, when an agent needs you or finishes, or when someone signs in to your account.",
+      enableFailedTitle: "Couldn't enable notifications",
+      enableFailedFallback: "Try again in Settings → Notifications.",
+      updateFailed: "Couldn't update notifications.",
+      syncFailed: "Couldn't sync notifications.",
+    },
+  },
 } as const;

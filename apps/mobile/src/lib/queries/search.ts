@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { SearchHit } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
@@ -14,7 +15,7 @@ export function useChatsSearch(query: string) {
         `${getApiBase()}/api/search?q=${encodeURIComponent(trimmed)}`,
         { signal },
       );
-      if (!res.ok) throw new Error(`Search failed (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.searchFailedStatus", { status: res.status }));
       const json = (await res.json()) as { hits: SearchHit[] };
       return json.hits;
     },

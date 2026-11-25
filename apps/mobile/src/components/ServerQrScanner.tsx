@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -24,6 +26,7 @@ export function ServerQrScanner({
   onClose: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(AppState.currentState === "active");
@@ -34,9 +37,7 @@ export function ServerQrScanner({
       setActive(state === "active");
       if (state === "active") {
         void getPermission().catch(() =>
-          setError(
-            "Could not check camera permission. Try again or enter the server address manually.",
-          ),
+          setError(i18n.t("app.mobile.qrScanner.errors.checkPermission")),
         );
       }
     });
@@ -56,13 +57,9 @@ export function ServerQrScanner({
     consumed.current = true;
     const server = parseMobileServerUrl(data);
     if (!server) {
-      setError(
-        "That code isn’t a server address. Open Connect your phone in the web app’s mobile dialog and scan that code.",
-      );
+      setError(t("app.mobile.qrScanner.errors.notServerAddress"));
     } else if (isLocalOnlyServer(server)) {
-      setError(
-        "This address only works on the server. Run overtchat setup and choose “On my home network”, then open the network address to scan again.",
-      );
+      setError(t("app.mobile.qrScanner.errors.localOnly"));
     } else {
       onScan(server);
     }
@@ -79,11 +76,10 @@ export function ServerQrScanner({
               { fontFamily: fonts.serifSemiBold, fontSize: 24 },
             ]}
           >
-            Scan server QR code
+            {t("app.mobile.qrScanner.title")}
           </Text>
           <Text style={[textStyle, { color: colors.mutedForeground }]}>
-            On the web, open your account menu → Get the mobile app → Connect
-            your phone.
+            {t("app.mobile.qrScanner.instructions")}
           </Text>
           <View
             style={{
@@ -102,9 +98,7 @@ export function ServerQrScanner({
                 barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
                 onBarcodeScanned={({ data }) => scan(data)}
                 onMountError={() =>
-                  setError(
-                    "Could not start the camera. Try again or enter the server address manually.",
-                  )
+                  setError(t("app.mobile.qrScanner.errors.cameraMount"))
                 }
               />
             ) : (
@@ -112,8 +106,8 @@ export function ServerQrScanner({
                 <Text accessibilityLiveRegion="polite" style={textStyle}>
                   {error ??
                     (permission
-                      ? "Allow camera access to scan your server’s QR code. You can also go back and enter the address manually."
-                      : "Checking camera permission…")}
+                      ? t("app.mobile.qrScanner.permissionPrompt")
+                      : t("app.mobile.qrScanner.checkingPermission"))}
                 </Text>
                 {error ? (
                   <Pressable
@@ -124,7 +118,7 @@ export function ServerQrScanner({
                       setError(null);
                     }}
                   >
-                    <Text style={textStyle}>Try again</Text>
+                    <Text style={textStyle}>{t("app.error.tryAgain")}</Text>
                   </Pressable>
                 ) : permission && !permission.granted ? (
                   <Pressable
@@ -137,15 +131,15 @@ export function ServerQrScanner({
                           : Linking.openSettings()
                       ).catch(() =>
                         setError(
-                          "Could not open camera permissions. Enable camera access in your device settings or enter the address manually.",
+                          t("app.mobile.qrScanner.errors.openPermissions"),
                         ),
                       );
                     }}
                   >
                     <Text style={textStyle}>
                       {permission.canAskAgain
-                        ? "Allow camera"
-                        : "Open settings"}
+                        ? t("app.mobile.qrScanner.allowCamera")
+                        : t("app.mobile.qrScanner.openSettings")}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -155,14 +149,14 @@ export function ServerQrScanner({
           <Text
             style={[textStyle, { color: colors.mutedForeground, fontSize: 13 }]}
           >
-            Scan to connect and sign in.
+            {t("app.mobile.qrScanner.footer")}
           </Text>
           <Pressable
             accessibilityRole="button"
             style={buttonStyle}
             onPress={onClose}
           >
-            <Text style={textStyle}>Cancel</Text>
+            <Text style={textStyle}>{t("common.mobile.actions.cancel")}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
