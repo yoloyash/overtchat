@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { formatCompact, formatExact } from "./activity-format";
 
@@ -12,6 +15,7 @@ export function ActivityMetric({
   pending?: boolean;
   inline?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={cn(
       "min-w-0 px-4 py-5 sm:px-5",
@@ -28,7 +32,7 @@ export function ActivityMetric({
       >
         {pending ? (
           <span
-            aria-label="Loading"
+            aria-label={t("activity.metrics.loading")}
             className="block h-8 w-16 rounded motion-skeleton"
           />
         ) : value === undefined ? (

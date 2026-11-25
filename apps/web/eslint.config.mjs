@@ -9,6 +9,8 @@ const TRANSLATED = [
   "components/settings/general/**",
   "components/I18nProvider.tsx",
   "components/scheduled/**",
+  "components/activity/**",
+  "components/library/**",
 ];
 
 const eslintConfig = defineConfig([
