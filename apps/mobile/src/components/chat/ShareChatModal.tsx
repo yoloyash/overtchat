@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   FlatList,
@@ -54,6 +55,7 @@ function ShareChatContent({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const current = useChatShare(chatId);
   const preview = useSharePreview(chatId);
   const change = useChangeChatShare(chatId);
@@ -90,7 +92,7 @@ function ShareChatContent({
       await Share.share({ message: url, url });
       setNativeError("");
     } catch {
-      setNativeError("Could not open sharing. Copy the link below.");
+      setNativeError(t("chat.mobile.share.openShareFailed"));
     }
   }
 
@@ -100,14 +102,12 @@ function ShareChatContent({
     >
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>
-          Share chat
+          {t("chat.share.title")}
         </Text>
-        {button("Close", onClose)}
+        {button(t("chat.share.close"), onClose)}
       </View>
       <Text style={{ color: colors.mutedForeground }}>
-        Anyone with the link can read this conversation, including attachments,
-        reasoning, and tool results. New messages and edits stay private until
-        you update the link. Deleting this chat also removes its link.
+        {t("chat.mobile.share.description")}
       </Text>
       {share && (
         <>
@@ -115,10 +115,10 @@ function ShareChatContent({
             {url}
           </Text>
           <View style={styles.actions}>
-            {button("Share link", () => void shareLink())}
-            {button("View shared chat", () => {
+            {button(t("chat.mobile.share.shareLink"), () => void shareLink())}
+            {button(t("chat.share.viewShared"), () => {
               void Linking.openURL(url).catch(() =>
-                setNativeError("Could not open the shared chat."),
+                setNativeError(t("chat.mobile.share.openSharedFailed")),
               );
             })}
           </View>
@@ -136,7 +136,7 @@ function ShareChatContent({
       )}
       {current.isPending || preview.isPending ? <ActivityIndicator /> : null}
       {button(
-        showPreview ? "Hide preview" : "Preview current conversation",
+        showPreview ? t("chat.mobile.share.hidePreview") : t("chat.share.previewSummary"),
         () => setShowPreview(!showPreview),
         !preview.data,
       )}
@@ -165,9 +165,9 @@ function ShareChatContent({
       )}
       <View style={styles.actions}>
         {share &&
-          button("Unshare", () => change.mutate("DELETE"), change.isPending)}
+          button(t("chat.share.unshare"), () => change.mutate("DELETE"), change.isPending)}
         {button(
-          change.isPending ? "Saving…" : share ? "Update link" : "Create link",
+          change.isPending ? t("chat.share.saving") : share ? t("chat.share.updateLink") : t("chat.share.createLink"),
           () => change.mutate(share ? "PUT" : "POST"),
           change.isPending ||
             current.isPending ||

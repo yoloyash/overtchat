@@ -3,6 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { replacedGmailEmailIds, type GmailToolPart } from "@overtchat/shared";
 
 const mocks = vi.hoisted(() => ({ authFetch: vi.fn(), openURL: vi.fn() }));
@@ -89,9 +91,11 @@ const render = (
 ) =>
   act(async () => {
     root.render(
-      <QueryClientProvider client={client}>
-        <GmailEmailCard part={part} canSend={props.canSend ?? true} replaced={props.replaced} />
-      </QueryClientProvider>,
+      <I18nextProvider i18n={i18n}>
+        <QueryClientProvider client={client}>
+          <GmailEmailCard part={part} canSend={props.canSend ?? true} replaced={props.replaced} />
+        </QueryClientProvider>
+      </I18nextProvider>,
     );
   });
 

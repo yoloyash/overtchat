@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { FileUIPart } from "ai";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useTheme } from "@/lib/theme";
@@ -16,6 +17,7 @@ export function EditBubble({
   onCancel: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(initialText);
   const [files, setFiles] = useState(initialFiles);
   const inputRef = useRef<TextInput>(null);
@@ -65,7 +67,7 @@ export function EditBubble({
           value={draft}
           onChangeText={setDraft}
           multiline
-          accessibilityLabel="Edit message"
+          accessibilityLabel={t("chat.messages.editMessage")}
           textAlignVertical="top"
           style={[
             styles.input,
@@ -80,7 +82,7 @@ export function EditBubble({
                 { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
               ]}
             >
-              Cancel
+              {t("chat.messages.cancel")}
             </Text>
           </Pressable>
           <Pressable
@@ -103,7 +105,7 @@ export function EditBubble({
                 { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              Send
+              {t("chat.messages.send")}
             </Text>
           </Pressable>
         </View>

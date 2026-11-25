@@ -5,6 +5,7 @@ import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
 import { TextInputWrapper } from "expo-paste-input";
 import { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -53,7 +54,7 @@ function ComposerView({
   voiceEligible = false,
   voiceAvailable = false,
   voiceActive = false,
-  voiceUnavailableReason = "Realtime voice is unavailable",
+  voiceUnavailableReason,
   textInputDisabled = false,
   endVoiceDisabled = false,
   onStartVoice,
@@ -125,6 +126,9 @@ function ComposerView({
   onStop: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
+  const resolvedVoiceUnavailableReason =
+    voiceUnavailableReason ?? t("chat.composer.unavailable.voiceUnavailable");
   const [input, setInput] = useState("");
 
   const dictation = useDictation((text) => {
@@ -199,7 +203,7 @@ function ComposerView({
             dictation.error.kind === "empty" || dictation.error.kind === "other" ||
             (dictation.error.kind === "stt_unavailable" &&
               !["speech_disabled", "speech_not_configured", "speech_provider_auth"].includes(dictation.error.code ?? ""))
-              ? { label: "Record again", onPress: toggleMic }
+              ? { label: t("chat.dictation.recordAgain"), onPress: toggleMic }
               : undefined
           }
         />
@@ -252,7 +256,7 @@ function ComposerView({
                     },
                   ]}
                 >
-                  Uploading…
+                  {t("projects.files.uploading")}
                 </Text>
               </View>
             ) : null}
@@ -277,12 +281,12 @@ function ComposerView({
             multiline
             placeholder={
               textInputDisabled
-                ? "Resume voice to continue"
+                ? t("chat.composer.resumeVoicePlaceholder")
                 : configured
-                  ? "Message…"
+                  ? t("chat.mobile.composer.messagePlaceholder")
                   : modelLoading
-                    ? "Loading model…"
-                    : "No models configured"
+                    ? t("chat.composer.loadingModelPlaceholder")
+                    : t("chat.composer.noModelsPlaceholder")
             }
             placeholderTextColor={colors.mutedForeground}
             style={[
@@ -297,8 +301,8 @@ function ComposerView({
             accessibilityRole="button"
             accessibilityLabel={
               searchAvailable
-                ? "Add to chat"
-                : "Add to chat; web search unavailable for this model"
+                ? t("chat.mobile.addToChat.title")
+                : t("chat.mobile.composer.addToChatNoSearch")
             }
             accessibilityState={{ disabled: voiceActive || textInputDisabled }}
             disabled={voiceActive || textInputDisabled}
@@ -327,7 +331,7 @@ function ComposerView({
           {searchRequested && !voiceActive ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Turn off Search for this message"
+              accessibilityLabel={t("chat.mobile.composer.turnOffSearch")}
               accessibilityState={{ selected: true }}
               onPress={clearSearch}
               style={({ pressed }) => [
@@ -356,7 +360,7 @@ function ComposerView({
           {openuiRequested ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Turn off Interactive UI for this message"
+              accessibilityLabel={t("chat.mobile.composer.turnOffOpenUI")}
               accessibilityState={{ selected: true }}
               onPress={() => {
                 Haptics.selectionAsync().catch(() => {});
@@ -391,8 +395,11 @@ function ComposerView({
               accessibilityRole="button"
               accessibilityLabel={
                 thinkingLevelLabel
-                  ? `Model and thinking: ${modelLabel}, ${thinkingLevelLabel}`
-                  : `Model: ${modelLabel}`
+                  ? t("chat.mobile.composer.modelAndThinking", {
+                      model: modelLabel,
+                      thinking: thinkingLevelLabel,
+                    })
+                  : t("chat.mobile.composer.modelLabel", { model: modelLabel })
               }
               accessibilityState={{ disabled: textInputDisabled }}
               disabled={textInputDisabled}
@@ -455,10 +462,10 @@ function ComposerView({
               accessibilityRole="button"
               accessibilityLabel={
                 dictation.status === "recording"
-                  ? "Stop dictation"
+                  ? t("chat.dictation.stop")
                   : dictation.status === "transcribing"
-                    ? "Transcribing"
-                    : "Start dictation"
+                    ? t("chat.dictation.transcribing")
+                    : t("chat.mobile.dictation.start")
               }
               disabled={dictation.status === "transcribing"}
               onPress={toggleMic}
@@ -506,7 +513,7 @@ function ComposerView({
           {streaming && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Stop generating"
+              accessibilityLabel={t("chat.composer.stopGenerating")}
               onPress={onStop}
               style={({ pressed }) => [
                 styles.iconHitTarget,
@@ -533,7 +540,7 @@ function ComposerView({
           {voiceActive && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="End voice session"
+              accessibilityLabel={t("chat.composer.endVoiceSession")}
               accessibilityState={{ disabled: endVoiceDisabled }}
               disabled={endVoiceDisabled}
               onPress={() => {
@@ -570,14 +577,14 @@ function ComposerView({
           {showVoiceButton ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Start voice conversation"
+              accessibilityLabel={t("chat.composer.startVoiceConversation")}
               accessibilityHint={
-                !voiceAvailable ? voiceUnavailableReason : undefined
+                !voiceAvailable ? resolvedVoiceUnavailableReason : undefined
               }
               accessibilityState={{ disabled: !voiceAvailable }}
               onPress={() => {
                 if (!voiceAvailable) {
-                  toastError(voiceUnavailableReason);
+                  toastError(resolvedVoiceUnavailableReason);
                   return;
                 }
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
@@ -626,7 +633,7 @@ function ComposerView({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  streaming ? "Queue message" : "Send message"
+                  streaming ? t("chat.composer.queueMessage") : t("chat.composer.sendMessage")
                 }
                 accessibilityState={{
                   disabled: !canSend,

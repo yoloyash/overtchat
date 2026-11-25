@@ -808,4 +808,161 @@ export const chat = {
   notifications: {
     responseReady: "Your response is ready",
   },
+  mobile: {
+    loadChatFailed: "Couldn't load chat",
+    loadModelsFailed: "Couldn't load models",
+    noModelsHint: "An admin can add one in Settings → Models.",
+    unavailableForModel: "Unavailable for this model",
+    cameraPermissionRequired: "Camera permission required",
+    photoLibraryPermissionRequired: "Photo library permission required",
+    openProject: "Open project {{name}}",
+    chatError: "Chat error",
+    refreshMessagesFailed: "Couldn't refresh messages",
+    sourcesCount_one: "{{count}} Source",
+    sourcesCount_other: "{{count}} Sources",
+    addToChat: {
+      title: "Add to chat",
+      camera: "Camera",
+      photos: "Photos",
+      searchThisMessage: "Search this message",
+      renderInteractiveUI: "Render interactive UI for this message",
+    },
+    attachment: {
+      preview: "Preview {{name}}",
+    },
+    composer: {
+      messagePlaceholder: "Message…",
+      addToChatNoSearch: "Add to chat; web search unavailable for this model",
+      turnOffSearch: "Turn off Search for this message",
+      turnOffOpenUI: "Turn off Interactive UI for this message",
+      modelAndThinking: "Model and thinking: {{model}}, {{thinking}}",
+      modelLabel: "Model: {{model}}",
+    },
+    dictation: {
+      start: "Start dictation",
+      startFailed: "Couldn't start recording. Please try again.",
+      permission:
+        "Microphone access denied. Allow it in your device settings to dictate.",
+      unsupported: "Audio recording isn't supported on this device.",
+    },
+    speech: {
+      loading: "Loading",
+      pause: "Pause",
+      play: "Play",
+    },
+    voice: {
+      requiresUpdate: "Live voice requires an updated mobile app",
+      requiresUpdateSentence: "Live voice requires an updated mobile app.",
+      endBeforePlayback: "End live voice before playing a message.",
+      keepOpen: "Keep OvertChat open to use live voice.",
+      allowMicrophone:
+        "Allow microphone access in Settings to start live voice.",
+      audioInterrupted:
+        "Voice ended because audio was interrupted. Start voice again when ready.",
+      initAudioFailed: "Could not initialize voice audio.",
+      microphoneInUse:
+        "The microphone is in use. Try again when other audio has finished.",
+      ending: "Ending",
+      endingError:
+        "Could not finish ending voice. Check your connection and tap End again.",
+      startFailed:
+        "Could not start voice. Check your connection and voice services, then try again.",
+      conflict:
+        "This chat already has an active response or voice call. Finish it before starting voice.",
+      disconnected:
+        "Voice disconnected or audio was interrupted. Start voice again when ready.",
+      lostConnection:
+        "Voice lost its connection. Start voice again when you are connected.",
+      responseFailed: "The voice response failed. Please try speaking again.",
+      messageNotConfirmed:
+        "Your message was not confirmed. Check the conversation before trying again.",
+      subtitleMutedNoModel: "Microphone muted",
+      subtitleActiveNoModel: "Realtime voice",
+    },
+    activity: {
+      inputHeader: "INPUT",
+      outputHeader: "OUTPUT",
+      outputTruncatedHeader: "OUTPUT (TRUNCATED)",
+      errorsHeader: "ERRORS",
+      errorsTruncatedHeader: "ERRORS (TRUNCATED)",
+      opensInGoogleCalendar: "Opens in Google Calendar",
+    },
+    files: {
+      saved: "File saved",
+      saveFailed: "Could not save file",
+      saveNamed: "Save {{name}}",
+      savesNamed: "Saves {{name}}",
+    },
+    documents: {
+      cardLabel: "{{title}}, {{status}}",
+      saved: "Document saved",
+      saveFailed: "Could not save document",
+      saveTitle: "Save document",
+      share: "Share document",
+      diagramWebHint: "Open this chat on the web to view the diagram.",
+    },
+    image: {
+      saved: "Image saved",
+      saveFailed: "Could not save image",
+      sizeOption: "Image size: {{size}}",
+      qualityOption: "Image quality: {{quality}}",
+    },
+    memory: {
+      manageMemories: "Manage memories",
+    },
+    messages: {
+      regenerateResponse: "Regenerate response",
+      loadingSpeech: "Loading speech",
+    },
+    stats: {
+      outputTokens: "{{count}} output",
+      ttft: "{{seconds}}s to first token",
+    },
+    queue: {
+      sending: "Sending queued message",
+    },
+    modelPicker: {
+      setAsDefaultHint:
+        "Use {{model}} for new chats on all your devices",
+      thinkingLevel: "Thinking level: {{level}}",
+      clearSearch: "Clear model search",
+      loading: "Loading models…",
+      noModelsHint: "An admin can add one in Settings → Models on the web.",
+      noMatches: 'No models match "{{query}}"',
+      noMatchesHint: "Try a model, provider, or endpoint name.",
+    },
+    openui: {
+      unavailableFallback:
+        "Interactive UI is unavailable. The readable answer is shown below.",
+      showInteractiveView: "Show interactive view",
+      loading: "Loading interactive UI",
+    },
+    share: {
+      description:
+        "Anyone with the link can read this conversation, including attachments, reasoning, and tool results. New messages and edits stay private until you update the link. Deleting this chat also removes its link.",
+      shareLink: "Share link",
+      hidePreview: "Hide preview",
+      openShareFailed: "Could not open sharing. Copy the link below.",
+      openSharedFailed: "Could not open the shared chat.",
+    },
+    usage: {
+      measuredAtLastResponse: "Measured at the last response.",
+      noContextWindowReported: "This model hasn't reported a context window.",
+      used: "Used",
+      remaining: "Remaining",
+      partialPricingNote:
+        "{{priced}} of {{total}} generations have pricing. Missing prices are excluded.",
+      empty: "No usage has been recorded for this chat yet.",
+    },
+    actions: {
+      renamed: "Renamed",
+      renameTitle: "Rename chat",
+      renameFailed: "Couldn't rename chat",
+      pinFailed: "Couldn't pin chat",
+      unpinFailed: "Couldn't unpin chat",
+      moveFailed: "Couldn't move chat",
+      deleteFailed: "Couldn't delete chat",
+      deleteDialogNamed: "{{name}} will be permanently deleted.",
+    },
+  },
 } as const;

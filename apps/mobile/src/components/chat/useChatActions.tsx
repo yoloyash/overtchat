@@ -1,5 +1,7 @@
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useCallback, useRef, useState } from "react";
+import { i18n } from "@overtchat/shared/i18n";
+import { useTranslation } from "react-i18next";
 import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
 import { RenameSheet } from "@/components/ui/RenameSheet";
 import { MoveToProjectSheet } from "@/components/drawer/MoveToProjectSheet";
@@ -31,6 +33,7 @@ export function useChatActions({
   onMoved?: (projectId: string | null) => void;
 } = {}) {
   const { activeChatId, startNewChat } = useChatSession();
+  const { t } = useTranslation();
   const { data: projects } = useProjects();
 
   const renameMutation = useRenameChat();
@@ -69,8 +72,8 @@ export function useChatActions({
     renameMutation.mutate(
       { id, title },
       {
-        onSuccess: () => toastSuccess("Renamed"),
-        onError: (e) => toastError("Couldn't rename chat", e),
+        onSuccess: () => toastSuccess(i18n.t("chat.mobile.actions.renamed")),
+        onError: (e) => toastError(i18n.t("chat.mobile.actions.renameFailed"), e),
       },
     );
   }
@@ -83,7 +86,7 @@ export function useChatActions({
         {
           onError: (error) =>
             toastError(
-              item.pinned ? "Couldn't unpin chat" : "Couldn't pin chat",
+              item.pinned ? i18n.t("chat.mobile.actions.unpinFailed") : i18n.t("chat.mobile.actions.pinFailed"),
               error,
             ),
         },
@@ -100,7 +103,7 @@ export function useChatActions({
       { id, projectId },
       {
         onSuccess: () => onMoved?.(projectId),
-        onError: (e) => toastError("Couldn't move chat", e),
+        onError: (e) => toastError(i18n.t("chat.mobile.actions.moveFailed"), e),
       },
     );
   }
@@ -113,9 +116,9 @@ export function useChatActions({
         if (activeChatId === target.id) {
           startNewChat(null);
         }
-        toastSuccess("Chat deleted");
+        toastSuccess(i18n.t("sidebar.chat.deletedTitle"));
       },
-      onError: (e) => toastError("Couldn't delete chat", e),
+      onError: (e) => toastError(i18n.t("chat.mobile.actions.deleteFailed"), e),
     });
   }
 
@@ -125,19 +128,19 @@ export function useChatActions({
         ref={renameSheetRef}
         targetId={renameTarget?.id ?? null}
         initialTitle={renameTarget?.title ?? null}
-        heading="Rename chat"
-        placeholder="Chat title"
+        heading={t("chat.mobile.actions.renameTitle")}
+        placeholder={t("projects.chats.renameInputLabel")}
         onSubmit={submitRename}
       />
       <ConfirmSheet
         ref={deleteSheetRef}
-        title="Delete chat?"
+        title={t("sidebar.chat.deleteDialogTitle")}
         message={
           deleteTarget?.title?.trim()
-            ? `${deleteTarget.title.trim()} will be permanently deleted.`
-            : "This chat will be permanently deleted."
+            ? t("chat.mobile.actions.deleteDialogNamed", { name: deleteTarget.title.trim() })
+            : t("sidebar.chat.deleteDialogUnnamed")
         }
-        confirmLabel="Delete"
+        confirmLabel={t("sidebar.chat.delete")}
         destructive
         onConfirm={confirmDelete}
       />

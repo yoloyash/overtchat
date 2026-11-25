@@ -1,4 +1,5 @@
 import { useLayoutState } from "@shopify/flash-list";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@/lib/theme";
 
@@ -9,6 +10,7 @@ const COLLAPSED_LENGTH = 160;
 /** A passage a user message replies to; long ones open on request. */
 export function UserQuote({ text }: { text: string }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useLayoutState(false);
   const long =
     text.length > COLLAPSED_LENGTH ||
@@ -39,7 +41,7 @@ export function UserQuote({ text }: { text: string }) {
               { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
             ]}
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? t("chat.messages.showLess") : t("chat.messages.showMore")}
           </Text>
         </Pressable>
       ) : null}

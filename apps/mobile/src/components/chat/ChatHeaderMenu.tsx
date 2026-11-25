@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet } from "react-native";
 import {
   ChatRowMenu,
@@ -30,13 +31,14 @@ export function ChatHeaderMenu({
   onSelect: (action: ChatRowAction) => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const menu = useMeasuredPopoverAnchor();
   return (
     <>
       <Pressable
         ref={menu.anchorRef}
         accessibilityRole="button"
-        accessibilityLabel="Chat actions"
+        accessibilityLabel={t("sidebar.chat.actionsLabel")}
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={menu.open}

@@ -1,5 +1,4 @@
 import {
-  imageSizeLabel,
   isGeneratedImage,
   type GeneratedImage,
   type ImageToolPart,
@@ -7,6 +6,7 @@ import {
 import type { FileUIPart } from "ai";
 import { Directory, File, Paths } from "expo-file-system";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { getApiBase, getAuthCookie } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
@@ -23,6 +23,7 @@ export function GeneratedImageCard({
   onReference?: (file: FileUIPart) => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const pending =
     part.state === "input-streaming" || part.state === "input-available";
@@ -47,10 +48,10 @@ export function GeneratedImageCard({
       await downloaded.copy(
         new File(directory, `${image.id}-${image.filename}`),
       );
-      toastSuccess("Image saved");
+      toastSuccess(t("chat.mobile.image.saved"));
     } catch (error) {
       if (!(error instanceof Error && /cancel/i.test(error.message)))
-        toastError("Could not save image", error);
+        toastError(t("chat.mobile.image.saveFailed"), error);
     } finally {
       try {
         downloaded?.delete();
@@ -73,12 +74,12 @@ export function GeneratedImageCard({
           {pending
             ? streaming
               ? part.type === "tool-edit_image"
-                ? "Editing image…"
-                : "Creating image…"
-              : "Image generation stopped"
+                ? t("chat.image.editing")
+                : t("chat.image.creating")
+              : t("chat.image.stopped")
             : part.state === "output-error"
-              ? "Image generation failed"
-              : "Image created"}
+              ? t("chat.image.failed")
+              : t("chat.image.created")}
         </Text>
       </View>
       {part.state === "output-error" && (
@@ -86,6 +87,7 @@ export function GeneratedImageCard({
       )}
       {images.map((image) => {
         const file: FileUIPart = {
+          // eslint-disable-next-line i18next/no-literal-string -- FileUIPart type discriminator
           type: "file",
           url: image.url,
           mediaType: image.mediaType,
@@ -102,7 +104,7 @@ export function GeneratedImageCard({
                 style={{ paddingVertical: 8 }}
               >
                 <Text style={{ color: colors.primary }}>
-                  {saving ? "Saving…" : "Download"}
+                  {saving ? t("chat.share.saving") : t("chat.files.download")}
                 </Text>
               </Pressable>
               {onReference && (
@@ -113,7 +115,7 @@ export function GeneratedImageCard({
                   style={{ paddingVertical: 8 }}
                 >
                   <Text style={{ color: colors.primary }}>
-                    Edit / Use as reference
+                    {t("chat.image.editOrReference")}
                   </Text>
                 </Pressable>
               )}
@@ -123,12 +125,24 @@ export function GeneratedImageCard({
       })}
       {part.output && (
         <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-          {part.output.model} · Requested format:{" "}
-          {part.output.providerSize === "auto"
-            ? "Backend default"
-            : (part.output.providerSize ?? imageSizeLabel(part.output.size))}
-          {part.output.providerSize === undefined &&
-            ` · Quality: ${part.output.quality}`}
+          {(() => {
+            const format =
+              part.output.providerSize === "auto"
+                ? t("chat.image.backendDefault")
+                : (part.output.providerSize ??
+                  (part.output.size in
+                  { auto: 1, "1024x1024": 1, "1536x1024": 1, "1024x1536": 1 }
+                    ? t(`chat.image.sizes.${part.output.size}`)
+                    : t("chat.image.auto")));
+            const details =
+              part.output.providerSize === undefined
+                ? t("chat.image.requestedFormatWithQuality", {
+                    format,
+                    quality: t(`chat.image.qualities.${part.output.quality}`),
+                  })
+                : t("chat.image.requestedFormat", { format });
+            return `${part.output.model} · ${details}`;
+          })()}
         </Text>
       )}
     </View>

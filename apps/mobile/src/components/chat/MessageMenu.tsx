@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Popover, {
   PopoverPlacement,
@@ -9,15 +10,15 @@ import { useTheme } from "@/lib/theme";
 
 export type MessageAction = "copy" | "edit" | "regenerate" | "continue";
 
-const ACTION_META: Record<
+const ACTION_META = {
+  copy: { labelKey: "chat.messages.copy", icon: "copy" },
+  edit: { labelKey: "chat.messages.edit", icon: "edit-3" },
+  regenerate: { labelKey: "chat.messages.regenerate", icon: "rotate-ccw" },
+  continue: { labelKey: "chat.messages.continueResponse", icon: "play" },
+} as const satisfies Record<
   MessageAction,
-  { label: string; icon: React.ComponentProps<typeof Feather>["name"] }
-> = {
-  copy: { label: "Copy", icon: "copy" },
-  edit: { label: "Edit", icon: "edit-3" },
-  regenerate: { label: "Regenerate", icon: "rotate-ccw" },
-  continue: { label: "Continue response", icon: "play" },
-};
+  { labelKey: string; icon: React.ComponentProps<typeof Feather>["name"] }
+>;
 
 export function MessageMenu({
   from,
@@ -35,6 +36,7 @@ export function MessageMenu({
   onClose: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <Popover
@@ -79,7 +81,7 @@ export function MessageMenu({
                   },
                 ]}
               >
-                {meta.label}
+                {t(meta.labelKey)}
               </Text>
               <Feather
                 name={meta.icon}

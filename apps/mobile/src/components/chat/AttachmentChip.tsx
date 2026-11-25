@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { FileUIPart } from "ai";
 import { Image } from "expo-image";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ImageView from "react-native-image-viewing";
@@ -61,8 +62,9 @@ export function AttachmentChip({
   large?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const label = attachment.filename ?? "file";
+  const label = attachment.filename ?? t("chat.composer.fallbackFile");
   const cookie = useAuthCookie();
   const [previewOpen, setPreviewOpen] = useState(false);
   const longPressedRef = useRef(false);
@@ -105,7 +107,7 @@ export function AttachmentChip({
           }
           delayLongPress={300}
           accessibilityRole="imagebutton"
-          accessibilityLabel={`Preview ${label}`}
+          accessibilityLabel={t("chat.mobile.attachment.preview", { name: label })}
           style={({ pressed }) => [
             styles.imagePressable,
             { opacity: pressed ? 0.85 : 1 },
@@ -141,7 +143,7 @@ export function AttachmentChip({
                 onPress={() => setPreviewOpen(false)}
                 hitSlop={12}
                 accessibilityRole="button"
-                accessibilityLabel="Close preview"
+                accessibilityLabel={t("chat.codePreview.closePreview")}
                 style={({ pressed }) => [
                   styles.viewerClose,
                   { opacity: pressed ? 0.7 : 1 },
@@ -159,9 +161,9 @@ export function AttachmentChip({
   const sub =
     [
       humanMediaLabel(attachment.mediaType),
-      meta?.pageCount ? `${meta.pageCount} pages` : null,
+      meta?.pageCount ? t("chat.composer.attachmentPages", { count: meta.pageCount }) : null,
       meta?.size != null ? formatSize(meta.size) : null,
-      meta?.truncated ? "truncated" : null,
+      meta?.truncated ? t("chat.composer.truncated") : null,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -240,11 +242,12 @@ function RemoveButton({
   compact?: boolean;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Remove ${label}`}
+      accessibilityLabel={t("chat.composer.removeAttachment", { name: label })}
       style={({ pressed }) => [
         styles.removeButtonTarget,
         compact && styles.removeButtonTargetCompact,

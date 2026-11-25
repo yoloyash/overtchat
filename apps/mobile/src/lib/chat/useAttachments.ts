@@ -1,4 +1,5 @@
 import type { FileUIPart } from "ai";
+import { i18n } from "@overtchat/shared/i18n";
 import { useCallback, useRef, useState } from "react";
 import { uploadFile } from "@/lib/api";
 import type { AttachmentMeta } from "./attachments";
@@ -54,7 +55,7 @@ export function useAttachments() {
       setAttachments((prev) => [...prev, ...uploaded]);
       setAttachmentMeta((prev) => ({ ...prev, ...nextMeta }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : i18n.t("chat.composer.uploadFailed"));
     } finally {
       setUploading(false);
     }

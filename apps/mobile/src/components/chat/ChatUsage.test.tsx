@@ -5,6 +5,8 @@ import { parseHTML } from "linkedom";
 import type { UIMessage } from "ai";
 import type { UsageTotals } from "@overtchat/shared/usage";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
@@ -183,14 +185,16 @@ const user: UIMessage = {
 async function render(props: Partial<SummaryInput> = {}) {
   await act(async () => {
     root.render(
-      <QueryClientProvider client={qc}>
-        <Harness
-          chatId="chat-1"
-          persisted
-          messages={[]}
-          {...props}
-        />
-      </QueryClientProvider>,
+      <I18nextProvider i18n={i18n}>
+        <QueryClientProvider client={qc}>
+          <Harness
+            chatId="chat-1"
+            persisted
+            messages={[]}
+            {...props}
+          />
+        </QueryClientProvider>
+      </I18nextProvider>,
     );
   });
   for (let i = 0; i < 3; i++) {

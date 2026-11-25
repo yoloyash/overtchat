@@ -7,6 +7,12 @@ const TRANSLATED = [
   "src/app/(authed)/settings/appearance.tsx",
   "src/components/I18nProvider.tsx",
   "src/components/ui/AccentPicker.tsx",
+  "src/app/(authed)/(drawer)/chat.tsx",
+  "src/components/chat/**/*.{ts,tsx}",
+  "src/lib/chat/**/*.{ts,tsx}",
+  "src/lib/voice/**/*.{ts,tsx}",
+  "src/lib/useDictation.ts",
+  "src/lib/useSpeech.ts",
 ];
 
 // The typecheck covers code quality here; this config only parses TypeScript

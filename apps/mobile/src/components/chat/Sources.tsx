@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLayoutState } from "@shopify/flash-list";
+import { useTranslation } from "react-i18next";
 import {
   Image,
   Linking,
@@ -19,6 +20,7 @@ import { useTheme } from "@/lib/theme";
 
 export function Sources({ message }: { message: UIMessage }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const [open, setOpen] = useLayoutState(false);
 
   const all: WebSearchResult[] = buildWebCitationIndex(message.parts).sources;
@@ -58,7 +60,7 @@ export function Sources({ message }: { message: UIMessage }) {
             { color: colors.mutedForeground, fontFamily: fonts.sansSemiBold },
           ]}
         >
-          {all.length} {all.length === 1 ? "Source" : "Sources"}
+          {t("chat.mobile.sourcesCount", { count: all.length })}
         </Text>
         <Ionicons
           name={open ? "chevron-down" : "chevron-forward"}
