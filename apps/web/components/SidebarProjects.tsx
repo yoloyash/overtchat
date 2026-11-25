@@ -3,6 +3,7 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import { ChevronRight, Plus } from "lucide-react";
 import type { ChatKind } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,7 @@ function ProjectNode({
   unreadChatIds: ReadonlySet<string>;
   pinningSupported: boolean;
 }) {
+  const { t } = useTranslation();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
   const active = pathname === `/projects/${project.id}`;
@@ -90,7 +92,7 @@ function ProjectNode({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          aria-label={open ? "Collapse" : "Expand"}
+          aria-label={open ? t("sidebar.projects.collapse") : t("sidebar.projects.expand")}
           className="rounded p-1 text-muted-foreground motion-colors hover:bg-sidebar-accent max-md:p-2"
         >
           <ChevronRight
@@ -115,7 +117,7 @@ function ProjectNode({
           to="/"
           search={{ projectId: project.id }}
           onClick={closeMobile}
-          aria-label={`New chat in ${project.name}`}
+          aria-label={t("sidebar.projects.newChatIn", { name: project.name })}
           className={cn(
             "mr-0.5 rounded p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:p-2",
             motionClasses.hoverReveal,
@@ -128,7 +130,7 @@ function ProjectNode({
         <ul className="ml-5 flex flex-col gap-0.5 border-l pl-1">
           {project.chats.length === 0 ? (
             <li className="px-2 py-1 text-xs text-muted-foreground">
-              No chats yet
+              {t("sidebar.projects.noChatsYet")}
             </li>
           ) : (
             project.chats.map((c) => (
@@ -156,6 +158,7 @@ export function CreateProjectDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const createMut = useCreateProject();
   const [name, setName] = useState("");
@@ -170,7 +173,7 @@ export function CreateProjectDialog({
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Name is required");
+      setError(t("sidebar.projects.createDialog.nameRequired"));
       return;
     }
     createMut.mutate(
@@ -180,13 +183,13 @@ export function CreateProjectDialog({
           reset();
           onClose();
           toast.success({
-            title: "Project created",
+            title: t("sidebar.projects.createDialog.createdTitle"),
             description: trimmed,
           });
           void navigate({ to: "/projects/$id", params: { id } });
         },
         onError: (err) => {
-          setError(getErrorMessage(err, "Failed to create project."));
+          setError(getErrorMessage(err, t("sidebar.projects.createDialog.createError")));
         },
       },
     );
@@ -215,20 +218,20 @@ export function CreateProjectDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            New project
+            {t("sidebar.projects.createDialog.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Give it a name. You can add instructions after creating it.
+            {t("sidebar.projects.createDialog.description")}
           </Dialog.Description>
           <form onSubmit={submit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="project-name">Name</Label>
+              <Label htmlFor="project-name">{t("sidebar.projects.createDialog.nameLabel")}</Label>
               <Input
                 id="project-name"
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Work — weekly review"
+                placeholder={t("sidebar.projects.createDialog.namePlaceholder")}
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
@@ -242,10 +245,10 @@ export function CreateProjectDialog({
                   onClose();
                 }}
               >
-                Cancel
+                {t("sidebar.projects.createDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending}>
-                {pending ? "Creating…" : "Create"}
+                {pending ? t("sidebar.projects.createDialog.creating") : t("sidebar.projects.createDialog.create")}
               </Button>
             </div>
           </form>

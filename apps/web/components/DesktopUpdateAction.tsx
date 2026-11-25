@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import { Download, LoaderCircle, RotateCw, TriangleAlert } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { UpdateActionTooltip } from "@/components/UpdateActionTooltip";
@@ -16,6 +17,7 @@ export function DesktopUpdateAction({ alwaysVisible = false, onServerUpdate }: {
   alwaysVisible?: boolean;
   onServerUpdate?: () => void;
 }) {
+  const { t } = useTranslation();
   const state = useDesktopUpdate();
   const [pending, setPending] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -25,8 +27,8 @@ export function DesktopUpdateAction({ alwaysVisible = false, onServerUpdate }: {
   const busy = pending || ["checking", "downloading", "installing"].includes(state.status);
   const label = desktopUpdateLabel(state);
   const text = downloading || state.status === "installing" ? label
-    : state.status === "error" ? "Retry"
-      : alwaysVisible ? state.status === "available" ? "Download update" : label : null;
+    : state.status === "error" ? t("app.desktopUpdate.retry")
+      : alwaysVisible ? state.status === "available" ? t("app.desktopUpdate.download") : label : null;
   const tooltip = state.message || label;
   const Icon = busy ? LoaderCircle : ready || state.status === "error" ? RotateCw
     : state.status === "blocked" ? TriangleAlert : Download;
@@ -37,7 +39,7 @@ export function DesktopUpdateAction({ alwaysVisible = false, onServerUpdate }: {
     if (ready && !confirmed) { setConfirmOpen(true); return; }
     if (state.status === "blocked") {
       if (onServerUpdate) onServerUpdate();
-      else toast.error({ title: "Desktop update unavailable", description: state.message ?? "Check for a compatible release later." });
+      else toast.error({ title: t("app.desktopUpdate.unavailableTitle"), description: state.message ?? t("app.desktopUpdate.unavailableFallback") });
       return;
     }
     setPending(true);
@@ -46,12 +48,12 @@ export function DesktopUpdateAction({ alwaysVisible = false, onServerUpdate }: {
       else if (["available", "error"].includes(state.status)) await bridge.downloadUpdate();
       else await bridge.checkForUpdates();
     } catch (error) {
-      toast.error({ title: "Could not update the desktop app", description: getErrorMessage(error, "Try again.") });
+      toast.error({ title: t("app.desktopUpdate.failedTitle"), description: getErrorMessage(error, t("app.desktopUpdate.failedFallback")) });
     } finally { setPending(false); }
   }
 
   if (state.status === "unsupported") {
-    return <a href="https://overtchat.com/releases/" target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "ghost", size: "sm" })}>Desktop downloads</a>;
+    return <a href="https://overtchat.com/releases/" target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "ghost", size: "sm" })}>{t("app.desktopUpdate.downloadsLink")}</a>;
   }
   return (
     <>
@@ -69,11 +71,11 @@ export function DesktopUpdateAction({ alwaysVisible = false, onServerUpdate }: {
         <Dialog.Portal>
           <Dialog.Backdrop className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)} />
           <Dialog.Popup className={cn("fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-5 text-card-foreground shadow-lg outline-none", motionClasses.dialog)}>
-            <Dialog.Title className="text-base font-semibold">Update ready</Dialog.Title>
-            <Dialog.Description className="mt-1 text-sm text-muted-foreground">Restart to install v{state.availableVersion}?</Dialog.Description>
+            <Dialog.Title className="text-base font-semibold">{t("app.desktopUpdate.confirmTitle")}</Dialog.Title>
+            <Dialog.Description className="mt-1 text-sm text-muted-foreground">{t("app.desktopUpdate.confirmDescription", { version: state.availableVersion })}</Dialog.Description>
             <div className="mt-4 flex justify-end gap-2">
-              <Dialog.Close render={<Button variant="outline" size="sm" />}>Later</Dialog.Close>
-              <Button size="sm" disabled={pending} onClick={() => void act(true)}>Update and restart</Button>
+              <Dialog.Close render={<Button variant="outline" size="sm" />}>{t("app.desktopUpdate.later")}</Dialog.Close>
+              <Button size="sm" disabled={pending} onClick={() => void act(true)}>{t("app.desktopUpdate.updateAndRestart")}</Button>
             </div>
           </Dialog.Popup>
         </Dialog.Portal>

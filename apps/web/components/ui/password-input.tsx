@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Eye, EyeOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -8,6 +9,7 @@ import { cn } from "@/lib/utils";
 type Props = Omit<React.ComponentProps<"input">, "type">;
 
 export function PasswordInput({ className, ...props }: Props) {
+  const { t } = useTranslation();
   const [visible, setVisible] = React.useState(false);
 
   return (
@@ -20,7 +22,9 @@ export function PasswordInput({ className, ...props }: Props) {
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? "Hide password" : "Show password"}
+        aria-label={
+          visible ? t("app.ui.passwordInput.hide") : t("app.ui.passwordInput.show")
+        }
         aria-pressed={visible}
         className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
       >

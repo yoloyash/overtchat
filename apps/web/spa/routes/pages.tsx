@@ -5,6 +5,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Activity, FolderPlus, SquareTerminal } from "lucide-react";
 import {
   isAgentProviderId,
@@ -75,25 +76,26 @@ export const agentsHomeRoute = createRoute({
   gcTime: 0,
   pendingComponent: AppPending,
   component: function AgentsHomePage() {
+    const { t } = useTranslation();
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <header data-titlebar className="flex h-12 shrink-0 items-center gap-2 px-3">
           <SidebarToggle />
-          <span className="text-sm font-medium">Agents</span>
+          <span className="text-sm font-medium">{t("app.pages.agents.title")}</span>
         </header>
         <div className="flex flex-1 items-center justify-center px-6 text-center">
           <div className="max-w-sm">
             <SquareTerminal aria-hidden="true" className="mx-auto size-8 text-muted-foreground" />
-            <h1 className="mt-3 text-xl font-semibold tracking-tight">Start an agent in a folder</h1>
+            <h1 className="mt-3 text-xl font-semibold tracking-tight">{t("app.pages.agents.emptyTitle")}</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Add a folder on this server or over SSH, then choose which coding agent works in it.
+              {t("app.pages.agents.emptyDescription")}
             </p>
             <Link
               to="/settings/connections"
               search={{ add: "1" }}
               className={cn(buttonVariants(), "mt-5")}
             >
-              <FolderPlus /> Add workspace
+              <FolderPlus /> {t("app.pages.agents.addWorkspace")}
             </Link>
           </div>
         </div>
@@ -249,16 +251,17 @@ export const libraryRoute = createRoute({
   pendingComponent: AppPending,
   component: withPages(
     function LibraryPage() {
+      const { t } = useTranslation();
       return (
         <div className="flex min-h-0 flex-1 flex-col">
           <header data-titlebar className="flex h-12 shrink-0 items-center gap-2 px-3">
             <SidebarToggle />
-            <span className="text-sm font-medium">Library</span>
+            <span className="text-sm font-medium">{t("app.pages.library.title")}</span>
           </header>
           <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
             <div className="px-4 pb-4 pt-6 sm:px-6">
-              <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
-              <p className="mt-2 text-sm text-muted-foreground">Files from your saved chats. Reuse them with “Add from library” in any chat.</p>
+              <h1 className="text-2xl font-semibold tracking-tight">{t("app.pages.library.title")}</h1>
+              <p className="mt-2 text-sm text-muted-foreground">{t("app.pages.library.description")}</p>
             </div>
             <LibraryBrowser />
           </div>
@@ -275,11 +278,12 @@ export const scheduledRoute = createRoute({
   pendingComponent: AppPending,
   component: withPages(
     function ScheduledPage() {
+      const { t } = useTranslation();
       return (
         <div className="flex min-h-0 flex-1 flex-col">
           <header data-titlebar className="flex h-12 shrink-0 items-center gap-2 px-3">
             <SidebarToggle />
-            <span className="text-sm font-medium">Scheduled</span>
+            <span className="text-sm font-medium">{t("scheduled.page.title")}</span>
           </header>
           <ScheduledTasksPage />
         </div>
@@ -293,12 +297,13 @@ export const activityRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/activity",
   component: function ActivityLayout() {
+    const { t } = useTranslation();
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <header data-titlebar className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
           <SidebarToggle />
           <Activity className="size-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Activity</span>
+          <span className="text-sm font-semibold">{t("app.pages.activity.title")}</span>
         </header>
         <div className="flex-1 overflow-y-auto">
           <Outlet />
