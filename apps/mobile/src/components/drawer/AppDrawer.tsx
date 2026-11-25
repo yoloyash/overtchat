@@ -707,6 +707,14 @@ function ChatRow({
             style={[styles.unreadDot, { backgroundColor: colors.primary }]}
           />
         )}
+        {item.scheduledTaskName && (
+          <Ionicons
+            name="calendar-outline"
+            size={14}
+            color={colors.mutedForeground}
+            accessibilityLabel="Scheduled task"
+          />
+        )}
         <Text
           numberOfLines={1}
           style={[

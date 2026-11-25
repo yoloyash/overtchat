@@ -21,6 +21,7 @@ import {
 } from "@/components/settings/SettingsUI";
 import { useChatSession } from "@/lib/chat/session";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useProjects } from "@/lib/queries/projects";
 import {
   useRunScheduledTask,
   useScheduledTaskRuns,
@@ -54,6 +55,7 @@ export default function Scheduled() {
   const tasks = useScheduledTasks();
   useRefreshOnFocus(tasks.refetch);
   const { data: models } = useModelConfigs();
+  const { data: projects } = useProjects();
   return (
     <SettingsPage
       title="Scheduled"
@@ -81,13 +83,22 @@ export default function Scheduled() {
           key={task.id}
           task={task}
           model={models?.find((model) => model.id === task.modelConfigId)?.label}
+          project={projects?.find((project) => project.id === task.projectId)?.name}
         />
       ))}
     </SettingsPage>
   );
 }
 
-function TaskCard({ task, model }: { task: ScheduledTask; model?: string }) {
+function TaskCard({
+  task,
+  model,
+  project,
+}: {
+  task: ScheduledTask;
+  model?: string;
+  project?: string;
+}) {
   const { colors } = useTheme();
   const { openChat } = useChatSession();
   const updateTask = useUpdateScheduledTask();
@@ -111,6 +122,7 @@ function TaskCard({ task, model }: { task: ScheduledTask; model?: string }) {
           detail={[
             describeTaskSchedule(task.schedule),
             model ?? (task.modelConfigId === null ? "Model removed" : null),
+            project,
           ]
             .filter(Boolean)
             .join(" · ")}

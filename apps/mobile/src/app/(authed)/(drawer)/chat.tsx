@@ -257,6 +257,7 @@ function ChatSurface({
       },
     [chatList, chatId, projectId],
   );
+  const scheduledTaskName = chatList?.find((c) => c.id === chatId)?.scheduledTaskName;
   const chatActions = useChatActions();
   const { openRename, togglePin, openMove, openDeleteConfirm } = chatActions;
   const [shareOpen, setShareOpen] = useState(false);
@@ -564,35 +565,71 @@ function ChatSurface({
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: project
-        ? () => (
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel={`Open project ${project.name}`}
-              onPress={() => router.push(`/projects/${project.id}`)}
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.projectChip,
-                { backgroundColor: pressed ? colors.muted : "transparent" },
-              ]}
-            >
-              <Ionicons
-                name="folder-outline"
-                size={15}
-                color={colors.mutedForeground}
-              />
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.projectChipText,
-                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
-                ]}
-              >
-                {project.name}
-              </Text>
-            </Pressable>
-          )
-        : "",
+      headerTitle:
+        project || scheduledTaskName
+          ? () => (
+              <View style={styles.headerChips}>
+                {project && (
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`Open project ${project.name}`}
+                    onPress={() => router.push(`/projects/${project.id}`)}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.projectChip,
+                      { backgroundColor: pressed ? colors.muted : "transparent" },
+                    ]}
+                  >
+                    <Ionicons
+                      name="folder-outline"
+                      size={15}
+                      color={colors.mutedForeground}
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.projectChipText,
+                        { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                      ]}
+                    >
+                      {project.name}
+                    </Text>
+                  </Pressable>
+                )}
+                {scheduledTaskName && (
+                  // Where the chat came from, and the way back to the task.
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`Scheduled task: ${scheduledTaskName}`}
+                    onPress={() => router.push("/scheduled")}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.projectChip,
+                      { backgroundColor: pressed ? colors.muted : "transparent" },
+                    ]}
+                  >
+                    <Ionicons
+                      name="calendar-outline"
+                      size={15}
+                      color={colors.mutedForeground}
+                    />
+                    {/* Beside a project there is room for the mark alone. */}
+                    {!project && (
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.projectChipText,
+                          { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                        ]}
+                      >
+                        Scheduled
+                      </Text>
+                    )}
+                  </Pressable>
+                )}
+              </View>
+            )
+          : "",
       headerRight: () => (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           {usage && (
@@ -630,6 +667,7 @@ function ChatSurface({
     colors,
     fonts,
     project,
+    scheduledTaskName,
     onNewChat,
     onHeaderAction,
     chatItem,
@@ -1105,6 +1143,7 @@ function ChatSurface({
 }
 
 const styles = StyleSheet.create({
+  headerChips: { flexDirection: "row", alignItems: "center", flexShrink: 1 },
   projectChip: {
     flexDirection: "row",
     alignItems: "center",

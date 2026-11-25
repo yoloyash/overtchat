@@ -27,6 +27,7 @@ import {
   useUnsavedChanges,
 } from "@/components/settings/SettingsUI";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useProjects } from "@/lib/queries/projects";
 import {
   useCreateScheduledTask,
   useDeleteScheduledTask,
@@ -65,6 +66,9 @@ const DAYS = [
   { short: "S", name: "Saturday" },
 ];
 
+/** The picker's value for a task outside any project. */
+const NO_PROJECT = "none";
+
 function deviceTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
@@ -96,6 +100,7 @@ export default function ScheduledTaskScreen() {
 function TaskForm({ task }: { task: ScheduledTask | null }) {
   const { colors, fonts } = useTheme();
   const { data: models = [] } = useModelConfigs();
+  const { data: projects = [] } = useProjects();
   const createTask = useCreateScheduledTask();
   const updateTask = useUpdateScheduledTask();
   const deleteTask = useDeleteScheduledTask();
@@ -135,6 +140,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
       schedule,
       timeZone: draft.timeZone,
       webSearchEnabled: draft.webSearchEnabled,
+      projectId: draft.projectId,
     };
     void action.run(async () => {
       if (task) await updateTask.mutateAsync({ id: task.id, patch: input });
@@ -285,6 +291,23 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
           }
           onChange={(modelConfigId) => change({ modelConfigId })}
         />
+        {(projects.length > 0 || draft.projectId) && (
+          <Choice
+            title="Project"
+            detail="Runs start in the project, with its instructions and files."
+            value={draft.projectId ?? NO_PROJECT}
+            options={[
+              { value: NO_PROJECT, label: "None" },
+              ...projects.map((project) => ({
+                value: project.id,
+                label: project.name,
+              })),
+            ]}
+            onChange={(value) =>
+              change({ projectId: value === NO_PROJECT ? null : value })
+            }
+          />
+        )}
         <Toggle
           title="Web search"
           detail="Let runs search the web and read pages."
