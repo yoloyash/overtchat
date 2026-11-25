@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Linking } from "react-native";
 import {
   SettingsPage,
@@ -17,6 +18,7 @@ import {
   type NotificationPreferences,
 } from "@/lib/notifications/client";
 export default function Notifications() {
+  const { t } = useTranslation();
   const session = getAuthClient().useSession();
   const cookie = useAuthCookie();
   const scope = {
@@ -31,41 +33,41 @@ export default function Notifications() {
     if (cookie) void action.run(() => changeNotificationPreferences(scope, patch));
   };
   return (
-    <SettingsPage title="Notifications">
+    <SettingsPage title={t("settings.mobile.index.notifications")}>
       <Section
-        title="Responses"
-        description="For this device and account on this server."
+        title={t("settings.mobile.notifications.responsesTitle")}
+        description={t("settings.mobile.notifications.responsesDescription")}
       >
         <Toggle
-          title="Chat responses"
-          detail="When a saved chat response is ready."
+          title={t("settings.mobile.notifications.chatResponsesTitle")}
+          detail={t("settings.mobile.notifications.chatResponsesDetail")}
           value={settings.chats}
           onChange={(chats) => change({ chats })}
           disabled={action.busy || !cookie}
         />
         <Toggle
-          title="Agent activity"
-          detail="When an agent needs an approval or an answer, finishes, or fails."
+          title={t("settings.mobile.notifications.agentActivityTitle")}
+          detail={t("settings.mobile.notifications.agentActivityDetail")}
           value={settings.agents}
           onChange={(agents) => change({ agents })}
           disabled={action.busy || !cookie}
         />
       </Section>
       {twoFactor.data?.enabled ? (
-        <Section title="Security">
+        <Section title={t("settings.nav.items.security")}>
           <Toggle
-            title="Sign-in requests"
-            detail="Approve sign-ins to your account from this phone instead of typing a code."
+            title={t("settings.mobile.notifications.signInRequestsTitle")}
+            detail={t("settings.mobile.notifications.signInRequestsDetail")}
             value={settings.signIns}
             onChange={(signIns) => change({ signIns })}
             disabled={action.busy || !cookie}
           />
         </Section>
       ) : null}
-      <Section title="Privacy">
+      <Section title={t("settings.mobile.notifications.privacyTitle")}>
         <Toggle
-          title="Show previews"
-          detail="Include chat text, agent session names, what agents ask or reply, and the browser or app signing in. Previews pass through Expo and Apple or Google and may appear on your lock screen."
+          title={t("settings.mobile.notifications.showPreviewsTitle")}
+          detail={t("settings.mobile.notifications.showPreviewsDetail")}
           value={settings.previews}
           onChange={(previews) => change({ previews })}
           disabled={action.busy || !cookie}
@@ -76,8 +78,8 @@ export default function Notifications() {
       ) : null}
       <Section>
         <Row
-          title="Phone notification settings"
-          detail="Permission, sounds, and lock-screen visibility"
+          title={t("settings.mobile.notifications.phoneSettingsTitle")}
+          detail={t("settings.mobile.notifications.phoneSettingsDetail")}
           external
           onPress={() => void action.run(() => Linking.openSettings())}
         />

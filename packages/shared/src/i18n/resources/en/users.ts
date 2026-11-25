@@ -102,4 +102,56 @@ export const users = {
     resetting: "Resetting…",
     submit: "Reset two-factor",
   },
+  mobile: {
+    roles: {
+      administrator: "Administrator",
+    },
+    list: {
+      searchLabel: "Search people",
+      emptyTitle: "No matching people",
+      emptyDetail: "Try another name or email address.",
+    },
+    detail: {
+      fallbackTitle: "User",
+      notFound: "User no longer exists.",
+      roleSelfAdmin: "Administrator · You",
+      selfPasswordHint: "Change your own password in Security settings.",
+    },
+    create: {
+      passwordDescription:
+        "Share the initial password privately. They can change it in Security settings.",
+      initialPasswordLabel: "Initial password",
+      submit: "Create user",
+      backToUsers: "Back to users",
+      errors: {
+        nameAndEmailRequired: "Enter a name and email address.",
+        invalidPasswordLength: "Use an initial password of 8–128 characters.",
+        createFailed: "Couldn’t create user.",
+      },
+    },
+    roleDialog: {
+      grantMessage:
+        "{{email}} will be able to manage this server, users, and coding agents. They will be signed out on all devices.",
+      removeMessage:
+        "{{email}} will lose administrator features, their active agent runs will stop, and they will be signed out on all devices.",
+      confirm: "Change role",
+      updated: "Role updated",
+    },
+    resetPassword: {
+      description:
+        "This signs the user out on all devices. Share the replacement password privately.",
+      submit: "Reset user password",
+      errors: {
+        invalidLength: "Use a password of 8–128 characters.",
+        mismatch: "Replacement passwords do not match.",
+        failed: "Couldn’t reset password.",
+      },
+    },
+    deleteDialog: {
+      action: "Delete user",
+      message:
+        "{{email}} will no longer be able to sign in. Existing chats and projects are not deleted.",
+      failed: "Couldn’t delete user.",
+    },
+  },
 } as const;

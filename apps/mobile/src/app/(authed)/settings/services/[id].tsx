@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import type { AdminServerCapability } from "@overtchat/shared/admin-settings";
@@ -20,7 +21,7 @@ import {
   settingsRequest,
 } from "@/lib/queries/settings";
 import { toastSuccess } from "@/lib/toast";
-import { serviceNames, type ServicesSnapshot } from "./index";
+import { serviceNameKeys, type ServicesSnapshot } from "./index";
 export default function Service() {
   return (
     <AdminGate>
@@ -29,6 +30,7 @@ export default function Service() {
   );
 }
 function ServiceScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useSettingsQuery<ServicesSnapshot>(
     "/server-capabilities",
@@ -36,19 +38,26 @@ function ServiceScreen() {
   );
   const capability = query.data?.capabilities.find((c) => c.id === id);
   return (
-    <SettingsPage title={capability ? serviceNames[capability.id] : "Service"}>
+    <SettingsPage
+      title={
+        capability
+          ? t(serviceNameKeys[capability.id])
+          : t("services.mobile.detail.fallbackTitle")
+      }
+    >
       {capability ? (
         <ServiceForm key={id} capability={capability} />
       ) : (
         <>
           <QueryState query={query} />
-          {query.data && <Label>Service not found.</Label>}
+          {query.data && <Label>{t("services.mobile.detail.notFound")}</Label>}
         </>
       )}
     </SettingsPage>
   );
 }
 function ServiceForm({ capability }: { capability: AdminServerCapability }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(capability);
   const [saved, setSaved] = useState(JSON.stringify(capability));
   const [result, setResult] = useState("");
@@ -65,28 +74,42 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
       value: "bundled",
       label:
         draft.id === "search"
-          ? "Bundled SearXNG"
+          ? t("services.capabilities.search.providers.bundled")
           : draft.id === "tts"
-            ? "Bundled Kokoro"
-            : "Bundled Parakeet",
+            ? t("services.capabilities.tts.providers.bundled")
+            : t("services.capabilities.stt.providers.bundled"),
     },
     ...(draft.id === "search"
       ? [
-          { value: "brave", label: "Brave Search API" },
-          { value: "searxng", label: "Existing SearXNG" },
+          {
+            value: "brave",
+            label: t("services.capabilities.search.providers.brave"),
+          },
+          {
+            value: "searxng",
+            label: t("services.capabilities.search.providers.searxng"),
+          },
         ]
-      : [{ value: "openai-compatible", label: "OpenAI-compatible API" }]),
-    { value: "disabled", label: "Disabled" },
+      : [
+          {
+            value: "openai-compatible",
+            label: t("services.capabilities.tts.providers.openai-compatible"),
+          },
+        ]),
+    {
+      value: "disabled",
+      label: t("services.capabilities.search.providers.disabled"),
+    },
   ];
   return (
     <>
       <Section
-        title="Provider"
-        description="Changes affect everyone on this server."
+        title={t("services.fields.providerTitle")}
+        description={t("services.mobile.detail.providerDescription")}
       >
         <Choice
           disabled={action.busy}
-          title="Provider"
+          title={t("services.fields.providerTitle")}
           value={draft.provider}
           options={providers}
           onChange={(provider) => {
@@ -112,14 +135,14 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
         />
         {draft.provider === "bundled" && !draft.bundledInstalled && (
           <Row
-            title="Not installed"
-            detail="Run overtchat setup on the server to install this service."
+            title={t("services.voice.notInstalledLabel")}
+            detail={t("services.mobile.detail.notInstalledDetail")}
           />
         )}
         {["searxng", "openai-compatible"].includes(draft.provider) && (
           <Field
             editable={!action.busy}
-            label="API base URL"
+            label={t("services.fields.apiBaseUrlTitle")}
             value={draft.baseUrl ?? ""}
             onChangeText={(baseUrl) => patch({ baseUrl: baseUrl || null })}
             keyboardType="url"
@@ -128,14 +151,14 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
         {["brave", "openai-compatible"].includes(draft.provider) && (
           <Field
             editable={!action.busy}
-            label="API key"
+            label={t("services.fields.apiKeyTitle")}
             value={draft.apiKey ?? ""}
             onChangeText={(apiKey) => patch({ apiKey: apiKey || null })}
             secureTextEntry
             hint={
               draft.apiKeySet
-                ? "A key is saved. Leave blank to keep it."
-                : "Enter your provider key."
+                ? t("services.mobile.detail.apiKeySavedHint")
+                : t("services.mobile.detail.apiKeyEmptyHint")
             }
           />
         )}
@@ -143,14 +166,14 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
           <>
             <Field
               editable={!action.busy}
-              label="Model"
+              label={t("services.fields.modelTitle")}
               value={draft.model ?? ""}
               onChangeText={(model) => patch({ model: model || null })}
             />
             {draft.id === "tts" && (
               <Field
                 editable={!action.busy}
-                label="Default voice"
+                label={t("services.fields.defaultVoiceTitle")}
                 value={draft.voice ?? ""}
                 onChangeText={(voice) => patch({ voice: voice || null })}
               />
@@ -160,24 +183,25 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
         {draft.provider === "bundled" && draft.id === "tts" && (
           <Field
             editable={!action.busy}
-            label="Default voice"
+            label={t("services.fields.defaultVoiceTitle")}
             value={draft.voice ?? ""}
             onChangeText={(voice) => patch({ voice: voice || null })}
           />
         )}
       </Section>
       {draft.id === "search" && (
-        <Label muted>
-          When the primary search provider fails, OvertChat tries free search
-          providers.
-        </Label>
+        <Label muted>{t("services.mobile.detail.searchFallbackNote")}</Label>
       )}
       {action.error && <Label error>{action.error}</Label>}
       {result && <Label>{result}</Label>}
       {draft.id !== "search" && draft.provider !== "disabled" && (
         <Action
           secondary
-          title={action.busy ? "Working…" : "Test connection"}
+          title={
+            action.busy
+              ? t("chat.activity.working")
+              : t("services.actions.testConnection")
+          }
           disabled={action.busy}
           onPress={() =>
             void action.run(async () => {
@@ -192,7 +216,11 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
         />
       )}
       <Action
-        title={action.busy ? "Saving…" : "Save service"}
+        title={
+          action.busy
+            ? t("services.actions.saving")
+            : t("services.mobile.detail.save")
+        }
         disabled={action.busy || !dirty}
         onPress={() =>
           void action.run(async () => {
@@ -203,7 +231,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
             });
             setDraft(data.capability);
             setSaved(JSON.stringify(data.capability));
-            toastSuccess("Service saved");
+            toastSuccess(t("services.mobile.detail.saved"));
           })
         }
       />

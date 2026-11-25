@@ -59,4 +59,26 @@ export const account: Translation["account"] = {
       },
     },
   },
+  mobile: {
+    sso: {
+      defaultProvider: "你的身份提供方",
+      description: "你的密码和登录保护均在那里管理。",
+      signedInWith: "登录方式",
+    },
+    password: {
+      newHint: "请使用 8–128 个字符。",
+      confirmLabel: "确认新密码",
+      errors: {
+        currentRequired: "请输入当前密码。",
+        invalidLength: "新密码请使用 8–128 个字符。",
+        mismatch: "两次输入的新密码不一致。",
+        changeFailed: "无法更改密码。",
+      },
+    },
+    twoFactor: {
+      on: "已开启",
+      manageTitle: "管理双重验证",
+      manageDetail: "在浏览器中设置或关闭身份验证器应用。",
+    },
+  },
 };

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiError } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import type { SettingsModelConfig } from "@/lib/settings-model";
 import { getAuthClient } from "@/lib/auth/client";
 import { authFetch, getApiBase } from "@/lib/api";
@@ -26,12 +27,12 @@ export async function settingsRequest<T>(
       response.status,
       data,
       response.status === 403
-        ? "Administrator access is required."
+        ? i18n.t("settings.mobile.errors.adminRequired")
         : response.status === 404
-          ? "This setting is unavailable. Check your server version."
+          ? i18n.t("settings.mobile.errors.settingUnavailable")
           : data?.code === "not_installed"
-            ? "This service is not installed. Run overtchat setup on the server."
-            : "Couldn’t complete the request.",
+            ? i18n.t("settings.mobile.errors.serviceNotInstalled")
+            : i18n.t("settings.mobile.errors.requestFailed"),
       path.startsWith("/server-capabilities/tts")
         ? "tts"
         : path.startsWith("/server-capabilities/stt")

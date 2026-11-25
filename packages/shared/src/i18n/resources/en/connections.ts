@@ -134,4 +134,64 @@ export const connections = {
     refresh: "Refresh SSH hosts",
     addManually: "Add manually",
   },
+  mobile: {
+    common: {
+      version: "Version {{version}}",
+    },
+    status: {
+      connectorOnline: "Connector online",
+      connectorOffline: "Connector offline",
+      unavailable: "Status unavailable",
+      online: "Online",
+      offline: "Offline",
+    },
+    list: {
+      refreshLabel: "Refresh connections",
+      connectorVersion: "Connector {{version}}",
+      workspaceCount_one: "{{count}} workspace",
+      workspaceCount_other: "{{count}} workspaces",
+      workspaceCountWithVersion_one: "{{count}} workspace · {{version}}",
+      workspaceCountWithVersion_other: "{{count}} workspaces · {{version}}",
+      noAgentsTitle: "No agents connected",
+      noAgentsDetail: "Add an agent and workspace from the web setup.",
+      emptyTitle: "Connect your computer",
+      emptyDetail:
+        "Pair a Host Connector to use the coding agents installed on your computer.",
+    },
+    setup: {
+      title: "Setup",
+      creatingCommand: "Creating command…",
+      pairComputer: "Pair a computer",
+      pairComputerDetail:
+        "Create a command to run on the computer you want to connect.",
+      manageOnWebTitle: "Manage agents & workspaces",
+      manageOnWebDetail:
+        "Add or remove connections and configure SSH in your browser.",
+    },
+    pairing: {
+      title: "Pairing command",
+      description: "Run this on your computer. Expires {{time}}.",
+      copy: "Copy pairing command",
+      copied: "Command copied",
+    },
+    detail: {
+      title: "Connection",
+      notFound: "This connection no longer exists.",
+      versionNotDetected: "Version not detected",
+      sshHost: "SSH · {{host}}",
+      runsOnComputer: "Runs on the connected computer",
+      offlineHint: "Bring the Host Connector online before testing this agent.",
+      lastVerified: "Last verified",
+      notTestedYet: "Not tested yet",
+      testing: "Testing connection…",
+      testHealthy: "{{name}} connection healthy",
+      workspacesDescription: "Folders this agent can work in.",
+      noWorkspacesTitle: "No workspaces yet",
+      noWorkspacesDetail:
+        "Add a workspace from web settings to start using this agent.",
+      manageOnWebTitle: "Manage on web",
+      manageOnWebDetail:
+        "Edit workspaces, SSH setup, or remove this connection.",
+    },
+  },
 } as const;

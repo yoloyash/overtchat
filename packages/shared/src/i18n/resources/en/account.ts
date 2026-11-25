@@ -59,4 +59,27 @@ export const account = {
       },
     },
   },
+  mobile: {
+    sso: {
+      defaultProvider: "your identity provider",
+      description: "Your password and sign-in protection are managed there.",
+      signedInWith: "You sign in with",
+    },
+    password: {
+      newHint: "Use 8–128 characters.",
+      confirmLabel: "Confirm new password",
+      errors: {
+        currentRequired: "Enter your current password.",
+        invalidLength: "Use 8–128 characters for your new password.",
+        mismatch: "The new passwords do not match.",
+        changeFailed: "Couldn’t change password.",
+      },
+    },
+    twoFactor: {
+      on: "On",
+      manageTitle: "Manage two-factor",
+      manageDetail:
+        "Set up or turn off an authenticator app in your browser.",
+    },
+  },
 } as const;

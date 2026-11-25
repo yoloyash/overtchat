@@ -17,6 +17,10 @@ const TRANSLATED = [
   "src/app/(authed)/(drawer)/agents/**",
   "src/components/agents/**",
   "src/lib/agents/**",
+  "src/app/(authed)/settings/**",
+  "src/components/settings/**",
+  "src/lib/settings-model.ts",
+  "src/lib/queries/settings.ts",
 ];
 
 // The typecheck covers code quality here; this config only parses TypeScript

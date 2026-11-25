@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Stack, router } from "expo-router";
 import { HeaderBackButton } from "expo-router/build/react-navigation/elements";
 import { useTheme } from "@/lib/theme";
@@ -8,6 +9,7 @@ export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoun
 export const unstable_settings = { initialRouteName: "index" };
 
 export default function SettingsLayout() {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   return (
     <Stack
@@ -24,7 +26,7 @@ export default function SettingsLayout() {
           headerLeft: (props) => (
             <HeaderBackButton
               {...props}
-              label="Back"
+              label={t("settings.mobile.common.back")}
               tintColor={colors.foreground}
               onPress={() => router.back()}
             />
