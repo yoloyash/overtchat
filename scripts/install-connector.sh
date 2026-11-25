@@ -2,7 +2,7 @@
 set -eu
 
 repository="yoloyash/overtchat"
-connector_version="0.21.0"
+connector_version="0.22.0"
 server=""
 pair_code=""
 connector_name=""
