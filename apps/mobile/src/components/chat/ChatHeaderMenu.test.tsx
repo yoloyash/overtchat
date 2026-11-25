@@ -4,8 +4,6 @@ import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { I18nextProvider } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 
 const anchor = vi.hoisted(() => ({ visible: false }));
 vi.mock("@expo/vector-icons", () => ({ Feather: () => null, Ionicons: () => null }));
