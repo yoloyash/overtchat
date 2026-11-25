@@ -387,4 +387,70 @@ export const models = {
     setUp: "Set up",
     setUpLabel: "Set up credential for {{who}}",
   },
+  mobile: {
+    validation: {
+      nameAndModelRequired: "Enter a display name and model ID.",
+      invalidEndpoint: "Use an HTTP or HTTPS endpoint.",
+      apiKeyRequired: "Enter the provider API key.",
+      providerOptionsObject: "Provider options must be a JSON object.",
+      invalidContextWindow: "Context window must be a positive integer.",
+      invalidPricing: "Pricing must contain non-negative numbers.",
+    },
+    list: {
+      availableTitle: "Available models",
+      doneReorderingLabel: "Done reordering models",
+      reorderLabel: "Reorder models",
+      reorder: "Reorder",
+      savingOrder: "Saving order…",
+      reorderHint:
+        "Use the arrows to set the model order for everyone. Changes save automatically.",
+      sectionDescription: "Open a model to edit, test, or change availability.",
+      rowDetailChat: "{{provider}} · Chat",
+      rowDetailImage: "{{provider}} · Image",
+      statusEnabled: "Enabled",
+      statusDisabled: "Disabled",
+      statusEnabledTask: "Enabled · Task model",
+      statusDisabledTask: "Disabled · Task model",
+      noMatchesTitle: "No matching models",
+      noMatchesDetail: "Try another name or provider.",
+      emptyDetail: "Add your first chat or image model.",
+      backgroundTasksDescription:
+        "The task model generates chat titles for everyone on this server.",
+    },
+    editor: {
+      notFound: "Model no longer exists.",
+      availabilityTitle: "Availability",
+      imageAvailabilityDescription:
+        "Enabling this image model disables the other image model.",
+      connectionDescription:
+        "Configured models are shared by everyone on this server.",
+      endpointHint: "Address reachable from your OvertChat server.",
+      discoverModels: "Discover models",
+      noModelsDiscovered: "No models found. Enter a model ID manually.",
+      discoveredModels: "Discovered models",
+      modelIdLabel: "Model ID",
+      hideAdvanced: "Hide advanced settings",
+      showAdvanced: "Show advanced settings",
+      contextWindowHint: "Leave blank for automatic detection.",
+      contextWindowHintDetected:
+        "Leave blank for automatic detection ({{tokens}} tokens).",
+      providerOptionsLabel: "Provider options (JSON)",
+      pricing: {
+        input: "Input price",
+        output: "Output price",
+        cacheRead: "Cache read price",
+        cacheWrite: "Cache write price",
+        unitHint: "USD per 1 million tokens",
+      },
+      imageOptionsTitle: "Image options",
+      imageOptionsDescription:
+        "Size, response format, editing support, and extra request fields.",
+      connectedInMs: "Connected in {{elapsedMs}} ms.",
+      save: "Save model",
+      manageTitle: "Manage model",
+      deleteAction: "Delete model",
+      deleteMessage:
+        "{{label}} will no longer be available for new requests. Existing chats remain.",
+    },
+  },
 } as const;

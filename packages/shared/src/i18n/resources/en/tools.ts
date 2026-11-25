@@ -243,4 +243,16 @@ export const tools = {
       saveErrorFallback: "Failed to save MCP server",
     },
   },
+  mobile: {
+    webSearchDetail: "Allow supported models to search the web and fetch pages.",
+    interactiveUiDescription:
+      "Supported models render interactive charts, tables, forms and cards with OpenUI. On demand tool access is recommended. Saved on this device.",
+    interactiveUiToolAccessDetail:
+      "On demand loads the OpenUI instructions when a message calls for an interface, or when you ask for one from the + menu. Always available adds about 6,800 tokens to every request.",
+    connectedToolsTitle: "Connected tools",
+    connectedToolsDescription: "Your choices apply to your account on this server.",
+    manageMcpDetail: "Add or configure tool servers in your browser.",
+    emptyTitle: "No connected tools",
+    emptyDetail: "An administrator can add tool servers on web.",
+  },
 } as const;

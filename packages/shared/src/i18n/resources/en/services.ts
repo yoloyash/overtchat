@@ -91,4 +91,33 @@ export const services = {
     incompleteSetupDescription:
       "Run overtchat setup to repair the realtime voice configuration.",
   },
+  mobile: {
+    list: {
+      sectionTitle: "Server services",
+      sectionDescription: "These providers are used by everyone on this server.",
+    },
+    status: {
+      needsSetup: "Needs setup",
+      unavailable: "Unavailable",
+    },
+    voice: {
+      rowTitle: "Voice conversations",
+      readyDetail: "Ready for live voice conversations.",
+      unavailableDetail:
+        "Requires installed realtime voice and configured speech providers. Run overtchat setup on the host to install or repair it.",
+    },
+    detail: {
+      fallbackTitle: "Service",
+      notFound: "Service not found.",
+      providerDescription: "Changes affect everyone on this server.",
+      notInstalledDetail:
+        "Run overtchat setup on the server to install this service.",
+      apiKeySavedHint: "A key is saved. Leave blank to keep it.",
+      apiKeyEmptyHint: "Enter your provider key.",
+      searchFallbackNote:
+        "When the primary search provider fails, OvertChat tries free search providers.",
+      save: "Save service",
+      saved: "Service saved",
+    },
+  },
 } as const;

@@ -36,4 +36,25 @@ export const data = {
     unshare: "Unshare",
     empty: "No shared chats.",
   },
+  mobile: {
+    export: {
+      description:
+        "Save your chats as an OvertChat JSON file for backup or re-import.",
+      action: "Export chats",
+      failedWithStatus: "Couldn’t export chats ({{status}}).",
+      saved: "Export saved to the selected folder.",
+    },
+    import: {
+      description:
+        "ChatGPT, Claude.ai, OpenWebUI, and OvertChat JSON or ZIP exports, up to 50 MB. Visible text and reasoning are preserved; attachments, images, and branches are not imported.",
+      chooseFile: "Choose import file",
+      tooLarge: "Import files must be 50 MB or smaller.",
+      confirmTitle: "Import chats?",
+      confirmMessage:
+        "Import {{name}} into your account? Importing the same file again may create duplicates.",
+      complete: "Imported {{chats}}, {{messages}}, and {{memories}}.",
+      messageCount_one: "{{count}} message",
+      messageCount_other: "{{count}} messages",
+    },
+  },
 } as const;

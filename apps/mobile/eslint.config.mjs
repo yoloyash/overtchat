@@ -7,6 +7,10 @@ const TRANSLATED = [
   "src/app/(authed)/settings/appearance.tsx",
   "src/components/I18nProvider.tsx",
   "src/components/ui/AccentPicker.tsx",
+  "src/app/(authed)/settings/**",
+  "src/components/settings/**",
+  "src/lib/settings-model.ts",
+  "src/lib/queries/settings.ts",
 ];
 
 // The typecheck covers code quality here; this config only parses TypeScript

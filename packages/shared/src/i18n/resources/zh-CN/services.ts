@@ -89,4 +89,31 @@ export const services: Translation["services"] = {
     incompleteSetupLabel: "配置不完整",
     incompleteSetupDescription: "请运行 overtchat setup 以修复实时语音配置。",
   },
+  mobile: {
+    list: {
+      sectionTitle: "服务器服务",
+      sectionDescription: "这些服务商供此服务器上的所有人使用。",
+    },
+    status: {
+      needsSetup: "需要配置",
+      unavailable: "不可用",
+    },
+    voice: {
+      rowTitle: "语音对话",
+      readyDetail: "已就绪，可进行实时语音对话。",
+      unavailableDetail:
+        "需要已安装的实时语音和已配置的语音服务商。请在主机上运行 overtchat setup 以安装或修复。",
+    },
+    detail: {
+      fallbackTitle: "服务",
+      notFound: "未找到该服务。",
+      providerDescription: "更改会影响此服务器上的所有人。",
+      notInstalledDetail: "请在服务器上运行 overtchat setup 以安装此服务。",
+      apiKeySavedHint: "已保存密钥。留空以保留现有密钥。",
+      apiKeyEmptyHint: "请输入服务商密钥。",
+      searchFallbackNote: "当首选搜索服务商失败时，OvertChat 会尝试免费搜索服务商。",
+      save: "保存服务",
+      saved: "服务已保存",
+    },
+  },
 };

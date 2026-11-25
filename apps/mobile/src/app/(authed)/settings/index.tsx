@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { router } from "expo-router";
 import { getAuthClient } from "@/lib/auth/client";
@@ -14,16 +15,17 @@ import {
 import { useThemePref } from "@/lib/appearance";
 
 export default function SettingsIndex() {
+  const { t } = useTranslation();
   const session = getAuthClient().useSession();
   const user = session.data?.user;
   const server = getServerUrl() ?? "";
   const theme = useThemePref();
   const action = useAction();
   return (
-    <SettingsPage title="Settings">
+    <SettingsPage title={t("app.pages.settings.title")}>
       <Section>
         <Row
-          title={user?.name || "Your profile"}
+          title={user?.name || t("settings.mobile.index.yourProfile")}
           detail={user?.email}
           leading={
             <UserAvatar
@@ -37,44 +39,48 @@ export default function SettingsIndex() {
           onPress={() => router.push("/settings/profile")}
         />
       </Section>
-      <Section title="Preferences">
+      <Section title={t("settings.nav.groups.preferences")}>
         <Row
-          title="Appearance"
+          title={t("settings.appearance.title")}
           icon="color-palette-outline"
           value={
-            theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"
+            theme === "system"
+              ? t("settings.appearance.theme.system")
+              : theme === "light"
+                ? t("settings.appearance.theme.light")
+                : t("settings.appearance.theme.dark")
           }
           navigation
           onPress={() => router.push("/settings/appearance")}
         />
         <Row
-          title="Chat & tools"
+          title={t("settings.mobile.index.chatAndTools")}
           icon="chatbubble-outline"
           navigation
           onPress={() => router.push("/settings/chat")}
         />
         <Row
-          title="Personalization"
+          title={t("settings.nav.items.personalization")}
           icon="sparkles-outline"
           navigation
           onPress={() => router.push("/personalization")}
         />
         <Row
-          title="Notifications"
+          title={t("settings.mobile.index.notifications")}
           icon="notifications-outline"
           navigation
           onPress={() => router.push("/settings/notifications")}
         />
       </Section>
-      <Section title="Account">
+      <Section title={t("settings.nav.groups.account")}>
         <Row
-          title="Security"
+          title={t("settings.nav.items.security")}
           icon="lock-closed-outline"
           navigation
           onPress={() => router.push("/settings/security")}
         />
         <Row
-          title="Data & backups"
+          title={t("settings.mobile.index.dataAndBackups")}
           icon="folder-outline"
           navigation
           onPress={() => router.push("/settings/data")}
@@ -82,45 +88,45 @@ export default function SettingsIndex() {
       </Section>
       {user?.role === "admin" && (
         <Section
-          title="Administration"
-          description="Changes here affect everyone on this server."
+          title={t("settings.nav.groups.administration")}
+          description={t("settings.mobile.index.adminDescription")}
         >
           <Row
-            title="Users"
+            title={t("settings.nav.items.users")}
             icon="people-outline"
             navigation
             onPress={() => router.push("/settings/users")}
           />
           <Row
-            title="Models"
+            title={t("settings.nav.items.models")}
             icon="cube-outline"
             navigation
             onPress={() => router.push("/settings/models")}
           />
           <Row
-            title="Services"
+            title={t("settings.nav.items.services")}
             icon="server-outline"
             navigation
             onPress={() => router.push("/settings/services")}
           />
           <Row
-            title="Agent connections"
+            title={t("settings.mobile.index.agentConnections")}
             icon="terminal-outline"
             navigation
             onPress={() => router.push("/settings/connections")}
           />
         </Section>
       )}
-      <Section title="App">
+      <Section title={t("settings.mobile.index.appGroup")}>
         <Row
-          title="Server"
+          title={t("settings.mobile.index.server")}
           detail={server}
           icon="globe-outline"
           navigation
           onPress={() => router.push("/settings/server")}
         />
         <Row
-          title="About"
+          title={t("settings.mobile.index.about")}
           icon="information-circle-outline"
           navigation
           onPress={() => router.push("/settings/about")}
@@ -129,7 +135,11 @@ export default function SettingsIndex() {
       {action.error ? <Label error>{action.error}</Label> : null}
       <Section>
         <Row
-          title={action.busy ? "Signing out…" : "Sign out"}
+          title={
+            action.busy
+              ? t("settings.mobile.index.signingOut")
+              : t("auth.actions.signOut")
+          }
           icon="log-out-outline"
           destructive
           disabled={action.busy}
@@ -142,7 +152,9 @@ export default function SettingsIndex() {
                 .catch(() => {});
               const result = await getAuthClient().signOut();
               if (result.error)
-                throw new Error(result.error.message ?? "Couldn’t sign out.");
+                throw new Error(
+                  result.error.message ?? t("settings.mobile.index.signOutFailed"),
+                );
               await session.refetch();
             })
           }

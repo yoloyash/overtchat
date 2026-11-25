@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useFocusEffect } from "expo-router";
 import {
@@ -41,6 +43,7 @@ export function SettingsPage({
     disabled?: boolean;
   };
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const headerHeight = useHeaderHeight();
   return (
@@ -49,7 +52,7 @@ export function SettingsPage({
         options={{
           headerShown: true,
           title,
-          headerBackTitle: "Back",
+          headerBackTitle: t("settings.mobile.common.back"),
           headerTitleStyle: { fontFamily: fonts.serifSemiBold },
           headerShadowVisible: false,
           headerRight: action
@@ -382,6 +385,7 @@ export function SearchField({
   value: string;
   onChangeText: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   return (
     <View
@@ -422,7 +426,7 @@ export function SearchField({
       {!!value && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t("agents.history.clearSearch")}
           onPress={() => onChangeText("")}
           style={{
             minWidth: 44,
@@ -492,13 +496,18 @@ export function QueryState({
 }: {
   query: { isPending: boolean; error: Error | null; refetch: () => unknown };
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   return query.isPending ? (
     <ActivityIndicator color={colors.primary} />
   ) : query.error ? (
     <>
       <Label error>{query.error.message}</Label>
-      <Action secondary title="Retry" onPress={() => void query.refetch()} />
+      <Action
+        secondary
+        title={t("agents.common.retry")}
+        onPress={() => void query.refetch()}
+      />
     </>
   ) : null;
 }
@@ -514,16 +523,21 @@ export function useRefreshOnFocus(refetch: () => unknown) {
   );
 }
 export function useUnsavedChanges(dirty: boolean) {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   usePreventRemove(dirty, ({ data }) => {
-    Alert.alert("Discard changes?", "Your changes haven’t been saved.", [
-      { text: "Keep editing", style: "cancel" },
-      {
-        text: "Discard",
-        style: "destructive",
-        onPress: () => navigation.dispatch(data.action),
-      },
-    ]);
+    Alert.alert(
+      t("settings.mobile.unsaved.title"),
+      t("settings.mobile.unsaved.message"),
+      [
+        { text: t("settings.mobile.unsaved.keepEditing"), style: "cancel" },
+        {
+          text: t("settings.mobile.unsaved.discard"),
+          style: "destructive",
+          onPress: () => navigation.dispatch(data.action),
+        },
+      ],
+    );
   });
 }
 
@@ -542,7 +556,7 @@ export function useAction() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Couldn’t complete the request.",
+          : i18n.t("settings.mobile.errors.requestFailed"),
       );
     } finally {
       running.current = false;
@@ -560,10 +574,11 @@ export function WebRow({
   path: string;
   detail?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Row
       title={title}
-      detail={detail ?? "Open in browser"}
+      detail={detail ?? t("settings.mobile.common.openInBrowser")}
       external
       onPress={() => void openSettingsOnWeb(path)}
     />
@@ -575,7 +590,7 @@ export async function openSettingsOnWeb(path: string) {
   try {
     await Linking.openURL(`${server.replace(/\/$/, "")}${path}`);
   } catch (error) {
-    toastError("Couldn’t open browser", error);
+    toastError(i18n.t("settings.mobile.errors.openBrowserFailed"), error);
   }
 }
 const styles = StyleSheet.create({

@@ -34,4 +34,22 @@ export const data: Translation["data"] = {
     unshare: "取消分享",
     empty: "没有已分享的对话。",
   },
+  mobile: {
+    export: {
+      description: "将你的对话保存为 OvertChat JSON 文件，以便备份或重新导入。",
+      action: "导出对话",
+      failedWithStatus: "无法导出对话（{{status}}）。",
+      saved: "导出文件已保存到所选文件夹。",
+    },
+    import: {
+      description:
+        "支持 ChatGPT、Claude.ai、OpenWebUI 和 OvertChat 的 JSON 或 ZIP 导出文件，最大 50 MB。会保留可见文本和推理过程；不会导入附件、图片和分支。",
+      chooseFile: "选择导入文件",
+      tooLarge: "导入文件不能超过 50 MB。",
+      confirmTitle: "导入对话？",
+      confirmMessage: "将 {{name}} 导入你的账号？重复导入同一文件可能会产生重复内容。",
+      complete: "已导入 {{chats}}、{{messages}}和 {{memories}}。",
+      messageCount_other: "{{count}} 条消息",
+    },
+  },
 };

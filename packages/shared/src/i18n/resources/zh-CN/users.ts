@@ -99,4 +99,53 @@ export const users: Translation["users"] = {
     resetting: "正在重置…",
     submit: "重置双重验证",
   },
+  mobile: {
+    roles: {
+      administrator: "管理员",
+    },
+    list: {
+      searchLabel: "搜索成员",
+      emptyTitle: "没有匹配的成员",
+      emptyDetail: "请尝试其他姓名或邮箱地址。",
+    },
+    detail: {
+      fallbackTitle: "用户",
+      notFound: "该用户已不存在。",
+      roleSelfAdmin: "管理员 · 当前账号",
+      selfPasswordHint: "请在安全设置中更改你自己的密码。",
+    },
+    create: {
+      passwordDescription: "请私下告知初始密码。他们可以在安全设置中修改。",
+      initialPasswordLabel: "初始密码",
+      submit: "创建用户",
+      backToUsers: "返回用户列表",
+      errors: {
+        nameAndEmailRequired: "请输入姓名和邮箱地址。",
+        invalidPasswordLength: "初始密码请使用 8–128 个字符。",
+        createFailed: "无法创建用户。",
+      },
+    },
+    roleDialog: {
+      grantMessage:
+        "{{email}} 将可以管理此服务器、用户和编程智能体。他们将在所有设备上退出登录。",
+      removeMessage:
+        "{{email}} 将失去管理员功能，其正在运行的智能体任务将会停止，且将在所有设备上退出登录。",
+      confirm: "更改角色",
+      updated: "角色已更新",
+    },
+    resetPassword: {
+      description: "这会使该用户在所有设备上退出登录。请私下告知替换密码。",
+      submit: "重置用户密码",
+      errors: {
+        invalidLength: "密码请使用 8–128 个字符。",
+        mismatch: "两次输入的替换密码不一致。",
+        failed: "无法重置密码。",
+      },
+    },
+    deleteDialog: {
+      action: "删除用户",
+      message: "{{email}} 将无法再登录。已有的对话和项目不会被删除。",
+      failed: "无法删除用户。",
+    },
+  },
 };

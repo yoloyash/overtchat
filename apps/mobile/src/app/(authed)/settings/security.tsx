@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { getAuthClient } from "@/lib/auth/client";
 import {
@@ -15,6 +16,7 @@ import { useSignInMethods } from "@/lib/queries/signInMethods";
 import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { toastSuccess } from "@/lib/toast";
 export default function Security() {
+  const { t } = useTranslation();
   const session = getAuthClient().useSession();
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
@@ -26,33 +28,34 @@ export default function Security() {
   // An account that signs in through the identity provider has no password
   // here to change, and nothing for two-factor to guard.
   if (twoFactor.data?.passwordSignIn === false) {
-    const provider = methods.data?.sso?.name ?? "your identity provider";
+    const provider =
+      methods.data?.sso?.name ?? t("account.mobile.sso.defaultProvider");
     return (
-      <SettingsPage title="Security">
+      <SettingsPage title={t("account.title")}>
         <Section>
-          <Row title="Email" detail={session.data?.user.email} />
+          <Row title={t("auth.fields.email")} detail={session.data?.user.email} />
         </Section>
         <Section
-          title="Sign-in"
-          description="Your password and sign-in protection are managed there."
+          title={t("account.sso.title")}
+          description={t("account.mobile.sso.description")}
         >
-          <Row title="You sign in with" value={provider} />
+          <Row title={t("account.mobile.sso.signedInWith")} value={provider} />
         </Section>
       </SettingsPage>
     );
   }
   return (
-    <SettingsPage title="Security">
+    <SettingsPage title={t("account.title")}>
       <Section>
-        <Row title="Email" detail={session.data?.user.email} />
+        <Row title={t("auth.fields.email")} detail={session.data?.user.email} />
       </Section>
       <Section
-        title="Change password"
-        description="Changing your password signs you out of all other sessions."
+        title={t("account.password.submit")}
+        description={t("account.password.description")}
       >
         <Field
           editable={!action.busy}
-          label="Current password"
+          label={t("account.password.currentLabel")}
           value={current}
           onChangeText={setCurrent}
           secureTextEntry
@@ -60,16 +63,16 @@ export default function Security() {
         />
         <Field
           editable={!action.busy}
-          label="New password"
+          label={t("account.password.newLabel")}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           autoComplete="new-password"
-          hint="Use 8–128 characters."
+          hint={t("account.mobile.password.newHint")}
         />
         <Field
           editable={!action.busy}
-          label="Confirm new password"
+          label={t("account.mobile.password.confirmLabel")}
           value={confirm}
           onChangeText={setConfirm}
           secureTextEntry
@@ -78,40 +81,51 @@ export default function Security() {
       </Section>
       {action.error && <Label error>{action.error}</Label>}
       <Action
-        title={action.busy ? "Saving…" : "Change password"}
+        title={
+          action.busy
+            ? t("account.password.saving")
+            : t("account.password.submit")
+        }
         disabled={action.busy}
         onPress={() =>
           void action.run(async () => {
-            if (!current) throw new Error("Enter your current password.");
+            if (!current)
+              throw new Error(t("account.mobile.password.errors.currentRequired"));
             if (password.length < 8 || password.length > 128)
-              throw new Error("Use 8–128 characters for your new password.");
+              throw new Error(t("account.mobile.password.errors.invalidLength"));
             if (password !== confirm)
-              throw new Error("The new passwords do not match.");
+              throw new Error(t("account.mobile.password.errors.mismatch"));
             const { error } = await getAuthClient().changePassword({
               currentPassword: current,
               newPassword: password,
               revokeOtherSessions: true,
             });
             if (error)
-              throw new Error(error.message ?? "Couldn’t change password.");
+              throw new Error(
+                error.message ?? t("account.mobile.password.errors.changeFailed"),
+              );
             setCurrent("");
             setPassword("");
             setConfirm("");
-            toastSuccess("Password updated");
+            toastSuccess(t("account.password.updated"));
           })
         }
       />
-      <Section title="Two-factor authentication">
+      <Section title={t("account.twoFactor.title")}>
         <Row
-          title="Status"
+          title={t("account.twoFactor.statusTitle")}
           value={
-            twoFactor.data ? (twoFactor.data.enabled ? "On" : "Off") : "—"
+            twoFactor.data
+              ? twoFactor.data.enabled
+                ? t("account.mobile.twoFactor.on")
+                : t("account.twoFactor.off")
+              : "—"
           }
         />
         <WebRow
-          title="Manage two-factor"
+          title={t("account.mobile.twoFactor.manageTitle")}
           path="/settings/account"
-          detail="Set up or turn off an authenticator app in your browser."
+          detail={t("account.mobile.twoFactor.manageDetail")}
         />
       </Section>
     </SettingsPage>

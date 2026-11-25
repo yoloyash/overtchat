@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { SettingsStatus } from "@/components/settings/SettingsStatus";
 import { router } from "expo-router";
 import type { VoiceCapability } from "@overtchat/shared";
@@ -11,11 +12,11 @@ import {
   useRefreshOnFocus,
 } from "@/components/settings/SettingsUI";
 import { useSettingsQuery } from "@/lib/queries/settings";
-export const serviceNames = {
-  search: "Web search",
-  tts: "Text-to-speech",
-  stt: "Speech-to-text",
-};
+export const serviceNameKeys = {
+  search: "services.capabilities.search.title",
+  tts: "services.capabilities.tts.title",
+  stt: "services.capabilities.stt.title",
+} as const;
 export type ServicesSnapshot = {
   capabilities: AdminServerCapability[];
   voice: VoiceCapability;
@@ -28,22 +29,23 @@ export default function Services() {
   );
 }
 function ServiceList() {
+  const { t } = useTranslation();
   const query = useSettingsQuery<ServicesSnapshot>(
     "/server-capabilities",
     true,
   );
   useRefreshOnFocus(query.refetch);
   return (
-    <SettingsPage title="Services">
+    <SettingsPage title={t("services.page.title")}>
       <QueryState query={query} />
       <Section
-        title="Server services"
-        description="These providers are used by everyone on this server."
+        title={t("services.mobile.list.sectionTitle")}
+        description={t("services.mobile.list.sectionDescription")}
       >
         {query.data?.capabilities.map((item) => (
           <Row
             key={item.id}
-            title={serviceNames[item.id]}
+            title={t(serviceNameKeys[item.id])}
             icon={
               item.id === "search"
                 ? "search-outline"
@@ -55,10 +57,10 @@ function ServiceList() {
               <SettingsStatus
                 label={
                   item.provider === "disabled"
-                    ? "Disabled"
+                    ? t("services.capabilities.search.providers.disabled")
                     : item.configured
-                      ? "Configured"
-                      : "Needs setup"
+                      ? t("services.voice.configuredLabel")
+                      : t("services.mobile.status.needsSetup")
                 }
                 state={
                   item.provider === "disabled"
@@ -80,22 +82,24 @@ function ServiceList() {
         ))}
       </Section>
       {query.data && (
-        <Section title="Realtime voice">
+        <Section title={t("services.voice.title")}>
           <Row
-            title="Voice conversations"
+            title={t("services.mobile.voice.rowTitle")}
             icon="headset-outline"
             status={
               <SettingsStatus
                 label={
-                  query.data.voice.available ? "Configured" : "Unavailable"
+                  query.data.voice.available
+                    ? t("services.voice.configuredLabel")
+                    : t("services.mobile.status.unavailable")
                 }
                 state={query.data.voice.available ? "ready" : "neutral"}
               />
             }
             detail={
               query.data.voice.available
-                ? "Ready for live voice conversations."
-                : "Requires installed realtime voice and configured speech providers. Run overtchat setup on the host to install or repair it."
+                ? t("services.mobile.voice.readyDetail")
+                : t("services.mobile.voice.unavailableDetail")
             }
           />
         </Section>

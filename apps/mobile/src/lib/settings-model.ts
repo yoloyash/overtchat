@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
 import {
   EXPLICIT_API_FORMAT_IDS,
@@ -167,18 +168,18 @@ export function parseModelDraft(
   context: string,
 ): ModelDraft {
   if (!draft.label.trim() || !draft.model.trim())
-    throw new Error("Enter a display name and model ID.");
+    throw new Error(i18n.t("models.mobile.validation.nameAndModelRequired"));
   const url = new URL(draft.baseUrl.trim());
   if (!["http:", "https:"].includes(url.protocol))
-    throw new Error("Use an HTTP or HTTPS endpoint.");
+    throw new Error(i18n.t("models.mobile.validation.invalidEndpoint"));
   // The server validates providers this build does not know.
   if (findProvider(draft.providerId)?.requiresApiKey && !draft.apiKey?.trim())
-    throw new Error("Enter the provider API key.");
+    throw new Error(i18n.t("models.mobile.validation.apiKeyRequired"));
   let providerOptions: Record<string, unknown> | null = null;
   if (options.trim()) {
     const parsed = JSON.parse(options);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-      throw new Error("Provider options must be a JSON object.");
+      throw new Error(i18n.t("models.mobile.validation.providerOptionsObject"));
     providerOptions = parsed;
   }
   const contextWindow = context.trim() ? Number(context) : null;
@@ -186,12 +187,12 @@ export function parseModelDraft(
     contextWindow !== null &&
     (!Number.isSafeInteger(contextWindow) || contextWindow < 1)
   )
-    throw new Error("Context window must be a positive integer.");
+    throw new Error(i18n.t("models.mobile.validation.invalidContextWindow"));
   if (
     draft.pricing &&
     Object.values(draft.pricing).some((v) => !Number.isFinite(v) || v < 0)
   )
-    throw new Error("Pricing must contain non-negative numbers.");
+    throw new Error(i18n.t("models.mobile.validation.invalidPricing"));
   return {
     ...draft,
     label: draft.label.trim(),

@@ -230,4 +230,16 @@ export const tools: Translation["tools"] = {
       saveErrorFallback: "无法保存 MCP 服务器",
     },
   },
+  mobile: {
+    webSearchDetail: "允许支持的模型搜索网络并抓取网页。",
+    interactiveUiDescription:
+      "支持的模型可通过 OpenUI 渲染交互式图表、表格、表单和卡片。推荐使用按需加载。保存在此设备上。",
+    interactiveUiToolAccessDetail:
+      "“按需加载”会在消息需要界面、或你从 + 菜单请求界面时才加载 OpenUI 指令。“始终可用”会为每次请求增加约 6,800 个 token。",
+    connectedToolsTitle: "已连接的工具",
+    connectedToolsDescription: "你的选择适用于此服务器上的个人账号。",
+    manageMcpDetail: "在浏览器中添加或配置工具服务器。",
+    emptyTitle: "暂无已连接的工具",
+    emptyDetail: "管理员可在网页端添加工具服务器。",
+  },
 };

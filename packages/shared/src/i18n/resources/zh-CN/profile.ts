@@ -29,4 +29,14 @@ export const profile: Translation["profile"] = {
     invalidAvatarUrl: "头像链接必须以 http:// 或 https:// 开头。",
     updateFailed: "更新个人资料失败。",
   },
+  mobile: {
+    identityDescription: "此服务器上的成员可见。",
+    avatarUrlHint: "选填，图片的直接链接。",
+    saved: "个人资料已保存",
+    errors: {
+      nameRequired: "请输入显示名称。",
+      invalidAvatarUrl: "请使用 HTTP 或 HTTPS 图片链接。",
+      saveFailed: "无法保存你的个人资料。",
+    },
+  },
 };
