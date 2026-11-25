@@ -3,6 +3,7 @@
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { useId, useRef, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { AgentInteractionValue } from "@overtchat/agent-bridge";
 import {
   agentQuestionFields,
@@ -21,6 +22,9 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 
+const QUESTION_INPUT_CLASS =
+  "w-full rounded-lg border bg-muted px-3 py-3 outline-none focus:border-ring focus-visible:ring-1 focus-visible:ring-ring";
+
 // Keep serialization shared so web and native preserve the same provider values.
 export function AgentQuestionCard({
   request,
@@ -33,6 +37,7 @@ export function AgentQuestionCard({
   error?: string;
   onRespond: (response: AgentQuestionResponse) => void;
 }) {
+  const { t } = useTranslation();
   const fields = agentQuestionFields(request);
   const [values, setValues] = useState(() => initialQuestionValues(fields));
   const [index, setIndex] = useState(0);
@@ -74,7 +79,7 @@ export function AgentQuestionCard({
   return (
     <form
       data-testid="agent-question-card"
-      aria-label="Agent questions"
+      aria-label={t("agents.questions.formLabel")}
       aria-busy={pending}
       className="space-y-3 rounded-lg border bg-card p-3 text-sm"
       onSubmit={(event) => {
@@ -85,7 +90,7 @@ export function AgentQuestionCard({
       {fields.length > 1 && (
         <div
           role="tablist"
-          aria-label="Questions"
+          aria-label={t("agents.questions.tabsLabel")}
           className="flex flex-wrap gap-1 px-3"
         >
           {fields.map((item, at) => (
@@ -94,7 +99,11 @@ export function AgentQuestionCard({
               type="button"
               role="tab"
               id={`${id}-tab-${at}`}
-              aria-label={`Question ${at + 1} of ${fields.length}: ${item.label}`}
+              aria-label={t("agents.questions.tabLabel", {
+                index: at + 1,
+                total: fields.length,
+                label: item.label,
+              })}
               aria-selected={at === index}
               aria-controls={`${id}-panel`}
               tabIndex={at === index ? 0 : -1}
@@ -123,7 +132,10 @@ export function AgentQuestionCard({
               )}
             >
               {answered(at) && (
-                <Check className="size-3" aria-label="Answered" />
+                <Check
+                  className="size-3"
+                  aria-label={t("agents.questions.answered")}
+                />
               )}
               {item.label}
             </button>
@@ -144,7 +156,7 @@ export function AgentQuestionCard({
         >
           {field?.description ||
             field?.label ||
-            "The agent did not provide any answer fields."}
+            t("agents.questions.noFields")}
         </p>
         {field && (
           <div key={field.id} className="space-y-2">
@@ -170,11 +182,10 @@ export function AgentQuestionCard({
                   placeholder:
                     field.placeholder ||
                     (field.options.length
-                      ? "Other (type your answer)"
-                      : "Type your answer"),
+                      ? t("agents.questions.otherPlaceholder")
+                      : t("agents.questions.answerPlaceholder")),
                   disabled: pending,
-                  className:
-                    "w-full rounded-lg border bg-muted px-3 py-3 outline-none focus:border-ring focus-visible:ring-1 focus-visible:ring-ring",
+                  className: QUESTION_INPUT_CLASS,
                   onChange: (
                     event: React.ChangeEvent<
                       HTMLInputElement | HTMLTextAreaElement
@@ -215,7 +226,7 @@ export function AgentQuestionCard({
           <X className="size-3.5" />
           {typeof request.dismissLabel === "string"
             ? request.dismissLabel
-            : "Dismiss"}
+            : t("agents.questions.dismiss")}
         </button>
         <button
           type="submit"
@@ -227,7 +238,7 @@ export function AgentQuestionCard({
           ) : (
             <Check className="size-3.5" />
           )}
-          {last ? "Submit" : "Next"}
+          {last ? t("agents.questions.submit") : t("agents.questions.next")}
         </button>
       </div>
     </form>
@@ -245,6 +256,7 @@ function QuestionOptions({
   disabled: boolean;
   onChange: (value: AgentInteractionValue, advance: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const labelId = useId();
   const navigating = useRef(false);
   const options = questionOptions(field);
@@ -298,7 +310,9 @@ function QuestionOptions({
   return multi ? (
     <div
       role="group"
-      aria-label={`Choices for ${field.description || field.label}`}
+      aria-label={t("agents.questions.choicesFor", {
+        label: field.description || field.label,
+      })}
       className="space-y-1"
     >
       {rows}
@@ -307,7 +321,9 @@ function QuestionOptions({
     <RadioGroup
       value={selectedValue ?? ""}
       disabled={disabled}
-      aria-label={`Choices for ${field.description || field.label}`}
+      aria-label={t("agents.questions.choicesFor", {
+        label: field.description || field.label,
+      })}
       className="gap-1"
       onKeyDownCapture={(event) => {
         navigating.current = event.key.startsWith("Arrow");

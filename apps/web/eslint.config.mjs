@@ -27,6 +27,7 @@ const TRANSLATED = [
   "components/ui/**",
   "spa/**",
   "lib/useDesktopUpdate.ts",
+  "components/agents/**",
 ];
 
 const eslintConfig = defineConfig([

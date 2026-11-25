@@ -2,6 +2,8 @@
 
 import { Popover } from "@base-ui/react/popover";
 import { ListChecks, Pause, Play, Target, X } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import type { AgentGoal } from "@overtchat/agent-bridge";
 import { Button } from "@/components/ui/button";
 import type { AgentTaskListSnapshot } from "@/lib/agents/presentation";
@@ -58,8 +60,9 @@ function GoalContext({
   onResume: () => void;
   onClear: () => void;
 }) {
+  const { t } = useTranslation();
   const paused = goal.status === "paused";
-  const status = humanizeGoalStatus(goal.status);
+  const status = t(`agents.context.goalStatus.${goal.status}`);
 
   return (
     <Popover.Root>
@@ -69,12 +72,12 @@ function GoalContext({
             type="button"
             variant="outline"
             size="sm"
-            aria-label={`Goal, ${status}`}
+            aria-label={t("agents.context.goalAria", { status })}
           />
         }
       >
         <Target />
-        Goal
+        {t("agents.context.goal")}
         <span className="font-normal text-muted-foreground">{status}</span>
       </Popover.Trigger>
       <Popover.Portal>
@@ -89,7 +92,7 @@ function GoalContext({
             <div className="flex items-center gap-2">
               <Target className="size-4 text-muted-foreground" />
               <Popover.Title className="text-sm font-medium">
-                Goal
+                {t("agents.context.goal")}
               </Popover.Title>
               <span className="ml-auto text-xs text-muted-foreground">
                 {status}
@@ -105,36 +108,36 @@ function GoalContext({
                   type="button"
                   variant="outline"
                   size="sm"
-                  aria-label="Resume goal"
+                  aria-label={t("agents.context.resumeGoal")}
                   disabled={disabled}
                   onClick={onResume}
                 >
                   <Play />
-                  Resume
+                  {t("agents.context.resume")}
                 </Button>
               ) : (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  aria-label="Pause goal"
+                  aria-label={t("agents.context.pauseGoal")}
                   disabled={disabled}
                   onClick={onPause}
                 >
                   <Pause />
-                  Pause
+                  {t("agents.context.pause")}
                 </Button>
               )}
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label="Clear goal"
+                aria-label={t("agents.context.clearGoal")}
                 disabled={disabled}
                 onClick={onClear}
               >
                 <X />
-                Clear
+                {t("agents.context.clear")}
               </Button>
             </div>
           </Popover.Popup>
@@ -145,6 +148,7 @@ function GoalContext({
 }
 
 function TaskContext({ snapshot }: { snapshot: AgentTaskListSnapshot }) {
+  const { t } = useTranslation();
   const completed = snapshot.tasks.filter(
     (task) => task.status === "completed",
   ).length;
@@ -157,12 +161,15 @@ function TaskContext({ snapshot }: { snapshot: AgentTaskListSnapshot }) {
             type="button"
             variant="outline"
             size="sm"
-            aria-label={`${completed} of ${snapshot.tasks.length} tasks complete`}
+            aria-label={t("agents.context.tasksAria", {
+              completed,
+              total: snapshot.tasks.length,
+            })}
           />
         }
       >
         <ListChecks />
-        Tasks
+        {t("agents.context.tasks")}
         <span className="font-normal tabular-nums text-muted-foreground">
           {completed}/{snapshot.tasks.length}
         </span>
@@ -179,10 +186,13 @@ function TaskContext({ snapshot }: { snapshot: AgentTaskListSnapshot }) {
             <div className="flex items-center gap-2">
               <ListChecks className="size-4 text-muted-foreground" />
               <Popover.Title className="text-sm font-medium">
-                Tasks
+                {t("agents.context.tasks")}
               </Popover.Title>
               <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                {completed}/{snapshot.tasks.length} complete
+                {t("agents.context.tasksComplete", {
+                  completed,
+                  total: snapshot.tasks.length,
+                })}
               </span>
             </div>
             {snapshot.explanation && (
@@ -201,13 +211,19 @@ function TaskContext({ snapshot }: { snapshot: AgentTaskListSnapshot }) {
 }
 
 function GoalUsage({ goal }: { goal: AgentGoal }) {
+  const { t } = useTranslation();
   const usage =
     goal.tokenBudget !== null
-      ? `${goal.tokensUsed.toLocaleString()} / ${goal.tokenBudget.toLocaleString()} tokens`
+      ? t("agents.context.tokensBudget", {
+          used: goal.tokensUsed.toLocaleString(),
+          budget: goal.tokenBudget.toLocaleString(),
+        })
       : goal.tokensUsed > 0
-        ? `${goal.tokensUsed.toLocaleString()} tokens`
+        ? t("agents.context.tokensUsed", {
+            used: goal.tokensUsed.toLocaleString(),
+          })
         : null;
-  const elapsed = formatGoalElapsed(goal.timeUsedSeconds);
+  const elapsed = formatGoalElapsed(goal.timeUsedSeconds, t);
   if (!usage && !elapsed) return null;
 
   return (
@@ -218,15 +234,23 @@ function GoalUsage({ goal }: { goal: AgentGoal }) {
   );
 }
 
-function humanizeGoalStatus(value: AgentGoal["status"]): string {
-  return value.replace(/([a-z])([A-Z])/gu, "$1 $2").toLowerCase();
-}
-
-function formatGoalElapsed(seconds: number): string | null {
+function formatGoalElapsed(
+  seconds: number,
+  t: TFunction,
+): string | null {
   if (seconds <= 0) return null;
-  if (seconds < 60) return `${Math.floor(seconds)}s elapsed`;
+  if (seconds < 60) {
+    return t("agents.context.elapsedSeconds", {
+      seconds: Math.floor(seconds),
+    });
+  }
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m elapsed`;
+  if (minutes < 60) {
+    return t("agents.context.elapsedMinutes", { minutes });
+  }
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m elapsed`;
+  return t("agents.context.elapsedHoursMinutes", {
+    hours,
+    minutes: minutes % 60,
+  });
 }

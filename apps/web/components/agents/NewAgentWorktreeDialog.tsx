@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Dialog } from "@base-ui/react/dialog";
 import { Loader2 } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import type {
   AgentProviderId,
   AgentWorkspaceGitBaseRef,
@@ -97,6 +98,7 @@ export function NewAgentWorktreeDialog({
   provider: AgentProviderId;
   onCreated?: (workspaceId: string) => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { closeMobile } = useSidebar();
   const branches = useAgentWorkspaceGitBranches(workspaceId, { enabled: open });
@@ -137,8 +139,13 @@ export function NewAgentWorktreeDialog({
       changeOpen(false);
       onCreated?.(created.workspaceId);
       toast.success({
-        title: `Created worktree ${created.worktree.name}`,
-        description: `${created.worktree.branch} is checked out in ${created.worktree.worktreePath}.`,
+        title: t("agents.worktreeDialog.createdTitle", {
+          name: created.worktree.name,
+        }),
+        description: t("agents.worktreeDialog.createdDescription", {
+          branch: created.worktree.branch,
+          path: created.worktree.worktreePath,
+        }),
       });
       closeMobile();
       void navigate({
@@ -166,13 +173,16 @@ export function NewAgentWorktreeDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            New worktree
+            {t("agents.worktreeDialog.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Check out a new branch of{" "}
-            <span className="font-medium text-foreground">{workspaceName}</span>{" "}
-            in a separate folder, so agents there don&apos;t touch this
-            checkout.
+            <Trans
+              i18nKey="agents.worktreeDialog.description"
+              values={{ workspace: workspaceName }}
+              components={{
+                workspace: <span className="font-medium text-foreground" />,
+              }}
+            />
           </Dialog.Description>
           <form
             onSubmit={(event) => void submit(event)}
@@ -180,12 +190,12 @@ export function NewAgentWorktreeDialog({
           >
             <div className="flex flex-col gap-2">
               <span id="worktree-base-label" className="text-sm font-medium">
-                Start from
+                {t("agents.worktreeDialog.startFrom")}
               </span>
               {branches.isPending ? (
                 <div className="flex h-8 items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
-                  Loading branches…
+                  {t("agents.branch.loading")}
                 </div>
               ) : branches.error ? (
                 <p className="text-xs text-destructive">
@@ -193,7 +203,7 @@ export function NewAgentWorktreeDialog({
                 </p>
               ) : branches.data?.isGit === false ? (
                 <p className="text-xs text-destructive">
-                  This workspace is not a Git repository.
+                  {t("agents.worktreeDialog.notGitRepo")}
                 </p>
               ) : (
                 <Select
@@ -210,7 +220,7 @@ export function NewAgentWorktreeDialog({
                   <SelectContent>
                     {local.length > 0 && (
                       <SelectGroup>
-                        <SelectLabel>Local</SelectLabel>
+                        <SelectLabel>{t("agents.branch.local")}</SelectLabel>
                         {local.map((item) => (
                           <SelectItem
                             key={branchLabel(item)}
@@ -224,7 +234,7 @@ export function NewAgentWorktreeDialog({
                     )}
                     {remote.length > 0 && (
                       <SelectGroup>
-                        <SelectLabel>Remote</SelectLabel>
+                        <SelectLabel>{t("agents.branch.remote")}</SelectLabel>
                         {remote.map((item) => (
                           <SelectItem
                             key={branchLabel(item)}
@@ -242,7 +252,7 @@ export function NewAgentWorktreeDialog({
             </div>
             <div className="flex flex-col gap-2">
               <label htmlFor="worktree-branch" className="text-sm font-medium">
-                New branch
+                {t("agents.worktreeDialog.newBranch")}
               </label>
               <Input
                 id="worktree-branch"
@@ -270,14 +280,16 @@ export function NewAgentWorktreeDialog({
                   />
                 }
               >
-                Cancel
+                {t("agents.common.cancel")}
               </Dialog.Close>
               <Button
                 type="submit"
                 size="sm"
                 disabled={!selected || !name || create.isPending}
               >
-                {create.isPending ? "Creating…" : "Create worktree"}
+                {create.isPending
+                  ? t("agents.worktreeDialog.creating")
+                  : t("agents.worktreeDialog.create")}
               </Button>
             </div>
           </form>

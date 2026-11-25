@@ -26,6 +26,9 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { ThinkingContent } from "@/components/chat/ThinkingContent";
 import {
   agentThoughtPreview,
@@ -58,12 +61,22 @@ export type AgentRunActivity =
 
 export function formatAgentElapsed(milliseconds: number): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) {
+    return i18n.t("agents.activity.elapsedSeconds", { seconds });
+  }
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
-  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  if (minutes < 60) {
+    return i18n.t("agents.activity.elapsedMinutesSeconds", {
+      minutes,
+      seconds: remainingSeconds,
+    });
+  }
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
+  return i18n.t("agents.activity.elapsedHoursMinutes", {
+    hours,
+    minutes: minutes % 60,
+  });
 }
 
 function useElapsed(startedAt: number | null): string | null {
@@ -94,21 +107,24 @@ export function AgentRunIndicator({
   startedAt: number | null;
   providerLabel: string;
 }) {
+  const { t } = useTranslation();
   const elapsed = useElapsed(startedAt);
-  const label =
-    activity === "stopping"
-      ? "Stopping"
-      : activity === "compacting"
-        ? "Compacting"
-        : activity === "reconnecting"
-          ? "Reconnecting"
-          : "Working";
+  const label = t(`agents.activity.status.${activity}`);
 
   return (
     <div
       className="flex min-h-8 items-center gap-2 py-1 text-xs text-muted-foreground"
       role="status"
-      aria-label={`${providerLabel}: ${label.toLowerCase()}${elapsed ? ` for ${elapsed}` : ""}`}
+      aria-label={
+        elapsed
+          ? t(`agents.activity.statusAriaElapsed.${activity}`, {
+              provider: providerLabel,
+              elapsed,
+            })
+          : t(`agents.activity.statusAria.${activity}`, {
+              provider: providerLabel,
+            })
+      }
       data-testid="agent-run-activity"
     >
       <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
@@ -133,6 +149,7 @@ export function AgentRunHeader({
   startedAt: number | null;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const elapsed = useElapsed(startedAt);
   return (
     <div
@@ -140,7 +157,9 @@ export function AgentRunHeader({
       data-testid="agent-run-header"
     >
       <span className="flex min-h-8 items-center px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
-        {elapsed ? `Working for ${elapsed}` : "Working"}
+        {elapsed
+          ? t("agents.activity.workingFor", { elapsed })
+          : t("agents.activity.status.working")}
       </span>
     </div>
   );
@@ -148,16 +167,19 @@ export function AgentRunHeader({
 
 /** Ends a running turn whenever none of its tool rows is itself live. */
 export function AgentLiveRow({ providerLabel }: { providerLabel: string }) {
+  const { t } = useTranslation();
   return (
     <div
       className="flex min-h-8 items-center gap-2 py-1 text-xs text-muted-foreground"
       role="status"
-      aria-label={`${providerLabel}: working`}
+      aria-label={t("agents.activity.statusAria.working", {
+        provider: providerLabel,
+      })}
       data-testid="agent-run-activity"
     >
       <Brain className="size-3.5 shrink-0" />
       <span className={cn("font-medium text-foreground", motionClasses.shimmer)}>
-        Thinking
+        {t("agents.activity.thinking")}
       </span>
     </div>
   );
@@ -172,6 +194,7 @@ export function AgentActivityGroup({
   active: boolean;
   sequencePosition: AgentActivitySequencePosition;
 }) {
+  const { t } = useTranslation();
   const presentation = describeAgentActivity(entries, active);
   const hasError = presentation.status === "failed";
   const [open, setOpen] = useState(hasError);
@@ -193,7 +216,9 @@ export function AgentActivityGroup({
   const toolSummary = entries.some((entry) => entry.type === "tool");
   // The last group of a running turn shows the step it is on, not a count.
   const liveActivity = active ? describeAgentLiveActivity(entries) : null;
-  const liveStep = liveActivity ? liveStepPresentation(liveActivity.step) : null;
+  const liveStep = liveActivity
+    ? liveStepPresentation(liveActivity.step, t)
+    : null;
   const hasDetailedSteps = entries.some(
     (entry) =>
       entry.type === "tool" ||
@@ -218,7 +243,10 @@ export function AgentActivityGroup({
           liveStep
             ? undefined
             : toolSummary
-              ? `${presentation.label}, ${presentation.status}`
+              ? t("agents.activity.toolGroupAria", {
+                  label: presentation.label,
+                  status: t(`agents.activity.toolStatus.${presentation.status}`),
+                })
               : undefined
         }
         className="group flex w-full flex-col rounded-md pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
@@ -304,14 +332,21 @@ export function AgentActivityGroup({
 }
 
 /** The live group's one line: the step's own label, in the words its row uses. */
-function liveStepPresentation(step: AgentActivityEntry): {
+function liveStepPresentation(
+  step: AgentActivityEntry,
+  t: TFunction,
+): {
   icon: ReactNode;
   label: string;
   summary: string | null;
 } {
   const iconClass = "size-3.5 shrink-0 text-muted-foreground";
   if (step.type === "thinking") {
-    return { icon: <Brain className={iconClass} />, label: "Thinking", summary: null };
+    return {
+      icon: <Brain className={iconClass} />,
+      label: t("agents.activity.thinking"),
+      summary: null,
+    };
   }
   if (step.type === "subagent") {
     return { icon: <Users className={iconClass} />, ...describeSubagentActivity(step.activity) };
@@ -389,6 +424,7 @@ function SubagentActivityStep({
   >["activity"];
   showIcon?: boolean;
 }) {
+  const { t } = useTranslation();
   const running = isSubagentRunning(activity.status);
   const status: AgentToolStatus = running
     ? "running"
@@ -449,7 +485,10 @@ function SubagentActivityStep({
       {open && (
         <StepDetail>
           {activity.prompt && (
-            <CodeSurface label="Prompt" value={activity.prompt} />
+            <CodeSurface
+              label={t("agents.activity.prompt")}
+              value={activity.prompt}
+            />
           )}
           {activity.receivers.length > 0 && (
             <div className="overflow-hidden rounded-md border bg-muted/15">
@@ -476,7 +515,7 @@ function SubagentActivityStep({
           {activity.events.length > 0 && (
             <div className="overflow-hidden rounded-md border bg-muted/15">
               <div className="border-b px-3 py-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                Activity
+                {t("agents.activity.activityHeading")}
               </div>
               <div className="divide-y">
                 {activity.events.map((event, index) => (
@@ -503,6 +542,7 @@ function ThoughtActivityStep({
   content: string;
   live: boolean;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const holdDisclosure = useContext(AgentDisclosureContext);
   const preview = agentThoughtPreview(content);
@@ -525,7 +565,9 @@ function ThoughtActivityStep({
               live && motionClasses.shimmer,
             )}
           >
-            {live ? "Thinking" : "Thought"}
+            {live
+              ? t("agents.activity.thinking")
+              : t("agents.activity.thought")}
           </span>
           {!open && preview && (
             <span className="min-w-0 truncate text-[11px] text-muted-foreground/70">
@@ -621,9 +663,10 @@ function ToolActivityStep({
   active: boolean;
   showIcon?: boolean;
 }) {
+  const { t } = useTranslation();
   const presentation = describeAgentTool(tool);
   const status = agentToolStatus(tool, active);
-  const detail = toolDetail(tool, presentation.category);
+  const detail = toolDetail(tool, presentation.category, t);
   const [open, setOpen] = useState(status === "failed");
   const holdDisclosure = useContext(AgentDisclosureContext);
   const canOpen = detail !== null;
@@ -650,7 +693,18 @@ function ToolActivityStep({
         }}
         disabled={!canOpen}
         aria-expanded={canOpen ? open : undefined}
-        aria-label={`${presentation.label}${presentation.summary ? `: ${presentation.summary}` : ""}, ${status}`}
+        aria-label={
+          presentation.summary
+            ? t("agents.activity.toolStepAriaWithSummary", {
+                label: presentation.label,
+                summary: presentation.summary,
+                status: t(`agents.activity.toolStatus.${status}`),
+              })
+            : t("agents.activity.toolStepAria", {
+                label: presentation.label,
+                status: t(`agents.activity.toolStatus.${status}`),
+              })
+        }
         className={cn(
           "group flex min-h-6 w-full items-start gap-2 rounded-md py-0.5 text-left text-muted-foreground motion-colors",
           canOpen && "cursor-pointer hover:text-foreground",
@@ -693,8 +747,8 @@ function ToolActivityStep({
         <button
           type="button"
           onClick={() => navigation.openFile({ path: filePath })}
-          aria-label={`Open ${filePath}`}
-          title="Open file"
+          aria-label={t("agents.activity.openFilePath", { path: filePath })}
+          title={t("agents.activity.openFile")}
           className={cn(
             "absolute top-0.5 flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 motion-colors hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/step:opacity-100 [@media(hover:none)]:opacity-100",
             status === "completed" ? "right-5" : "right-10",
@@ -711,18 +765,19 @@ function ToolActivityStep({
 function toolDetail(
   tool: AgentToolActivity,
   category: AgentToolCategory,
+  t: TFunction,
 ): ReactNode | null {
   const args = recordOf(tool.args);
 
   if (category === "shell") {
     const command = firstString(args, ["command", "cmd"]);
     const notices = [
-      tool.cancelled ? "Command cancelled." : null,
+      tool.cancelled ? t("agents.activity.commandCancelled") : null,
       tool.exitCode !== null && tool.exitCode !== 0
-        ? `Exited with code ${tool.exitCode}.`
+        ? t("agents.activity.exitedWithCode", { code: tool.exitCode })
         : null,
       tool.truncated && tool.fullOutputPath
-        ? `Output truncated. Full output: ${tool.fullOutputPath}`
+        ? t("agents.activity.outputTruncated", { path: tool.fullOutputPath })
         : null,
     ].filter((notice): notice is string => notice !== null);
 
@@ -785,11 +840,15 @@ function toolDetail(
   return (
     <>
       {patch && <DiffSurface value={patch} />}
-      {content && <CodeSurface label="Content" value={content} />}
-      {!patch && !content && input && (
-        <CodeSurface label="Input" value={input} />
+      {content && (
+        <CodeSurface label={t("agents.activity.content")} value={content} />
       )}
-      {output && <CodeSurface label="Output" value={output} />}
+      {!patch && !content && input && (
+        <CodeSurface label={t("agents.activity.input")} value={input} />
+      )}
+      {output && (
+        <CodeSurface label={t("agents.activity.output")} value={output} />
+      )}
     </>
   );
 }
@@ -808,10 +867,11 @@ function CodeSurface({ label, value }: { label: string; value: string }) {
 }
 
 function DiffSurface({ value }: { value: string }) {
+  const { t } = useTranslation();
   return (
     <div className="overflow-hidden rounded-md border bg-muted/15">
       <div className="border-b px-3 py-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-        Changes
+        {t("agents.activity.changes")}
       </div>
       <pre className="max-h-80 overflow-auto bg-background/50 py-2.5 font-mono text-[11px] leading-5">
         <AgentDiffLines value={value} />

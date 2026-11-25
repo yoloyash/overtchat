@@ -29,6 +29,8 @@ import {
   WrapText,
   X,
 } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import type {
   AgentWorkspaceDirectoryEntry,
   AgentWorkspaceFilePreview,
@@ -98,6 +100,7 @@ export function AgentWorkspacePane({
   onCloseFile: (path: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const gitStatus = useAgentWorkspaceGitStatus(workspaceId, {
     active: true,
     running,
@@ -138,7 +141,7 @@ export function AgentWorkspacePane({
     <aside
       className="flex h-full w-full flex-col border-l bg-background"
       data-testid="agent-workspace-pane"
-      aria-label={`${workspaceName} workspace`}
+      aria-label={t("agents.workspace.paneLabel", { workspace: workspaceName })}
     >
       <WorkspaceTabs
         selection={selection}
@@ -205,11 +208,27 @@ function gitDecorationTextClass(
   }
 }
 
+function gitDecorationLabel(
+  decoration: AgentWorkspaceGitDecoration,
+  t: TFunction,
+): string {
+  if (decoration.kind === "added" && decoration.code === "U") {
+    return t("agents.workspace.gitStatus.untracked");
+  }
+  return t(`agents.workspace.gitStatus.${decoration.kind}`);
+}
+
 function gitDecoratedTitle(
   path: string,
   decoration: AgentWorkspaceGitDecoration | undefined,
+  t: TFunction,
 ): string {
-  return decoration ? `${path} — ${decoration.label}` : path;
+  return decoration
+    ? t("agents.workspace.decoratedPath", {
+        path,
+        status: gitDecorationLabel(decoration, t),
+      })
+    : path;
 }
 
 function WorkspaceTabs({
@@ -229,18 +248,19 @@ function WorkspaceTabs({
   onCloseFile: (path: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <header data-titlebar className="flex h-12 shrink-0 border-b bg-muted/15">
       <div
         role="tablist"
-        aria-label="Workspace views"
+        aria-label={t("agents.workspace.viewsLabel")}
         className="flex min-w-0 flex-1 overflow-x-auto overscroll-x-contain"
       >
         <button
           type="button"
           role="tab"
           aria-selected={selection === null}
-          title="Browse workspace files"
+          title={t("agents.workspace.browseFiles")}
           onClick={onActivateFiles}
           className={cn(
             "relative flex h-full shrink-0 items-center gap-2 border-r px-3 text-xs outline-none motion-colors hover:bg-muted/50 focus-visible:bg-muted/60",
@@ -250,7 +270,7 @@ function WorkspaceTabs({
           )}
         >
           <FolderOpen className="size-3.5" />
-          Files
+          {t("agents.workspace.files")}
         </button>
         {openFiles.map((file) => {
           const active = selection?.path === file.path;
@@ -273,8 +293,10 @@ function WorkspaceTabs({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                aria-label={`Open ${file.path}`}
-                title={gitDecoratedTitle(file.path, decoration)}
+                aria-label={t("agents.activity.openFilePath", {
+                  path: file.path,
+                })}
+                title={gitDecoratedTitle(file.path, decoration, t)}
                 onClick={() => onActivateFile(file.path)}
                 className={cn(
                   "flex h-full min-w-0 items-center gap-2 py-0 pr-1 pl-3 text-xs outline-none",
@@ -294,7 +316,7 @@ function WorkspaceTabs({
                 </span>
                 {decoration?.code && (
                   <span
-                    aria-label={decoration.label}
+                    aria-label={gitDecorationLabel(decoration, t)}
                     className={cn(
                       "shrink-0 text-[10px] font-semibold",
                       gitDecorationTextClass(decoration),
@@ -306,8 +328,10 @@ function WorkspaceTabs({
               </button>
               <button
                 type="button"
-                aria-label={`Close ${file.path}`}
-                title={`Close ${file.path}`}
+                aria-label={t("agents.workspace.closePath", {
+                  path: file.path,
+                })}
+                title={t("agents.workspace.closePath", { path: file.path })}
                 onClick={() => onCloseFile(file.path)}
                 className={cn(
                   "mr-1 flex size-6 shrink-0 items-center justify-center rounded-md outline-none motion-colors hover:bg-muted focus-visible:bg-muted",
@@ -327,8 +351,8 @@ function WorkspaceTabs({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Close workspace files"
-          title="Close workspace files"
+          aria-label={t("agents.session.closeFiles")}
+          title={t("agents.session.closeFiles")}
           onClick={onClose}
         >
           <X />
@@ -356,6 +380,7 @@ function WorkspaceExplorer({
   /** Opens a changed file on its changes instead of its contents. */
   onSelectChange: (file: AgentWorkspaceGitFile) => void;
 }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const directoryQueries = agentWorkspaceKeys.directories(workspaceId);
   const refreshingDirectories =
@@ -381,7 +406,7 @@ function WorkspaceExplorer({
               id="workspace-changes-heading"
               className="text-xs font-medium"
             >
-              Changes
+              {t("agents.workspace.changes")}
             </h2>
             <span className="text-[11px] tabular-nums text-muted-foreground">
               {changedFiles.length}
@@ -403,15 +428,15 @@ function WorkspaceExplorer({
         <div className="flex h-8 items-center gap-2 px-3">
           <Folder className="size-3.5 text-muted-foreground" />
           <h2 id="workspace-files-heading" className="text-xs font-medium">
-            Files
+            {t("agents.workspace.files")}
           </h2>
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
             className="ml-auto"
-            aria-label="Refresh workspace files"
-            title="Refresh workspace files"
+            aria-label={t("agents.workspace.refreshFiles")}
+            title={t("agents.workspace.refreshFiles")}
             disabled={refreshingDirectories}
             onClick={() =>
               void queryClient.invalidateQueries({ queryKey: directoryQueries })
@@ -446,13 +471,14 @@ function ChangedFileRow({
   file: AgentWorkspaceGitFile;
   onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   const decoration = agentWorkspaceGitFileDecoration(file);
 
   return (
     <button
       type="button"
       onClick={onSelect}
-      title={gitDecoratedTitle(file.path, decoration)}
+      title={gitDecoratedTitle(file.path, decoration, t)}
       data-git-status={decoration.kind}
       className="group flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs outline-none motion-colors hover:bg-muted"
     >
@@ -473,7 +499,7 @@ function ChangedFileRow({
           gitDecorationTextClass(decoration),
         )}
       >
-        {decoration.label}
+        {gitDecorationLabel(decoration, t)}
       </span>
     </button>
   );
@@ -498,6 +524,7 @@ function WorkspaceDirectory({
   onToggle: (path: string) => void;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
 }) {
+  const { t } = useTranslation();
   const isExpanded = expanded.has(path);
   const directory = useAgentWorkspaceDirectory(workspaceId, path, {
     enabled: active && isExpanded,
@@ -508,14 +535,25 @@ function WorkspaceDirectory({
     return (
       <div className="flex h-8 items-center gap-2 px-3 text-xs text-muted-foreground">
         <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
-        Loading files…
+        {t("agents.workspace.loadingFiles")}
       </div>
     );
   }
   if (directory.error) {
     return (
-      <ErrorNotice className="mx-3 my-1" message={directory.error}
-        actions={<Button size="sm" variant="outline" onClick={() => void directory.refetch()}>Retry</Button>} />
+      <ErrorNotice
+        className="mx-3 my-1"
+        message={directory.error}
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void directory.refetch()}
+          >
+            {t("agents.common.retry")}
+          </Button>
+        }
+      />
     );
   }
 
@@ -536,12 +574,12 @@ function WorkspaceDirectory({
       ))}
       {directory.data?.entries.length === 0 && depth === 0 && (
         <p className="px-3 py-4 text-xs text-muted-foreground">
-          This workspace is empty.
+          {t("agents.workspace.empty")}
         </p>
       )}
       {directory.data?.truncated && (
         <p className="px-3 py-2 text-[11px] text-muted-foreground">
-          Showing the first 1,000 entries.
+          {t("agents.workspace.truncatedEntries")}
         </p>
       )}
     </div>
@@ -567,6 +605,7 @@ function WorkspaceEntryRow({
   onToggle: (path: string) => void;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
 }) {
+  const { t } = useTranslation();
   const directory = entry.kind === "directory" && !entry.symlink;
   const open = directory && expanded.has(entry.path);
   const disabled = entry.kind === "symlink" || entry.symlink;
@@ -574,8 +613,8 @@ function WorkspaceEntryRow({
     gitDecorations.get(entry.path) ??
     (entry.ignored ? ignoredGitDecoration : undefined);
   const title = disabled
-    ? `${entry.path} is a symbolic link and cannot be previewed`
-    : gitDecoratedTitle(entry.path, decoration);
+    ? t("agents.workspace.symlinkNotPreviewable", { path: entry.path })
+    : gitDecoratedTitle(entry.path, decoration, t);
 
   return (
     <div>
@@ -640,7 +679,7 @@ function WorkspaceEntryRow({
         </span>
         {!directory && decoration?.code && (
           <span
-            aria-label={decoration.label}
+            aria-label={gitDecorationLabel(decoration, t)}
             className={cn(
               "shrink-0 text-[10px] font-semibold",
               gitDecorationTextClass(decoration),
@@ -688,6 +727,7 @@ function WorkspaceFilePreview({
   decoration?: AgentWorkspaceGitDecoration;
   running: boolean;
 }) {
+  const { t } = useTranslation();
   const showDiff = view === "diff";
   const file = useAgentWorkspaceFile(workspaceId, selection.path, {
     enabled: active && !showDiff,
@@ -717,12 +757,16 @@ function WorkspaceFilePreview({
   );
   const content = text?.content;
 
-  async function copy(value: string, label: string) {
+  async function copy(
+    value: string,
+    successTitle: string,
+    errorTitle: string,
+  ) {
     try {
       await clipboardWriteText(value);
-      toast.success({ title: `${label} copied` });
+      toast.success({ title: successTitle });
     } catch {
-      toast.error({ title: `Could not copy ${label.toLowerCase()}` });
+      toast.error({ title: errorTitle });
     }
   }
 
@@ -734,8 +778,11 @@ function WorkspaceFilePreview({
           title={gitDecoratedTitle(
             `${workspaceName}/${displayPath}`,
             decoration,
+            t,
           )}
-          aria-label={`File path: ${workspaceName}/${displayPath}`}
+          aria-label={t("agents.workspace.filePathLabel", {
+            path: `${workspaceName}/${displayPath}`,
+          })}
           data-git-status={decoration?.kind}
         >
           <span className="shrink-0 truncate">{workspaceName}</span>
@@ -759,7 +806,7 @@ function WorkspaceFilePreview({
               </span>
               {index === parts.length - 1 && decoration?.code && (
                 <span
-                  aria-label={decoration.label}
+                  aria-label={gitDecorationLabel(decoration, t)}
                   className={cn(
                     "shrink-0 text-[10px] font-semibold",
                     gitDecorationTextClass(decoration),
@@ -776,8 +823,8 @@ function WorkspaceFilePreview({
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label="Show changes"
-            title="Show changes"
+            aria-label={t("agents.workspace.showChanges")}
+            title={t("agents.workspace.showChanges")}
             aria-pressed={showDiff}
             className="aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:hover:bg-accent"
             onClick={() => onView(showDiff ? "preview" : "diff")}
@@ -790,8 +837,16 @@ function WorkspaceFilePreview({
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label={showSource ? "Show preview" : "Show source"}
-            title={showSource ? "Show preview" : "Show source"}
+            aria-label={
+              showSource
+                ? t("agents.workspace.showPreview")
+                : t("agents.workspace.showSource")
+            }
+            title={
+              showSource
+                ? t("agents.workspace.showPreview")
+                : t("agents.workspace.showSource")
+            }
             aria-pressed={showSource}
             onClick={() => onView(showSource ? "preview" : "source")}
           >
@@ -803,8 +858,8 @@ function WorkspaceFilePreview({
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label="Wrap long lines"
-            title="Wrap long lines"
+            aria-label={t("agents.workspace.wrapLongLines")}
+            title={t("agents.workspace.wrapLongLines")}
             aria-pressed={wrapLines}
             className="aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:hover:bg-accent"
             onClick={() => setWrapLines(!wrapLines)}
@@ -819,8 +874,8 @@ function WorkspaceFilePreview({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Copy"
-                title="Copy"
+                aria-label={t("agents.common.copy")}
+                title={t("agents.common.copy")}
               />
             }
           >
@@ -835,19 +890,31 @@ function WorkspaceFilePreview({
                 )}
               >
                 <Menu.Item
-                  onClick={() => void copy(displayPath, "File path")}
+                  onClick={() =>
+                    void copy(
+                      displayPath,
+                      t("agents.workspace.filePathCopied"),
+                      t("agents.workspace.filePathCopyFailed"),
+                    )
+                  }
                   className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
                 >
-                  Copy path
+                  {t("agents.workspace.copyPath")}
                 </Menu.Item>
                 <Menu.Item
                   disabled={content === undefined}
                   onClick={() => {
-                    if (content !== undefined) void copy(content, "File contents");
+                    if (content !== undefined) {
+                      void copy(
+                        content,
+                        t("agents.workspace.fileContentsCopied"),
+                        t("agents.workspace.fileContentsCopyFailed"),
+                      );
+                    }
                   }}
                   className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-default data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
                 >
-                  Copy contents
+                  {t("agents.workspace.copyContents")}
                 </Menu.Item>
               </Menu.Popup>
             </Menu.Positioner>
@@ -857,8 +924,8 @@ function WorkspaceFilePreview({
           type="button"
           variant="ghost"
           size="icon-xs"
-          aria-label="Refresh file"
-          title="Refresh file"
+          aria-label={t("agents.workspace.refreshFile")}
+          title={t("agents.workspace.refreshFile")}
           disabled={shown.isFetching}
           onClick={() => void shown.refetch()}
         >
@@ -869,18 +936,18 @@ function WorkspaceFilePreview({
         diff.isPending ? (
           <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
             <Loader2 className={cn("size-4", motionClasses.spinner)} />
-            Loading changes…
+            {t("agents.workspace.loadingChanges")}
           </div>
         ) : diff.error ? (
           <div className="flex flex-1 items-center justify-center p-6 text-center">
             <ErrorNotice
               className="max-w-xs"
-              title="Changes cannot be shown"
+              title={t("agents.workspace.changesUnavailable")}
               message={diff.error}
               actions={
                 decoration?.kind !== "deleted" && (
                   <Button size="sm" variant="outline" onClick={() => onView("preview")}>
-                    Open file
+                    {t("agents.activity.openFile")}
                   </Button>
                 )
               }
@@ -892,11 +959,15 @@ function WorkspaceFilePreview({
       ) : file.isPending ? (
         <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
           <Loader2 className={cn("size-4", motionClasses.spinner)} />
-          Loading file…
+          {t("agents.workspace.loadingFile")}
         </div>
       ) : file.error ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center">
-          <ErrorNotice className="max-w-xs" title="File cannot be previewed" message={file.error} />
+          <ErrorNotice
+            className="max-w-xs"
+            title={t("agents.workspace.fileNotPreviewable")}
+            message={file.error}
+          />
         </div>
       ) : image ? (
         <AgentWorkspaceImage
@@ -929,6 +1000,7 @@ function WorkspaceFileDiff({
   diff: { patch: string; truncated: boolean; binary: boolean };
   wrap: boolean;
 }) {
+  const { t } = useTranslation();
   // One file's patch: the lines before its first hunk only repeat its name.
   const firstHunk = diff.patch.startsWith("@@")
     ? 0
@@ -942,10 +1014,10 @@ function WorkspaceFileDiff({
     return (
       <p className="p-6 text-center text-xs text-muted-foreground">
         {diff.binary
-          ? "This is a binary file, so its changes cannot be shown as text."
+          ? t("agents.workspace.binaryDiff")
           : diff.patch
-            ? "This file was renamed or changed mode; its lines are unchanged."
-            : "This file has no uncommitted changes."}
+            ? t("agents.workspace.modeOrRenameDiff")
+            : t("agents.workspace.noUncommittedChanges")}
       </p>
     );
   }
@@ -959,7 +1031,7 @@ function WorkspaceFileDiff({
       </pre>
       {diff.truncated && (
         <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
-          This diff is long; only its first 512 KB is shown.
+          {t("agents.workspace.diffTruncated")}
         </p>
       )}
     </div>

@@ -4,6 +4,8 @@ import { ErrorNotice } from "@/components/ui/error-notice";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { ExternalLink, Loader2 } from "lucide-react";
+import type { TFunction } from "i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,6 +77,7 @@ function RenameAgentSessionDialogContent({
   onOpenChange: (open: boolean) => void;
   onSubmit: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName);
 
   return (
@@ -88,10 +91,10 @@ function RenameAgentSessionDialogContent({
         <Dialog.Backdrop className={dialogBackdrop} />
         <Dialog.Popup className={dialogPopup}>
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Rename session
+            {t("agents.session.rename")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            This updates the native {providerLabel} session name.
+            {t("agents.dialogs.renameDescription", { provider: providerLabel })}
           </Dialog.Description>
           <form
             className="mt-5 space-y-4"
@@ -102,7 +105,9 @@ function RenameAgentSessionDialogContent({
             }}
           >
             <div className="space-y-1.5">
-              <Label htmlFor="agent-session-name">Name</Label>
+              <Label htmlFor="agent-session-name">
+                {t("agents.dialogs.nameLabel")}
+              </Label>
               <Input
                 id="agent-session-name"
                 value={name}
@@ -120,7 +125,7 @@ function RenameAgentSessionDialogContent({
                 disabled={pending}
                 onClick={() => onOpenChange(false)}
               >
-                Cancel
+                {t("agents.common.cancel")}
               </Button>
               <Button
                 type="submit"
@@ -128,7 +133,7 @@ function RenameAgentSessionDialogContent({
                 disabled={pending || !name.trim()}
               >
                 {pending && <PendingIcon />}
-                Save
+                {t("agents.common.save")}
               </Button>
             </DialogActions>
           </form>
@@ -182,6 +187,7 @@ function CompactAgentSessionDialogContent({
   onOpenChange: (open: boolean) => void;
   onSubmit: (instructions?: string) => void;
 }) {
+  const { t } = useTranslation();
   const [instructions, setInstructions] = useState("");
 
   return (
@@ -195,10 +201,12 @@ function CompactAgentSessionDialogContent({
         <Dialog.Backdrop className={dialogBackdrop} />
         <Dialog.Popup className={dialogPopup}>
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Compact context?
+            {t("agents.dialogs.compactTitle")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            {providerLabel} will summarize older context in this native session.
+            {t("agents.dialogs.compactDescription", {
+              provider: providerLabel,
+            })}
           </Dialog.Description>
           <form
             className="mt-5 space-y-4"
@@ -210,10 +218,14 @@ function CompactAgentSessionDialogContent({
             {supportsCustomInstructions && (
               <div className="space-y-1.5">
                 <Label htmlFor="agent-compact-instructions">
-                  Instructions{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional)
-                  </span>
+                  <Trans
+                    i18nKey="agents.dialogs.instructionsLabel"
+                    components={{
+                      optional: (
+                        <span className="font-normal text-muted-foreground" />
+                      ),
+                    }}
+                  />
                 </Label>
                 <Textarea
                   id="agent-compact-instructions"
@@ -233,11 +245,11 @@ function CompactAgentSessionDialogContent({
                 disabled={pending}
                 onClick={() => onOpenChange(false)}
               >
-                Cancel
+                {t("agents.common.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending}>
                 {pending && <PendingIcon />}
-                Compact
+                {t("agents.dialogs.compactAction")}
               </Button>
             </DialogActions>
           </form>
@@ -287,13 +299,37 @@ export function AgentUsageDialog({
   error?: string;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   if (!open) return null;
   const activityRows = [
-    ["Lifetime tokens", usage?.activity?.lifetimeTokens],
-    ["Current streak", usage?.activity?.currentStreakDays],
-    ["Longest streak", usage?.activity?.longestStreakDays],
-    ["Peak daily tokens", usage?.activity?.peakDailyTokens],
-  ].filter((row): row is [string, number] => typeof row[1] === "number");
+      {
+        key: "lifetimeTokens",
+        label: t("agents.dialogs.lifetimeTokens"),
+        value: usage?.activity?.lifetimeTokens,
+        days: false,
+      },
+      {
+        key: "currentStreak",
+        label: t("agents.dialogs.currentStreak"),
+        value: usage?.activity?.currentStreakDays,
+        days: true,
+      },
+      {
+        key: "longestStreak",
+        label: t("agents.dialogs.longestStreak"),
+        value: usage?.activity?.longestStreakDays,
+        days: true,
+      },
+      {
+        key: "peakDailyTokens",
+        label: t("agents.dialogs.peakDailyTokens"),
+        value: usage?.activity?.peakDailyTokens,
+        days: false,
+      },
+  ].filter(
+    (row): row is { key: string; label: string; value: number; days: boolean } =>
+      typeof row.value === "number",
+  );
 
   return (
     <Dialog.Root open onOpenChange={onOpenChange}>
@@ -301,18 +337,20 @@ export function AgentUsageDialog({
         <Dialog.Backdrop className={dialogBackdrop} />
         <Dialog.Popup className={dialogPopup}>
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {providerLabel} usage
+            {t("agents.dialogs.usageTitle", { provider: providerLabel })}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {usage?.planType
-              ? `${formatPlanType(usage.planType)} plan`
-              : "Current account limits"}
+              ? t("agents.dialogs.planName", {
+                  plan: formatPlanType(usage.planType),
+                })
+              : t("agents.dialogs.currentAccountLimits")}
           </Dialog.Description>
 
           {pending ? (
             <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-              Loading account usage…
+              {t("agents.dialogs.loadingAccountUsage")}
             </div>
           ) : error ? (
             <ErrorNotice className="mt-5" message={error} />
@@ -326,11 +364,13 @@ export function AgentUsageDialog({
                         <span className="min-w-0 truncate font-medium">
                           {window.label}
                           {window.windowDurationMins
-                            ? ` · ${formatDuration(window.windowDurationMins)}`
+                            ? ` · ${formatDuration(window.windowDurationMins, t)}`
                             : ""}
                         </span>
                         <span className="shrink-0 tabular-nums text-muted-foreground">
-                          {Math.round(window.usedPercent)}% used
+                          {t("agents.dialogs.usedPercent", {
+                            percent: Math.round(window.usedPercent),
+                          })}
                         </span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -343,7 +383,7 @@ export function AgentUsageDialog({
                       </div>
                       {window.resetsAt && (
                         <p className="text-xs text-muted-foreground">
-                          Resets {formatResetTime(window.resetsAt)}
+                          {formatResetLabel(window.resetsAt, t)}
                         </p>
                       )}
                     </div>
@@ -353,24 +393,30 @@ export function AgentUsageDialog({
 
               {usage.credits && (
                 <div className="flex items-center justify-between border-t pt-4 text-sm">
-                  <span className="text-muted-foreground">Credits</span>
+                  <span className="text-muted-foreground">
+                    {t("agents.dialogs.credits")}
+                  </span>
                   <span className="font-medium tabular-nums">
                     {usage.credits.unlimited
-                      ? "Unlimited"
-                      : (usage.credits.balance ?? "Available")}
+                      ? t("agents.dialogs.unlimited")
+                      : (usage.credits.balance ?? t("agents.dialogs.available"))}
                   </span>
                 </div>
               )}
 
               {activityRows.length > 0 && (
                 <dl className="grid grid-cols-2 gap-x-5 gap-y-3 border-t pt-4 text-sm">
-                  {activityRows.map(([label, value]) => (
-                    <div key={label}>
-                      <dt className="text-xs text-muted-foreground">{label}</dt>
+                  {activityRows.map((row) => (
+                    <div key={row.key}>
+                      <dt className="text-xs text-muted-foreground">
+                        {row.label}
+                      </dt>
                       <dd className="mt-0.5 font-medium tabular-nums">
-                        {label.includes("streak")
-                          ? `${value.toLocaleString()} days`
-                          : value.toLocaleString()}
+                        {row.days
+                          ? t("agents.dialogs.streakDays", {
+                              value: row.value.toLocaleString(),
+                            })
+                          : row.value.toLocaleString()}
                       </dd>
                     </div>
                   ))}
@@ -382,8 +428,9 @@ export function AgentUsageDialog({
                 activityRows.length === 0 &&
                 !usage.unavailableReason && (
                   <p className="text-sm text-muted-foreground">
-                    {providerLabel} did not return usage details for this
-                    account.
+                    {t("agents.dialogs.noUsageDetails", {
+                      provider: providerLabel,
+                    })}
                   </p>
                 )}
               {usage.unavailableReason && (
@@ -396,7 +443,7 @@ export function AgentUsageDialog({
 
           <DialogActions>
             <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-              Done
+              {t("agents.common.done")}
             </Button>
           </DialogActions>
         </Dialog.Popup>
@@ -414,14 +461,27 @@ export function AgentSessionStatsDialog({
   stats: AgentSessionStats;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   if (!open) return null;
   const rows = [
-    ["Input", formatInteger(stats.tokens.input)],
-    ["Output", formatInteger(stats.tokens.output)],
-    ["Cache read", formatInteger(stats.tokens.cacheRead)],
-    ["Total", formatInteger(stats.tokens.total)],
-    ["Estimated cost", formatCost(stats.cost)],
-    ["Tool calls", formatInteger(stats.toolCalls)],
+    ["input", t("agents.dialogs.statsInput"), formatInteger(stats.tokens.input)],
+    ["output", t("agents.dialogs.statsOutput"), formatInteger(stats.tokens.output)],
+    [
+      "cacheRead",
+      t("agents.dialogs.statsCacheRead"),
+      formatInteger(stats.tokens.cacheRead),
+    ],
+    ["total", t("agents.dialogs.statsTotal"), formatInteger(stats.tokens.total)],
+    [
+      "estimatedCost",
+      t("agents.dialogs.statsEstimatedCost"),
+      formatCost(stats.cost),
+    ],
+    [
+      "toolCalls",
+      t("agents.dialogs.statsToolCalls"),
+      formatInteger(stats.toolCalls),
+    ],
   ];
 
   return (
@@ -430,15 +490,15 @@ export function AgentSessionStatsDialog({
         <Dialog.Backdrop className={dialogBackdrop} />
         <Dialog.Popup className={dialogPopup}>
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Session usage
+            {t("agents.session.sessionUsage")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Tokens, tool calls, and estimated cost for this session.
+            {t("agents.dialogs.sessionUsageDescription")}
           </Dialog.Description>
           <dl className="mt-5 space-y-3 text-sm">
-            {rows.map(([label, value]) => (
+            {rows.map(([key, label, value]) => (
               <div
-                key={label}
+                key={key}
                 className="flex items-center justify-between gap-4"
               >
                 <dt className="text-muted-foreground">{label}</dt>
@@ -448,7 +508,7 @@ export function AgentSessionStatsDialog({
           </dl>
           <DialogActions>
             <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-              Done
+              {t("agents.common.done")}
             </Button>
           </DialogActions>
         </Dialog.Popup>
@@ -476,30 +536,32 @@ function formatPlanType(value: string): string {
     .replace(/\b\w/gu, (character) => character.toUpperCase());
 }
 
-function formatDuration(minutes: number): string {
+function formatDuration(minutes: number, t: TFunction): string {
   if (minutes % (24 * 60) === 0) {
     const days = minutes / (24 * 60);
-    return `${days} ${days === 1 ? "day" : "days"}`;
+    return t("agents.dialogs.durationDays", { count: days });
   }
   if (minutes % 60 === 0) {
     const hours = minutes / 60;
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    return t("agents.dialogs.durationHours", { count: hours });
   }
-  return `${minutes} min`;
+  return t("agents.dialogs.durationMinutes", { minutes });
 }
 
-function formatResetTime(timestampSeconds: number): string {
+function formatResetLabel(timestampSeconds: number, t: TFunction): string {
   const date = new Date(timestampSeconds * 1_000);
   const delta = date.getTime() - Date.now();
   if (delta > 0 && delta < 48 * 60 * 60 * 1_000) {
     const hours = Math.max(1, Math.ceil(delta / (60 * 60 * 1_000)));
-    return `in ${hours}h`;
+    return t("agents.dialogs.resetsInHours", { hours });
   }
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
+  return t("agents.dialogs.resetsAt", {
+    time: date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }),
   });
 }
 
@@ -516,10 +578,11 @@ function InteractionDialogContent({
   error?: string;
   onRespond: (response: AgentQuestionResponse) => void;
 }) {
+  const { t } = useTranslation();
   const title =
     typeof request.title === "string" && request.title.trim()
       ? request.title
-      : `${providerLabel} needs your input`;
+      : t("agents.dialogs.needsInput", { provider: providerLabel });
   const url =
     request.method === "external" ? safeExternalUrl(request.url) : null;
   const cancel = () => onRespond({ cancelled: true });
@@ -550,7 +613,7 @@ function InteractionDialogContent({
                 render={<a href={url} target="_blank" rel="noreferrer" />}
               >
                 <ExternalLink />
-                Open authorization page
+                {t("agents.dialogs.openAuthPage")}
               </Button>
             )}
             {error && <DialogError>{error}</DialogError>}
@@ -562,7 +625,7 @@ function InteractionDialogContent({
                 disabled={pending}
                 onClick={cancel}
               >
-                Cancel
+                {t("agents.common.cancel")}
               </Button>
               {request.method === "external" && (
                 <Button
@@ -571,7 +634,8 @@ function InteractionDialogContent({
                   disabled={pending || !url}
                   onClick={() => onRespond({ confirmed: true })}
                 >
-                  {pending && <PendingIcon />}Continue
+                  {pending && <PendingIcon />}
+                  {t("agents.dialogs.continueAction")}
                 </Button>
               )}
             </DialogActions>

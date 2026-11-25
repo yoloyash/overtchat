@@ -13,6 +13,7 @@ import {
   Pencil,
   SquarePen,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   agentProviderMetadata,
   type AgentProviderId,
@@ -49,6 +50,7 @@ export function AgentSessionRowMenu({
   className?: string;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   // Inside the phone drawer the menu has to portal into it; see AccountMenu.
   const { drawerRef } = useSidebar();
   return (
@@ -62,7 +64,7 @@ export function AgentSessionRowMenu({
           collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "end" }}
         >
           <ContextMenu.Popup
-            aria-label="Session actions"
+            aria-label={t("agents.session.actions")}
             className={cn(
               "w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
               motionClasses.popup,
@@ -78,6 +80,7 @@ export function AgentSessionRowMenu({
 }
 
 function MenuItems({ entry }: { entry: AgentAttentionItem }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { closeMobile } = useSidebar();
   const setRead = useSetAgentSessionRead();
@@ -85,14 +88,16 @@ function MenuItems({ entry }: { entry: AgentAttentionItem }) {
   const { session, provider } = item;
   const unseen = agentSessionHasUnseenTurn(session);
 
-  async function copy(value: string, label: string) {
+  async function copy(
+    value: string,
+    successTitle: string,
+    errorTitle: string,
+  ) {
     try {
       await clipboardWriteText(value);
-      toast.success({ title: `${label} copied` });
+      toast.success({ title: successTitle });
     } catch {
-      toast.error({
-        title: `Could not copy ${label[0].toLowerCase()}${label.slice(1)}`,
-      });
+      toast.error({ title: errorTitle });
     }
   }
 
@@ -108,7 +113,9 @@ function MenuItems({ entry }: { entry: AgentAttentionItem }) {
           ) : (
             <CircleDot aria-hidden="true" className={iconClass} />
           )}
-          {unseen ? "Mark as read" : "Mark as unread"}
+          {unseen
+            ? t("agents.sessionState.markRead")
+            : t("agents.sessionState.markUnread")}
         </ContextMenu.Item>
       )}
       {agentProviderMetadata(provider).capabilities.renameSession !== false && (
@@ -124,7 +131,7 @@ function MenuItems({ entry }: { entry: AgentAttentionItem }) {
           className={itemClass}
         >
           <Pencil aria-hidden="true" className={iconClass} />
-          Rename session
+          {t("agents.session.rename")}
         </ContextMenu.Item>
       )}
       <ContextMenu.Item
@@ -138,23 +145,37 @@ function MenuItems({ entry }: { entry: AgentAttentionItem }) {
         className={itemClass}
       >
         <SquarePen aria-hidden="true" className={iconClass} />
-        <span className="truncate">New session in {group.name}</span>
+        <span className="truncate">
+          {t("agents.session.newSessionIn", { workspace: group.name })}
+        </span>
       </ContextMenu.Item>
       <ContextMenu.Separator className="my-1 h-px bg-border" />
       <ContextMenu.Item
-        onClick={() => void copy(group.path, "Workspace path")}
+        onClick={() =>
+          void copy(
+            group.path,
+            t("agents.session.workspacePathCopied"),
+            t("agents.session.workspacePathCopyFailed"),
+          )
+        }
         className={itemClass}
       >
         <Copy aria-hidden="true" className={iconClass} />
-        Copy workspace path
+        {t("agents.session.copyWorkspacePath")}
       </ContextMenu.Item>
       {session.providerSessionId && (
         <ContextMenu.Item
-          onClick={() => void copy(session.providerSessionId, "Session ID")}
+          onClick={() =>
+            void copy(
+              session.providerSessionId,
+              t("agents.session.sessionIdCopied"),
+              t("agents.session.sessionIdCopyFailed"),
+            )
+          }
           className={itemClass}
         >
           <Hash aria-hidden="true" className={iconClass} />
-          Copy session ID
+          {t("agents.session.copySessionId")}
         </ContextMenu.Item>
       )}
       {/* The browser's own menu had this. The desktop app's did not, and its
@@ -176,7 +197,7 @@ function MenuItems({ entry }: { entry: AgentAttentionItem }) {
             className={itemClass}
           >
             <ExternalLink aria-hidden="true" className={iconClass} />
-            Open in new tab
+            {t("agents.session.openInNewTab")}
           </ContextMenu.Item>
         </>
       )}
@@ -236,6 +257,7 @@ function RenameFromRow({
   target: RenameTarget;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const command = useAgentSessionCommand(target.sessionId);
   const [error, setError] = useState("");
   const providerLabel = agentProviderMetadata(target.provider).label;
@@ -255,14 +277,16 @@ function RenameFromRow({
           { type: "set_session_name", name },
           {
             onSuccess: () => {
-              toast.success({ title: "Session renamed" });
+              toast.success({ title: t("agents.session.renamedToast") });
               onClose();
             },
             onError: (cause) =>
               setError(
                 cause instanceof Error
                   ? cause.message
-                  : `${providerLabel} command failed.`,
+                  : t("agents.session.commandFailedPeriod", {
+                      provider: providerLabel,
+                    }),
               ),
           },
         );
