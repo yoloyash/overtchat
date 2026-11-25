@@ -9,6 +9,7 @@ import {
 } from "@overtchat/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,7 @@ export function LoginForm({
   /** The code a failed sign-in with the identity provider came back with. */
   ssoError?: string;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const resetAuthState = useResetAuthState();
   const sso = methods.sso;
@@ -74,7 +76,7 @@ export function LoginForm({
       { headers: { [TWO_FACTOR_CLIENT_HEADER]: "1" } },
     );
     if (error) {
-      setError(error.message ?? "Login failed");
+      setError(error.message ?? t("auth.login.failed"));
       setSubmitting(false);
       return;
     }
@@ -163,16 +165,18 @@ export function LoginForm({
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Welcome back</h1>
+        <h1 className="text-xl font-semibold tracking-tight">
+          {t("auth.login.title")}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Sign in to continue.
+          {t("auth.login.subtitle")}
         </p>
       </header>
 
       {methods.password && (
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("auth.fields.email")}</Label>
             <Input
               id="email"
               type="email"
@@ -183,7 +187,7 @@ export function LoginForm({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t("auth.fields.password")}</Label>
             <PasswordInput
               id="password"
               autoComplete="current-password"
@@ -207,7 +211,7 @@ export function LoginForm({
           disabled={submitting || (ssoPending && !inBrowser)}
           className="w-full"
         >
-          {submitting ? "Signing in…" : "Sign in"}
+          {submitting ? t("auth.login.submitting") : t("auth.login.submit")}
         </Button>
       )}
 
@@ -219,7 +223,7 @@ export function LoginForm({
               className="flex items-center gap-3 text-xs text-muted-foreground"
             >
               <span className="h-px flex-1 bg-border" />
-              or
+              {t("auth.login.or")}
               <span className="h-px flex-1 bg-border" />
             </div>
           )}
@@ -231,16 +235,15 @@ export function LoginForm({
             onClick={signInWithProvider}
           >
             {ssoPending && !inBrowser
-              ? `Waiting for ${sso.name}…`
-              : `Continue with ${sso.name}`}
+              ? t("auth.login.ssoWaiting", { provider: sso.name })
+              : t("auth.login.ssoContinue", { provider: sso.name })}
           </Button>
           {ssoPending && inBrowser && (
             <p
               role="status"
               className="text-center text-sm text-muted-foreground"
             >
-              Finish signing in in your browser. To start again, choose Continue
-              with {sso.name}.
+              {t("auth.login.ssoInBrowser", { provider: sso.name })}
             </p>
           )}
         </>
@@ -256,22 +259,26 @@ export function LoginForm({
             aria-controls="password-recovery-help"
             onClick={() => setShowRecovery((shown) => !shown)}
           >
-            Forgot password?
+            {t("auth.login.forgotPassword")}
           </Button>
           {showRecovery && (
             <div
               id="password-recovery-help"
               className="space-y-2 text-sm text-muted-foreground"
             >
+              <p>{t("auth.login.recoveryAdmin")}</p>
               <p>
-                Contact your server administrator to reset your password.
-                Another administrator can also help if you are an admin.
-              </p>
-              <p>
-                If all administrators are locked out, the server owner can run{" "}
-                <code>overtchat reset-password</code> on the server, or{" "}
-                <code>overtchat reset-two-factor</code> for a lost
-                authenticator.
+                <Trans
+                  i18nKey="auth.login.recoveryCli"
+                  values={{
+                    resetPassword: "overtchat reset-password",
+                    resetTwoFactor: "overtchat reset-two-factor",
+                  }}
+                  components={{
+                    resetPassword: <code />,
+                    resetTwoFactor: <code />,
+                  }}
+                />
               </p>
             </div>
           )}

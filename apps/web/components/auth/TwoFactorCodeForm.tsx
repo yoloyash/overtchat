@@ -2,6 +2,8 @@
 
 import { useEffect, useEffectEvent, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   SIGN_IN_APPROVAL_ENDED,
   SIGN_IN_APPROVAL_METHOD,
@@ -109,6 +111,7 @@ function CodeForm({
   onRestart: (message: string) => void;
   onSwitch: (method: Method) => void;
 }) {
+  const { t } = useTranslation();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -136,12 +139,12 @@ function CodeForm({
     <form onSubmit={onSubmit} className="space-y-5">
       <header>
         <h1 className="text-xl font-semibold tracking-tight">
-          Two-factor authentication
+          {t("auth.twoFactor.code.title")}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {backup
-            ? "Enter one of the backup codes you saved when you set up two-factor."
-            : "Enter the 6-digit code from your authenticator app."}
+            ? t("auth.twoFactor.code.backupDescription")
+            : t("auth.twoFactor.code.totpDescription")}
         </p>
       </header>
 
@@ -149,7 +152,9 @@ function CodeForm({
 
       <div className="space-y-1.5">
         <Label htmlFor="two-factor-code">
-          {backup ? "Backup code" : "Authentication code"}
+          {backup
+            ? t("auth.twoFactor.code.backupLabel")
+            : t("auth.twoFactor.code.totpLabel")}
         </Label>
         <Input
           id="two-factor-code"
@@ -161,6 +166,7 @@ function CodeForm({
           maxLength={backup ? 11 : 7}
           spellCheck={false}
           autoCapitalize="none"
+          // eslint-disable-next-line i18next/no-literal-string -- code format example
           placeholder={backup ? "xxxxx-xxxxx" : "123456"}
           className="font-mono tracking-widest"
           value={code}
@@ -174,7 +180,9 @@ function CodeForm({
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={submitting} className="w-full">
-        {submitting ? "Verifying…" : "Verify"}
+        {submitting
+          ? t("auth.twoFactor.code.verifying")
+          : t("auth.twoFactor.code.verify")}
       </Button>
       <div className="flex flex-col items-center">
         <Button
@@ -182,17 +190,18 @@ function CodeForm({
           variant="link"
           onClick={() => onSwitch(backup ? "totp" : "backup")}
         >
-          {backup ? "Use your authenticator app" : "Use a backup code"}
+          {backup
+            ? t("auth.twoFactor.methods.useAuthenticator")
+            : t("auth.twoFactor.methods.useBackupCode")}
         </Button>
         {canApprove && (
           <Button type="button" variant="link" onClick={() => onSwitch("approval")}>
-            Approve on another device
+            {t("auth.twoFactor.methods.approveOnAnotherDevice")}
           </Button>
         )}
       </div>
       <p className="text-center text-sm text-muted-foreground">
-        Lost your authenticator and backup codes? Ask a server administrator to
-        reset two-factor for you.
+        {t("auth.twoFactor.code.lostHelp")}
       </p>
     </form>
   );
@@ -217,6 +226,7 @@ function SignInApproval({
   onUnavailable: (message: string) => void;
   onUseCode: (method: "totp" | "backup") => void;
 }) {
+  const { t } = useTranslation();
   const [view, setView] = useState<ApprovalView>({ step: "sending" });
   const [attempt, setAttempt] = useState(0);
   const approved = useEffectEvent(() => onApproved());
@@ -285,7 +295,7 @@ function SignInApproval({
         if (signal.aborted) return;
         setView({
           step: "ended",
-          message: "Couldn't reach the server. Check your connection and try again.",
+          message: i18n.t("auth.twoFactor.approval.networkError"),
         });
       });
     });
@@ -298,10 +308,11 @@ function SignInApproval({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Approve this sign-in</h1>
+        <h1 className="text-xl font-semibold tracking-tight">
+          {t("auth.twoFactor.approval.title")}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Open OvertChat on a phone or computer where you&apos;re signed in, and
-          pick this number.
+          {t("auth.twoFactor.approval.description")}
         </p>
       </header>
 
@@ -318,7 +329,7 @@ function SignInApproval({
               setAttempt((n) => n + 1);
             }}
           >
-            Send a new request
+            {t("auth.twoFactor.approval.sendNewRequest")}
           </Button>
         </div>
       ) : (
@@ -326,7 +337,9 @@ function SignInApproval({
           <p
             aria-live="polite"
             aria-label={
-              view.step === "sending" ? "Sending request" : `Number ${view.number}`
+              view.step === "sending"
+                ? t("auth.twoFactor.approval.sendingLabel")
+                : t("auth.twoFactor.approval.numberLabel", { number: view.number })
             }
             className="font-mono text-5xl font-semibold tabular-nums tracking-tight"
           >
@@ -335,20 +348,20 @@ function SignInApproval({
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />
             {view.step === "sending"
-              ? "Sending request…"
+              ? t("auth.twoFactor.approval.sending")
               : view.step === "verifying"
-                ? "Approved. Signing in…"
-                : "Waiting for approval…"}
+                ? t("auth.twoFactor.approval.verifying")
+                : t("auth.twoFactor.approval.waiting")}
           </p>
         </div>
       )}
 
       <div className="flex flex-col items-center">
         <Button type="button" variant="link" onClick={() => onUseCode("totp")}>
-          Use your authenticator app
+          {t("auth.twoFactor.methods.useAuthenticator")}
         </Button>
         <Button type="button" variant="link" onClick={() => onUseCode("backup")}>
-          Use a backup code
+          {t("auth.twoFactor.methods.useBackupCode")}
         </Button>
       </div>
     </div>

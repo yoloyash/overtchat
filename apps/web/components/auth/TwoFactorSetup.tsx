@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Check, Copy, Download } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { TOTP_CODE_LENGTH, twoFactorErrorMessage } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ export function TwoFactorSetup({
   onDone: () => void;
   onCancel?: () => void;
 }) {
+  const { t } = useTranslation();
   const refresh = useRefreshTwoFactor();
   const [step, setStep] = useState<"password" | "scan" | "codes">("password");
   const [password, setPassword] = useState("");
@@ -47,7 +49,7 @@ export function TwoFactorSetup({
     const { data, error } = await authClient.twoFactor.enable({ password });
     setSubmitting(false);
     if (error || !data || !("totpURI" in data) || !data.totpURI) {
-      setError(error?.message ?? "Could not start two-factor setup.");
+      setError(error?.message ?? t("auth.twoFactor.setup.startFailed"));
       return;
     }
     setEnrollment({ totpURI: data.totpURI, backupCodes: data.backupCodes ?? [] });
@@ -81,7 +83,9 @@ export function TwoFactorSetup({
         {/* Lets password managers match the account. */}
         <input type="email" autoComplete="username" defaultValue={email} readOnly hidden />
         <div className="space-y-1.5">
-          <Label htmlFor="two-factor-password">Confirm your password</Label>
+          <Label htmlFor="two-factor-password">
+            {t("auth.twoFactor.setup.confirmPassword")}
+          </Label>
           <PasswordInput
             id="two-factor-password"
             autoComplete="current-password"
@@ -98,11 +102,13 @@ export function TwoFactorSetup({
         <div className="flex flex-wrap justify-end gap-2">
           {onCancel && (
             <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
-              Cancel
+              {t("auth.actions.cancel")}
             </Button>
           )}
           <Button type="submit" size="sm" disabled={submitting}>
-            {submitting ? "Checking…" : "Continue"}
+            {submitting
+              ? t("auth.twoFactor.setup.checking")
+              : t("auth.twoFactor.setup.continue")}
           </Button>
         </div>
       </form>
@@ -115,23 +121,33 @@ export function TwoFactorSetup({
         <ol className="space-y-5 text-sm">
           <li className="space-y-3">
             <p>
-              <span className="font-medium">1. Scan this code</span> with an
-              authenticator app such as 1Password, Google Authenticator, or
-              Authy.
+              <Trans
+                i18nKey="auth.twoFactor.setup.scanStep"
+                components={{ lead: <span className="font-medium" /> }}
+              />
             </p>
             <div className="w-fit rounded-lg bg-white p-3">
-              <QRCodeSVG value={enrollment.totpURI} size={168} aria-label="Authenticator setup code" />
+              <QRCodeSVG
+                value={enrollment.totpURI}
+                size={168}
+                aria-label={t("auth.twoFactor.setup.qrLabel")}
+              />
             </div>
             <p className="text-muted-foreground">
-              Can&apos;t scan it? Enter this key instead:{" "}
-              <code className="select-all break-words font-mono text-foreground">
-                {manualKey(enrollment.totpURI)}
-              </code>
+              <Trans
+                i18nKey="auth.twoFactor.setup.manualKey"
+                values={{ key: manualKey(enrollment.totpURI) }}
+                components={{
+                  key: (
+                    <code className="select-all break-words font-mono text-foreground" />
+                  ),
+                }}
+              />
             </p>
           </li>
           <li className="space-y-1.5">
             <Label htmlFor="two-factor-verify" className="font-medium">
-              2. Enter the 6-digit code it shows
+              {t("auth.twoFactor.setup.verifyStep")}
             </Label>
             <Input
               id="two-factor-verify"
@@ -156,11 +172,13 @@ export function TwoFactorSetup({
         <div className="flex flex-wrap justify-end gap-2">
           {onCancel && (
             <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
-              Cancel
+              {t("auth.actions.cancel")}
             </Button>
           )}
           <Button type="submit" size="sm" disabled={submitting}>
-            {submitting ? "Verifying…" : "Turn on two-factor"}
+            {submitting
+              ? t("auth.twoFactor.setup.verifying")
+              : t("auth.twoFactor.setup.turnOn")}
           </Button>
         </div>
       </form>
@@ -170,7 +188,7 @@ export function TwoFactorSetup({
   return (
     <BackupCodes
       codes={enrollment?.backupCodes ?? []}
-      intro="Two-factor is on. Save these backup codes somewhere safe. Each one signs you in once if you lose your authenticator."
+      intro={t("auth.twoFactor.setup.backupCodesIntro")}
       onDone={finish}
     />
   );
@@ -186,6 +204,7 @@ export function BackupCodes({
   intro: string;
   onDone: () => void;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const text = codes.join("\n");
 
@@ -202,7 +221,7 @@ export function BackupCodes({
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{intro}</p>
       <ul
-        aria-label="Backup codes"
+        aria-label={t("auth.twoFactor.backupCodes.listLabel")}
         className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-lg border bg-muted/40 p-4 font-mono text-sm"
       >
         {codes.map((code) => (
@@ -220,14 +239,16 @@ export function BackupCodes({
           }}
         >
           {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-          {copied ? "Copied" : "Copy"}
+          {copied
+            ? t("auth.twoFactor.backupCodes.copied")
+            : t("auth.twoFactor.backupCodes.copy")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={download}>
           <Download aria-hidden />
-          Download
+          {t("auth.twoFactor.backupCodes.download")}
         </Button>
         <Button type="button" size="sm" onClick={onDone}>
-          I saved them
+          {t("auth.twoFactor.backupCodes.saved")}
         </Button>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldQuestion } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { SignInDecision, SignInRequest } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
  * in here. They approve it by picking the number the signing-in device shows.
  */
 export function SignInRequestPrompt() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: twoFactor } = useQuery(twoFactorQuery);
   const { data: requests } = useQuery({
@@ -43,25 +45,27 @@ export function SignInRequestPrompt() {
       const result = await decideSignInRequest(target.id, decision);
       dismiss(target.id);
       if (result === "approved") {
-        toast.success({ title: "Sign-in approved", description: target.device });
+        toast.success({
+          title: t("auth.signInRequest.toast.approvedTitle"),
+          description: target.device,
+        });
       } else if (result === "mismatch") {
         toast.error({
-          title: "Sign-in blocked",
-          description:
-            "That number didn't match. If you were signing in, try again; if not, change your password.",
+          title: t("auth.signInRequest.toast.mismatchTitle"),
+          description: t("auth.signInRequest.toast.mismatchDescription"),
         });
       } else if (result === "denied") {
         toast.success({
-          title: "Sign-in denied",
-          description: "If this wasn't you, change your password.",
+          title: t("auth.signInRequest.toast.deniedTitle"),
+          description: t("auth.signInRequest.toast.deniedDescription"),
         });
       } else {
-        toast.error({ title: "This request expired" });
+        toast.error({ title: t("auth.signInRequest.toast.expiredTitle") });
       }
     } catch {
       toast.error({
-        title: "Couldn't answer the sign-in request",
-        description: "Check your connection and try again.",
+        title: t("auth.signInRequest.toast.errorTitle"),
+        description: t("auth.signInRequest.toast.errorDescription"),
       });
     } finally {
       setAnswering(false);
@@ -87,14 +91,18 @@ export function SignInRequestPrompt() {
         >
           <ShieldQuestion aria-hidden className="mb-3 size-6 text-ring" />
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Is this you signing in?
+            {t("auth.signInRequest.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {request.device}
             {request.ipAddress ? ` · ${request.ipAddress}` : ""}
           </Dialog.Description>
-          <p className="mt-5 text-sm">Pick the number shown on the sign-in screen.</p>
-          <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="Number choices">
+          <p className="mt-5 text-sm">{t("auth.signInRequest.instruction")}</p>
+          <div
+            className="mt-3 grid grid-cols-3 gap-2"
+            role="group"
+            aria-label={t("auth.signInRequest.choicesLabel")}
+          >
             {request.choices.map((number) => (
               <Button
                 key={number}
@@ -115,7 +123,7 @@ export function SignInRequestPrompt() {
             className="mt-4 w-full"
             onClick={() => void answer(request, { approve: false })}
           >
-            No, it&apos;s not me
+            {t("auth.signInRequest.deny")}
           </Button>
         </Dialog.Popup>
       </Dialog.Portal>
