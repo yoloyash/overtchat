@@ -20,16 +20,24 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 
 interface ProjectWithChats extends ProjectOption {
-  chats: { id: string; title: string | null; kind: ChatKind; pinned?: boolean }[];
+  chats: {
+    id: string;
+    title: string | null;
+    kind: ChatKind;
+    pinned?: boolean;
+    scheduledTaskName?: string;
+  }[];
 }
 
 export function SidebarProjects({
   projects,
   activeChatIds,
+  unreadChatIds,
   pinningSupported,
 }: {
   projects: ProjectWithChats[];
   activeChatIds: ReadonlySet<string>;
+  unreadChatIds: ReadonlySet<string>;
   pinningSupported: boolean;
 }) {
   const projectOptions: ProjectOption[] = projects.map((p) => ({
@@ -47,6 +55,7 @@ export function SidebarProjects({
           project={p}
           projectOptions={projectOptions}
           activeChatIds={activeChatIds}
+          unreadChatIds={unreadChatIds}
           pinningSupported={pinningSupported}
         />
       ))}
@@ -58,11 +67,13 @@ function ProjectNode({
   project,
   projectOptions,
   activeChatIds,
+  unreadChatIds,
   pinningSupported,
 }: {
   project: ProjectWithChats;
   projectOptions: ProjectOption[];
   activeChatIds: ReadonlySet<string>;
+  unreadChatIds: ReadonlySet<string>;
   pinningSupported: boolean;
 }) {
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -127,6 +138,7 @@ function ProjectNode({
                 projects={projectOptions}
                 currentProjectId={project.id}
                 generating={activeChatIds.has(c.id)}
+                unread={unreadChatIds.has(c.id)}
                 pinningSupported={pinningSupported}
               />
             ))

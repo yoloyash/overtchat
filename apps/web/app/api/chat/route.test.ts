@@ -61,6 +61,8 @@ const mocks = vi.hoisted(() => {
     gmailAccess: vi.fn(),
     gmailReconnectPrompt: vi.fn(),
     createCalendarTools: vi.fn(),
+    createScheduledTaskTools: vi.fn(),
+    scheduledTasksPrompt: vi.fn(),
     calendarAccess: vi.fn(),
     calendarReconnectPrompt: vi.fn(),
     agentStream: vi.fn(),
@@ -156,6 +158,11 @@ vi.mock("@/lib/integrations/calendar-tools", () => ({
   CALENDAR_TOOL_ORDER: mocks.calendarToolOrder,
   CALENDAR_TOOL_PROMPT: mocks.calendarPrompt,
 }));
+vi.mock("@/lib/scheduled-tasks/tools", () => ({
+  createScheduledTaskTools: mocks.createScheduledTaskTools,
+  SCHEDULED_TASKS_SKILL_DESCRIPTION: "Schedule a prompt to run by itself.",
+  scheduledTasksPrompt: mocks.scheduledTasksPrompt,
+}));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
 }));
@@ -245,6 +252,7 @@ vi.mock("@/lib/streams/http", () => ({
 
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import { POST } from "./route";
+import { runChat } from "@/lib/chat/run";
 
 const messages = [
   {
@@ -360,6 +368,8 @@ describe("chat route setup boundary", () => {
     mocks.gmailAccess.mockReturnValue({ status: "unavailable" });
     mocks.gmailReconnectPrompt.mockReturnValue("stable gmail reconnect notice");
     mocks.createCalendarTools.mockReturnValue(mocks.calendarTools);
+    mocks.createScheduledTaskTools.mockReturnValue({});
+    mocks.scheduledTasksPrompt.mockReturnValue("Scheduled tasks: instructions.");
     mocks.calendarAccess.mockReturnValue({ status: "unavailable" });
     mocks.calendarReconnectPrompt.mockReturnValue(
       "stable calendar reconnect notice",
@@ -2143,6 +2153,119 @@ describe("chat route setup boundary", () => {
     expect(mocks.createGmailTools).not.toHaveBeenCalled();
     expect(mocks.agentSettings.at(-1)).not.toHaveProperty("tools");
     expect(content(mocks.agentSettings.at(-1)!)).not.toContain("skill");
+  });
+
+  it("offers the scheduled tasks skill to a client that has the Scheduled page", async () => {
+    const off = { ...parsedRequest, webSearchEnabled: false };
+    mocks.parseChatRequest.mockResolvedValue(off);
+    await POST(request());
+    expect(mocks.createScheduledTaskTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+
+    mocks.parseChatRequest.mockResolvedValue({ ...off, scheduledTasksSupported: true });
+    await POST(request());
+    // A new task runs on this chat's model, with times on the user's clock.
+    expect(mocks.createScheduledTaskTools).toHaveBeenLastCalledWith({
+      userId: "user",
+      timeZone: "America/Los_Angeles",
+      modelConfigId: "model-config",
+    });
+    expect(mocks.scheduledTasksPrompt).toHaveBeenLastCalledWith(
+      "America/Los_Angeles",
+      undefined,
+    );
+    const settings = mocks.agentSettings.at(-1)!;
+    expect(Object.keys(toolsOf(settings))).toEqual(["view_skill", "call_tool"]);
+    expect(content(settings)).toContain(
+      "<available_skills>\n<skill>\n<id>scheduled_tasks</id>\n<name>Scheduled tasks</name>",
+    );
+    expect(content(settings)).not.toContain("Scheduled tasks: instructions.");
+    expect(
+      await toolsOf(settings).view_skill.execute({ id: "scheduled_tasks" }, {}),
+    ).toContain('<skill id="scheduled_tasks" name="Scheduled tasks">\nScheduled tasks: instructions.');
+
+    // A chat that is not kept has nowhere to say what it scheduled.
+    mocks.createScheduledTaskTools.mockClear();
+    mocks.parseChatRequest.mockResolvedValue({
+      ...off,
+      scheduledTasksSupported: true,
+      temporary: true,
+    });
+    await POST(request());
+    expect(mocks.createScheduledTaskTools).not.toHaveBeenCalled();
+    expect(content(mocks.agentSettings.at(-1)!)).not.toContain("<available_skills>");
+  });
+
+  it("runs an unattended turn under the task's name, without sending mail or scheduling more", async () => {
+    mocks.gmailAccess.mockReturnValue({
+      status: "available",
+      alwaysOn: false,
+      sendWithoutAsking: true,
+    });
+    const unattendedRequest = {
+      ...parsedRequest,
+      reasoningLevel: "default" as const,
+      webSearchEnabled: false,
+      gmailComposeSupported: true,
+      scheduledTasksSupported: true,
+    };
+    const onUserMessage = vi.fn();
+    const response = await runChat(
+      new Request("http://scheduled-task.invalid/"),
+      { id: "user", role: "user" },
+      unattendedRequest,
+      { unattended: { title: "Morning news" }, onUserMessage },
+    );
+    expect(response.status).toBe(200);
+
+    // The chat is created with the task's name, and no title is generated.
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Morning news",
+        scheduledTaskName: "Morning news",
+      }),
+    );
+    expect(mocks.ensureChatTitle).not.toHaveBeenCalled();
+    expect(onUserMessage).toHaveBeenCalledOnce();
+    // An email waits as a card whatever the account allows; a task sets up no tasks.
+    expect(mocks.createGmailTools).toHaveBeenCalledWith("user", { compose: true, send: false });
+    expect(mocks.createScheduledTaskTools).not.toHaveBeenCalled();
+    expect(content(mocks.agentSettings[0])).not.toContain("scheduled_tasks");
+
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: unknown) => Promise<void>;
+    const parts = [{ type: "text", text: "Done" }];
+    await onEnd({
+      isAborted: false,
+      responseMessage: { id: "answer", role: "assistant", parts },
+    });
+    expect(mocks.notifyChatComplete).toHaveBeenCalledWith(
+      "user",
+      "chat",
+      expect.any(String),
+      parts,
+      "Morning news",
+    );
+
+    // The same request from someone at the keyboard may send.
+    await runChat(request(), { id: "user", role: "user" }, unattendedRequest);
+    expect(mocks.createGmailTools).toHaveBeenLastCalledWith("user", { compose: true, send: true });
+    expect(mocks.commitChatTurn).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ title: expect.anything() }),
+    );
+  });
+
+  it("stops a turn when its caller's signal fires", async () => {
+    const caller = new AbortController();
+    await runChat(
+      new Request("http://scheduled-task.invalid/"),
+      { id: "user", role: "user" },
+      { ...parsedRequest, reasoningLevel: "default" },
+      { signal: caller.signal },
+    );
+    const signal = mocks.agentStreamArgs[0].abortSignal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    caller.abort();
+    expect(signal.aborted).toBe(true);
   });
 
   it("lists a connected connector as a skill, and loads it where a message asks", async () => {

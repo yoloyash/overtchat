@@ -6,7 +6,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import { chatKeys, projectKeys, scheduledTaskKeys } from "@/lib/queries/keys";
 import { apiUrl } from "@/lib/api-url";
 
 
@@ -125,6 +125,8 @@ export function useDeleteProject() {
       qc.invalidateQueries({ queryKey: projectKeys.list() });
       // chat.projectId is set to null on project delete (cascade), so the list shape changes
       qc.invalidateQueries({ queryKey: chatKeys.list() });
+      // A scheduled task that ran in the project is paused with it.
+      qc.invalidateQueries({ queryKey: scheduledTaskKeys.all() });
     },
   });
 }

@@ -424,7 +424,15 @@ it("migrates an existing database without changing chats, messages or uploads", 
       ["chats", "messages", "uploads"].map((table) =>
         previous.prepare(`SELECT * FROM ${table}`).all(),
       ),
-    ).toEqual(before);
+    ).toEqual([
+      // A later migration adds where a chat came from; these chats have none.
+      (before[0] as Record<string, unknown>[]).map((chat) => ({
+        ...chat,
+        scheduled_task_name: null,
+      })),
+      before[1],
+      before[2],
+    ]);
     expect(previous.prepare("SELECT * FROM chat_shares").all()).toEqual([]);
     expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   } finally {

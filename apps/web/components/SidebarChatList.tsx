@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
+  CalendarClock,
   Download,
   FolderInput,
   MoreHorizontal,
@@ -37,6 +38,8 @@ interface Chat {
   title: string | null;
   kind: ChatKind;
   pinned?: boolean;
+  /** The scheduled task whose run started the chat. */
+  scheduledTaskName?: string;
 }
 
 interface DatedChat extends Chat {
@@ -52,12 +55,15 @@ export function SidebarChatList({
   chats,
   projects,
   activeChatIds,
+  unreadChatIds,
   emptyMessage = "No chats yet",
   pinningSupported,
 }: {
   chats: DatedChat[];
   projects: ProjectOption[];
   activeChatIds: ReadonlySet<string>;
+  /** Chats a scheduled task wrote that have not been opened. */
+  unreadChatIds: ReadonlySet<string>;
   emptyMessage?: string;
   pinningSupported: boolean;
 }) {
@@ -88,6 +94,7 @@ export function SidebarChatList({
                 chat={c}
                 projects={projects}
                 generating={activeChatIds.has(c.id)}
+                unread={unreadChatIds.has(c.id)}
                 pinningSupported={pinningSupported}
               />
             ))}
@@ -103,12 +110,15 @@ export function SidebarItem({
   projects,
   currentProjectId = null,
   generating = false,
+  unread = false,
   pinningSupported,
 }: {
   chat: Chat;
   projects: ProjectOption[];
   currentProjectId?: string | null;
   generating?: boolean;
+  /** A scheduled task wrote this chat and it has not been opened. */
+  unread?: boolean;
   pinningSupported: boolean;
 }) {
   const navigate = useNavigate();
@@ -263,6 +273,22 @@ export function SidebarItem({
             chat.pinned && generating && "pr-14 max-md:pr-18",
           )}
         >
+          {unread && !generating && (
+            <span
+              role="img"
+              aria-label="New result"
+              data-unread-run
+              className="mr-1.5 inline-block size-1.5 rounded-full bg-green-600 align-middle dark:bg-green-500"
+            />
+          )}
+          {chat.scheduledTaskName && (
+            <CalendarClock
+              role="img"
+              aria-label="Scheduled task"
+              data-scheduled-chat
+              className="mr-1.5 inline-block size-3.5 align-[-0.15em] text-muted-foreground"
+            />
+          )}
           {chat.title ? (
             <RevealedTitle
               key={chat.title}

@@ -10,6 +10,7 @@ import {
 import {
   BookOpen,
   Brain,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   CircleAlert,
@@ -39,11 +40,14 @@ import {
   isCodeExecutionPart,
   isGmailToolPart,
   isReadFilePart,
+  isScheduledTaskToolPart,
   isSearchFilesPart,
   isToolSettled,
   isViewSkillToolPart,
   readFileRangeLabel,
   type ReadFilePart,
+  scheduledTaskActivityLabel,
+  type ScheduledTaskToolPart,
   type SearchFilesPart,
   viewSkillActivityLabel,
   type ViewSkillToolPart,
@@ -60,6 +64,7 @@ import { CalendarLogo } from "@/components/CalendarLogo";
 import { GmailLogo } from "@/components/GmailLogo";
 import { CalendarStep } from "./CalendarStep";
 import { GmailStep } from "./GmailStep";
+import { ScheduledTaskStep } from "./ScheduledTaskStep";
 import { ThinkingContent } from "./ThinkingContent";
 import { serverUrl } from "@/lib/api-url";
 import { useLocalStorage } from "@/lib/useLocalStorage";
@@ -78,6 +83,7 @@ export type ActivityPart =
   | GmailToolPart
   | CalendarToolPart
   | ViewSkillToolPart
+  | ScheduledTaskToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -107,6 +113,7 @@ function isTool(
     isGmailToolPart(p) ||
     isCalendarToolPart(p) ||
     isViewSkillToolPart(p) ||
+    isScheduledTaskToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -190,7 +197,9 @@ export function ChainOfThought({
                 ? CalendarLogo
                 : isViewSkillToolPart(lastTool)
                   ? BookOpen
-                  : Globe
+                  : isScheduledTaskToolPart(lastTool)
+                    ? CalendarClock
+                    : Globe
         : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
@@ -282,7 +291,9 @@ function Step({
                     ? CalendarLogo
                     : isViewSkillToolPart(part)
                       ? BookOpen
-                      : isMcpTool(part)
+                      : isScheduledTaskToolPart(part)
+                        ? CalendarClock
+                        : isMcpTool(part)
                         ? Wrench
                         : Brain;
 
@@ -306,6 +317,8 @@ function Step({
           <CalendarStep part={part} />
         ) : isViewSkillToolPart(part) ? (
           <SkillStep part={part} />
+        ) : isScheduledTaskToolPart(part) ? (
+          <ScheduledTaskStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -778,6 +791,9 @@ function activeLabel(last: ActivityPart | undefined): string {
   if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
   if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
   if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true);
+  if (isScheduledTaskToolPart(last)) {
+    return scheduledTaskActivityLabel(last, true);
+  }
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -829,6 +845,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool && isViewSkillToolPart(lastTool)) {
     return viewSkillActivityLabel(lastTool, false);
+  }
+  if (lastTool && isScheduledTaskToolPart(lastTool)) {
+    return scheduledTaskActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

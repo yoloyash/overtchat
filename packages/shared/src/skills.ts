@@ -16,7 +16,12 @@ export const VIEW_SKILL_TOOL_NAME = "view_skill" as const;
 export const CALL_TOOL_TOOL_NAME = "call_tool" as const;
 export const SKILL_TOOL_NAMES = [VIEW_SKILL_TOOL_NAME, CALL_TOOL_TOOL_NAME] as const;
 
-export const CHAT_SKILL_IDS = ["gmail", "calendar", "interactive_ui"] as const;
+export const CHAT_SKILL_IDS = [
+  "gmail",
+  "calendar",
+  "interactive_ui",
+  "scheduled_tasks",
+] as const;
 export type ChatSkillId = (typeof CHAT_SKILL_IDS)[number];
 
 /** How each skill is named to people and to models. */
@@ -24,6 +29,7 @@ export const CHAT_SKILL_NAMES: Record<ChatSkillId, string> = {
   gmail: "Gmail",
   calendar: "Google Calendar",
   interactive_ui: "Interactive UI",
+  scheduled_tasks: "Scheduled tasks",
 };
 
 export function isChatSkillId(value: unknown): value is ChatSkillId {

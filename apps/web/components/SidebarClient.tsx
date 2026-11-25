@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
+  CalendarClock,
   Check,
   CheckCheck,
   ChevronRight,
@@ -47,6 +48,11 @@ import {
 import { groupAgentWorkspaces } from "@/lib/agents/workspaces";
 import { useSetAgentSessionRead } from "@/lib/queries/agentSessionRead";
 import { useSidebar } from "@/components/sidebar-context";
+import {
+  useScheduledTaskRunActivity,
+  useScheduledTasksSupported,
+} from "@/components/scheduled/ScheduledTaskActivity";
+import { unreadRunChatIds } from "@overtchat/shared";
 import { useActiveChatIds, useChats } from "@/lib/queries/chats";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import { useProjects } from "@/lib/queries/projects";
@@ -72,6 +78,12 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const { data: activeChatIds = [] } = useActiveChatIds();
   const { data: projects = [] } = useProjects();
   const activeChats = useMemo(() => new Set(activeChatIds), [activeChatIds]);
+  const scheduledTasksSupported = useScheduledTasksSupported();
+  const { data: scheduledRuns } = useScheduledTaskRunActivity();
+  const unreadChats = useMemo(
+    () => unreadRunChatIds(scheduledRuns),
+    [scheduledRuns],
+  );
 
   // Run after React commits the refetched lists, when the destination row exists.
   useLayoutEffect(() => {
@@ -109,6 +121,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           pinned: c.pinned,
           kind: c.kind,
           updatedAt: c.updatedAt,
+          scheduledTaskName: c.scheduledTaskName,
         })),
     [chats],
   );
@@ -116,12 +129,24 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const projectsWithChats = useMemo(() => {
     const byProject = new Map<
       string,
-      { id: string; title: string | null; kind: "text" | "voice"; pinned?: boolean }[]
+      {
+        id: string;
+        title: string | null;
+        kind: "text" | "voice";
+        pinned?: boolean;
+        scheduledTaskName?: string;
+      }[]
     >();
     for (const c of chats) {
       if (!c.projectId) continue;
       const list = byProject.get(c.projectId) ?? [];
-      list.push({ id: c.id, title: c.title, kind: c.kind, pinned: c.pinned });
+      list.push({
+        id: c.id,
+        title: c.title,
+        kind: c.kind,
+        pinned: c.pinned,
+        scheduledTaskName: c.scheduledTaskName,
+      });
       byProject.set(c.projectId, list);
     }
     return projectOptions.map((p) => ({
@@ -175,6 +200,32 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           <span className="flex-1">Library</span>
           <LinkPendingIndicator to="/library" />
         </Link>
+        {scheduledTasksSupported && (
+          <Link
+            to="/scheduled"
+            onClick={closeMobile}
+            aria-current={pathname === "/scheduled" ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+              pathname === "/scheduled" && "bg-sidebar-accent",
+            )}
+          >
+            <CalendarClock className="size-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1">Scheduled</span>
+            {unreadChats.size > 0 && (
+              <span
+                role="img"
+                aria-label={
+                  unreadChats.size === 1
+                    ? "1 new result"
+                    : `${unreadChats.size} new results`
+                }
+                className="size-1.5 rounded-full bg-green-600 dark:bg-green-500"
+              />
+            )}
+            <LinkPendingIndicator to="/scheduled" />
+          </Link>
+        )}
         <Link
           to="/activity"
           onClick={closeMobile}
@@ -200,6 +251,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
                 projects={projectOptions}
                 currentProjectId={chat.projectId}
                 generating={activeChats.has(chat.id)}
+                unread={unreadChats.has(chat.id)}
                 pinningSupported={pinningSupported}
               />
             ))}
@@ -211,6 +263,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
       <SidebarProjects
         projects={projectsWithChats}
         activeChatIds={activeChats}
+        unreadChatIds={unreadChats}
         pinningSupported={pinningSupported}
       />
       <button
@@ -228,6 +281,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
         projects={projectOptions}
         activeChatIds={activeChats}
+        unreadChatIds={unreadChats}
         pinningSupported={pinningSupported}
       />
     </>

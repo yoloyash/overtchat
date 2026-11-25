@@ -21,6 +21,8 @@ export type ChatListItem = {
   kind: ChatKind;
   projectId: string | null;
   updatedAt: number;
+  /** The scheduled task whose run started this chat, when one did. */
+  scheduledTaskName?: string;
 };
 
 export type ActiveChatIdsResponse = {
@@ -110,6 +112,8 @@ export type ChatMessagesPage = {
   projectId: string | null;
   kind: ChatKind;
   modelConfigId: string | null;
+  /** The scheduled task whose run started this chat, when one did. */
+  scheduledTaskName?: string;
 };
 
 /** Fetches one page of a chat's history, newest first. Null when the chat does not exist. */

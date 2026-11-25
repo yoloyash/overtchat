@@ -34,12 +34,15 @@ import {
   isCodeExecutionPart,
   isGmailToolPart,
   isReadFilePart,
+  isScheduledTaskToolPart,
   isSearchFilesPart,
   isToolSettled,
   isViewSkillToolPart,
   parseMcpToolName,
   readFileRangeLabel,
   type ReadFilePart,
+  scheduledTaskActivityLabel,
+  type ScheduledTaskToolPart,
   type SearchFilesPart,
   viewSkillActivityLabel,
   type ViewSkillToolPart,
@@ -71,6 +74,7 @@ export type ActivityPart =
   | GmailToolPart
   | CalendarToolPart
   | ViewSkillToolPart
+  | ScheduledTaskToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -100,6 +104,7 @@ function isTool(
     isGmailToolPart(p) ||
     isCalendarToolPart(p) ||
     isViewSkillToolPart(p) ||
+    isScheduledTaskToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -366,7 +371,7 @@ function StepView({
                 ? "code"
                 : isGmailToolPart(part)
                   ? "mail"
-                  : isCalendarToolPart(part)
+                  : isCalendarToolPart(part) || isScheduledTaskToolPart(part)
                     ? "calendar"
                     : isMcpTool(part)
                       ? "tool"
@@ -392,6 +397,8 @@ function StepView({
           <CalendarStep part={part} />
         ) : isViewSkillToolPart(part) ? (
           <SkillStep part={part} />
+        ) : isScheduledTaskToolPart(part) ? (
+          <ScheduledTaskStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -1208,6 +1215,33 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
   );
 }
 
+/** A model scheduling, changing, listing or deleting the user's tasks. */
+function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
+  const { colors, fonts } = useTheme();
+  return (
+    <View style={styles.searchStep}>
+      <Text
+        style={[
+          styles.stepTitle,
+          { color: colors.foreground, fontFamily: fonts.sansMedium },
+        ]}
+      >
+        {scheduledTaskActivityLabel(part, !isToolSettled(part))}
+      </Text>
+      {part.state === "output-error" && part.errorText ? (
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** A model reading a skill's instructions before using it. */
 function SkillStep({ part }: { part: ViewSkillToolPart }) {
   const { colors, fonts } = useTheme();
@@ -1432,6 +1466,9 @@ function activeLabel(last: ActivityPart | undefined): string {
   if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
   if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
   if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true);
+  if (isScheduledTaskToolPart(last)) {
+    return scheduledTaskActivityLabel(last, true);
+  }
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -1483,6 +1520,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool && isViewSkillToolPart(lastTool)) {
     return viewSkillActivityLabel(lastTool, false);
+  }
+  if (lastTool && isScheduledTaskToolPart(lastTool)) {
+    return scheduledTaskActivityLabel(lastTool, false);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

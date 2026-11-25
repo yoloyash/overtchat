@@ -38,6 +38,7 @@ raw.exec(`
     project_id TEXT,
     title TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
+    scheduled_task_name TEXT,
     kind TEXT DEFAULT 'text' NOT NULL,
     active_stream_id TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
@@ -221,6 +222,32 @@ describe("transactional chat turns", () => {
     expect(chatTurns.failChatStream({ chatId: "chat", streamId: "failed", error: "provider error" })).toBe(true);
     expect((await chatDb.getMessages("chat")).at(-1)).toEqual(saved);
   });
+  it("titles a chat it creates when given a title, and leaves an existing title alone", async () => {
+    const input = {
+      chatId: "chat", userId: "user", projectId: null,
+      streamId: "stream", clientRequestId: "request", requestFingerprint: "fingerprint",
+      staleStreamId: null, title: "Morning news",
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.title).toBe("Morning news");
+    expect((await chatDb.getChat("chat", "user"))?.scheduledTaskName).toBeNull();
+    expect(chatTurns.commitChatTurn({ ...input, streamId: "next", clientRequestId: "next", staleStreamId: "stream", title: "Other" })).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.title).toBe("Morning news");
+  });
+
+  it("marks a chat a scheduled run creates with the task's name, for good", async () => {
+    const turn = {
+      chatId: "chat", userId: "user", projectId: null,
+      streamId: "stream", clientRequestId: "request", requestFingerprint: "fingerprint",
+      staleStreamId: null,
+    };
+    expect(chatTurns.commitChatTurn({ ...turn, title: "Morning news", scheduledTaskName: "Morning news" })).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.scheduledTaskName).toBe("Morning news");
+    // The owner's reply in the same chat is an ordinary turn and changes nothing.
+    expect(chatTurns.commitChatTurn({ ...turn, streamId: "next", clientRequestId: "next", staleStreamId: "stream" })).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.scheduledTaskName).toBe("Morning news");
+  });
+
   it("records the model only when the turn is committed and leaves it unchanged on rejected turns", async () => {
     const input = {
       chatId: "chat", userId: "user", projectId: null,

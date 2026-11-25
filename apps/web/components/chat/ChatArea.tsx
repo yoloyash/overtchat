@@ -19,6 +19,7 @@ import {
   documentIdOf,
   findDocumentPart,
   followLiveDocuments,
+  hasScheduledTaskChange,
   hasSuccessfulMemoryMutation,
   isDocumentToolPart,
   modelSupportsChatReasoningLevel,
@@ -38,6 +39,7 @@ import {
   chatKeys,
   libraryKeys,
   personalizationKeys,
+  scheduledTaskKeys,
 } from "@/lib/queries/keys";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import type { IntegrationId } from "@/lib/integrations/schema";
@@ -141,6 +143,8 @@ interface Props {
   initialModelId?: string | null;
   isNew?: boolean;
   projectId?: string | null;
+  /** The scheduled task whose run started this chat, when one did. */
+  scheduledTaskName?: string;
   initialQuery?: string;
   /** Called once when a new chat is first saved, so its URL can move to `/chat/:id`. */
   onPersisted?: () => void;
@@ -159,6 +163,7 @@ export function ChatArea({
   initialModelId,
   isNew,
   projectId,
+  scheduledTaskName,
   initialQuery,
   onPersisted,
   renderEmptyState,
@@ -386,6 +391,9 @@ export function ChatArea({
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       }
+      if (hasScheduledTaskChange(message)) {
+        void qc.invalidateQueries({ queryKey: scheduledTaskKeys.all() });
+      }
       if (isError) return;
       // Stats come with a generation that ran to its end. A reply stopped by
       // hand has none, and neither has a summary the person asked for.
@@ -410,6 +418,8 @@ export function ChatArea({
       qc.invalidateQueries({ queryKey: chatKeys.active() }),
       qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
       qc.invalidateQueries({ queryKey: activityKeys.all() }),
+      // A reply that finished out of sight may have scheduled something.
+      qc.invalidateQueries({ queryKey: scheduledTaskKeys.all() }),
     ]);
   }, [chatId, qc]);
   const generation = useChatGenerationRecovery({
@@ -551,6 +561,7 @@ export function ChatArea({
     documentsSupported: true,
     codeExecutionSupported: true,
     gmailComposeSupported: true,
+    scheduledTasksSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
     gmailEnabled: connectorRequested("gmail"),
     calendarEnabled: connectorRequested("calendar"),
@@ -1018,6 +1029,7 @@ export function ChatArea({
           onToggle: () => setPanel((shown) => (shown ? null : { kind: "files" })),
         }}
         title={headerTitle}
+        scheduledTaskName={scheduledTaskName}
         project={
           project && !(renderEmptyState && showEmptyState)
             ? { id: project.id, name: project.name }

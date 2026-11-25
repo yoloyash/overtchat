@@ -49,6 +49,8 @@ export default defineConfig({
       SANDBOX_URL: e2eSandboxUrl,
       SANDBOX_TOKEN: e2eSandboxToken,
       OVERTCHAT_E2E_GOOGLE_ORIGIN: e2eGoogleOrigin,
+      // Look for due scheduled tasks often, so a spec does not wait half a minute.
+      OVERTCHAT_SCHEDULED_TASKS_TICK_MS: "500",
       ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     },
   },

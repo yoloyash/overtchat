@@ -84,6 +84,21 @@ describe("chat request parsing", () => {
     ).rejects.toBeInstanceOf(ChatRequestError);
   });
 
+  it("accepts the Scheduled page only when advertised, and fingerprints it without disturbing older requests", async () => {
+    const legacy = await parseChatRequest(request(validBody));
+    expect(legacy.scheduledTasksSupported).toBe(false);
+    const current = await parseChatRequest(request({ ...validBody, scheduledTasksSupported: true }));
+    expect(current.scheduledTasksSupported).toBe(true);
+    expect(chatRequestFingerprint(current)).not.toBe(chatRequestFingerprint(legacy));
+    // A request from a client that has never heard of it hashes as it did.
+    expect(chatRequestFingerprint(legacy)).toBe(
+      chatRequestFingerprint({ ...legacy, scheduledTasksSupported: undefined }),
+    );
+    await expect(
+      parseChatRequest(request({ ...validBody, scheduledTasksSupported: "yes" })),
+    ).rejects.toBeInstanceOf(ChatRequestError);
+  });
+
   it("validates and normalizes an explicit submit request", async () => {
     await expect(
       parseChatRequest(

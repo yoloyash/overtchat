@@ -48,6 +48,10 @@ const LibraryBrowser = lazyRouteComponent(
   () => import("@/components/library/LibraryBrowser"),
   "LibraryBrowser",
 );
+const ScheduledTasksPage = lazyRouteComponent(
+  () => import("@/components/scheduled/ScheduledTasksPage"),
+  "ScheduledTasksPage",
+);
 /** Opens a new session with the most recently used agent and workspace. */
 export const agentsHomeRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -262,6 +266,26 @@ export const libraryRoute = createRoute({
       );
     },
     LibraryBrowser,
+  ),
+});
+
+export const scheduledRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/scheduled",
+  pendingComponent: AppPending,
+  component: withPages(
+    function ScheduledPage() {
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <header data-titlebar className="flex h-12 shrink-0 items-center gap-2 px-3">
+            <SidebarToggle />
+            <span className="text-sm font-medium">Scheduled</span>
+          </header>
+          <ScheduledTasksPage />
+        </div>
+      );
+    },
+    ScheduledTasksPage,
   ),
 });
 

@@ -22,6 +22,15 @@ export async function register() {
     console.error("[terminal-relay] Workspace terminals unavailable:", error);
   }
 
+  try {
+    const { startScheduledTasks } = await import(
+      "@/lib/scheduled-tasks/scheduler"
+    );
+    startScheduledTasks();
+  } catch (error) {
+    console.error("[scheduled-tasks] Scheduled tasks will not run:", error);
+  }
+
   const { sweepOrphanedUploads } = await import("@/lib/db/uploads");
   sweepOrphanedUploads().catch((err) =>
     console.error("[sweep-orphan-uploads]", err),
