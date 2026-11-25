@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import {
   DEFAULT_WEB_SEARCH_ENABLED,
@@ -20,6 +21,7 @@ import { McpServersPanel } from "./McpServersPanel";
 import { ToolAccessChoice } from "./ToolAccessChoice";
 
 export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useTranslation();
   const [webSearchEnabled, setWebSearchEnabled] = useLocalStorage<boolean>(
     WEB_SEARCH_ENABLED_STORAGE_KEY,
     DEFAULT_WEB_SEARCH_ENABLED,
@@ -32,17 +34,17 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Tools"
-        description="Control model capabilities, connect your accounts, and add external tool servers."
+        title={t("tools.page.title")}
+        description={t("tools.page.description")}
       />
 
       <SettingsSection
-        title="Built-in tools"
-        description="Disabled tools are removed from chat requests."
+        title={t("tools.builtIn.title")}
+        description={t("tools.builtIn.description")}
       >
         <SettingsRow
-          title="Web search"
-          description="Allow supported models to search the web and fetch pages. Disabling this also turns off the Search action in chat."
+          title={t("tools.builtIn.webSearch.title")}
+          description={t("tools.builtIn.webSearch.description")}
           htmlFor="web-search-enabled"
           align="center"
           controlAlign="end"
@@ -52,23 +54,23 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
             id="web-search-enabled"
             checked={webSearchEnabled}
             onCheckedChange={setWebSearchEnabled}
-            aria-label="Enable web search"
+            aria-label={t("tools.builtIn.webSearch.toggleLabel")}
           />
         </SettingsRow>
       </SettingsSection>
 
       <SettingsSection
-        title="Interactive UI"
-        description="Supported models render interactive charts, tables, forms and cards with OpenUI. On demand tool access is recommended."
+        title={t("tools.interactiveUi.title")}
+        description={t("tools.interactiveUi.description")}
       >
         <SettingsRow
-          title="Tool access"
-          description="On demand loads the OpenUI instructions when a message calls for an interface, or when you ask for one from the + menu or /openui. Always available adds about 6,800 tokens to every request."
+          title={t("tools.interactiveUi.toolAccessTitle")}
+          description={t("tools.interactiveUi.toolAccessDescription")}
           align="center"
           controlAlign="end"
         >
           <ToolAccessChoice
-            label="Interactive UI tool access"
+            label={t("tools.interactiveUi.toolAccessLabel")}
             alwaysOn={openuiEnabled}
             onChange={setOpenuiEnabled}
           />

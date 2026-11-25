@@ -1,25 +1,30 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { motionClasses } from "@/lib/motion";
 import { useMcpServerHealth } from "@/lib/queries/mcpServers";
 
 export function McpHealthBadge({ id }: { id: string }) {
+  const { t } = useTranslation();
   const { data, isFetching, refetch } = useMcpServerHealth(id);
 
   let dotClass = "bg-muted-foreground/30";
-  let label = "Check";
-  let title = "Click to check connection";
+  let label = t("tools.mcp.health.check");
+  let title = t("tools.mcp.health.checkTitle");
   if (isFetching) {
-    label = "Checking…";
-    title = "Checking connection…";
+    label = t("tools.mcp.health.checking");
+    title = t("tools.mcp.health.checkingTitle");
   } else if (data?.ok === true) {
     dotClass = "bg-emerald-500";
-    label = `${data.toolCount} ${data.toolCount === 1 ? "tool" : "tools"}`;
-    title = `Working — discovered ${label} in ${data.elapsedMs}ms`;
+    label = t("tools.mcp.health.toolCount", { count: data.toolCount });
+    title = t("tools.mcp.health.workingTitle", {
+      count: data.toolCount,
+      elapsedMs: data.elapsedMs,
+    });
   } else if (data?.ok === false) {
     dotClass = "bg-destructive";
-    label = "Down";
+    label = t("tools.mcp.health.down");
     title = data.error;
   }
 
