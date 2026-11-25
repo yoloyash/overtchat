@@ -76,4 +76,30 @@ export const settings: Translation["settings"] = {
       blocked: "请在浏览器或系统设置中允许此网站发送通知，然后重新打开此开关。",
     },
   },
+  nav: {
+    ariaLabel: "设置",
+    pageSelectLabel: "设置页面",
+    groups: {
+      preferences: "偏好设置",
+      account: "账号",
+      administration: "管理",
+    },
+    items: {
+      general: "通用",
+      personalization: "个性化",
+      tools: "工具",
+      profile: "个人资料",
+      security: "安全",
+      data: "数据",
+      models: "模型",
+      services: "服务",
+      agents: "智能体",
+      users: "用户",
+    },
+  },
+  pairs: {
+    keyLabel: "{{label}} 键 {{index}}",
+    valueLabel: "{{label}} 值 {{index}}",
+    removeRow: "移除{{label}}行",
+  },
 };

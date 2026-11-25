@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useRouter } from "@tanstack/react-router";
 import { Activity, ImageIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ export function ProfileForm({
   name: string;
   image: string | null;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [name, setName] = useState(initialName);
@@ -51,14 +53,14 @@ export function ProfileForm({
     event.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("Display name is required.");
+      setError(t("profile.errors.nameRequired"));
       return;
     }
 
     const trimmedImage = image.trim();
     const normalizedImage = validImageUrl(trimmedImage);
     if (trimmedImage && !normalizedImage) {
-      setError("Avatar URL must start with http:// or https://.");
+      setError(t("profile.errors.invalidAvatarUrl"));
       return;
     }
 
@@ -70,7 +72,7 @@ export function ProfileForm({
     });
     if (updateError) {
       setStatus("idle");
-      setError(updateError.message ?? "Failed to update profile.");
+      setError(updateError.message ?? t("profile.errors.updateFailed"));
       return;
     }
 
@@ -89,27 +91,27 @@ export function ProfileForm({
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Profile"
-        description="Choose how you appear to other people on this server."
+        title={t("profile.title")}
+        description={t("profile.description")}
         action={
           <Button
             variant="outline"
             render={<Link to="/activity/$userId" params={{ userId }} />}
           >
             <Activity />
-            View activity profile
+            {t("profile.viewActivity")}
           </Button>
         }
       />
 
       <form onSubmit={saveProfile} className="space-y-4">
         <SettingsSection
-          title="Identity"
-          description="Your profile is visible on the leaderboard and activity pages."
+          title={t("profile.identity.title")}
+          description={t("profile.identity.description")}
         >
           <SettingsRow
-            title="Preview"
-            description="This updates as you edit."
+            title={t("profile.preview.title")}
+            description={t("profile.preview.description")}
             align="center"
             controlAlign="end"
           >
@@ -123,15 +125,15 @@ export function ProfileForm({
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold">{previewName}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Activity profile
+                  {t("profile.preview.subtitle")}
                 </p>
               </div>
             </div>
           </SettingsRow>
 
           <SettingsRow
-            title="Display name"
-            description="Use the name people should recognize."
+            title={t("profile.displayName.title")}
+            description={t("profile.displayName.description")}
             htmlFor="display-name"
             align="center"
             controlAlign="end"
@@ -152,8 +154,8 @@ export function ProfileForm({
           </SettingsRow>
 
           <SettingsRow
-            title="Avatar URL"
-            description="Optional. Use a direct link to an image."
+            title={t("profile.avatarUrl.title")}
+            description={t("profile.avatarUrl.description")}
             htmlFor="avatar-url"
             align="center"
             controlAlign="end"
@@ -166,6 +168,7 @@ export function ProfileForm({
                 inputMode="url"
                 autoComplete="url"
                 className="w-full pl-8"
+                // eslint-disable-next-line i18next/no-literal-string -- example URL
                 placeholder="https://example.com/avatar.jpg"
                 value={image}
                 onChange={(event) => {
@@ -182,14 +185,14 @@ export function ProfileForm({
         <SettingsActions bordered={false}>
           {status === "ok" && (
             <SettingsNotice tone="success" className="mr-auto">
-              Profile updated
+              {t("profile.updated")}
             </SettingsNotice>
           )}
           <Button
             type="submit"
             disabled={status === "submitting" || !changed}
           >
-            {status === "submitting" ? "Saving…" : "Save profile"}
+            {status === "submitting" ? t("profile.saving") : t("profile.save")}
           </Button>
         </SettingsActions>
       </form>

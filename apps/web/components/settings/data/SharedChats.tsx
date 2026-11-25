@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   sharesQuery,
   shareUrl,
@@ -8,16 +9,17 @@ import { SettingsSection } from "../SettingsRows";
 import { Button } from "@/components/ui/button";
 
 export function SharedChats() {
+  const { t } = useTranslation();
   const query = useQuery(sharesQuery);
   const change = useChangeChatShare();
   return (
     <SettingsSection
-      title="Shared chats"
-      description="Manage public links to your conversations."
+      title={t("data.sharedChats.title")}
+      description={t("data.sharedChats.description")}
     >
       {query.isPending ? (
         <p role="status" className="p-4 text-sm">
-          Loading shared chats…
+          {t("data.sharedChats.loading")}
         </p>
       ) : query.error ? (
         <p role="alert" className="p-4 text-sm">
@@ -37,7 +39,9 @@ export function SharedChats() {
                   {share.title}
                 </a>
                 <p className="text-xs text-muted-foreground">
-                  Updated {new Date(share.updatedAt).toLocaleDateString()}
+                  {t("data.sharedChats.updated", {
+                    date: new Date(share.updatedAt).toLocaleDateString(),
+                  })}
                 </p>
               </div>
               <Button
@@ -47,13 +51,15 @@ export function SharedChats() {
                   change.mutate({ chatId: share.chatId, method: "DELETE" })
                 }
               >
-                Unshare
+                {t("data.sharedChats.unshare")}
               </Button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="p-4 text-sm text-muted-foreground">No shared chats.</p>
+        <p className="p-4 text-sm text-muted-foreground">
+          {t("data.sharedChats.empty")}
+        </p>
       )}
       {change.error && (
         <p role="alert" className="p-4 text-sm text-destructive">

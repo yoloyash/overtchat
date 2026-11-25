@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -26,6 +27,7 @@ export function ProfileEditor({
 }: {
   personalization: Personalization;
 }) {
+  const { t } = useTranslation();
   const updatePersonalization = useUpdatePersonalization();
   const [enabled, setEnabled] = useState(personalization.enabled);
   const [preferredName, setPreferredName] = useState(
@@ -50,21 +52,21 @@ export function ProfileEditor({
         occupation,
         about,
       });
-      toast.success({ title: "Personalization saved" });
+      toast.success({ title: t("personalization.profile.savedToast") });
     } catch (cause) {
-      setError(getErrorMessage(cause, "Failed to save personalization."));
+      setError(getErrorMessage(cause, t("personalization.profile.saveError")));
     }
   }
 
   return (
     <form onSubmit={save} className="space-y-4">
       <SettingsSection
-        title="About you"
-        description="These fields can only be changed here. Empty fields are not added to model context."
+        title={t("personalization.profile.title")}
+        description={t("personalization.profile.description")}
       >
         <SettingsRow
-          title="Use personalization"
-          description="Include your profile and saved memories in chats, and allow models to manage memory when asked. Temporary chats never use personalization."
+          title={t("personalization.profile.enabled.title")}
+          description={t("personalization.profile.enabled.description")}
           htmlFor="personalization-enabled"
           align="center"
           controlAlign="end"
@@ -77,8 +79,8 @@ export function ProfileEditor({
           />
         </SettingsRow>
         <SettingsRow
-          title="Preferred name"
-          description="What should OvertChat call you?"
+          title={t("personalization.profile.preferredName.title")}
+          description={t("personalization.profile.preferredName.description")}
           htmlFor="preferred-name"
         >
           <Input
@@ -86,22 +88,22 @@ export function ProfileEditor({
             maxLength={PREFERRED_NAME_MAX_LENGTH}
             value={preferredName}
             onChange={(event) => setPreferredName(event.target.value)}
-            placeholder="Optional"
+            placeholder={t("personalization.profile.optionalPlaceholder")}
           />
         </SettingsRow>
-        <SettingsRow title="Occupation" htmlFor="occupation">
+        <SettingsRow title={t("personalization.profile.occupation.title")} htmlFor="occupation">
           <Input
             id="occupation"
             maxLength={OCCUPATION_MAX_LENGTH}
             value={occupation}
             onChange={(event) => setOccupation(event.target.value)}
-            placeholder="Optional"
+            placeholder={t("personalization.profile.optionalPlaceholder")}
           />
         </SettingsRow>
         <SettingsRow
-          title="More about you"
+          title={t("personalization.profile.about.title")}
           align="start"
-          description="Interests, values, or preferences to keep in mind."
+          description={t("personalization.profile.about.description")}
           htmlFor="about-user"
         >
           <Textarea
@@ -109,7 +111,7 @@ export function ProfileEditor({
             maxLength={ABOUT_MAX_LENGTH}
             value={about}
             onChange={(event) => setAbout(event.target.value)}
-            placeholder="Optional"
+            placeholder={t("personalization.profile.optionalPlaceholder")}
             className="min-h-28"
           />
         </SettingsRow>
@@ -120,7 +122,9 @@ export function ProfileEditor({
           type="submit"
           disabled={!changed || updatePersonalization.isPending}
         >
-          {updatePersonalization.isPending ? "Saving…" : "Save"}
+          {updatePersonalization.isPending
+            ? t("personalization.profile.saving")
+            : t("personalization.profile.save")}
         </Button>
       </SettingsActions>
     </form>
