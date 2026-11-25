@@ -119,6 +119,7 @@ jobs:
           build-args: SANDBOX_VERSION=${{ needs.validate.outputs.version }}
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=sandbox-${{ matrix.tier }}
