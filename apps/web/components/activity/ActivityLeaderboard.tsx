@@ -2,6 +2,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 import {
   ACTIVITY_PERIODS,
@@ -13,12 +14,6 @@ import { useActivityLeaderboard } from "@/lib/queries/activity";
 import { cn } from "@/lib/utils";
 import { ActivityMetric } from "./ActivityMetric";
 import { formatCompact, formatDate, formatExact } from "./activity-format";
-
-const PERIOD_LABELS: Record<ActivityPeriod, string> = {
-  "7d": "7 days",
-  "30d": "30 days",
-  all: "All time",
-};
 
 const EMPTY_TOTALS: ActivityTotals = {
   generations: 0,
@@ -37,6 +32,7 @@ const EMPTY_TOTALS: ActivityTotals = {
 };
 
 export function ActivityLeaderboard() {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState<ActivityPeriod>("30d");
   const { data, isPending, isError } = useActivityLeaderboard(period);
   const totals = (data?.entries ?? []).reduce<ActivityTotals>(
@@ -71,17 +67,19 @@ export function ActivityLeaderboard() {
       <div className="flex flex-col gap-5 @xl:flex-row @xl:items-end @xl:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Leaderboard
+            {t("activity.leaderboard.title")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {data?.trackingStartedAt
-              ? `Tracking since ${formatDate(data.trackingStartedAt)}`
-              : "Waiting for the first tracked response"}
+              ? t("activity.leaderboard.trackingSince", {
+                  date: formatDate(data.trackingStartedAt),
+                })
+              : t("activity.leaderboard.waitingForTracking")}
           </p>
         </div>
         <div
           role="group"
-          aria-label="Leaderboard period"
+          aria-label={t("activity.leaderboard.periodLabel")}
           className="grid grid-cols-3 rounded-lg border border-border/70 bg-muted/50 p-1"
         >
           {ACTIVITY_PERIODS.map((value) => (
@@ -97,7 +95,7 @@ export function ActivityLeaderboard() {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {PERIOD_LABELS[value]}
+              {t(`activity.periods.${value}`)}
             </button>
           ))}
         </div>
@@ -105,17 +103,17 @@ export function ActivityLeaderboard() {
 
       <dl className="mt-7 grid grid-cols-3 gap-2 sm:gap-3">
         <ActivityMetric
-          label="Chat tokens"
+          label={t("activity.metrics.chatTokens")}
           value={isError ? undefined : totals.totalTokens}
           pending={isPending}
         />
         <ActivityMetric
-          label="Responses"
+          label={t("activity.metrics.responses")}
           value={isError ? undefined : totals.generations}
           pending={isPending}
         />
         <ActivityMetric
-          label="Active people"
+          label={t("activity.metrics.activePeople")}
           value={isError ? undefined : activePeople}
           pending={isPending}
         />
@@ -123,17 +121,17 @@ export function ActivityLeaderboard() {
 
       <section className="mt-9">
         <div className="mb-4 flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-semibold">People</h2>
-          <span className="text-xs text-muted-foreground">Ranked by chat tokens</span>
+          <h2 className="text-sm font-semibold">{t("activity.leaderboard.people")}</h2>
+          <span className="text-xs text-muted-foreground">{t("activity.leaderboard.rankedByChatTokens")}</span>
         </div>
         <div className="overflow-hidden rounded-lg border border-border/70 bg-card">
           <div className="hidden grid-cols-[2.5rem_minmax(0,1fr)_6rem_5.5rem_5.5rem_5.5rem_1.5rem] items-center border-b bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground @3xl:grid">
-            <span>Rank</span>
-            <span>Person</span>
-            <span className="text-right">Chat tokens</span>
-            <span className="text-right">Responses</span>
-            <span className="text-right">Input</span>
-            <span className="text-right">Output</span>
+            <span>{t("activity.leaderboard.columns.rank")}</span>
+            <span>{t("activity.leaderboard.columns.person")}</span>
+            <span className="text-right">{t("activity.metrics.chatTokens")}</span>
+            <span className="text-right">{t("activity.metrics.responses")}</span>
+            <span className="text-right">{t("activity.metrics.input")}</span>
+            <span className="text-right">{t("activity.metrics.output")}</span>
             <span />
           </div>
 
@@ -141,11 +139,11 @@ export function ActivityLeaderboard() {
             <LeaderboardSkeleton />
           ) : isError ? (
             <p className="px-3 py-10 text-center text-sm text-destructive">
-              Activity could not be loaded.
+              {t("activity.leaderboard.loadError")}
             </p>
           ) : data?.entries.length === 0 ? (
             <p className="px-4 py-12 text-center text-sm text-muted-foreground">
-              No activity to show for this period.
+              {t("activity.leaderboard.empty")}
             </p>
           ) : (
             data?.entries.map((entry, index) => (
@@ -156,7 +154,7 @@ export function ActivityLeaderboard() {
                 className="group grid min-h-20 grid-cols-[2.25rem_minmax(0,1fr)_auto_1.25rem] items-center gap-2 border-b border-border/60 px-4 py-4 motion-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring last:border-b-0 hover:bg-muted/45 @3xl:grid-cols-[2.5rem_minmax(0,1fr)_6rem_5.5rem_5.5rem_5.5rem_1.5rem] @3xl:gap-0"
               >
                 <span
-                  aria-label={`Rank ${index + 1}`}
+                  aria-label={t("activity.leaderboard.rankLabel", { rank: index + 1 })}
                   className="text-center text-xs tabular-nums text-muted-foreground"
                 >
                   {String(index + 1).padStart(2, "0")}
@@ -173,7 +171,9 @@ export function ActivityLeaderboard() {
                       {entry.name}
                     </span>
                     <span className="block text-xs text-muted-foreground @3xl:hidden">
-                      {formatCompact(entry.generations)} responses
+                      {t("activity.leaderboard.responsesCompact", {
+                        responses: formatCompact(entry.generations),
+                      })}
                     </span>
                   </span>
                 </span>
@@ -198,10 +198,13 @@ export function ActivityLeaderboard() {
 }
 
 function Value({ value }: { value: number }) {
+  const { t } = useTranslation();
   return (
     <span
       className="text-right text-sm font-semibold tabular-nums"
-      title={`${formatExact(value)} chat tokens`}
+      title={t("activity.leaderboard.chatTokensTitle", {
+        tokens: formatExact(value),
+      })}
     >
       {formatCompact(value)}
     </span>

@@ -11,6 +11,8 @@ const TRANSLATED = [
   "components/scheduled/**",
   "components/auth/**",
   "components/projects/**",
+  "components/activity/**",
+  "components/library/**",
 ];
 
 const eslintConfig = defineConfig([
