@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { router, type ErrorBoundaryProps } from "expo-router";
 import { useEffect } from "react";
@@ -11,6 +12,7 @@ import { useTheme } from "@/lib/theme";
  */
 export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
 
   // The boundary stops the error before Sentry's global handler sees it.
   useEffect(() => {
@@ -29,10 +31,10 @@ export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           accessibilityRole="header"
           style={[styles.title, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
         >
-          Something went wrong
+          {t("app.mobile.errorBoundary.title")}
         </Text>
         <Text style={[styles.body, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-          This screen couldn&apos;t be shown. If it keeps happening, update the app.
+          {t("app.mobile.errorBoundary.body")}
         </Text>
         {error.message ? (
           <Text
@@ -51,7 +53,7 @@ export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           ]}
         >
           <Text style={[styles.ctaText, { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold }]}>
-            Try again
+            {t("app.error.tryAgain")}
           </Text>
         </Pressable>
         {router.canGoBack() && (
@@ -64,7 +66,7 @@ export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
             }}
           >
             <Text style={[styles.link, { color: colors.primary, fontFamily: fonts.sansMedium }]}>
-              Go back
+              {t("app.mobile.errorBoundary.goBack")}
             </Text>
           </Pressable>
         )}

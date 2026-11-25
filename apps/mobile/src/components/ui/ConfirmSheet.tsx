@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -26,13 +27,15 @@ export const ConfirmSheet = forwardRef<
     title,
     message,
     confirmLabel,
-    cancelLabel = "Cancel",
+    cancelLabel,
     destructive = false,
     onConfirm,
   },
   ref,
 ) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
+  const resolvedCancelLabel = cancelLabel ?? t("common.mobile.actions.cancel");
   const insets = useSafeAreaInsets();
 
   const renderBackdrop = useCallback(
@@ -96,7 +99,7 @@ export const ConfirmSheet = forwardRef<
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={cancelLabel}
+            accessibilityLabel={resolvedCancelLabel}
             onPress={dismiss}
             style={({ pressed }) => [
               styles.button,
@@ -114,7 +117,7 @@ export const ConfirmSheet = forwardRef<
                 { color: colors.foreground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              {cancelLabel}
+              {resolvedCancelLabel}
             </Text>
           </Pressable>
           <Pressable

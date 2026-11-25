@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetBackdrop,
@@ -55,6 +56,7 @@ export function SelectionSheet<T extends string>({
   }, []);
   const [search, setSearch] = useState("");
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const searchable = options.length > 8;
   useEffect(() => {
@@ -145,7 +147,7 @@ export function SelectionSheet<T extends string>({
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Close ${title}`}
+            accessibilityLabel={t("app.mobile.selectionSheet.closeLabel", { title })}
             onPress={() => ref.current?.dismiss()}
             style={{
               width: 44,
@@ -159,8 +161,8 @@ export function SelectionSheet<T extends string>({
         </View>
         {searchable && (
           <BottomSheetTextInput
-            accessibilityLabel={`Search ${title.toLowerCase()}`}
-            placeholder="Search"
+            accessibilityLabel={t("app.mobile.selectionSheet.searchLabel", { title })}
+            placeholder={t("app.mobile.selectionSheet.searchPlaceholder")}
             placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={setSearch}
@@ -246,7 +248,7 @@ export function SelectionSheet<T extends string>({
               fontFamily: fonts.sansRegular,
             }}
           >
-            No matching options
+            {t("app.mobile.selectionSheet.noMatches")}
           </Text>
         )}
       </BottomSheetScrollView>

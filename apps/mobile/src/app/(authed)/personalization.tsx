@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import type { PersonalizationSnapshot } from "@overtchat/shared";
 import { Stack } from "expo-router";
@@ -22,6 +23,7 @@ import { useTheme } from "@/lib/theme";
 
 export default function PersonalizationScreen() {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const personalization = usePersonalization();
 
   return (
@@ -37,13 +39,13 @@ export default function PersonalizationScreen() {
                 fontSize: 18,
               }}
             >
-              Personalization
+              {t("personalization.title")}
             </Text>
           ),
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerShadowVisible: false,
-          headerBackTitle: "Settings",
+          headerBackTitle: t("app.accountMenu.settings"),
         }}
       />
       <KeyboardAvoidingView
@@ -63,14 +65,14 @@ export default function PersonalizationScreen() {
                   fontFamily: fonts.sansRegular,
                 }}
               >
-                Loading personalization…
+                {t("personalization.loading")}
               </Text>
             </View>
           ) : personalization.error || !personalization.data ? (
             <LoadError
               message={
                 personalization.error?.message ??
-                "Unable to load personalization."
+                t("personalization.loadError")
               }
               onRetry={() => void personalization.refetch()}
             />
@@ -97,6 +99,7 @@ function PersonalizationContent({
   onRefresh: () => void;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   return (
     <ScrollView
       contentContainerStyle={styles.content}
@@ -119,7 +122,7 @@ function PersonalizationContent({
             },
           ]}
         >
-          Tell OvertChat about you and manage what it remembers between chats.
+          {t("personalization.description")}
         </Text>
       </View>
       <PersonalizationProfile
@@ -139,6 +142,7 @@ function LoadError({
   onRetry: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   return (
     <View style={styles.center}>
       <Ionicons
@@ -178,7 +182,7 @@ function LoadError({
               },
             ]}
           >
-            Retry
+            {t("common.mobile.actions.retry")}
           </Text>
         </Pressable>
         <Pressable
@@ -199,7 +203,7 @@ function LoadError({
               { color: colors.foreground, fontFamily: fonts.sansSemiBold },
             ]}
           >
-            Open on web
+            {t("personalization.mobile.openOnWeb")}
           </Text>
         </Pressable>
       </View>

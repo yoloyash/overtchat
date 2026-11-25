@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -11,6 +12,7 @@ import { useTheme } from "@/lib/theme";
  */
 export function RequiredTwoFactorNotice({ onCheckAgain }: { onCheckAgain: () => void }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const serverUrl = useServerUrl();
   const session = getAuthClient().useSession();
   const [signingOut, setSigningOut] = useState(false);
@@ -35,11 +37,10 @@ export function RequiredTwoFactorNotice({ onCheckAgain }: { onCheckAgain: () => 
         ]}
       >
         <Text style={[styles.title, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}>
-          Set up two-factor authentication
+          {t("auth.twoFactor.required.title")}
         </Text>
         <Text style={[styles.body, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-          This server requires administrators to sign in with a code from an authenticator app,
-          as well as their password. Set it up on the web, then come back.
+          {t("auth.mobile.requiredTwoFactor.description")}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -55,17 +56,19 @@ export function RequiredTwoFactorNotice({ onCheckAgain }: { onCheckAgain: () => 
           ]}
         >
           <Text style={[styles.ctaText, { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold }]}>
-            Set up on the web
+            {t("auth.mobile.requiredTwoFactor.setupOnWeb")}
           </Text>
         </Pressable>
         <Pressable accessibilityRole="button" hitSlop={8} onPress={onCheckAgain}>
           <Text style={[styles.link, { color: colors.primary, fontFamily: fonts.sansMedium }]}>
-            I&apos;ve set it up
+            {t("auth.mobile.requiredTwoFactor.doneSetup")}
           </Text>
         </Pressable>
         <Pressable accessibilityRole="button" hitSlop={8} disabled={signingOut} onPress={signOut}>
           <Text style={[styles.link, { color: colors.mutedForeground, fontFamily: fonts.sansMedium }]}>
-            {signingOut ? "Signing out…" : "Sign out"}
+            {signingOut
+              ? t("auth.mobile.requiredTwoFactor.signingOut")
+              : t("auth.actions.signOut")}
           </Text>
         </Pressable>
       </View>

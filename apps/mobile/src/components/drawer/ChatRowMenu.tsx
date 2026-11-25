@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -15,20 +16,28 @@ export type ChatRowAction =
   | "move"
   | "delete";
 
+type ChatRowActionLabelKey =
+  | "sidebar.chat.pin"
+  | "sidebar.chat.unpin"
+  | "sidebar.mobile.chatMenu.share"
+  | "sidebar.chat.rename"
+  | "sidebar.mobile.chatMenu.moveToProject"
+  | "sidebar.chat.delete";
+
 const ACTION_META: Record<
   ChatRowAction,
   {
-    label: string;
+    labelKey: ChatRowActionLabelKey;
     icon: React.ComponentProps<typeof Feather>["name"];
     destructive?: boolean;
   }
 > = {
-  pin: { label: "Pin", icon: "bookmark" },
-  unpin: { label: "Unpin", icon: "bookmark" },
-  share: { label: "Share", icon: "share" },
-  rename: { label: "Rename", icon: "edit-3" },
-  move: { label: "Move to project", icon: "folder" },
-  delete: { label: "Delete", icon: "trash-2", destructive: true },
+  pin: { labelKey: "sidebar.chat.pin", icon: "bookmark" },
+  unpin: { labelKey: "sidebar.chat.unpin", icon: "bookmark" },
+  share: { labelKey: "sidebar.mobile.chatMenu.share", icon: "share" },
+  rename: { labelKey: "sidebar.chat.rename", icon: "edit-3" },
+  move: { labelKey: "sidebar.mobile.chatMenu.moveToProject", icon: "folder" },
+  delete: { labelKey: "sidebar.chat.delete", icon: "trash-2", destructive: true },
 };
 
 /**
@@ -60,6 +69,7 @@ export function ChatRowMenu({
   onClose: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const actions: ChatRowAction[] = ["rename", "move", "delete"];
   if (shareable) actions.unshift("share");
   if (pinningSupported) actions.unshift(pinned ? "unpin" : "pin");
@@ -96,6 +106,7 @@ export function ChatRowMenu({
         ) : null}
         {actions.map((a) => {
           const meta = ACTION_META[a];
+          const label = t(meta.labelKey);
           const disabled =
             (pinPending && (a === "pin" || a === "unpin")) ||
             (disabledActions?.includes(a) ?? false);
@@ -106,7 +117,7 @@ export function ChatRowMenu({
             <Pressable
               key={a}
               accessibilityRole="button"
-              accessibilityLabel={meta.label}
+              accessibilityLabel={label}
               accessibilityState={{ disabled }}
               disabled={disabled}
               onPress={() => {
@@ -128,7 +139,7 @@ export function ChatRowMenu({
                   { color: tint, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {meta.label}
+                {label}
               </Text>
               {a === "pin" || a === "unpin" ? (
                 <Ionicons name="pin-outline" size={16} color={tint} />

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useQuery } from "@tanstack/react-query";
 import type { TwoFactorStatus } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
@@ -13,7 +14,7 @@ export function useTwoFactorStatus() {
       const response = await authFetch(`${getApiBase()}/api/two-factor`);
       // Servers from before two-factor don't have the endpoint.
       if (response.status === 404) return NOT_REQUIRED;
-      if (!response.ok) throw new Error("Could not load two-factor status.");
+      if (!response.ok) throw new Error(i18n.t("common.mobile.errors.loadTwoFactorStatus"));
       return response.json();
     },
     staleTime: 60_000,

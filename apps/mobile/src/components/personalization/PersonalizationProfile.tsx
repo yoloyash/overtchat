@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   ABOUT_MAX_LENGTH,
   OCCUPATION_MAX_LENGTH,
@@ -28,6 +29,7 @@ export function PersonalizationProfile({
   personalization: Personalization;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const updatePersonalization = useUpdatePersonalization();
   const [enabled, setEnabled] = useState(personalization.enabled);
   const [preferredName, setPreferredName] = useState(
@@ -54,20 +56,20 @@ export function PersonalizationProfile({
         occupation,
         about,
       });
-      toastSuccess("Personalization saved");
+      toastSuccess(t("personalization.profile.savedToast"));
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Couldn't save personalization.",
+          : t("personalization.mobile.profile.saveError"),
       );
     }
   }
 
   return (
     <PersonalizationSection
-      title="About you"
-      description="Empty fields are not added to model context."
+      title={t("personalization.profile.title")}
+      description={t("personalization.mobile.profile.description")}
     >
       <View style={styles.row}>
         <View style={styles.rowText}>
@@ -77,7 +79,7 @@ export function PersonalizationProfile({
               { color: colors.foreground, fontFamily: fonts.sansRegular },
             ]}
           >
-            Use personalization
+            {t("personalization.profile.enabled.title")}
           </Text>
           <Text
             style={[
@@ -88,12 +90,11 @@ export function PersonalizationProfile({
               },
             ]}
           >
-            Include your profile and memories in chats, and allow models to
-            manage memory when asked. Temporary chats never use it.
+            {t("personalization.mobile.profile.enabledDescription")}
           </Text>
         </View>
         <Switch
-          accessibilityLabel="Use personalization"
+          accessibilityLabel={t("personalization.profile.enabled.title")}
           value={enabled}
           onValueChange={(next) => {
             setEnabled(next);
@@ -105,38 +106,38 @@ export function PersonalizationProfile({
       </View>
       <PersonalizationDivider />
       <ProfileField
-        label="Preferred name"
-        description="What should OvertChat call you?"
+        label={t("personalization.profile.preferredName.title")}
+        description={t("personalization.profile.preferredName.description")}
         value={preferredName}
         onChangeText={(next) => {
           setPreferredName(next);
           setError("");
         }}
         maxLength={PREFERRED_NAME_MAX_LENGTH}
-        placeholder="Optional"
+        placeholder={t("personalization.profile.optionalPlaceholder")}
       />
       <PersonalizationDivider />
       <ProfileField
-        label="Occupation"
+        label={t("personalization.profile.occupation.title")}
         value={occupation}
         onChangeText={(next) => {
           setOccupation(next);
           setError("");
         }}
         maxLength={OCCUPATION_MAX_LENGTH}
-        placeholder="Optional"
+        placeholder={t("personalization.profile.optionalPlaceholder")}
       />
       <PersonalizationDivider />
       <ProfileField
-        label="More about you"
-        description="Interests, values, or preferences to keep in mind."
+        label={t("personalization.profile.about.title")}
+        description={t("personalization.profile.about.description")}
         value={about}
         onChangeText={(next) => {
           setAbout(next);
           setError("");
         }}
         maxLength={ABOUT_MAX_LENGTH}
-        placeholder="Optional"
+        placeholder={t("personalization.profile.optionalPlaceholder")}
         multiline
       />
       {error ? (
@@ -157,7 +158,7 @@ export function PersonalizationProfile({
       <View style={styles.actionsRow}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Save personalization"
+          accessibilityLabel={t("personalization.mobile.profile.saveLabel")}
           disabled={!changed || updatePersonalization.isPending}
           onPress={() => void save()}
           style={({ pressed }) => [
@@ -186,7 +187,7 @@ export function PersonalizationProfile({
                 },
               ]}
             >
-              Save
+              {t("personalization.profile.save")}
             </Text>
           )}
         </Pressable>

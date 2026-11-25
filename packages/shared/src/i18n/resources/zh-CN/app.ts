@@ -209,4 +209,75 @@ export const app: Translation["app"] = {
     closeSearch: "关闭搜索",
     searchModels: "搜索模型",
   },
+  mobile: {
+    welcome: {
+      tagline: "你的对话，你的端点，你的数据。",
+      getStarted: "开始使用",
+    },
+    server: {
+      title: "连接到服务器",
+      subtitle: "输入服务器地址，或在网页端扫码连接。",
+      urlLabel: "服务器地址",
+      connect: "连接",
+      connecting: "正在连接…",
+      scanQrCode: "扫描二维码",
+      errors: {
+        emptyUrl: "请输入服务器地址。",
+        invalidUrl: "请输入有效的 HTTP 或 HTTPS 服务器地址。",
+        httpStatus: "服务器返回了 {{status}}。",
+        notOvertChat: "这似乎不是一个 overtchat 服务器。",
+        unreachable: "无法连接到此服务器。请检查地址和网络连接后重试。",
+      },
+    },
+    qrScanner: {
+      title: "扫描服务器二维码",
+      instructions: "在网页端打开账号菜单 → 获取移动应用 → 连接你的手机。",
+      footer: "扫描即可连接并登录。",
+      checkingPermission: "正在检查相机权限…",
+      permissionPrompt:
+        "允许访问相机以扫描服务器二维码。你也可以返回手动输入地址。",
+      allowCamera: "允许使用相机",
+      openSettings: "打开设置",
+      errors: {
+        checkPermission: "无法检查相机权限。请重试或手动输入服务器地址。",
+        notServerAddress:
+          "此二维码不是服务器地址。请在网页端的移动应用弹窗中打开“连接你的手机”并扫描该二维码。",
+        localOnly:
+          "此地址仅在服务器本机可用。请运行 overtchat setup 并选择“On my home network”，然后打开显示的网络地址重新扫描。",
+        cameraMount: "无法启动相机。请重试或手动输入服务器地址。",
+        openPermissions:
+          "无法打开相机权限设置。请在设备设置中开启相机权限，或手动输入地址。",
+      },
+    },
+    errorBoundary: {
+      title: "出错了",
+      body: "无法显示此页面。如果问题持续出现，请更新应用。",
+      goBack: "返回",
+    },
+    selectionSheet: {
+      closeLabel: "关闭{{title}}",
+      searchPlaceholder: "搜索",
+      searchLabel: "搜索{{title}}",
+      noMatches: "没有匹配的选项",
+    },
+    notifications: {
+      serverUpdateRequired: "请更新你的 OvertChat 服务器以开启通知。",
+      saveFailed: "无法在服务器上保存通知设置，请重试。",
+      channels: {
+        chatResponses: "对话回复",
+        agentActivity: "智能体动态",
+        signInRequests: "登录请求",
+      },
+      permissionDisabled: "通知已在手机设置中关闭。请在手机设置中开启后重试。",
+      notConfigured: "此应用版本未配置推送通知。",
+      registerFailed: "无法注册推送通知。请检查网络连接及应用的推送配置。",
+      introTitle: "第一时间获知完成通知",
+      introBody:
+        "在回复就绪、智能体需要你或完成任务，或有人登录你的账号时接收通知。",
+      enableFailedTitle: "无法开启通知",
+      enableFailedFallback: "请在“设置 → 通知”中重试。",
+      updateFailed: "无法更新通知设置。",
+      syncFailed: "无法同步通知设置。",
+    },
+  },
 };

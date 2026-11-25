@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -30,6 +31,7 @@ function normalizeUrl(raw: string): string {
 
 export default function ServerScreen() {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const serverUrl = useServerUrl();
   const [url, setUrl] = useState(() => serverUrl ?? "");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -50,13 +52,13 @@ export default function ServerScreen() {
   async function connect(input = url) {
     if (pendingRequest.current) return;
     if (!input.trim()) {
-      setStatus({ kind: "error", message: "Enter a server URL." });
+      setStatus({ kind: "error", message: t("app.mobile.server.errors.emptyUrl") });
       return;
     }
 
     const target = parseMobileServerUrl(normalizeUrl(input));
     if (!target) {
-      setStatus({ kind: "error", message: "Enter a valid HTTP or HTTPS server address." });
+      setStatus({ kind: "error", message: t("app.mobile.server.errors.invalidUrl") });
       return;
     }
     setStatus({ kind: "loading" });
@@ -71,14 +73,17 @@ export default function ServerScreen() {
       if (pendingRequest.current !== controller) return;
       if (controller.signal.aborted) throw new Error("Connection timed out");
       if (!res.ok) {
-        setStatus({ kind: "error", message: `Server returned ${res.status}.` });
+        setStatus({
+          kind: "error",
+          message: t("app.mobile.server.errors.httpStatus", { status: res.status }),
+        });
         return;
       }
       const body = (await res.json()) as PingResponse;
       if (pendingRequest.current !== controller) return;
       if (controller.signal.aborted) throw new Error("Connection timed out");
       if (!body?.ok || body.name !== "overtchat") {
-        setStatus({ kind: "error", message: "That doesn't look like an overtchat server." });
+        setStatus({ kind: "error", message: t("app.mobile.server.errors.notOvertChat") });
         return;
       }
       resetAuthClient();
@@ -89,7 +94,7 @@ export default function ServerScreen() {
       if (pendingRequest.current !== controller) return;
       setStatus({
         kind: "error",
-        message: "Couldn’t reach this server. Check the address and your connection, then retry.",
+        message: t("app.mobile.server.errors.unreachable"),
       });
     } finally {
       clearTimeout(timeout);
@@ -107,11 +112,8 @@ export default function ServerScreen() {
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.brand}>
-            <Text
-              style={[styles.wordmark, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
-            >
-              overtchat
-            </Text>
+            {/* eslint-disable-next-line i18next/no-literal-string -- product name */}
+            <Text style={[styles.wordmark, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}>overtchat</Text>
           </View>
 
           <View
@@ -128,7 +130,7 @@ export default function ServerScreen() {
               <Text
                 style={[styles.title, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
               >
-                Connect to a server
+                {t("app.mobile.server.title")}
               </Text>
               <Text
                 style={[
@@ -136,7 +138,7 @@ export default function ServerScreen() {
                   { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                 ]}
               >
-                Enter your server address or scan it from the web app.
+                {t("app.mobile.server.subtitle")}
               </Text>
             </View>
 
@@ -144,7 +146,7 @@ export default function ServerScreen() {
               <Text
                 style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
               >
-                Server URL
+                {t("app.mobile.server.urlLabel")}
               </Text>
               <TextInput
                 value={url}
@@ -152,8 +154,9 @@ export default function ServerScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
+                // eslint-disable-next-line i18next/no-literal-string -- example server URL
                 placeholder="https://chat.example.com"
-                accessibilityLabel="Server URL"
+                accessibilityLabel={t("app.mobile.server.urlLabel")}
                 placeholderTextColor={colors.mutedForeground}
                 editable={!isLoading}
                 style={[
@@ -195,7 +198,11 @@ export default function ServerScreen() {
                   { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
                 ]}
               >
-                {isLoading ? "Connecting…" : status.kind === "error" ? "Retry" : "Connect"}
+                {isLoading
+                  ? t("app.mobile.server.connecting")
+                  : status.kind === "error"
+                    ? t("common.mobile.actions.retry")
+                    : t("app.mobile.server.connect")}
               </Text>
             </Pressable>
             <Pressable
@@ -208,7 +215,7 @@ export default function ServerScreen() {
               }]}
             >
               <Text style={[styles.ctaText, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>
-                Scan QR code
+                {t("app.mobile.server.scanQrCode")}
               </Text>
             </Pressable>
           </View>

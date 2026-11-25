@@ -178,4 +178,16 @@ export const scheduled: Translation["scheduled"] = {
     deletedNamed: "已删除“{{name}}”",
     deleted: "已删除定时任务",
   },
+  mobile: {
+    emptyDescription:
+      "在这里添加一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
+    runOnScheduleLabel: "按计划运行 {{name}}",
+    notFound: "此任务已不存在。",
+    whenSection: "运行时间",
+    runsWithSection: "运行配置",
+    usePhoneTimeZone: "轻点以使用此手机的时区（{{timeZone}}）。",
+    backToTasks: "返回任务列表",
+    deleteTask: "删除任务",
+    deleteDialogMessage: "{{name}} 将停止运行。它生成的对话会被保留。",
+  },
 };

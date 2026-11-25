@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import {
   apiError,
   scheduledActivitySignature,
@@ -38,7 +39,7 @@ async function request<T>(path: string, init?: { method: string; body?: unknown 
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw apiError(response.status, body, "Could not complete the request. Please try again.");
+    throw apiError(response.status, body, i18n.t("common.errors.requestFailed"));
   }
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 }
