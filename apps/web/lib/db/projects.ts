@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { isSelectableChatModel } from "@/lib/db/modelPreferences";
-import { chats, projects } from "@/lib/db/schema";
+import { chats, projects, scheduledTasks } from "@/lib/db/schema";
 import type { ProjectListItem } from "@/lib/queries/projects";
 
 export type ProjectRow = typeof projects.$inferSelect;
@@ -104,10 +104,31 @@ export async function updateProject(
   });
 }
 
+/** Why a task stopped when the project it ran in was deleted. */
+export const PROJECT_DELETED_PAUSE =
+  "The project this task ran in was deleted. Turn it back on to run it without a project.";
+
 export async function deleteProject(id: string, userId: string): Promise<void> {
-  await db
-    .delete(projects)
-    .where(and(eq(projects.id, id), eq(projects.userId, userId)));
+  db.transaction((tx) => {
+    const owned = tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+      .get();
+    if (!owned) return;
+    // A scheduled task that ran here would otherwise go on without the
+    // project's instructions and files, and nobody would be told.
+    tx.update(scheduledTasks)
+      .set({
+        enabled: false,
+        nextRunAt: null,
+        pausedReason: PROJECT_DELETED_PAUSE,
+        updatedAt: new Date(),
+      })
+      .where(eq(scheduledTasks.projectId, id))
+      .run();
+    tx.delete(projects).where(eq(projects.id, id)).run();
+  });
 }
 
 /**

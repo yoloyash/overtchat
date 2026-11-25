@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
+  CalendarClock,
   Download,
   FolderInput,
   MoreHorizontal,
@@ -37,6 +38,8 @@ interface Chat {
   title: string | null;
   kind: ChatKind;
   pinned?: boolean;
+  /** The scheduled task whose run started the chat. */
+  scheduledTaskName?: string;
 }
 
 interface DatedChat extends Chat {
@@ -276,6 +279,14 @@ export function SidebarItem({
               aria-label="New result"
               data-unread-run
               className="mr-1.5 inline-block size-1.5 rounded-full bg-green-600 align-middle dark:bg-green-500"
+            />
+          )}
+          {chat.scheduledTaskName && (
+            <CalendarClock
+              role="img"
+              aria-label="Scheduled task"
+              data-scheduled-chat
+              className="mr-1.5 inline-block size-3.5 align-[-0.15em] text-muted-foreground"
             />
           )}
           {chat.title ? (

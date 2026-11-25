@@ -469,6 +469,10 @@ export const chats = sqliteTable(
     modelConfigId: text("model_config_id").references(() => modelConfigs.id, {
       onDelete: "set null",
     }),
+    // The name of the scheduled task whose run started this chat. Kept as
+    // text so the chat still says where it came from once the task, or the
+    // record of that run, is gone.
+    scheduledTaskName: text("scheduled_task_name"),
     kind: text("kind", { enum: CHAT_KINDS })
       .$type<ChatKind>()
       .default("text")

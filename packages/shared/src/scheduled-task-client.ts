@@ -27,6 +27,8 @@ export interface ScheduledTaskDraft {
   dayOfMonth: number;
   timeZone: string;
   webSearchEnabled: boolean;
+  /** The project runs start in; null for none. */
+  projectId: string | null;
 }
 
 const two = (value: number) => String(value).padStart(2, "0");
@@ -55,6 +57,7 @@ export function emptyTaskDraft(
     dayOfMonth: 1,
     timeZone,
     webSearchEnabled: true,
+    projectId: null,
   };
 }
 
@@ -69,6 +72,7 @@ export function taskDraftOf(
     name: task.name,
     prompt: task.prompt,
     webSearchEnabled: task.webSearchEnabled,
+    projectId: task.projectId,
     frequency: schedule.frequency,
     ...(schedule.frequency === "hourly"
       ? { minute: schedule.minute }

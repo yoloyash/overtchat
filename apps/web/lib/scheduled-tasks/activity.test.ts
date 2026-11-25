@@ -4,7 +4,7 @@ import {
   unreadRunChatIds,
   type ScheduledTaskActivityRun,
 } from "@overtchat/shared";
-import { chatIdOfPath } from "./activity";
+import { chatIdOfPath, endedRunIds, runsEndedSince } from "./activity";
 
 const run = (
   runId: string,
@@ -50,5 +50,31 @@ describe("scheduled run activity", () => {
     expect(chatIdOfPath("/chat/abc/extra")).toBeNull();
     expect(chatIdOfPath("/scheduled")).toBeNull();
     expect(chatIdOfPath("/")).toBeNull();
+  });
+
+  it("finds the runs that ended with something to read since the last look", () => {
+    const first = [run("old", "success", "c0"), run("going", "running", "c1")];
+    // Results that were there before the page was are not news.
+    expect(runsEndedSince(null, first)).toEqual([]);
+    const known = endedRunIds(first);
+    expect([...known]).toEqual(["old"]);
+
+    const next = [
+      run("old", "success", "c0"),
+      run("going", "error", "c1"),
+      // Started and ended between two looks.
+      run("quick", "success", "c2"),
+      run("still", "running", "c3"),
+      // Nothing to open: stopped by hand, missed, or failed before it had a chat.
+      run("stopped", "interrupted", "c4"),
+      run("missed", "skipped", null),
+      run("early", "error", null),
+    ];
+    expect(runsEndedSince(known, next).map((item) => item.runId)).toEqual([
+      "going",
+      "quick",
+    ]);
+    // Told once: the next look knows them.
+    expect(runsEndedSince(endedRunIds(next), next)).toEqual([]);
   });
 });

@@ -34,6 +34,7 @@ import { ScheduledTaskDialog } from "@/components/scheduled/ScheduledTaskDialog"
 import { getErrorMessage } from "@/lib/errors";
 import { motionClasses } from "@/lib/motion";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useProjects } from "@/lib/queries/projects";
 import {
   useDeleteScheduledTask,
   useRunScheduledTask,
@@ -176,10 +177,12 @@ function TaskStatus({ task }: { task: ScheduledTask }) {
 function TaskRow({
   task,
   modelLabel,
+  projectName,
   onEdit,
 }: {
   task: ScheduledTask;
   modelLabel: string | undefined;
+  projectName: string | undefined;
   onEdit: () => void;
 }) {
   const updateTask = useUpdateScheduledTask();
@@ -236,6 +239,7 @@ function TaskRow({
               : task.modelConfigId === null
                 ? " · Model removed"
                 : ""}
+            {projectName ? ` · ${projectName}` : ""}
           </p>
         </div>
         <Switch
@@ -377,6 +381,7 @@ function TaskRow({
 export function ScheduledTasksPage() {
   const tasks = useScheduledTasks();
   const { data: models } = useModelConfigs();
+  const { data: projects } = useProjects();
   const [editing, setEditing] = useState<ScheduledTask | "new" | null>(null);
   const list = tasks.data?.tasks ?? [];
 
@@ -433,6 +438,9 @@ export function ScheduledTasksPage() {
                 task={task}
                 modelLabel={
                   models?.find((model) => model.id === task.modelConfigId)?.label
+                }
+                projectName={
+                  projects?.find((project) => project.id === task.projectId)?.name
                 }
                 onEdit={() => setEditing(task)}
               />

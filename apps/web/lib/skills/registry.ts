@@ -84,7 +84,12 @@ export interface ResolveChatSkillsOptions {
    * The chat may set up scheduled tasks: on this chat's model, with times on
    * the user's own clock. Null where it may not.
    */
-  scheduledTasks?: { timeZone?: string; modelConfigId: string } | null;
+  scheduledTasks?: {
+    timeZone?: string;
+    modelConfigId: string;
+    /** The name of the project the chat is in. */
+    project?: string;
+  } | null;
 }
 
 /** The skills a user's chats may load, with the tools each may run. */
@@ -177,7 +182,10 @@ export async function resolveChatSkills({
       id: "scheduled_tasks",
       name: CHAT_SKILL_NAMES.scheduled_tasks,
       description: SCHEDULED_TASKS_SKILL_DESCRIPTION,
-      content: scheduledTasksPrompt(scheduledTasks.timeZone),
+      content: scheduledTasksPrompt(
+        scheduledTasks.timeZone,
+        scheduledTasks.project,
+      ),
       tools,
       toolSpecs: await describeTools(tools),
       alwaysOn: false,

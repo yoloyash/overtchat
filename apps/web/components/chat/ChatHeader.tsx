@@ -1,7 +1,7 @@
 "use client";
 
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Folder, Ghost } from "lucide-react";
+import { CalendarClock, ChevronRight, Folder, Ghost } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SidebarToggle } from "@/components/SidebarToggle";
@@ -13,6 +13,7 @@ import { ShareChatButton } from "./ShareChatDialog";
 export function ChatHeader({
   title,
   project,
+  scheduledTaskName,
   contextUsage,
   sessionUsage,
   imageUsage,
@@ -26,6 +27,8 @@ export function ChatHeader({
   title: string | null;
   /** Shown as a breadcrumb before the title for chats in a project. */
   project?: { id: string; name: string };
+  /** The scheduled task whose run started the chat: a way back to its page. */
+  scheduledTaskName?: string;
   contextUsage?: { usedTokens: number; contextWindow?: number };
   sessionUsage?: UsageTotals;
   imageUsage?: UsageTotals;
@@ -51,6 +54,27 @@ export function ChatHeader({
             >
               <Folder className="size-3.5 shrink-0" />
               <span className="truncate">{project.name}</span>
+            </Link>
+            {title && (
+              <ChevronRight
+                aria-hidden="true"
+                className="size-3.5 shrink-0 text-muted-foreground/60"
+              />
+            )}
+          </>
+        )}
+        {scheduledTaskName && (
+          <>
+            <Link
+              to="/scheduled"
+              title={`Started by the scheduled task “${scheduledTaskName}”`}
+              aria-label={`Scheduled task: ${scheduledTaskName}`}
+              data-scheduled-origin
+              className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
+            >
+              <CalendarClock className="size-3.5 shrink-0" />
+              {/* Beside a project there is room for the mark alone. */}
+              {!project && <span>Scheduled</span>}
             </Link>
             {title && (
               <ChevronRight

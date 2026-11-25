@@ -14,6 +14,7 @@ export async function GET(req: Request) {
     kind: c.kind,
     projectId: c.projectId,
     updatedAt: c.updatedAt.getTime(),
+    ...(c.scheduledTaskName ? { scheduledTaskName: c.scheduledTaskName } : {}),
   }));
   return Response.json({ chats: items });
 }

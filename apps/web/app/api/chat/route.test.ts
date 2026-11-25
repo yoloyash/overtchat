@@ -2170,7 +2170,10 @@ describe("chat route setup boundary", () => {
       timeZone: "America/Los_Angeles",
       modelConfigId: "model-config",
     });
-    expect(mocks.scheduledTasksPrompt).toHaveBeenLastCalledWith("America/Los_Angeles");
+    expect(mocks.scheduledTasksPrompt).toHaveBeenLastCalledWith(
+      "America/Los_Angeles",
+      undefined,
+    );
     const settings = mocks.agentSettings.at(-1)!;
     expect(Object.keys(toolsOf(settings))).toEqual(["view_skill", "call_tool"]);
     expect(content(settings)).toContain(
@@ -2217,7 +2220,10 @@ describe("chat route setup boundary", () => {
 
     // The chat is created with the task's name, and no title is generated.
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Morning news" }),
+      expect.objectContaining({
+        title: "Morning news",
+        scheduledTaskName: "Morning news",
+      }),
     );
     expect(mocks.ensureChatTitle).not.toHaveBeenCalled();
     expect(onUserMessage).toHaveBeenCalledOnce();

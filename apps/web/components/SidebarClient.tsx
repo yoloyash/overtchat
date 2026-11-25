@@ -121,6 +121,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           pinned: c.pinned,
           kind: c.kind,
           updatedAt: c.updatedAt,
+          scheduledTaskName: c.scheduledTaskName,
         })),
     [chats],
   );
@@ -128,12 +129,24 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const projectsWithChats = useMemo(() => {
     const byProject = new Map<
       string,
-      { id: string; title: string | null; kind: "text" | "voice"; pinned?: boolean }[]
+      {
+        id: string;
+        title: string | null;
+        kind: "text" | "voice";
+        pinned?: boolean;
+        scheduledTaskName?: string;
+      }[]
     >();
     for (const c of chats) {
       if (!c.projectId) continue;
       const list = byProject.get(c.projectId) ?? [];
-      list.push({ id: c.id, title: c.title, kind: c.kind, pinned: c.pinned });
+      list.push({
+        id: c.id,
+        title: c.title,
+        kind: c.kind,
+        pinned: c.pinned,
+        scheduledTaskName: c.scheduledTaskName,
+      });
       byProject.set(c.projectId, list);
     }
     return projectOptions.map((p) => ({

@@ -1014,7 +1014,17 @@ one transaction, and `(task_id, trigger, scheduled_for)` is unique, so a time
 runs once. A run goes through `runChat` as the task's owner with
 `unattended: { title }`: a new chat titled with the task's name, no generated
 title, no Gmail send, and no scheduled tasks skill. Startup closes runs the
-last process left open.
+last process left open. The chat such a turn creates keeps the task's name in
+`chats.scheduled_task_name`, which is what marks it in chat lists and above the
+chat; it is text rather than a reference so it outlives the task and the
+90 days of run history.
+
+Nothing pushes a run to a page: the page asks `/api/scheduled-tasks/activity`
+every 30 seconds, every 3 while a run is going, and keeps asking while hidden
+only on a device that turned alerts on. A run that ends raises the same alert
+an agent does (a toast in front, the chime and a system notification behind),
+once per browser, and not while the Scheduled page or the run's own chat is in
+front.
 
 State that the startup code and the routes must share lives on `globalThis`
 (the scheduler's state and the stream cancel registry), because the standalone
@@ -1039,8 +1049,9 @@ the missed-run grace period, overlap, the concurrency share, automatic pausing,
 restart recovery, the skill's tools, and the routes. The browser spec runs
 against the standalone build: a task made on the page comes due in the database
 and runs with no request from the browser, its chat appears marked as new and
-is read by opening it, then Run now, pause and delete; a chat sets a task up
-through the skill. With `REDIS_URL` set it also opens a run in progress and
+is read by opening it from the alert, then Run now, pause and delete; a chat
+sets a task up through the skill; a task given a project runs in it and is
+switched off when the project is deleted. With `REDIS_URL` set it also opens a run in progress and
 stops it, which is the check that startup code and routes share state.
 
 To watch a real model use the skill, point a model configuration at a local

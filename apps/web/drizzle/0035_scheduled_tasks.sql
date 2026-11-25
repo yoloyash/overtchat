@@ -42,4 +42,5 @@ CREATE TABLE `scheduled_tasks` (
 );
 --> statement-breakpoint
 CREATE INDEX `scheduled_tasks_user_idx` ON `scheduled_tasks` (`user_id`,`created_at`);--> statement-breakpoint
-CREATE INDEX `scheduled_tasks_due_idx` ON `scheduled_tasks` (`enabled`,`next_run_at`);
+CREATE INDEX `scheduled_tasks_due_idx` ON `scheduled_tasks` (`enabled`,`next_run_at`);--> statement-breakpoint
+ALTER TABLE `chats` ADD `scheduled_task_name` text;

@@ -143,6 +143,8 @@ interface Props {
   initialModelId?: string | null;
   isNew?: boolean;
   projectId?: string | null;
+  /** The scheduled task whose run started this chat, when one did. */
+  scheduledTaskName?: string;
   initialQuery?: string;
   /** Called once when a new chat is first saved, so its URL can move to `/chat/:id`. */
   onPersisted?: () => void;
@@ -161,6 +163,7 @@ export function ChatArea({
   initialModelId,
   isNew,
   projectId,
+  scheduledTaskName,
   initialQuery,
   onPersisted,
   renderEmptyState,
@@ -1026,6 +1029,7 @@ export function ChatArea({
           onToggle: () => setPanel((shown) => (shown ? null : { kind: "files" })),
         }}
         title={headerTitle}
+        scheduledTaskName={scheduledTaskName}
         project={
           project && !(renderEmptyState && showEmptyState)
             ? { id: project.id, name: project.name }
