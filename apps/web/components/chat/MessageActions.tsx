@@ -68,14 +68,15 @@ export function MessageTime({
 }) {
   const now = useNow(60_000);
   const date = new Date(at);
+  const formattedDate = date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
   return (
     <time
       data-slot="message-time"
       dateTime={date.toISOString()}
-      title={date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })}
+      title={formattedDate}
       className={cn(
         "px-1.5 text-xs whitespace-nowrap text-muted-foreground [@media(hover:none)]:hidden",
         revealOnHover &&

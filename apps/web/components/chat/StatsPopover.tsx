@@ -2,6 +2,7 @@
 
 import { Popover } from "@base-ui/react/popover";
 import { Info } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   formatDuration,
   formatInteger,
@@ -13,54 +14,85 @@ import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 interface StatsRow {
+  id: string;
   iconId?: MessageStats["providerIconId"];
   label: string;
   value: string;
 }
 
 export function StatsPopover({ stats }: { stats: MessageStats }) {
+  const { t } = useTranslation();
   const candidateRows: Array<StatsRow | null> = [
     stats.providerLabel !== undefined
       ? {
+          id: "provider",
           iconId: stats.providerIconId,
-          label: "Provider",
+          label: t("chat.stats.provider"),
           value: stats.providerLabel,
         }
       : null,
     stats.model !== undefined
       ? {
+          id: "model",
           iconId: stats.modelIconId ?? stats.providerIconId,
-          label: "Model",
+          label: t("chat.stats.model"),
           value: stats.model,
         }
       : null,
     stats.contextTokens !== undefined
-      ? { label: "Context tokens", value: formatInteger(stats.contextTokens) }
+      ? {
+          id: "contextTokens",
+          label: t("chat.stats.contextTokens"),
+          value: formatInteger(stats.contextTokens),
+        }
       : null,
     stats.uncachedInputTokens !== undefined
       ? {
-          label: "Uncached input",
+          id: "uncachedInput",
+          label: t("chat.stats.uncachedInput"),
           value: formatInteger(stats.uncachedInputTokens),
         }
       : null,
     stats.cacheReadTokens !== undefined
-      ? { label: "Cache read", value: formatInteger(stats.cacheReadTokens) }
+      ? {
+          id: "cacheRead",
+          label: t("chat.stats.cacheRead"),
+          value: formatInteger(stats.cacheReadTokens),
+        }
       : null,
     stats.cacheWriteTokens !== undefined
-      ? { label: "Cache write", value: formatInteger(stats.cacheWriteTokens) }
+      ? {
+          id: "cacheWrite",
+          label: t("chat.stats.cacheWrite"),
+          value: formatInteger(stats.cacheWriteTokens),
+        }
       : null,
     stats.responseTokens !== undefined
-      ? { label: "Response tokens", value: formatInteger(stats.responseTokens) }
+      ? {
+          id: "responseTokens",
+          label: t("chat.stats.responseTokens"),
+          value: formatInteger(stats.responseTokens),
+        }
       : null,
     stats.totalTokens !== undefined
-      ? { label: "Total tokens", value: formatInteger(stats.totalTokens) }
+      ? {
+          id: "totalTokens",
+          label: t("chat.stats.totalTokens"),
+          value: formatInteger(stats.totalTokens),
+        }
       : null,
     stats.ttftMs !== undefined
-      ? { label: "TTFT", value: formatDuration(stats.ttftMs) }
+      ? { id: "ttft", label: t("chat.stats.ttft"), value: formatDuration(stats.ttftMs) }
       : null,
-    stats.tps !== undefined ? { label: "TPS", value: formatTps(stats.tps) } : null,
+    stats.tps !== undefined
+      ? { id: "tps", label: t("chat.stats.tps"), value: formatTps(stats.tps) }
+      : null,
     stats.finishReason !== undefined
-      ? { label: "Finish reason", value: stats.finishReason }
+      ? {
+          id: "finishReason",
+          label: t("chat.stats.finishReason"),
+          value: stats.finishReason,
+        }
       : null,
   ];
   const rows = candidateRows.filter((row): row is StatsRow => row !== null);
@@ -71,8 +103,8 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
     <Popover.Root>
       <Popover.Trigger
         type="button"
-        aria-label="Message stats"
-        title="Message stats"
+        aria-label={t("chat.stats.title")}
+        title={t("chat.stats.title")}
         className="rounded-md p-1.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
       >
         <Info className="size-3.5" />
@@ -86,8 +118,8 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
             )}
           >
             <div className="space-y-2">
-              {rows.map(({ iconId, label, value }) => (
-                <div key={label} className="flex items-center justify-between gap-4">
+              {rows.map(({ id, iconId, label, value }) => (
+                <div key={id} className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">{label}</span>
                   <span className="flex min-w-0 items-center gap-1.5 font-mono text-foreground">
                     <ModelBrandIcon iconId={iconId} className="size-3.5" />

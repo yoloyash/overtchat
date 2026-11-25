@@ -1,6 +1,7 @@
 "use client";
 
 import { Users } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   describeCalendarToolPart,
   formatCalendarEventTime,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
  * titles but never descriptions.
  */
 export function CalendarStep({ part }: { part: CalendarToolPart }) {
+  const { t } = useTranslation();
   const display = describeCalendarToolPart(part);
   const running = display.status === "running";
 
@@ -26,7 +28,7 @@ export function CalendarStep({ part }: { part: CalendarToolPart }) {
         </span>
         <span className="shrink-0 text-muted-foreground">
           {display.status === "error"
-            ? "Failed"
+            ? t("chat.steps.failed")
             : running
               ? display.detail && `${display.title}…`
               : display.note}
@@ -51,6 +53,7 @@ export function CalendarStep({ part }: { part: CalendarToolPart }) {
 
 /** When, then what and where, then how many guests: the columns of an agenda. */
 function EventRow({ row }: { row: CalendarEventRow }) {
+  const { t } = useTranslation();
   const content = (
     <>
       <span className="w-[42%] max-w-60 shrink-0 truncate tabular-nums text-muted-foreground">
@@ -74,7 +77,7 @@ function EventRow({ row }: { row: CalendarEventRow }) {
       {row.guests > 0 && (
         <span
           className="flex shrink-0 items-center gap-1 tabular-nums text-muted-foreground"
-          title={`${row.guests} ${row.guests === 1 ? "guest" : "guests"}`}
+          title={t("chat.steps.guests", { count: row.guests })}
         >
           <Users className="size-3" />
           {row.guests}
@@ -88,7 +91,7 @@ function EventRow({ row }: { row: CalendarEventRow }) {
       href={row.href}
       target="_blank"
       rel="noopener noreferrer"
-      title="Open in Google Calendar"
+      title={t("chat.steps.openInGoogleCalendar")}
       className={cn(className, "motion-colors hover:bg-accent/60")}
     >
       {content}

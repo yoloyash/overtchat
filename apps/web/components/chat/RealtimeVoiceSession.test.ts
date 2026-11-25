@@ -2,6 +2,8 @@ import { act, createElement, createRef, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { RealtimeVoiceSession, type RealtimeVoiceSessionHandle } from "./RealtimeVoiceSession";
 
 const clients = vi.hoisted(() => [] as { connect: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; sendMessage: ReturnType<typeof vi.fn> }[]);
@@ -70,7 +72,7 @@ afterEach(async () => {
 });
 
 it("starts an existing chat once under the development Strict Mode effect replay", async () => {
-  await act(async () => root.render(createElement(StrictMode, null, createElement(RealtimeVoiceSession, props))));
+  await act(async () => root.render(createElement(StrictMode, null, createElement(I18nextProvider, { i18n }, createElement(RealtimeVoiceSession, props)))));
   expect(document.body.textContent).toContain("Listening");
   expect(document.body.textContent).not.toContain("could not start");
   expect(claims).toBe(1);
@@ -82,9 +84,9 @@ it("starts an existing chat once under the development Strict Mode effect replay
 it("releases a late grant before claiming for a replacement effect", async () => {
   delayClaim = new Promise(resolve => { finishClaim = resolve; });
   delayRelease = new Promise(resolve => { finishRelease = resolve; });
-  await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
+  await act(async () => root.render(createElement(I18nextProvider, { i18n }, createElement(RealtimeVoiceSession, props))));
   expect(claims).toBe(1);
-  await act(async () => root.render(createElement(RealtimeVoiceSession, { ...props, modelConfigId: "replacement" })));
+  await act(async () => root.render(createElement(I18nextProvider, { i18n }, createElement(RealtimeVoiceSession, { ...props, modelConfigId: "replacement" }))));
   expect(claims).toBe(1);
   await act(async () => finishClaim());
   expect(releases).toBe(1);
@@ -97,7 +99,7 @@ it("releases a late grant before claiming for a replacement effect", async () =>
 
 it("ending while a grant is pending does not open a microphone or leak the lease", async () => {
   delayClaim = new Promise(resolve => { finishClaim = resolve; });
-  await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
+  await act(async () => root.render(createElement(I18nextProvider, { i18n }, createElement(RealtimeVoiceSession, props))));
   let ending: Promise<void>;
   await act(async () => { ending = ref.current!.end(); });
   await act(async () => { finishClaim(); await ending; });
@@ -108,7 +110,7 @@ it("ending while a grant is pending does not open a microphone or leak the lease
 
 it("rejects text during startup so the composer can retain its draft", async () => {
   delayClaim = new Promise(resolve => { finishClaim = resolve; });
-  await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
+  await act(async () => root.render(createElement(I18nextProvider, { i18n }, createElement(RealtimeVoiceSession, props))));
   expect(ref.current!.sendMessage("Keep this draft")).toBe(false);
   expect(clients).toHaveLength(0);
   await act(async () => finishClaim());
@@ -118,7 +120,7 @@ it("rejects text during startup so the composer can retain its draft", async () 
 
 it("shows the actionable session conflict instead of a generic startup error", async () => {
   held = true;
-  await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
+  await act(async () => root.render(createElement(I18nextProvider, { i18n }, createElement(RealtimeVoiceSession, props))));
   expect(document.body.textContent).toContain("This chat already has an active voice session or response.");
   expect(clients).toHaveLength(0);
   expect(releases).toBe(0);
@@ -126,7 +128,7 @@ it("shows the actionable session conflict instead of a generic startup error", a
 });
 
 it("shows submitted text during interruption and preserves it if acceptance fails", async () => {
-  await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
+  await act(async () => root.render(createElement(I18nextProvider, { i18n }, createElement(RealtimeVoiceSession, props))));
   let fail!: (error: Error) => void;
   clients[0].sendMessage.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
   await act(async () => ref.current!.sendMessage("Change the topic"));

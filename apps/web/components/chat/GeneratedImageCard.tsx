@@ -1,8 +1,8 @@
 "use client";
 
 import type { FileUIPart } from "ai";
+import { useTranslation } from "react-i18next";
 import {
-  IMAGE_SIZE_LABELS,
   isGeneratedImage,
   type ImageToolPart,
 } from "@overtchat/shared";
@@ -22,6 +22,7 @@ export function GeneratedImageCard({
   onReference?: (file: FileUIPart) => void;
   readOnly?: boolean;
 }) {
+  const { t } = useTranslation();
   const pending =
     part.state === "input-streaming" || part.state === "input-available";
   const images = Array.isArray(part.output?.images)
@@ -41,16 +42,16 @@ export function GeneratedImageCard({
         {pending
           ? streaming
             ? part.type === "tool-edit_image"
-              ? "Editing image…"
-              : "Creating image…"
-            : "Image generation stopped"
+              ? t("chat.image.editing")
+              : t("chat.image.creating")
+            : t("chat.image.stopped")
           : part.state === "output-error"
-            ? "Image generation failed"
-            : "Image created"}
+            ? t("chat.image.failed")
+            : t("chat.image.created")}
       </div>
       {part.state === "output-error" && (
         <p className="text-sm text-destructive">
-          {part.errorText ?? "The image could not be generated."}
+          {part.errorText ?? t("chat.image.generationFailedFallback")}
         </p>
       )}
       {images.map((image) => (
@@ -62,12 +63,12 @@ export function GeneratedImageCard({
             href={serverUrl(image.url)}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Open generated image"
+            aria-label={t("chat.image.openGenerated")}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={serverUrl(image.url)}
-              alt={part.output?.prompt ?? "Generated image"}
+              alt={part.output?.prompt ?? t("chat.image.generatedAlt")}
               className="max-h-[32rem] w-full object-contain"
             />
           </a>
@@ -77,7 +78,7 @@ export function GeneratedImageCard({
               download={image.filename}
               className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs hover:bg-accent"
             >
-              <Download className="size-3.5" /> Download
+              <Download className="size-3.5" /> {t("chat.files.download")}
             </a>
             {onReference && (
               <Button
@@ -93,7 +94,7 @@ export function GeneratedImageCard({
                   })
                 }
               >
-                <Pencil className="size-3.5" /> Edit / Use as reference
+                <Pencil className="size-3.5" /> {t("chat.image.editOrReference")}
               </Button>
             )}
           </div>
@@ -102,19 +103,26 @@ export function GeneratedImageCard({
       {part.output && (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">
-            {part.output.model} · Image details
+            {t("chat.image.detailsSummary", { model: part.output.model })}
           </summary>
           <p className="mt-2 whitespace-pre-wrap">{part.output.prompt}</p>
           <p className="mt-1">
-            Requested format:{" "}
-            {part.output.providerSize === "auto"
-              ? "Backend default"
-              : (part.output.providerSize ??
-                IMAGE_SIZE_LABELS[part.output.size] ??
-                "Auto")}
-            {part.output.providerSize === undefined && (
-              <> · Quality: {part.output.quality}</>
-            )}
+            {(() => {
+              const format =
+                part.output.providerSize === "auto"
+                  ? t("chat.image.backendDefault")
+                  : (part.output.providerSize ??
+                    (part.output.size in
+                    { auto: 1, "1024x1024": 1, "1536x1024": 1, "1024x1536": 1 }
+                      ? t(`chat.image.sizes.${part.output.size}`)
+                      : t("chat.image.auto")));
+              return part.output.providerSize === undefined
+                ? t("chat.image.requestedFormatWithQuality", {
+                    format,
+                    quality: t(`chat.image.qualities.${part.output.quality}`),
+                  })
+                : t("chat.image.requestedFormat", { format });
+            })()}
           </p>
         </details>
       )}

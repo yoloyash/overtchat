@@ -7,6 +7,8 @@ import {
   RouterContextProvider,
 } from "@tanstack/react-router";
 import { expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import type { useSpeech } from "@/lib/useSpeech";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 
@@ -31,7 +33,9 @@ const router = createRouter({
 
 function render(element: ReactElement): string {
   return renderToStaticMarkup(
-    <RouterContextProvider router={router}>{element}</RouterContextProvider>,
+    <I18nextProvider i18n={i18n}>
+      <RouterContextProvider router={router}>{element}</RouterContextProvider>
+    </I18nextProvider>,
   );
 }
 

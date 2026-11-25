@@ -1,6 +1,7 @@
 "use client";
 
 import { Paperclip } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   describeGmailToolPart,
   type GmailToolPart,
@@ -22,6 +23,7 @@ function shortDate(iso: string | undefined): string {
  * is not a step; it shows as its own card.
  */
 export function GmailStep({ part }: { part: GmailToolPart }) {
+  const { t } = useTranslation();
   const display = describeGmailToolPart(part);
 
   const running = display.status === "running";
@@ -34,7 +36,7 @@ export function GmailStep({ part }: { part: GmailToolPart }) {
         </span>
         <span className="shrink-0 text-muted-foreground">
           {display.status === "error"
-            ? "Failed"
+            ? t("chat.steps.failed")
             : running
               ? display.detail && `${display.title}…`
               : display.note}
@@ -59,6 +61,7 @@ export function GmailStep({ part }: { part: GmailToolPart }) {
 
 /** Sender, then subject or attachments, then date: the columns of an inbox. */
 function MessageRow({ row }: { row: GmailToolRow }) {
+  const { t } = useTranslation();
   const content = (
     <>
       <span
@@ -67,7 +70,7 @@ function MessageRow({ row }: { row: GmailToolRow }) {
           row.unread && "font-medium",
         )}
       >
-        {row.sender || "(unknown sender)"}
+        {row.sender || t("chat.steps.unknownSender")}
       </span>
       <span
         className={cn(
@@ -91,7 +94,7 @@ function MessageRow({ row }: { row: GmailToolRow }) {
       href={row.href}
       target="_blank"
       rel="noopener noreferrer"
-      title="Open in Gmail"
+      title={t("chat.steps.openInGmail")}
       className={cn(className, "motion-colors hover:bg-accent/60")}
     >
       {content}

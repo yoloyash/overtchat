@@ -5,6 +5,7 @@ import { activity } from "./activity";
 import { agents } from "./agents";
 import { app } from "./app";
 import { auth } from "./auth";
+import { chat } from "./chat";
 import { common } from "./common";
 import { connections } from "./connections";
 import { data } from "./data";
@@ -27,6 +28,7 @@ export const zhCN: Translation = {
   agents,
   app,
   auth,
+  chat,
   common,
   connections,
   data,

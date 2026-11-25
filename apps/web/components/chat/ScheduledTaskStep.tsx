@@ -1,6 +1,7 @@
 "use client";
 
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   scheduledTaskActivityLabel,
   type ScheduledTaskToolOutput,
@@ -9,11 +10,14 @@ import {
 } from "@overtchat/shared";
 
 function TaskLine({ task }: { task: ScheduledTaskToolTask }) {
+  const { t } = useTranslation();
   return (
     <li className="flex items-baseline justify-between gap-3 px-2.5 py-1.5">
       <span className="min-w-0 truncate text-foreground">{task.name}</span>
       <span className="shrink-0 text-muted-foreground">
-        {task.enabled ? task.schedule : `${task.schedule} · Paused`}
+        {task.enabled
+          ? task.schedule
+          : t("chat.steps.schedulePaused", { schedule: task.schedule })}
       </span>
     </li>
   );
@@ -25,6 +29,7 @@ function TaskLine({ task }: { task: ScheduledTaskToolTask }) {
  * that manages them.
  */
 export function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
+  const { t } = useTranslation();
   const settled =
     part.state === "output-available" || part.state === "output-error";
   const output =
@@ -52,7 +57,7 @@ export function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
             to="/scheduled"
             className="shrink-0 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            View tasks
+            {t("chat.steps.viewTasks")}
           </Link>
         )}
       </div>
