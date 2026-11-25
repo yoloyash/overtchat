@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { i18n } from "@overtchat/shared/i18n";
 import { CalendarLogo } from "@/components/CalendarLogo";
 import { GmailLogo } from "@/components/GmailLogo";
 import type { IntegrationId } from "@/lib/integrations/schema";
@@ -9,32 +10,21 @@ export const INTEGRATION_DISPLAY: Record<
   {
     name: string;
     Logo: ComponentType<{ className?: string }>;
-    description: string;
-    /** What each tool access choice does: always available, or on demand. */
-    toolAccess: string;
   }
 > = {
   gmail: {
     name: "Gmail",
     Logo: GmailLogo,
-    description:
-      "Let models search, read and organize your mail, and write emails for you to send.",
-    toolAccess:
-      "On demand loads the mail skill when a message needs your mail, or when you type /gmail. Always available adds about 1,100 tokens to every request.",
   },
   calendar: {
     name: "Google Calendar",
     Logo: CalendarLogo,
-    description:
-      "Let models check your schedule and add, change or delete events.",
-    toolAccess:
-      "On demand loads the calendar skill when a message needs your schedule, or when you type /calendar. Always available adds about 900 tokens to every request.",
   },
 };
 
 /** "Gmail", "Gmail and Google Calendar". */
 export function integrationNames(ids: readonly IntegrationId[]): string {
-  return new Intl.ListFormat("en", { type: "conjunction" }).format(
+  return new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(
     ids.map((id) => INTEGRATION_DISPLAY[id].name),
   );
 }

@@ -20,6 +20,9 @@ const TRANSLATED = [
   "components/settings/profile/**",
   "components/settings/models/**",
   "components/settings/services/**",
+  "components/settings/connections/**",
+  "components/settings/tools/**",
+  "components/settings/users/**",
 ];
 
 const eslintConfig = defineConfig([

@@ -5,6 +5,7 @@ import { activity } from "./activity";
 import { agents } from "./agents";
 import { auth } from "./auth";
 import { common } from "./common";
+import { connections } from "./connections";
 import { data } from "./data";
 import { library } from "./library";
 import { models } from "./models";
@@ -14,6 +15,8 @@ import { projects } from "./projects";
 import { scheduled } from "./scheduled";
 import { services } from "./services";
 import { settings } from "./settings";
+import { tools } from "./tools";
+import { users } from "./users";
 
 export const zhCN: Translation = {
   accent,
@@ -22,6 +25,7 @@ export const zhCN: Translation = {
   agents,
   auth,
   common,
+  connections,
   data,
   library,
   models,
@@ -31,4 +35,6 @@ export const zhCN: Translation = {
   scheduled,
   services,
   settings,
+  tools,
+  users,
 };

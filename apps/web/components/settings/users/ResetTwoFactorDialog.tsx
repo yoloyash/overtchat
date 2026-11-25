@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -21,6 +22,7 @@ export function ResetTwoFactorDialog({
   onClose: () => void;
   onReset: () => void;
 }) {
+  const { t } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -36,19 +38,19 @@ export function ResetTwoFactorDialog({
         body: { userId: target.id, currentPassword },
       });
       if (error) {
-        setError(error.message ?? "Failed to reset two-factor.");
+        setError(error.message ?? t("users.resetTwoFactorDialog.errorFallback"));
         return;
       }
       toast.success({
-        title: "Two-factor reset",
-        description: `${target.email} can sign in with their password and set it up again.`,
+        title: t("users.toast.twoFactorResetTitle"),
+        description: t("users.toast.twoFactorResetDescription", {
+          email: target.email,
+        }),
       });
       onReset();
       onClose();
     } catch {
-      setError(
-        "Could not reset two-factor. Check your connection and try again.",
-      );
+      setError(t("users.resetTwoFactorDialog.networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -75,17 +77,17 @@ export function ResetTwoFactorDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Reset two-factor
+            {t("users.resetTwoFactorDialog.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Remove {target.email}&apos;s authenticator and backup codes, for
-            example after they lose their phone. They will be signed out on all
-            devices and can set two-factor up again in Security settings.
+            {t("users.resetTwoFactorDialog.description", {
+              email: target.email,
+            })}
           </Dialog.Description>
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="reset-two-factor-password">
-                Your current password
+                {t("users.resetTwoFactorDialog.currentPasswordLabel")}
               </Label>
               <PasswordInput
                 id="reset-two-factor-password"
@@ -105,10 +107,12 @@ export function ResetTwoFactorDialog({
                 disabled={submitting}
                 onClick={onClose}
               >
-                Cancel
+                {t("users.resetTwoFactorDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
-                {submitting ? "Resetting…" : "Reset two-factor"}
+                {submitting
+                  ? t("users.resetTwoFactorDialog.resetting")
+                  : t("users.resetTwoFactorDialog.submit")}
               </Button>
             </SettingsActions>
           </form>

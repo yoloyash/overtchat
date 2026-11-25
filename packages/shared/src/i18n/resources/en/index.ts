@@ -4,6 +4,7 @@ import { activity } from "./activity";
 import { agents } from "./agents";
 import { auth } from "./auth";
 import { common } from "./common";
+import { connections } from "./connections";
 import { data } from "./data";
 import { library } from "./library";
 import { models } from "./models";
@@ -13,6 +14,8 @@ import { projects } from "./projects";
 import { scheduled } from "./scheduled";
 import { services } from "./services";
 import { settings } from "./settings";
+import { tools } from "./tools";
+import { users } from "./users";
 
 /**
  * English source strings for every client, one file per product surface. See
@@ -25,6 +28,7 @@ export const en = {
   agents,
   auth,
   common,
+  connections,
   data,
   library,
   models,
@@ -34,4 +38,6 @@ export const en = {
   scheduled,
   services,
   settings,
+  tools,
+  users,
 } as const;

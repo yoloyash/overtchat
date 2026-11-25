@@ -8,6 +8,7 @@ import {
   PencilLine,
   RefreshCw,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import type { AgentSshHostCandidate } from "@overtchat/agent-bridge";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,7 @@ export function SshHostPicker({
   onRefresh: () => void;
   onAddManually: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <div className="min-h-24 overflow-hidden rounded-lg border">
@@ -46,7 +48,7 @@ export function SshHostPicker({
           <div className="flex h-24 flex-col items-center justify-center px-4 text-center">
             <Monitor className="size-4 text-muted-foreground" />
             <p className="mt-2 text-xs text-muted-foreground">
-              No SSH aliases found
+              {t("connections.sshPicker.empty")}
             </p>
           </div>
         ) : (
@@ -97,8 +99,8 @@ export function SshHostPicker({
           size="icon-sm"
           disabled={disabled || refreshing}
           onClick={onRefresh}
-          aria-label="Refresh SSH hosts"
-          title="Refresh SSH hosts"
+          aria-label={t("connections.sshPicker.refresh")}
+          title={t("connections.sshPicker.refresh")}
         >
           <RefreshCw
             className={cn(
@@ -114,7 +116,7 @@ export function SshHostPicker({
           onClick={onAddManually}
         >
           <PencilLine />
-          Add manually
+          {t("connections.sshPicker.addManually")}
         </Button>
       </div>
     </div>
