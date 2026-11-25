@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Dialog } from "@base-ui/react/dialog";
 import { Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ export function MemoryDialog({
   memory: Memory | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const createMemory = useCreateMemory();
   const updateMemory = useUpdateMemory();
   const [key, setKey] = useState(memory?.key ?? "");
@@ -50,17 +52,19 @@ export function MemoryDialog({
     try {
       if (memory) {
         await updateMemory.mutateAsync({ id: memory.id, input: { key, value } });
-        toast.success({ title: "Memory updated" });
+        toast.success({ title: t("personalization.memories.dialog.updatedToast") });
       } else {
         await createMemory.mutateAsync({ key, value });
-        toast.success({ title: "Memory added" });
+        toast.success({ title: t("personalization.memories.dialog.addedToast") });
       }
       onOpenChange(false);
     } catch (cause) {
       setError(
         getErrorMessage(
           cause,
-          memory ? "Failed to update memory." : "Failed to add memory.",
+          memory
+            ? t("personalization.memories.dialog.updateError")
+            : t("personalization.memories.dialog.addError"),
         ),
       );
     }
@@ -76,47 +80,53 @@ export function MemoryDialog({
           className={`fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none ${motionClasses.dialog}`}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {memory ? "Edit memory" : "Add memory"}
+            {memory
+              ? t("personalization.memories.dialog.editTitle")
+              : t("personalization.memories.dialog.addTitle")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Saved memories are included in future chats when personalization is on.
+            {t("personalization.memories.dialog.description")}
           </Dialog.Description>
 
           <form onSubmit={save} className="mt-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="memory-value">What should OvertChat remember?</Label>
+              <Label htmlFor="memory-value">
+                {t("personalization.memories.dialog.valueLabel")}
+              </Label>
               <Textarea
                 id="memory-value"
-                aria-label="Memory value"
+                aria-label={t("personalization.memories.dialog.valueAriaLabel")}
                 maxLength={MEMORY_VALUE_MAX_LENGTH}
                 value={value}
                 onChange={(event) => {
                   setValue(event.target.value);
                   setError("");
                 }}
-                placeholder="Prefer concise answers."
+                placeholder={t("personalization.memories.dialog.valuePlaceholder")}
                 className="min-h-28"
                 required
                 autoFocus
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="memory-key">Label</Label>
+              <Label htmlFor="memory-key">
+                {t("personalization.memories.dialog.keyLabel")}
+              </Label>
               <Input
                 id="memory-key"
-                aria-label="Memory key"
+                aria-label={t("personalization.memories.dialog.keyAriaLabel")}
                 maxLength={MEMORY_KEY_MAX_LENGTH}
                 value={key}
                 onChange={(event) => {
                   setKey(event.target.value);
                   setError("");
                 }}
+                // eslint-disable-next-line i18next/no-literal-string -- identifier key example
                 placeholder="response_style"
                 required
               />
               <p className="text-xs leading-5 text-muted-foreground">
-                Used to update this memory later. Start with a letter and use
-                lowercase letters, numbers, or underscores.
+                {t("personalization.memories.dialog.keyHint")}
               </p>
             </div>
 
@@ -129,10 +139,14 @@ export function MemoryDialog({
                 size="sm"
                 onClick={() => onOpenChange(false)}
               >
-                Cancel
+                {t("personalization.memories.dialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending || !changed}>
-                {pending ? "Saving…" : memory ? "Save changes" : "Add memory"}
+                {pending
+                  ? t("personalization.memories.dialog.saving")
+                  : memory
+                    ? t("personalization.memories.dialog.saveChanges")
+                    : t("personalization.memories.dialog.addSubmit")}
               </Button>
             </SettingsActions>
           </form>
@@ -143,6 +157,7 @@ export function MemoryDialog({
 }
 
 export function DeleteMemoryButton({ memory }: { memory: Memory }) {
+  const { t } = useTranslation();
   const deleteMemory = useDeleteMemory();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -155,8 +170,10 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={`Delete ${memory.key}`}
-            title="Delete memory"
+            aria-label={t("personalization.memories.deleteDialog.ariaLabel", {
+              key: memory.key,
+            })}
+            title={t("personalization.memories.deleteDialog.buttonTitle")}
           />
         }
       >
@@ -170,10 +187,10 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
           className={`fixed top-1/2 left-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-popover p-5 text-popover-foreground shadow-xl outline-none ${motionClasses.popup}`}
         >
           <AlertDialog.Title className="text-base font-semibold">
-            Delete this memory?
+            {t("personalization.memories.deleteDialog.title")}
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-            OvertChat will no longer include it in future conversations.
+            {t("personalization.memories.deleteDialog.description")}
           </AlertDialog.Description>
           {error && (
             <SettingsNotice tone="error" className="mt-3">
@@ -182,7 +199,7 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
           )}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Close render={<Button variant="ghost" />}>
-              Cancel
+              {t("personalization.memories.deleteDialog.cancel")}
             </AlertDialog.Close>
             <Button
               variant="destructive"
@@ -191,14 +208,23 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
                 setError("");
                 try {
                   await deleteMemory.mutateAsync(memory.id);
-                  toast.success({ title: "Memory deleted" });
+                  toast.success({
+                    title: t("personalization.memories.deleteDialog.deletedToast"),
+                  });
                   setOpen(false);
                 } catch (cause) {
-                  setError(getErrorMessage(cause, "Failed to delete memory."));
+                  setError(
+                    getErrorMessage(
+                      cause,
+                      t("personalization.memories.deleteDialog.error"),
+                    ),
+                  );
                 }
               }}
             >
-              {deleteMemory.isPending ? "Deleting…" : "Delete"}
+              {deleteMemory.isPending
+                ? t("personalization.memories.deleteDialog.deleting")
+                : t("personalization.memories.deleteDialog.confirm")}
             </Button>
           </div>
         </AlertDialog.Popup>
@@ -214,6 +240,7 @@ export function ClearMemoriesButton({
   pending: boolean;
   onClear: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
 
@@ -222,7 +249,7 @@ export function ClearMemoriesButton({
       <AlertDialog.Trigger
         render={<Button type="button" variant="ghost" size="sm" />}
       >
-        Clear all
+        {t("personalization.memories.clearDialog.trigger")}
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
         <AlertDialog.Backdrop
@@ -232,10 +259,10 @@ export function ClearMemoriesButton({
           className={`fixed top-1/2 left-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-popover p-5 text-popover-foreground shadow-xl outline-none ${motionClasses.popup}`}
         >
           <AlertDialog.Title className="text-base font-semibold">
-            Clear all memories?
+            {t("personalization.memories.clearDialog.title")}
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-            This permanently deletes every saved memory. Your profile fields are not affected.
+            {t("personalization.memories.clearDialog.description")}
           </AlertDialog.Description>
           {error && (
             <SettingsNotice tone="error" className="mt-3">
@@ -244,7 +271,7 @@ export function ClearMemoriesButton({
           )}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Close render={<Button variant="ghost" />}>
-              Cancel
+              {t("personalization.memories.clearDialog.cancel")}
             </AlertDialog.Close>
             <Button
               variant="destructive"
@@ -255,11 +282,18 @@ export function ClearMemoriesButton({
                   await onClear();
                   setOpen(false);
                 } catch (cause) {
-                  setError(getErrorMessage(cause, "Failed to clear memories."));
+                  setError(
+                    getErrorMessage(
+                      cause,
+                      t("personalization.memories.clearDialog.error"),
+                    ),
+                  );
                 }
               }}
             >
-              {pending ? "Clearing…" : "Clear all"}
+              {pending
+                ? t("personalization.memories.clearDialog.clearing")
+                : t("personalization.memories.clearDialog.confirm")}
             </Button>
           </div>
         </AlertDialog.Popup>

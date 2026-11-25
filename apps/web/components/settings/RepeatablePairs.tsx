@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SettingsRow } from "@/components/settings/SettingsRows";
@@ -45,6 +46,7 @@ export function RepeatablePairs({
   error?: string;
   onChange(rows: Pair[]): void;
 }) {
+  const { t } = useTranslation();
   return (
     <SettingsRow title={label} description={description} align="start">
       <div className="space-y-3">
@@ -55,7 +57,7 @@ export function RepeatablePairs({
           >
             <Input
               value={row.key}
-              aria-label={`${label} key ${index + 1}`}
+              aria-label={t("settings.pairs.keyLabel", { label, index: index + 1 })}
               onChange={(event) =>
                 onChange(
                   rows.map((item) =>
@@ -71,7 +73,7 @@ export function RepeatablePairs({
             />
             <Input
               value={row.value}
-              aria-label={`${label} value ${index + 1}`}
+              aria-label={t("settings.pairs.valueLabel", { label, index: index + 1 })}
               onChange={(event) =>
                 onChange(
                   rows.map((item) =>
@@ -86,7 +88,7 @@ export function RepeatablePairs({
               className="font-mono"
             />
             <RemoveButton
-              label={`Remove ${label.toLowerCase()} row`}
+              label={t("settings.pairs.removeRow", { label })}
               disabled={
                 !allowEmpty &&
                 rows.length === 1 &&

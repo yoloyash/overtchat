@@ -13,6 +13,11 @@ const TRANSLATED = [
   "components/projects/**",
   "components/activity/**",
   "components/library/**",
+  "components/settings/*.tsx",
+  "components/settings/account/**",
+  "components/settings/data/**",
+  "components/settings/personalization/**",
+  "components/settings/profile/**",
 ];
 
 const eslintConfig = defineConfig([

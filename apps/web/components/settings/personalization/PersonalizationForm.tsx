@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { usePersonalization } from "@/lib/queries/personalization";
 import {
@@ -11,20 +12,21 @@ import { MemoryManager } from "./MemoryManager";
 import { ProfileEditor } from "./ProfileEditor";
 
 export function PersonalizationForm() {
+  const { t } = useTranslation();
   const { data, isPending, error: loadError } = usePersonalization();
 
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Personalization"
-        description="Tell OvertChat about you and manage what it remembers between chats."
+        title={t("personalization.title")}
+        description={t("personalization.description")}
       />
 
       {isPending ? (
-        <SettingsNotice>Loading personalization…</SettingsNotice>
+        <SettingsNotice>{t("personalization.loading")}</SettingsNotice>
       ) : loadError || !data ? (
         <SettingsNotice tone="error">
-          {getErrorMessage(loadError, "Unable to load personalization.")}
+          {getErrorMessage(loadError, t("personalization.loadError"))}
         </SettingsNotice>
       ) : (
         <>

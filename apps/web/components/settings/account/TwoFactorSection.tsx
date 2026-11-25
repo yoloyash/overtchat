@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -28,46 +29,51 @@ export function TwoFactorSection({
   email: string;
   startSetup?: boolean;
 }) {
+  const { t } = useTranslation();
   const { data: status, isPending, isError } = useQuery(twoFactorQuery);
   const [settingUp, setSettingUp] = useState(startSetup);
   const [action, setAction] = useState<Action | null>(null);
   const [newCodes, setNewCodes] = useState<string[] | null>(null);
 
   const description = status?.required
-    ? "Administrators on this server must use two-factor authentication."
-    : "Recommended. After your password, sign-in also asks for a code from an authenticator app.";
+    ? t("account.twoFactor.descriptionRequired")
+    : t("account.twoFactor.descriptionRecommended");
 
   return (
-    <SettingsSection title="Two-factor authentication" description={description}>
+    <SettingsSection title={t("account.twoFactor.title")} description={description}>
       {isPending ? (
-        <SettingsRow title="Status">
-          <span className="text-sm text-muted-foreground">Loading…</span>
+        <SettingsRow title={t("account.twoFactor.statusTitle")}>
+          <span className="text-sm text-muted-foreground">
+            {t("account.twoFactor.loading")}
+          </span>
         </SettingsRow>
       ) : isError ? (
         <div className="py-4">
-          <SettingsNotice tone="error">Could not load two-factor status.</SettingsNotice>
+          <SettingsNotice tone="error">
+            {t("account.twoFactor.loadError")}
+          </SettingsNotice>
         </div>
       ) : newCodes ? (
         <div className="py-4">
           <BackupCodes
             codes={newCodes}
-            intro="Your old backup codes no longer work. Save these somewhere safe."
+            intro={t("account.twoFactor.backupCodesIntro")}
             onDone={() => setNewCodes(null)}
           />
         </div>
       ) : status.enabled ? (
         <SettingsRow
-          title="Authenticator app"
-          description="On. When you sign in somewhere new, you can also approve it from a device where you're already signed in. Keep your backup codes somewhere safe in case you lose your device."
+          title={t("account.twoFactor.authenticatorTitle")}
+          description={t("account.twoFactor.enabledDescription")}
           controlAlign="end"
         >
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setAction("backup-codes")}>
-              New backup codes
+              {t("account.twoFactor.newBackupCodes")}
             </Button>
             {!status.required && (
               <Button variant="destructive" size="sm" onClick={() => setAction("disable")}>
-                Turn off
+                {t("account.twoFactor.turnOff")}
               </Button>
             )}
           </div>
@@ -79,14 +85,18 @@ export function TwoFactorSection({
             onCancel={() => setSettingUp(false)}
             onDone={() => {
               setSettingUp(false);
-              toast.success("Two-factor authentication is on");
+              toast.success(t("account.twoFactor.enabledToast"));
             }}
           />
         </div>
       ) : (
-        <SettingsRow title="Authenticator app" description="Off" controlAlign="end">
+        <SettingsRow
+          title={t("account.twoFactor.authenticatorTitle")}
+          description={t("account.twoFactor.off")}
+          controlAlign="end"
+        >
           <Button size="sm" onClick={() => setSettingUp(true)}>
-            Set up
+            {t("account.twoFactor.setUp")}
           </Button>
         </SettingsRow>
       )}
@@ -102,21 +112,10 @@ export function TwoFactorSection({
   );
 }
 
-const ACTIONS = {
-  "backup-codes": {
-    title: "New backup codes",
-    description: "Your current backup codes will stop working.",
-    submit: "Create new codes",
-    pending: "Creating…",
-  },
-  disable: {
-    title: "Turn off two-factor",
-    description:
-      "Signing in will only need your password. Your authenticator entry and backup codes stop working.",
-    submit: "Turn off",
-    pending: "Turning off…",
-  },
-} satisfies Record<Action, Record<string, string>>;
+const ACTION_KEYS = {
+  "backup-codes": "backupCodes",
+  disable: "disable",
+} as const satisfies Record<Action, "backupCodes" | "disable">;
 
 function ConfirmPasswordDialog({
   action,
@@ -129,11 +128,12 @@ function ConfirmPasswordDialog({
   onClose: () => void;
   onBackupCodes: (codes: string[]) => void;
 }) {
+  const { t } = useTranslation();
   const refresh = useRefreshTwoFactor();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const copy = ACTIONS[action];
+  const actionKey = ACTION_KEYS[action];
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -144,7 +144,7 @@ function ConfirmPasswordDialog({
       const { data, error } = await authClient.twoFactor.generateBackupCodes({ password });
       setSubmitting(false);
       if (error || !data) {
-        setError(error?.message ?? "Could not create backup codes.");
+        setError(error?.message ?? t("account.twoFactor.confirm.backupCodes.error"));
         return;
       }
       onBackupCodes(data.backupCodes);
@@ -154,11 +154,11 @@ function ConfirmPasswordDialog({
     const { error } = await authClient.twoFactor.disable({ password });
     setSubmitting(false);
     if (error) {
-      setError(error.message ?? "Could not turn off two-factor.");
+      setError(error.message ?? t("account.twoFactor.confirm.disable.error"));
       return;
     }
     await refresh();
-    toast.success("Two-factor authentication is off");
+    toast.success(t("account.twoFactor.disabledToast"));
     onClose();
   }
 
@@ -177,14 +177,18 @@ function ConfirmPasswordDialog({
             motionClasses.dialog,
           )}
         >
-          <Dialog.Title className="text-lg font-semibold tracking-tight">{copy.title}</Dialog.Title>
+          <Dialog.Title className="text-lg font-semibold tracking-tight">
+            {t(`account.twoFactor.confirm.${actionKey}.title`)}
+          </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            {copy.description}
+            {t(`account.twoFactor.confirm.${actionKey}.description`)}
           </Dialog.Description>
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <input type="email" autoComplete="username" defaultValue={email} readOnly hidden />
             <div className="space-y-1.5">
-              <Label htmlFor="two-factor-confirm-password">Your password</Label>
+              <Label htmlFor="two-factor-confirm-password">
+                {t("account.twoFactor.confirm.passwordLabel")}
+              </Label>
               <PasswordInput
                 id="two-factor-confirm-password"
                 autoComplete="current-password"
@@ -197,7 +201,7 @@ function ConfirmPasswordDialog({
             {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
             <SettingsActions bordered={false} className="pt-2">
               <Button type="button" variant="ghost" size="sm" disabled={submitting} onClick={onClose}>
-                Cancel
+                {t("account.twoFactor.confirm.cancel")}
               </Button>
               <Button
                 type="submit"
@@ -205,7 +209,9 @@ function ConfirmPasswordDialog({
                 variant={action === "disable" ? "destructive" : "default"}
                 disabled={submitting}
               >
-                {submitting ? copy.pending : copy.submit}
+                {submitting
+                  ? t(`account.twoFactor.confirm.${actionKey}.pending`)
+                  : t(`account.twoFactor.confirm.${actionKey}.submit`)}
               </Button>
             </SettingsActions>
           </form>
