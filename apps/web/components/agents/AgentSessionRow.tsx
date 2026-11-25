@@ -2,7 +2,9 @@
 
 import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   AgentProviderLogo,
   AgentSessionReadToggle,
@@ -28,7 +30,10 @@ import { cn } from "@/lib/utils";
 export type AgentSessionRowContext = "all" | "workspace";
 
 export function agentSessionRowTitle(entry: AgentAttentionItem): string {
-  return agentSessionDisplayTitle(entry.item.session) || "New session";
+  return (
+    agentSessionDisplayTitle(entry.item.session) ||
+    i18n.t("agents.session.newSession")
+  );
 }
 
 /** The second line of a row: what the session is asking, or where it runs. */
@@ -65,6 +70,7 @@ export function AgentSessionRow({
   context: AgentSessionRowContext;
   onNavigate?: () => void;
 }) {
+  const { t } = useTranslation();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
   const { item, group, state } = entry;
@@ -90,7 +96,11 @@ export function AgentSessionRow({
         )}
       >
         {state !== "idle" && (
-          <span className="sr-only">{agentSessionStateLabel(state)}:</span>
+          <span className="sr-only">
+            {t("agents.sessionState.prefix", {
+              state: agentSessionStateLabel(state),
+            })}
+          </span>
         )}
         <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
           <AgentSessionStatusIcon state={state} />
@@ -143,6 +153,7 @@ export function AgentSessionListToggle({
   onToggle: () => void;
   controls?: string;
 }) {
+  const { t } = useTranslation();
   const Icon = expanded ? ChevronUp : ChevronDown;
   return (
     <li>
@@ -156,7 +167,11 @@ export function AgentSessionListToggle({
         <span className="flex w-3.5 shrink-0 justify-center">
           <Icon aria-hidden="true" className="size-3.5" />
         </span>
-        <span>{expanded ? "Show less" : `Show ${hiddenCount} more`}</span>
+        <span>
+          {expanded
+            ? t("agents.common.showLess")
+            : t("agents.common.showCountMore", { count: hiddenCount })}
+        </span>
       </button>
     </li>
   );

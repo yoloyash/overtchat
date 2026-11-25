@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, Circle, Loader2, ListChecks } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type {
   AgentTask,
   AgentTaskListSnapshot,
@@ -39,6 +40,7 @@ export function AgentTaskProgressCard({
 }: {
   snapshot: AgentTaskListSnapshot;
 }) {
+  const { t } = useTranslation();
   const completed = snapshot.tasks.filter(
     (task) => task.status === "completed",
   ).length;
@@ -50,7 +52,7 @@ export function AgentTaskProgressCard({
     >
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <ListChecks className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium">Tasks</h3>
+        <h3 className="text-sm font-medium">{t("agents.context.tasks")}</h3>
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
           {completed}/{snapshot.tasks.length}
         </span>
@@ -68,11 +70,12 @@ export function AgentTaskProgressCard({
 }
 
 function TaskStatusIcon({ task }: { task: AgentTask }) {
+  const { t } = useTranslation();
   if (task.status === "completed") {
     return (
       <CheckCircle2
         className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
-        aria-label="Completed"
+        aria-label={t("agents.context.taskCompleted")}
       />
     );
   }
@@ -83,14 +86,14 @@ function TaskStatusIcon({ task }: { task: AgentTask }) {
           "mt-0.5 size-4 shrink-0 text-foreground",
           motionClasses.spinner,
         )}
-        aria-label="In progress"
+        aria-label={t("agents.context.taskInProgress")}
       />
     );
   }
   return (
     <Circle
       className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-      aria-label="Pending"
+      aria-label={t("agents.context.taskPending")}
     />
   );
 }

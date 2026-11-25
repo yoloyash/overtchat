@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
+import { useTranslation } from "react-i18next";
 import type { AgentWorkspaceFilePreview } from "@overtchat/agent-bridge";
 import {
   DelimitedTable,
@@ -45,6 +46,7 @@ export function AgentWorkspaceRenderedFile({
   content: string;
   rendering: WorkspaceFileRendering;
 }) {
+  const { t } = useTranslation();
   switch (rendering.kind) {
     case "markdown":
       return (
@@ -68,7 +70,7 @@ export function AgentWorkspaceRenderedFile({
         <AgentWorkspaceImage path={path} source={source} />
       ) : (
         <p className="p-6 text-sm text-muted-foreground">
-          This SVG could not be rendered. Its source is still available.
+          {t("agents.workspace.svgRenderError")}
         </p>
       );
     }
@@ -124,12 +126,13 @@ function MarkdownImage({
   path: string;
   alt: string;
 }) {
+  const { t } = useTranslation();
   const file = useAgentWorkspaceFile(workspaceId, path);
   const source = useMemo(() => imageSource(file.data), [file.data]);
   if (!source) {
     return (
       <span className="text-sm text-muted-foreground" title={path}>
-        {file.isPending ? "Loading image…" : alt || path}
+        {file.isPending ? t("agents.workspace.loadingImage") : alt || path}
       </span>
     );
   }

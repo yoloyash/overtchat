@@ -3,6 +3,7 @@
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { useId } from "react";
 import { Loader2, ShieldQuestion } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { approvalDetails } from "@overtchat/shared/agent-tool-details";
 import type {
   AgentQuestionRequest,
@@ -23,6 +24,7 @@ export function AgentApprovalCard({
   onRespond: (response: AgentQuestionResponse) => void;
 }) {
   const id = useId();
+  const { t } = useTranslation();
   const approval = approvalDetails(request);
   return (
     <section
@@ -46,7 +48,7 @@ export function AgentApprovalCard({
         {pending && (
           <Loader2
             className="ml-auto size-4 animate-spin text-muted-foreground motion-reduce:animate-none"
-            aria-label="Sending response"
+            aria-label={t("agents.approval.sendingResponse")}
           />
         )}
       </div>
@@ -54,7 +56,7 @@ export function AgentApprovalCard({
         <div
           tabIndex={0}
           role="region"
-          aria-label="Approval reason"
+          aria-label={t("agents.approval.reasonLabel")}
           className="max-h-32 overflow-auto overscroll-contain whitespace-pre-wrap break-words text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
           {approval.message}
@@ -64,7 +66,7 @@ export function AgentApprovalCard({
         <div
           tabIndex={0}
           role="region"
-          aria-label="Requested action"
+          aria-label={t("agents.approval.requestedActionLabel")}
           className="max-h-[200px] space-y-3 overflow-auto overscroll-contain rounded-md border bg-muted/40 p-3 focus-visible:outline-2 focus-visible:outline-ring"
         >
           {approval.sections.map((section, index) => (

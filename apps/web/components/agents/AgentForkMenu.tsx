@@ -1,6 +1,7 @@
 "use client";
 import { Menu } from "@base-ui/react/menu";
 import { GitBranch } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { MessageActionButton } from "@/components/chat/MessageActions";
 
 export function AgentForkMenu({
@@ -10,18 +11,20 @@ export function AgentForkMenu({
   disabled: boolean;
   onFork: (chooseWorkspace: boolean) => void;
 }) {
+  const { t } = useTranslation();
+  const triggerLabel = t("agents.fork.fromResponse");
   return (
     <Menu.Root>
       <Menu.Trigger
         render={
           <MessageActionButton
-            label="Fork from this response"
+            label={triggerLabel}
             icon={<GitBranch className="size-3.5" />}
           />
         }
         disabled={disabled}
-        aria-label="Fork from this response"
-        title="Fork from this response"
+        aria-label={triggerLabel}
+        title={triggerLabel}
       />
       <Menu.Portal>
         <Menu.Positioner
@@ -35,13 +38,13 @@ export function AgentForkMenu({
               onClick={() => onFork(false)}
               className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none data-[highlighted]:bg-accent"
             >
-              Fork in new session
+              {t("agents.fork.inNewSession")}
             </Menu.Item>
             <Menu.Item
               onClick={() => onFork(true)}
               className="flex min-h-9 cursor-pointer items-center rounded-md px-2.5 outline-none data-[highlighted]:bg-accent"
             >
-              Fork in another workspace
+              {t("agents.fork.inAnotherWorkspace")}
             </Menu.Item>
           </Menu.Popup>
         </Menu.Positioner>
