@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileUIPart } from "ai";
+import { useTranslation } from "react-i18next";
 import {
   type AttachmentCategory,
   type AttachmentMeta,
@@ -22,6 +23,7 @@ export interface ChatAttachment {
 }
 
 export function useChatAttachments() {
+  const { t } = useTranslation();
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const attachmentsRef = useRef(attachments);
   const nextIdRef = useRef(0);
@@ -80,7 +82,7 @@ export function useChatAttachments() {
     const next = parts.map((part) => ({
       id: nextIdRef.current++,
       status: "ready" as const,
-      filename: part.filename || "image",
+      filename: part.filename || t("chat.composer.fallbackImage"),
       mediaType: part.mediaType,
       part,
       meta: {
@@ -100,7 +102,7 @@ export function useChatAttachments() {
       {
         id,
         status: "error",
-        filename: file.name || "file",
+        filename: file.name || t("chat.composer.fallbackFile"),
         mediaType: file.type || "application/octet-stream",
         error: unsupportedAttachmentMessage(file),
       },
@@ -117,7 +119,7 @@ export function useChatAttachments() {
         id,
         status: "uploading",
         previewUrl,
-        filename: file.name || "file",
+        filename: file.name || t("chat.composer.fallbackFile"),
         mediaType: file.type || "application/octet-stream",
         meta: { size: file.size },
       },
@@ -138,7 +140,7 @@ export function useChatAttachments() {
         error?: string;
       };
       if (!res.ok || !json.url || !json.mediaType) {
-        throw new Error(json.error ?? `Upload failed (${res.status})`);
+        throw new Error(json.error ?? t("chat.composer.uploadFailedStatus", { status: res.status }));
       }
       const part: FileUIPart = {
         type: "file",
@@ -160,7 +162,7 @@ export function useChatAttachments() {
         ),
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Upload failed";
+      const message = err instanceof Error ? err.message : t("chat.composer.uploadFailed");
       setAttachments((prev) =>
         prev.map((a) =>
           a.id === id ? { ...a, status: "error", error: message } : a,

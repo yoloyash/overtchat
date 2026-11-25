@@ -2,6 +2,8 @@ import { act, createRef, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import type { Dictation } from "@/lib/useDictation";
 import { AgentComposer, type AgentComposerHandle } from "@/components/agents/AgentComposer";
 
@@ -64,7 +66,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 async function render(overrides: Partial<ComponentProps<typeof AgentComposer>> = {}) {
-  await act(async () => root.render(<AgentComposer
+  await act(async () => root.render(<I18nextProvider i18n={i18n}><AgentComposer
     ref={overrides.ref}
     providerLabel="Codex" commands={[]} queuedMessages={[]}
     supportsSteer={false} supportsImages={false} running={false}
@@ -79,7 +81,7 @@ async function render(overrides: Partial<ComponentProps<typeof AgentComposer>> =
       onToggleFastMode: vi.fn(), onSelectMode: vi.fn(),
     }}
     {...overrides}
-  />));
+  /></I18nextProvider>));
 }
 function button(label: string) {
   return container.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;

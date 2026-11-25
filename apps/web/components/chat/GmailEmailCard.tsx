@@ -2,8 +2,8 @@
 
 import { Check, ExternalLink } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  GMAIL_EMAIL_STATUS_LABELS,
   describeGmailEmail,
   gmailEmailResult,
   subscribeGmailEmailResults,
@@ -35,6 +35,7 @@ export function GmailEmailCard({
   /** False where the reader is not the mailbox's owner at their own chat. */
   canSend: boolean;
 }) {
+  const { t } = useTranslation();
   const send = useSendGmailEmail();
   const save = useSaveGmailEmail();
   const [expanded, setExpanded] = useState(false);
@@ -56,15 +57,15 @@ export function GmailEmailCard({
     email.body.split("\n").length > FOLDED_LINES;
   const busy = send.isPending || save.isPending;
   const failure = send.isError
-    ? getErrorMessage(send.error, "Could not send the email.")
+    ? getErrorMessage(send.error, t("chat.steps.sendEmailFailed"))
     : save.isError
-      ? getErrorMessage(save.error, "Could not save the email in Gmail.")
+      ? getErrorMessage(save.error, t("chat.steps.saveEmailFailed"))
       : null;
 
   return (
     <div
       role="group"
-      aria-label="Gmail email"
+      aria-label={t("chat.steps.gmailEmail")}
       className="overflow-hidden rounded-lg border bg-background/40 text-sm"
     >
       <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -72,7 +73,7 @@ export function GmailEmailCard({
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-foreground">{email.subject}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {GMAIL_EMAIL_STATUS_LABELS[email.status]}
+            {t(`chat.steps.emailStatus.${email.status}`)}
             {email.recipients && ` · ${email.recipients}`}
           </p>
         </div>
@@ -82,9 +83,15 @@ export function GmailEmailCard({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={
-              email.status === "sent" ? "Open in Gmail" : "Open drafts in Gmail"
+              email.status === "sent"
+                ? t("chat.steps.openInGmail")
+                : t("chat.steps.openDraftsInGmail")
             }
-            title={email.status === "sent" ? "Open in Gmail" : "Edit in Gmail"}
+            title={
+              email.status === "sent"
+                ? t("chat.steps.openInGmail")
+                : t("chat.steps.editInGmail")
+            }
             className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none motion-colors hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <ExternalLink className="size-3.5" />
@@ -93,7 +100,7 @@ export function GmailEmailCard({
         {email.status === "sent" ? (
           <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
             <Check className="size-3.5" />
-            Sent
+            {t("chat.steps.sent")}
           </span>
         ) : (
           canSend &&
@@ -110,7 +117,7 @@ export function GmailEmailCard({
                     save.mutate(email);
                   }}
                 >
-                  {save.isPending ? "Saving…" : "Save to Gmail"}
+                  {save.isPending ? t("chat.steps.saving") : t("chat.steps.saveToGmail")}
                 </Button>
               )}
               <Button
@@ -122,7 +129,7 @@ export function GmailEmailCard({
                   send.mutate(email);
                 }}
               >
-                {send.isPending ? "Sending…" : "Send"}
+                {send.isPending ? t("chat.steps.sending") : t("chat.steps.send")}
               </Button>
             </>
           )
@@ -145,7 +152,7 @@ export function GmailEmailCard({
               aria-expanded={expanded}
               className="mt-1.5 text-xs text-muted-foreground outline-none motion-colors hover:text-foreground focus-visible:underline"
             >
-              {expanded ? "Show less" : "Show all"}
+              {expanded ? t("chat.steps.showLess") : t("chat.steps.showAll")}
             </button>
           )}
         </div>

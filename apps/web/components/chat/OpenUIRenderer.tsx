@@ -7,6 +7,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
 import {
   BuiltinActionType,
   Renderer,
@@ -113,13 +114,14 @@ class RenderBoundary extends Component<
 }
 
 export default function OpenUIRenderer(props: OpenUIRendererProps) {
+  const { t } = useTranslation();
   return (
     <RenderBoundary
       code={props.code}
       fallback={
         <OpenUIFallback
           text={props.fallbackText}
-          error="Interactive UI could not be rendered. The readable answer is shown below."
+          error={t("chat.openui.renderFailed")}
         />
       }
     >
@@ -139,6 +141,7 @@ function OpenUIContent({
   onAction,
   onOpenUrl,
 }: OpenUIRendererProps) {
+  const { t } = useTranslation();
   const [errors, setErrors] = useState<OpenUIError[]>([]);
   const [hasRoot, setHasRoot] = useState(true);
   const sent = useRef(false);
@@ -219,7 +222,7 @@ function OpenUIContent({
         {failed && (
           <OpenUIFallback
             text={fallbackText}
-            error="Some interactive content could not be rendered. The readable answer is shown below."
+            error={t("chat.openui.partialRenderFailed")}
           />
         )}
       </div>

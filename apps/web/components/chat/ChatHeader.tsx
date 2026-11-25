@@ -2,6 +2,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { CalendarClock, ChevronRight, Folder, Ghost } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SidebarToggle } from "@/components/SidebarToggle";
@@ -40,6 +41,7 @@ export function ChatHeader({
   /** Toggles the panel with the conversation's files when it has any. */
   files?: { count: number; open: boolean; onToggle: () => void };
 }) {
+  const { t } = useTranslation();
   return (
     <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
       <SidebarToggle />
@@ -67,14 +69,14 @@ export function ChatHeader({
           <>
             <Link
               to="/scheduled"
-              title={`Started by the scheduled task “${scheduledTaskName}”`}
-              aria-label={`Scheduled task: ${scheduledTaskName}`}
+              title={t("chat.header.scheduledTitle", { name: scheduledTaskName })}
+              aria-label={t("chat.header.scheduledLabel", { name: scheduledTaskName })}
               data-scheduled-origin
               className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
             >
               <CalendarClock className="size-3.5 shrink-0" />
               {/* Beside a project there is room for the mark alone. */}
-              {!project && <span>Scheduled</span>}
+              {!project && <span>{t("chat.header.scheduled")}</span>}
             </Link>
             {title && (
               <ChevronRight
@@ -112,17 +114,19 @@ export function ChatHeader({
             )}
             onClick={onToggleTemporary}
             aria-label={
-              temporary ? "Disable temporary chat" : "Enable temporary chat"
+              temporary
+                ? t("chat.header.disableTemporary")
+                : t("chat.header.enableTemporary")
             }
             aria-pressed={temporary}
-            title="Temporary chat — won't be saved to history"
+            title={t("chat.header.temporaryTooltip")}
           >
             <Ghost />
           </Button>
         ) : temporary ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-foreground">
             <Ghost className="size-3.5" />
-            Temporary
+            {t("chat.header.temporaryBadge")}
           </span>
         ) : null}
       </div>

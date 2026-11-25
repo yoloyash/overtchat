@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -168,6 +169,7 @@ export function ChatArea({
   onPersisted,
   renderEmptyState,
 }: Props) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { openPalette } = useSidebar();
@@ -206,8 +208,8 @@ export function ChatArea({
   );
   const searchAvailable = webSearchEnabled && modelSupportsSearch;
   const searchUnavailableReason = !webSearchEnabled
-    ? "Web search is disabled in Settings → Tools"
-    : "Web search is unavailable for this model";
+    ? t("chat.composer.unavailable.searchDisabled")
+    : t("chat.composer.unavailable.searchModel");
 
   const [searchRequested, setSearchRequested] = useState(false);
   const [openuiEnabled] = useLocalStorage<boolean>(
@@ -215,7 +217,7 @@ export function ChatArea({
     DEFAULT_OPENUI_ENABLED,
   );
   const openuiAvailable = modelSupportsSearch;
-  const openuiUnavailableReason = "Interactive UI is unavailable for this model";
+  const openuiUnavailableReason = t("chat.composer.unavailable.openuiModel");
   const [openuiRequested, setOpenuiRequested] = useState(false);
   const { data: capabilitiesData } = usePublicCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
@@ -241,8 +243,8 @@ export function ChatArea({
     ?.find((chat) => chat.id === chatId)
     ?.title?.trim();
   const headerTitle = temporary
-    ? "Temporary chat"
-    : persistedTitle || (isNew ? null : "Untitled");
+    ? t("chat.header.temporaryChat")
+    : persistedTitle || (isNew ? null : t("chat.header.untitled"));
   const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
     () =>
       initialQuery?.trim()
@@ -478,14 +480,14 @@ export function ChatArea({
     } catch {
       setOlderMessagesFailed(true);
       toast.error({
-        title: "Could not load older messages",
-        description: "Check your connection and try again.",
+        title: t("chat.errors.loadOlderTitle"),
+        description: t("chat.errors.checkConnection"),
       });
     } finally {
       loadingOlderMessagesRef.current = false;
       loadAllOlderMessagesRef.current = false;
     }
-  }, [addLoadedMessages, loadOlderMessages, olderMessageCursor, setMessages]);
+  }, [addLoadedMessages, loadOlderMessages, olderMessageCursor, setMessages, t]);
   const handleLoadOlderMessages = useCallback(
     () => loadOlderPages(false),
     [loadOlderPages],
@@ -514,7 +516,7 @@ export function ChatArea({
   >([]);
   const connectors = useMemo(
     () =>
-      CHAT_CONNECTORS.flatMap((connector) => {
+      CHAT_CONNECTORS.flatMap(({ descriptionKey, ...connector }) => {
         const connection = integrations?.find(
           (integration) => integration.id === connector.id,
         )?.connection;
@@ -525,23 +527,28 @@ export function ChatArea({
         return [
           {
             ...connector,
+            description: t(descriptionKey),
             requested,
             active: usable && (connection.alwaysOn || usedHere || requested),
             ambient: connection.alwaysOn,
             lockedReason:
               connection.status === "needs_reconnect"
-                ? `Reconnect ${connector.title} in Settings → Tools → Connectors`
+                ? t("chat.composer.unavailable.connectorReconnect", {
+                    connector: connector.title,
+                  })
                 : !modelSupportsSearch
-                  ? `${connector.title} is unavailable for this model`
+                  ? t("chat.composer.unavailable.connectorModel", {
+                      connector: connector.title,
+                    })
                   : connection.alwaysOn
-                    ? "Always available"
+                    ? t("chat.composer.unavailable.connectorAlwaysAvailable")
                     : usedHere
-                      ? "On for this chat"
+                      ? t("chat.composer.unavailable.connectorOnForChat")
                       : undefined,
           },
         ];
       }),
-    [integrations, messages, modelSupportsSearch, connectorsRequested],
+    [integrations, messages, modelSupportsSearch, connectorsRequested, t],
   );
   const connectorRequested = (id: IntegrationId) =>
     connectors.some((connector) => connector.id === id && connector.requested);
@@ -663,8 +670,8 @@ export function ChatArea({
     setContextStatus(null);
     void generation.cancel().catch(() => {
       toast.error({
-        title: "Could not stop the response",
-        description: "Check your connection and try again.",
+        title: t("chat.errors.stopResponseTitle"),
+        description: t("chat.errors.checkConnection"),
       });
     });
   }
@@ -872,7 +879,11 @@ export function ChatArea({
       setVoiceActive(false);
       return true;
     } catch (error) {
-      toast.error({ title: "Could not end voice", description: error instanceof Error ? error.message : "Try again." });
+      toast.error({
+        title: t("chat.voice.endVoiceFailedTitle"),
+        description:
+          error instanceof Error ? error.message : t("chat.errors.tryAgain"),
+      });
       return false;
     } finally { setVoiceEnding(false); }
   }
@@ -907,14 +918,16 @@ export function ChatArea({
       configured={configured}
       streaming={streaming}
       searchAvailable={searchAvailable && !voiceActive}
-      searchUnavailableReason={voiceActive
-        ? "End voice to require a web search. Voice can still search automatically."
-        : searchUnavailableReason}
+      searchUnavailableReason={
+        voiceActive
+          ? t("chat.composer.unavailable.searchVoice")
+          : searchUnavailableReason
+      }
       searchRequested={searchAvailable && !voiceActive && searchRequested}
       openuiAvailable={openuiAvailable && !voiceActive}
       openuiUnavailableReason={
         voiceActive
-          ? "End voice to request an interactive UI."
+          ? t("chat.composer.unavailable.openuiVoice")
           : openuiUnavailableReason
       }
       openuiRequested={openuiAvailable && !voiceActive && openuiRequested}
@@ -936,15 +949,15 @@ export function ChatArea({
       voiceUnavailableReason={
         !configured
           ? modelLoading
-            ? "Loading model…"
-            : "Configure a model before starting voice"
+            ? t("chat.composer.unavailable.loadingModel")
+            : t("chat.composer.unavailable.configureModelBeforeVoice")
           : voiceCapability?.unavailableReason === "stt-unavailable"
-            ? "Speech-to-text is disabled"
+            ? t("chat.composer.unavailable.sttDisabled")
             : voiceCapability?.unavailableReason === "tts-unavailable"
-              ? "Text-to-speech is disabled"
+              ? t("chat.composer.unavailable.ttsDisabled")
               : voiceCapability?.unavailableReason === "not-configured"
-                ? "Voice authentication is not configured"
-                : "Realtime voice is unavailable"
+                ? t("chat.composer.unavailable.voiceAuthNotConfigured")
+                : t("chat.composer.unavailable.voiceUnavailable")
       }
       attachmentsEnabled={!voiceActive}
       projectFiles={projectFiles}
@@ -955,13 +968,13 @@ export function ChatArea({
             ? {
                 onCompact: handleCompact,
                 unavailableReason: streaming
-                  ? "Wait for the response to finish"
+                  ? t("chat.composer.unavailable.waitForResponse")
                   : !configured
                     ? modelLoading
-                      ? "Loading model…"
-                      : "Configure a model first"
+                      ? t("chat.composer.unavailable.loadingModel")
+                      : t("chat.composer.unavailable.configureModelFirst")
                     : messages.length === 0
-                      ? "Start a conversation first"
+                      ? t("chat.composer.unavailable.startConversationFirst")
                       : undefined,
               }
             : undefined,
@@ -1047,8 +1060,8 @@ export function ChatArea({
 
       {fileDrop.active && (
         <FileDropOverlay
-          title="Drop files to attach"
-          description="Images, PDFs, docs, spreadsheets, and text files"
+          title={t("chat.composer.dropFilesTitle")}
+          description={t("chat.composer.dropFilesDescription")}
         />
       )}
 
@@ -1064,17 +1077,16 @@ export function ChatArea({
           ) : (
             <div className="w-full max-w-3xl">
               <h1 className="mb-10 text-center text-2xl font-semibold tracking-tight md:text-3xl">
-                {temporary ? "Temporary chat" : "What can I help with?"}
+                {temporary ? t("chat.empty.temporaryTitle") : t("chat.empty.title")}
               </h1>
               {models?.length === 0 && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
-                  No models configured. An admin can add one in Settings →
-                  Models.
+                  {t("chat.empty.noModels")}
                 </p>
               )}
               {configured && temporary && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
-                  {"Messages won't be saved to your history."}
+                  {t("chat.empty.temporaryHint")}
                 </p>
               )}
               {composer}
