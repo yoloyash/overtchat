@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { CalendarClock } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   scheduledActivitySignature,
   unreadRunChatIds,
@@ -84,6 +85,7 @@ function useScheduledRunAlerts(
   runs: ScheduledTaskActivityRun[] | undefined,
   pathname: string,
 ) {
+  const { t } = useTranslation();
   const openChatId = chatIdOfPath(pathname);
   // The Scheduled page shows a run ending in its own list.
   const watching = pathname === "/scheduled";
@@ -111,7 +113,9 @@ function useScheduledRunAlerts(
       if (visible && (watching || openChatId === chatId)) continue;
       if (!claimRunAlert(run.runId)) continue;
       const failed = run.status === "error";
-      const title = failed ? "A scheduled task failed" : "A scheduled task finished";
+      const title = failed
+        ? t("scheduled.alerts.failed")
+        : t("scheduled.alerts.finished");
       const open = () => void navigate({ to: "/chat/$id", params: { id: chatId } });
       const showToast = () =>
         toast.notice({
@@ -119,7 +123,7 @@ function useScheduledRunAlerts(
           title,
           description: run.taskName,
           icon: <CalendarClock className="size-4" />,
-          action: { label: "Open", onClick: open },
+          action: { label: t("scheduled.alerts.open"), onClick: open },
         });
       if (visible && document.hasFocus()) {
         showToast();
@@ -142,7 +146,7 @@ function useScheduledRunAlerts(
         if (!shown && visible) showToast();
       });
     }
-  }, [navigate, openChatId, runs, sound, system, watching]);
+  }, [navigate, openChatId, runs, sound, system, t, watching]);
 }
 
 function useDocumentVisible(): boolean {

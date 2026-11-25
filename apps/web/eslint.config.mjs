@@ -8,6 +8,7 @@ import { translatedCopy } from "../../eslint.i18n.mjs";
 const TRANSLATED = [
   "components/settings/general/**",
   "components/I18nProvider.tsx",
+  "components/scheduled/**",
 ];
 
 const eslintConfig = defineConfig([

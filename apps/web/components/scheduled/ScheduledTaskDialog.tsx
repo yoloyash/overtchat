@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import {
   emptyTaskDraft,
   SCHEDULED_TASK_NAME_LIMIT,
@@ -47,24 +48,15 @@ import {
 } from "@/lib/queries/scheduledTasks";
 import { cn } from "@/lib/utils";
 
-const FREQUENCY_LABELS: Record<TaskScheduleFrequency, string> = {
-  once: "Once",
-  hourly: "Hourly",
-  daily: "Daily",
-  weekdays: "Weekdays",
-  weekly: "Weekly",
-  monthly: "Monthly",
-};
-
-const DAYS = [
-  { short: "S", name: "Sunday" },
-  { short: "M", name: "Monday" },
-  { short: "T", name: "Tuesday" },
-  { short: "W", name: "Wednesday" },
-  { short: "T", name: "Thursday" },
-  { short: "F", name: "Friday" },
-  { short: "S", name: "Saturday" },
-];
+const DAY_KEYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
 
 /** The picker's value for a task outside any project. */
 const NO_PROJECT = "none";
@@ -89,6 +81,7 @@ export function ScheduledTaskDialog({
   task: ScheduledTask | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { data: models } = useModelConfigs();
   const { data: preferences } = useModelPreferences();
   const { data: projects } = useProjects();
@@ -133,7 +126,7 @@ export function ScheduledTaskDialog({
     const problem = taskDraftProblem(draft);
     const schedule = scheduleOfDraft(draft);
     if (problem || !schedule) {
-      setError(problem ?? "Choose a time.");
+      setError(problem ?? t("scheduled.validation.missingTime"));
       return;
     }
     const input = {
@@ -148,14 +141,20 @@ export function ScheduledTaskDialog({
     try {
       if (task) {
         await updateTask.mutateAsync({ id: task.id, patch: input });
-        toast.success({ title: "Task updated", description: input.name });
+        toast.success({
+          title: t("scheduled.toast.updatedTitle"),
+          description: input.name,
+        });
       } else {
         await createTask.mutateAsync(input);
-        toast.success({ title: "Task scheduled", description: input.name });
+        toast.success({
+          title: t("scheduled.toast.createdTitle"),
+          description: input.name,
+        });
       }
       onClose();
     } catch (cause) {
-      setError(getErrorMessage(cause, "Could not save the task."));
+      setError(getErrorMessage(cause, t("scheduled.errors.saveFailed")));
     }
   }
 
@@ -178,45 +177,48 @@ export function ScheduledTaskDialog({
         >
           <div className="shrink-0 px-6 pt-6">
             <Dialog.Title className="text-lg font-semibold tracking-tight">
-              {task ? "Edit task" : "New scheduled task"}
+              {task ? t("scheduled.form.editTitle") : t("scheduled.form.newTitle")}
             </Dialog.Title>
             <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-              The instructions run by themselves at the times you choose. Each
-              run opens a new chat.
+              {t("scheduled.form.description")}
             </Dialog.Description>
           </div>
           <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
               <div className="space-y-1.5">
-                <Label htmlFor="task-name">Name</Label>
+                <Label htmlFor="task-name">{t("scheduled.form.name")}</Label>
                 <Input
                   id="task-name"
                   autoFocus={!task}
                   maxLength={SCHEDULED_TASK_NAME_LIMIT}
                   value={draft.name}
                   onChange={(event) => change({ name: event.target.value })}
-                  placeholder="Morning news briefing"
+                  placeholder={t("scheduled.form.namePlaceholder")}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="task-prompt">Instructions</Label>
+                <Label htmlFor="task-prompt">
+                  {t("scheduled.form.instructions")}
+                </Label>
                 <Textarea
                   id="task-prompt"
                   rows={5}
                   maxLength={SCHEDULED_TASK_PROMPT_LIMIT}
                   value={draft.prompt}
                   onChange={(event) => change({ prompt: event.target.value })}
-                  placeholder="Search for today's top technology news and summarize the five most important stories."
+                  placeholder={t("scheduled.form.instructionsPlaceholder")}
                   className="max-h-60 min-h-24"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Each run starts fresh, so say everything it needs to know.
+                  {t("scheduled.form.instructionsHint")}
                 </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="task-frequency">Repeats</Label>
+                  <Label htmlFor="task-frequency">
+                    {t("scheduled.form.repeats")}
+                  </Label>
                   <Select
                     value={draft.frequency}
                     onValueChange={(value) =>
@@ -224,12 +226,14 @@ export function ScheduledTaskDialog({
                     }
                   >
                     <SelectTrigger id="task-frequency" className="w-full">
-                      <SelectValue>{FREQUENCY_LABELS[draft.frequency]}</SelectValue>
+                      <SelectValue>
+                        {t(`scheduled.frequency.${draft.frequency}`)}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {TASK_SCHEDULE_FREQUENCIES.map((frequency) => (
                         <SelectItem key={frequency} value={frequency}>
-                          {FREQUENCY_LABELS[frequency]}
+                          {t(`scheduled.frequency.${frequency}`)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -237,7 +241,9 @@ export function ScheduledTaskDialog({
                 </div>
                 {draft.frequency === "hourly" ? (
                   <div className="space-y-1.5">
-                    <Label htmlFor="task-minute">Minute past the hour</Label>
+                    <Label htmlFor="task-minute">
+                      {t("scheduled.form.minutePastHour")}
+                    </Label>
                     <Input
                       id="task-minute"
                       type="number"
@@ -257,7 +263,7 @@ export function ScheduledTaskDialog({
                   </div>
                 ) : (
                   <div className="space-y-1.5">
-                    <Label htmlFor="task-time">Time</Label>
+                    <Label htmlFor="task-time">{t("scheduled.form.time")}</Label>
                     <Input
                       id="task-time"
                       type="time"
@@ -271,7 +277,7 @@ export function ScheduledTaskDialog({
 
               {draft.frequency === "once" && (
                 <div className="space-y-1.5">
-                  <Label htmlFor="task-date">Date</Label>
+                  <Label htmlFor="task-date">{t("scheduled.form.date")}</Label>
                   <Input
                     id="task-date"
                     type="date"
@@ -284,20 +290,20 @@ export function ScheduledTaskDialog({
               {draft.frequency === "weekly" && (
                 <div className="space-y-1.5">
                   <span id="task-days-label" className="text-sm font-medium">
-                    On
+                    {t("scheduled.form.daysOfWeek")}
                   </span>
                   <div
                     role="group"
                     aria-labelledby="task-days-label"
                     className="flex gap-1.5"
                   >
-                    {DAYS.map((day, index) => {
+                    {DAY_KEYS.map((day, index) => {
                       const chosen = draft.daysOfWeek.includes(index);
                       return (
                         <button
-                          key={day.name}
+                          key={day}
                           type="button"
-                          aria-label={day.name}
+                          aria-label={t(`scheduled.days.${day}`)}
                           aria-pressed={chosen}
                           onClick={() =>
                             change({
@@ -313,7 +319,7 @@ export function ScheduledTaskDialog({
                               : "text-muted-foreground hover:bg-accent hover:text-foreground",
                           )}
                         >
-                          {day.short}
+                          {t(`scheduled.daysShort.${day}`)}
                         </button>
                       );
                     })}
@@ -322,7 +328,9 @@ export function ScheduledTaskDialog({
               )}
               {draft.frequency === "monthly" && (
                 <div className="space-y-1.5">
-                  <Label htmlFor="task-day">Day of the month</Label>
+                  <Label htmlFor="task-day">
+                    {t("scheduled.form.dayOfMonth")}
+                  </Label>
                   <Input
                     id="task-day"
                     type="number"
@@ -341,14 +349,14 @@ export function ScheduledTaskDialog({
                   />
                   {draft.dayOfMonth > 28 && (
                     <p className="text-xs text-muted-foreground">
-                      A month without this day is skipped.
+                      {t("scheduled.form.dayOfMonthHint")}
                     </p>
                   )}
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <Label htmlFor="task-zone">Time zone</Label>
+                <Label htmlFor="task-zone">{t("scheduled.form.timeZone")}</Label>
                 <Combobox
                   items={zones}
                   filteredItems={matchingZones}
@@ -368,12 +376,14 @@ export function ScheduledTaskDialog({
                       {draft.timeZone.replaceAll("_", " ")}
                     </span>
                   </ComboboxTrigger>
-                  <ComboboxContent aria-label="Time zones">
+                  <ComboboxContent aria-label={t("scheduled.form.timeZonesLabel")}>
                     <ComboboxInput
-                      placeholder="Search time zones"
-                      aria-label="Search time zones"
+                      placeholder={t("scheduled.form.searchTimeZones")}
+                      aria-label={t("scheduled.form.searchTimeZones")}
                     />
-                    <ComboboxEmpty>No matching time zone.</ComboboxEmpty>
+                    <ComboboxEmpty>
+                      {t("scheduled.form.noMatchingTimeZone")}
+                    </ComboboxEmpty>
                     <ComboboxList>
                       {(zone: string) => (
                         <ComboboxItem key={zone} value={zone}>
@@ -388,7 +398,7 @@ export function ScheduledTaskDialog({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="task-model">Model</Label>
+                <Label htmlFor="task-model">{t("scheduled.form.model")}</Label>
                 <Select
                   value={modelMissing ? "" : draft.modelConfigId}
                   onValueChange={(value) =>
@@ -401,8 +411,8 @@ export function ScheduledTaskDialog({
                         ?.label ?? (
                         <span className="text-muted-foreground">
                           {models?.length === 0
-                            ? "No models configured"
-                            : "Choose a model"}
+                            ? t("scheduled.form.noModels")
+                            : t("scheduled.form.chooseModel")}
                         </span>
                       )}
                     </SelectValue>
@@ -419,7 +429,9 @@ export function ScheduledTaskDialog({
 
               {((projects?.length ?? 0) > 0 || draft.projectId) && (
                 <div className="space-y-1.5">
-                  <Label htmlFor="task-project">Project</Label>
+                  <Label htmlFor="task-project">
+                    {t("scheduled.form.project")}
+                  </Label>
                   <Select
                     value={draft.projectId ?? NO_PROJECT}
                     onValueChange={(value) =>
@@ -433,12 +445,14 @@ export function ScheduledTaskDialog({
                         {draft.projectId
                           ? (projects?.find(
                               (project) => project.id === draft.projectId,
-                            )?.name ?? "Project")
-                          : "None"}
+                            )?.name ?? t("scheduled.form.project"))
+                          : t("scheduled.form.noProject")}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NO_PROJECT}>None</SelectItem>
+                      <SelectItem value={NO_PROJECT}>
+                        {t("scheduled.form.noProject")}
+                      </SelectItem>
                       {(projects ?? []).map((project) => (
                         <SelectItem key={project.id} value={project.id}>
                           {project.name}
@@ -447,16 +461,18 @@ export function ScheduledTaskDialog({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Runs start in the project, with its instructions and files.
+                    {t("scheduled.form.projectHint")}
                   </p>
                 </div>
               )}
 
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label htmlFor="task-search">Web search</Label>
+                  <Label htmlFor="task-search">
+                    {t("scheduled.form.webSearch")}
+                  </Label>
                   <p className="text-xs text-muted-foreground">
-                    Let runs search the web and read pages.
+                    {t("scheduled.form.webSearchHint")}
                   </p>
                 </div>
                 <Switch
@@ -483,10 +499,14 @@ export function ScheduledTaskDialog({
                   disabled={pending}
                   onClick={onClose}
                 >
-                  Cancel
+                  {t("scheduled.actions.cancel")}
                 </Button>
                 <Button type="submit" size="sm" disabled={pending}>
-                  {pending ? "Saving…" : task ? "Save" : "Schedule"}
+                  {pending
+                    ? t("scheduled.form.saving")
+                    : task
+                      ? t("scheduled.form.save")
+                      : t("scheduled.form.schedule")}
                 </Button>
               </div>
             </div>
