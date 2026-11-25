@@ -23,6 +23,10 @@ const TRANSLATED = [
   "components/settings/connections/**",
   "components/settings/tools/**",
   "components/settings/users/**",
+  "components/*.{ts,tsx}",
+  "components/ui/**",
+  "spa/**",
+  "lib/useDesktopUpdate.ts",
 ];
 
 const eslintConfig = defineConfig([

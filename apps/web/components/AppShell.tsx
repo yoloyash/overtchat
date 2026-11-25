@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Dialog } from "@base-ui/react/dialog";
 import { SidebarContext, type ChatPinFocusRequest } from "@/components/sidebar-context";
 import { SearchChatsPalette } from "@/components/SearchChatsPalette";
@@ -28,6 +29,7 @@ export function AppShell({
   sidebar: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [openMobileRoute, setOpenMobileRoute] = useState<string | null>(null);
@@ -162,7 +164,7 @@ export function AppShell({
               ref={drawerRef as React.RefObject<HTMLDivElement>}
               className="fixed inset-y-0 left-0 z-50 box-border flex bg-sidebar pt-[env(safe-area-inset-top)] motion-transform data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full md:hidden"
             >
-              <Dialog.Title className="sr-only">Navigation</Dialog.Title>
+              <Dialog.Title className="sr-only">{t("app.shell.navigation")}</Dialog.Title>
               {sidebar}
             </Dialog.Popup>
           </Dialog.Portal>

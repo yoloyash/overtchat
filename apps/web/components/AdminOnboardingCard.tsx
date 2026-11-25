@@ -2,6 +2,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AddUserDialog } from "@/components/settings/users/AddUserDialog";
@@ -15,6 +16,7 @@ export function AdminOnboardingCard({
   modelCount: number;
   onDismiss: () => void;
 }) {
+  const { t } = useTranslation();
   const [userOpen, setUserOpen] = useState(false);
   const [userAdded, setUserAdded] = useLocalStorage<boolean>(
     "overtchat_onboarding_user_added",
@@ -28,36 +30,36 @@ export function AdminOnboardingCard({
       <div className="mx-auto w-full max-w-md">
         <div className="text-center">
           <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-            Welcome to overtchat
+            {t("app.onboarding.title")}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            A couple of quick steps to get your workspace running.
+            {t("app.onboarding.description")}
           </p>
         </div>
 
         <ol className="mt-10 space-y-6">
           <Step
             done={modelDone}
-            title="Add your first model"
-            description="Anthropic, Google Gemini, or any OpenAI-compatible endpoint."
+            title={t("app.onboarding.firstModelTitle")}
+            description={t("app.onboarding.firstModelDescription")}
             action={
               <Button render={<Link to="/settings/models/new" />} size="sm">
-                <Plus /> {modelDone ? "Add another" : "Add model"}
+                <Plus /> {modelDone ? t("app.onboarding.addAnother") : t("app.onboarding.addModel")}
               </Button>
             }
           />
           <Step
             done={userAdded}
             optional
-            title="Invite a teammate"
-            description="Skip this if you're the only one using overtchat."
+            title={t("app.onboarding.inviteTitle")}
+            description={t("app.onboarding.inviteDescription")}
             action={
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setUserOpen(true)}
               >
-                <Plus /> Add user
+                <Plus /> {t("app.onboarding.addUser")}
               </Button>
             }
           />
@@ -69,7 +71,7 @@ export function AdminOnboardingCard({
             size="sm"
             onClick={onDismiss}
           >
-            {modelDone ? "Continue to chat" : "Skip for now"}
+            {modelDone ? t("app.onboarding.continueToChat") : t("app.onboarding.skipForNow")}
           </Button>
         </div>
       </div>
@@ -96,6 +98,7 @@ function Step({
   description: string;
   action: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <li className="flex items-start gap-4">
       <span
@@ -114,7 +117,7 @@ function Step({
           <span className={cn(done && "text-muted-foreground")}>{title}</span>
           {optional && !done && (
             <span className="text-xs font-normal text-muted-foreground">
-              (optional)
+              {t("app.onboarding.optional")}
             </span>
           )}
         </div>

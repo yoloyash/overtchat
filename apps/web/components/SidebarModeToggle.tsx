@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { MessagesSquare, SquareTerminal } from "lucide-react";
 import { useSidebar } from "@/components/sidebar-context";
 import type { AgentAttentionCounts } from "@/lib/agents/attention";
@@ -74,9 +75,13 @@ export function useSidebarMode(): SidebarMode {
   return derived;
 }
 
-const MODES: { mode: SidebarMode; label: string; icon: typeof MessagesSquare }[] = [
-  { mode: "chat", label: "Chat", icon: MessagesSquare },
-  { mode: "agents", label: "Agents", icon: SquareTerminal },
+const MODES: {
+  mode: SidebarMode;
+  labelKey: "sidebar.mode.chat" | "sidebar.mode.agents";
+  icon: typeof MessagesSquare;
+}[] = [
+  { mode: "chat", labelKey: "sidebar.mode.chat", icon: MessagesSquare },
+  { mode: "agents", labelKey: "sidebar.mode.agents", icon: SquareTerminal },
 ];
 
 /** Switches between chats and agents, returning to where each was left. */
@@ -87,29 +92,31 @@ export function SidebarModeToggle({
   mode: SidebarMode;
   agentCounts: AgentAttentionCounts;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { closeMobile } = useSidebar();
   return (
     <div
       role="group"
-      aria-label="Sidebar view"
+      aria-label={t("sidebar.mode.groupLabel")}
       className="mx-2 mb-1 grid shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-sidebar-accent/70 p-0.5"
     >
-      {MODES.map(({ mode: option, label, icon: Icon }) => {
+      {MODES.map(({ mode: option, labelKey, icon: Icon }) => {
+        const label = t(labelKey);
         const selected = mode === option;
         const badge =
           option === "agents" && !selected ? agentCounts : null;
-        const badgeLabel = badge?.needsYou
-          ? `, ${badge.needsYou} ${badge.needsYou === 1 ? "needs" : "need"} you`
+        const ariaLabel = badge?.needsYou
+          ? t("sidebar.mode.needsYou", { label, count: badge.needsYou })
           : badge?.unread
-            ? `, ${badge.unread} finished to review`
-            : "";
+            ? t("sidebar.mode.unreadToReview", { label, count: badge.unread })
+            : label;
         return (
           <button
             key={option}
             type="button"
             aria-pressed={selected}
-            aria-label={`${label}${badgeLabel}`}
+            aria-label={ariaLabel}
             onClick={() => {
               if (selected) return;
               closeMobile();

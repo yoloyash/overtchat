@@ -2,6 +2,7 @@
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import type { ChatKind } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
-import { groupByDate } from "@/lib/dateGroups";
+import { groupByDate, type DateBucket } from "@/lib/dateGroups";
 import {
   useDeleteChat,
   useMoveChat,
@@ -32,6 +33,14 @@ import { motionClasses } from "@/lib/motion";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 import { apiUrl } from "@/lib/api-url";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
+
+const DATE_BUCKET_KEYS = {
+  Today: "sidebar.dateGroups.today",
+  Yesterday: "sidebar.dateGroups.yesterday",
+  "Last 7 days": "sidebar.dateGroups.last7Days",
+  "Last 30 days": "sidebar.dateGroups.last30Days",
+  Older: "sidebar.dateGroups.older",
+} as const satisfies Record<DateBucket, string>;
 
 interface Chat {
   id: string;
@@ -56,7 +65,7 @@ export function SidebarChatList({
   projects,
   activeChatIds,
   unreadChatIds,
-  emptyMessage = "No chats yet",
+  emptyMessage,
   pinningSupported,
 }: {
   chats: DatedChat[];
@@ -67,14 +76,15 @@ export function SidebarChatList({
   emptyMessage?: string;
   pinningSupported: boolean;
 }) {
+  const { t } = useTranslation();
   if (chats.length === 0) {
     return (
       <>
         <div className="mt-4 mb-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Recents
+          {t("sidebar.sections.recents")}
         </div>
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          {emptyMessage}
+          {emptyMessage ?? t("sidebar.sections.noChatsYet")}
         </p>
       </>
     );
@@ -85,7 +95,7 @@ export function SidebarChatList({
       {groups.map((g) => (
         <div key={g.label}>
           <div className="mt-4 mb-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {g.label}
+            {t(DATE_BUCKET_KEYS[g.label])}
           </div>
           <ul className="flex flex-col gap-0.5">
             {g.items.map((c) => (
@@ -121,6 +131,7 @@ export function SidebarItem({
   unread?: boolean;
   pinningSupported: boolean;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const active = pathname === `/chat/${chat.id}`;
@@ -167,8 +178,8 @@ export function SidebarItem({
         row?.querySelector<HTMLAnchorElement>("a")?.focus();
       }
       toast.error({
-        title: chat.pinned ? "Failed to unpin chat" : "Failed to pin chat",
-        description: getErrorMessage(err, "Please try again."),
+        title: chat.pinned ? t("sidebar.chat.unpinErrorTitle") : t("sidebar.chat.pinErrorTitle"),
+        description: getErrorMessage(err, t("sidebar.chat.pinErrorFallback")),
       });
     }
   }
@@ -182,8 +193,8 @@ export function SidebarItem({
       {
         onError: (err) => {
           toast.error({
-            title: "Failed to rename chat",
-            description: getErrorMessage(err, "The chat title was not changed."),
+            title: t("sidebar.chat.renameErrorTitle"),
+            description: getErrorMessage(err, t("sidebar.chat.renameErrorFallback")),
           });
         },
       },
@@ -200,10 +211,10 @@ export function SidebarItem({
     try {
       await deleteMut.mutateAsync(chat.id);
       setDeleteOpen(false);
-      toast.success("Chat deleted");
+      toast.success(t("sidebar.chat.deletedTitle"));
       if (active) void navigate({ to: "/" });
     } catch (err) {
-      setDeleteError(getErrorMessage(err, "Failed to delete"));
+      setDeleteError(getErrorMessage(err, t("sidebar.chat.deleteErrorFallback")));
     }
   }
 
@@ -214,8 +225,8 @@ export function SidebarItem({
       {
         onError: (err) => {
           toast.error({
-            title: "Failed to move chat",
-            description: getErrorMessage(err, "The chat stayed where it was."),
+            title: t("sidebar.chat.moveErrorTitle"),
+            description: getErrorMessage(err, t("sidebar.chat.moveErrorFallback")),
           });
         },
       },
@@ -276,7 +287,7 @@ export function SidebarItem({
           {unread && !generating && (
             <span
               role="img"
-              aria-label="New result"
+              aria-label={t("sidebar.chat.newResult")}
               data-unread-run
               className="mr-1.5 inline-block size-1.5 rounded-full bg-green-600 align-middle dark:bg-green-500"
             />
@@ -284,7 +295,7 @@ export function SidebarItem({
           {chat.scheduledTaskName && (
             <CalendarClock
               role="img"
-              aria-label="Scheduled task"
+              aria-label={t("sidebar.chat.scheduledTask")}
               data-scheduled-chat
               className="mr-1.5 inline-block size-3.5 align-[-0.15em] text-muted-foreground"
             />
@@ -297,13 +308,13 @@ export function SidebarItem({
               onComplete={markTitleRevealComplete}
             />
           ) : (
-            "Untitled"
+            t("sidebar.chat.untitled")
           )}
         </Link>
         {generating && (
           <span
             role="status"
-            aria-label={`Generating response for ${chat.title?.trim() || "Untitled"}`}
+            aria-label={t("sidebar.chat.generatingFor", { title: chat.title?.trim() || t("sidebar.chat.untitled") })}
             className={cn(
               "pointer-events-none absolute right-1 flex size-5.5 items-center justify-center text-muted-foreground motion-opacity max-md:size-7.5",
               "[@media(hover:hover)]:group-hover:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-0 [@media(hover:hover)]:group-data-[menu-open=true]:opacity-0 [@media(hover:none)]:right-(--chat-actions-padding)",
@@ -322,7 +333,7 @@ export function SidebarItem({
             if (open) pinFromMenuRef.current = false;
           }}>
             <Menu.Trigger
-              aria-label="Chat actions"
+              aria-label={t("sidebar.chat.actionsLabel")}
               className={cn(
                 "pointer-events-auto flex size-5.5 shrink-0 items-center justify-center rounded text-muted-foreground motion-opacity hover:bg-sidebar-border/60 hover:text-foreground max-md:size-7.5",
                 "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[menu-open=true]:opacity-100 [@media(hover:none)]:opacity-100",
@@ -358,7 +369,7 @@ export function SidebarItem({
                       ) : (
                         <Pin className="size-3.5 shrink-0 text-muted-foreground" />
                       )}
-                      <span>{chat.pinned ? "Unpin" : "Pin"}</span>
+                      <span>{chat.pinned ? t("sidebar.chat.unpin") : t("sidebar.chat.pin")}</span>
                     </Menu.Item>
                   )}
                   <Menu.Item
@@ -369,12 +380,12 @@ export function SidebarItem({
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                   >
                     <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span>Rename</span>
+                    <span>{t("sidebar.chat.rename")}</span>
                   </Menu.Item>
                   <Menu.SubmenuRoot>
                     <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
                       <FolderInput className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span>Move to</span>
+                      <span>{t("sidebar.chat.moveTo")}</span>
                       <span className="ml-auto text-muted-foreground">›</span>
                     </Menu.SubmenuTrigger>
                     <Menu.Portal container={drawerRef}>
@@ -394,7 +405,7 @@ export function SidebarItem({
                                 "text-muted-foreground",
                             )}
                           >
-                            No project
+                            {t("sidebar.chat.noProject")}
                           </Menu.Item>
                           {projects.length > 0 && (
                             <div className="my-1 h-px bg-border" />
@@ -423,7 +434,7 @@ export function SidebarItem({
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
                   >
                     <Trash2 className="size-3.5 shrink-0" />
-                    <span>Delete</span>
+                    <span>{t("sidebar.chat.delete")}</span>
                   </Menu.Item>
                 </Menu.Popup>
               </Menu.Positioner>
@@ -432,8 +443,8 @@ export function SidebarItem({
           {pinningSupported && (
             <button
               type="button"
-              aria-label={chat.pinned ? "Unpin chat" : "Pin chat"}
-              title={chat.pinned ? "Unpin chat" : "Pin chat"}
+              aria-label={chat.pinned ? t("sidebar.chat.unpinChat") : t("sidebar.chat.pinChat")}
+              title={chat.pinned ? t("sidebar.chat.unpinChat") : t("sidebar.chat.pinChat")}
               disabled={pinMut.isPending}
               onClick={() => togglePin()}
               className={cn(
@@ -469,21 +480,22 @@ export function SidebarItem({
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Delete chat?
+              {t("sidebar.chat.deleteDialogTitle")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
               {chat.title?.trim() ? (
-                <>
-                  <span className="font-medium text-foreground">
-                    {chat.title.trim()}
-                  </span>{" "}
-                  will be permanently deleted.
-                </>
+                <Trans
+                  i18nKey="sidebar.chat.deleteDialogNamed"
+                  values={{ name: chat.title.trim() }}
+                  components={{
+                    name: <span className="font-medium text-foreground" />,
+                  }}
+                />
               ) : (
-                "This chat will be permanently deleted."
+                t("sidebar.chat.deleteDialogUnnamed")
               )}
               <span className="mt-2 block text-xs">
-                Files used only in this chat will also be removed from your library.
+                {t("sidebar.chat.deleteDialogFilesNote")}
               </span>
             </AlertDialog.Description>
             {deleteError && (
@@ -499,7 +511,7 @@ export function SidebarItem({
                   />
                 }
               >
-                Cancel
+                {t("sidebar.chat.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -507,7 +519,7 @@ export function SidebarItem({
                 disabled={deleteMut.isPending}
                 onClick={confirmDelete}
               >
-                {deleteMut.isPending ? "Deleting…" : "Delete"}
+                {deleteMut.isPending ? t("sidebar.chat.deleting") : t("sidebar.chat.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -565,6 +577,7 @@ const EXPORT_ITEM_CLASSES =
  * server behind the desktop app does.
  */
 function ChatExportMenuItem({ chatId }: { chatId: string }) {
+  const { t } = useTranslation();
   const { drawerRef } = useSidebar();
   const { data: capabilities } = usePublicCapabilities();
   const jsonHref = apiUrl(`/api/chat/${chatId}/export`);
@@ -576,7 +589,7 @@ function ChatExportMenuItem({ chatId }: { chatId: string }) {
         className={EXPORT_ITEM_CLASSES}
       >
         <Download className="size-3.5 shrink-0 text-muted-foreground" />
-        <span>Export</span>
+        <span>{t("sidebar.chat.export")}</span>
       </Menu.Item>
     );
   }
@@ -595,7 +608,7 @@ function ChatExportMenuItem({ chatId }: { chatId: string }) {
         )}
       >
         <Download className="size-3.5 shrink-0 text-muted-foreground" />
-        <span>Export</span>
+        <span>{t("sidebar.chat.export")}</span>
         <span className="ml-auto text-muted-foreground">›</span>
       </Menu.SubmenuTrigger>
       <Menu.Portal container={drawerRef}>
@@ -610,7 +623,10 @@ function ChatExportMenuItem({ chatId }: { chatId: string }) {
               render={<a href={markdownHref} download />}
               className={EXPORT_ITEM_CLASSES}
             >
-              Markdown
+              {
+                // eslint-disable-next-line i18next/no-literal-string -- format name
+                "Markdown"
+              }
             </Menu.Item>
             <Menu.Item
               render={<a href={jsonHref} download />}

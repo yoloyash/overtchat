@@ -68,6 +68,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useTranslation();
   const { closeMobile, closeSidebar, openPalette, pinFocusRef } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
@@ -172,7 +173,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
         >
           <Pencil className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1">New chat</span>
+          <span className="flex-1">{t("sidebar.nav.newChat")}</span>
           <Shortcut keys={["Ctrl", "Shift", "O"]} />
           <LinkPendingIndicator to="/" />
         </Link>
@@ -185,7 +186,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
         >
           <Search className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1 text-left">Search chats</span>
+          <span className="flex-1 text-left">{t("sidebar.nav.searchChats")}</span>
           <Shortcut keys={["Ctrl", "K"]} />
         </button>
         <Link
@@ -198,7 +199,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           )}
         >
           <Library className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1">Library</span>
+          <span className="flex-1">{t("sidebar.nav.library")}</span>
           <LinkPendingIndicator to="/library" />
         </Link>
         {scheduledTasksSupported && (
@@ -212,15 +213,11 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
             )}
           >
             <CalendarClock className="size-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1">Scheduled</span>
+            <span className="flex-1">{t("scheduled.page.title")}</span>
             {unreadChats.size > 0 && (
               <span
                 role="img"
-                aria-label={
-                  unreadChats.size === 1
-                    ? "1 new result"
-                    : `${unreadChats.size} new results`
-                }
+                aria-label={t("sidebar.nav.newResults", { count: unreadChats.size })}
                 className="size-1.5 rounded-full bg-green-600 dark:bg-green-500"
               />
             )}
@@ -236,14 +233,14 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           )}
         >
           <Activity className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1">Activity</span>
+          <span className="flex-1">{t("sidebar.nav.activity")}</span>
           <LinkPendingIndicator to="/activity" />
         </Link>
       </nav>
 
       {chats.some((chat) => chat.pinned) && (
-        <section aria-label="Pinned chats">
-          <SectionLabel>Pinned</SectionLabel>
+        <section aria-label={t("sidebar.sections.pinnedChatsLabel")}>
+          <SectionLabel>{t("sidebar.sections.pinned")}</SectionLabel>
           <ul className="flex flex-col gap-0.5">
             {chats.filter((chat) => chat.pinned).map((chat) => (
               <SidebarItem
@@ -260,7 +257,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         </section>
       )}
 
-      <SectionLabel>Projects</SectionLabel>
+      <SectionLabel>{t("sidebar.sections.projects")}</SectionLabel>
       <SidebarProjects
         projects={projectsWithChats}
         activeChatIds={activeChats}
@@ -273,13 +270,17 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
       >
         <FolderPlus className="size-4 shrink-0" />
-        <span>New project</span>
+        <span>{t("sidebar.sections.newProject")}</span>
       </button>
 
 
       <SidebarChatList
         chats={unprojected}
-        emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
+        emptyMessage={
+          chats.length > 0
+            ? t("sidebar.sections.noRecentChats")
+            : t("sidebar.sections.noChatsYet")
+        }
         projects={projectOptions}
         activeChatIds={activeChats}
         unreadChatIds={unreadChats}
@@ -291,11 +292,12 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   return (
     <>
       <div data-titlebar data-titlebar-inset className="flex h-12 shrink-0 items-center justify-between px-3">
+        {/* eslint-disable-next-line i18next/no-literal-string -- product name */}
         <span className="font-brand text-sm font-semibold tracking-tight">overtchat</span>
         <button
           type="button"
           onClick={closeSidebar}
-          aria-label="Collapse sidebar"
+          aria-label={t("sidebar.toggle.collapse")}
           className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:p-2.5"
         >
           <PanelLeft className="size-4" />
@@ -345,18 +347,19 @@ function AgentsSidebar({
   connections: AgentConnectionListItem[];
   isPending: boolean;
 }) {
+  const { t } = useTranslation();
   const { closeMobile } = useSidebar();
   const pathname = useLocation({ select: (location) => location.pathname });
   return (
     <>
-      <nav aria-label="Agents" className="flex flex-col gap-0.5 py-1">
+      <nav aria-label={t("sidebar.nav.agentsNavLabel")} className="flex flex-col gap-0.5 py-1">
         <Link
           to="/agents"
           onClick={closeMobile}
           className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
         >
           <SquarePen className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1">New agent</span>
+          <span className="flex-1">{t("sidebar.nav.newAgent")}</span>
           <LinkPendingIndicator to="/agents" />
         </Link>
         <Link
@@ -369,7 +372,7 @@ function AgentsSidebar({
           )}
         >
           <History className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1">History</span>
+          <span className="flex-1">{t("sidebar.nav.history")}</span>
           <LinkPendingIndicator to="/agents/history" />
         </Link>
       </nav>
@@ -433,15 +436,15 @@ function AgentSessionList({
   if (!hasWorkspaces) {
     return (
       <>
-        <AgentListLabel>Workspaces</AgentListLabel>
+        <AgentListLabel>{t("sidebar.agents.workspacesHeading")}</AgentListLabel>
         {isPending ? (
           <p className="px-2 py-1.5 text-xs text-muted-foreground">
-            Loading workspaces…
+            {t("sidebar.agents.loadingWorkspaces")}
           </p>
         ) : (
           <>
             <p className="px-2 py-1 text-xs text-muted-foreground">
-              Connect a folder to start an agent session.
+              {t("sidebar.agents.emptyWorkspaces")}
             </p>
             <Link
               to="/settings/connections"
@@ -450,7 +453,7 @@ function AgentSessionList({
               className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground max-md:min-h-11"
             >
               <FolderPlus aria-hidden="true" className="size-4 shrink-0" />
-              <span>Add workspace</span>
+              <span>{t("sidebar.agents.addWorkspace")}</span>
             </Link>
           </>
         )}
@@ -504,7 +507,7 @@ function AgentSessionList({
               ref={doneRef}
               onClick={() => setOrganizing(false)}
             >
-              Done
+              {t("sidebar.agents.done")}
             </Button>
           ) : (
             <span className="flex items-center gap-0.5">
@@ -513,13 +516,17 @@ function AgentSessionList({
                   ref={optionsRef}
                   aria-label={
                     activeProviderFilter
-                      ? `Agent list options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                      : "Agent list options"
+                      ? t("sidebar.agents.listOptionsFilteredLabel", {
+                          provider: agentProviderMetadata(activeProviderFilter).label,
+                        })
+                      : t("sidebar.agents.listOptionsLabel")
                   }
                   title={
                     activeProviderFilter
-                      ? `List options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                      : "List options"
+                      ? t("sidebar.agents.listOptionsFilteredTitle", {
+                          provider: agentProviderMetadata(activeProviderFilter).label,
+                        })
+                      : t("sidebar.agents.listOptionsTitle")
                   }
                   className={cn(
                     "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
@@ -549,19 +556,19 @@ function AgentSessionList({
                         }
                       >
                         <Menu.GroupLabel className="px-2 pt-1 pb-0.5 text-xs text-muted-foreground">
-                          Group by
+                          {t("sidebar.agents.groupBy")}
                         </Menu.GroupLabel>
-                        <RadioMenuItem value="status" label="Status" />
+                        <RadioMenuItem value="status" label={t("sidebar.agents.groupByStatus")} />
                         <RadioMenuItem
                           value="workspace"
-                          label="Workspace"
+                          label={t("sidebar.agents.groupByWorkspace")}
                         />
                       </Menu.RadioGroup>
                       {providers.length > 1 && (
                         <Menu.SubmenuRoot>
                           <Menu.SubmenuTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[popup-open]:bg-accent">
                             <ListFilter className="size-3.5 text-muted-foreground" />
-                            <span>Filter by agent</span>
+                            <span>{t("sidebar.agents.filterByAgent")}</span>
                             <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
                           </Menu.SubmenuTrigger>
                           <Menu.Portal container={drawerRef}>
@@ -588,7 +595,7 @@ function AgentSessionList({
                                 >
                                   <RadioMenuItem
                                     value="all"
-                                    label="All agents"
+                                    label={t("sidebar.agents.allAgents")}
                                   />
                                   {providers.map((provider) => (
                                     <RadioMenuItem
@@ -616,7 +623,7 @@ function AgentSessionList({
                           className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                         >
                           <CheckCheck className="size-3.5 text-muted-foreground" />
-                          <span>Mark all as read</span>
+                          <span>{t("sidebar.agents.markAllAsRead")}</span>
                         </Menu.Item>
                       )}
                       {grouping === "workspace" && (
@@ -625,7 +632,7 @@ function AgentSessionList({
                           className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                         >
                           <GripVertical className="size-3.5 text-muted-foreground" />
-                          <span>Organize workspaces</span>
+                          <span>{t("sidebar.agents.organizeWorkspaces")}</span>
                         </Menu.Item>
                       )}
                       <Menu.Item
@@ -639,7 +646,7 @@ function AgentSessionList({
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
                         <FolderPlus className="size-3.5 text-muted-foreground" />
-                        <span>Add workspace…</span>
+                        <span>{t("sidebar.agents.addWorkspaceEllipsis")}</span>
                       </Menu.Item>
                       <Menu.Item
                         disabled={refresh.isPending}
@@ -653,7 +660,7 @@ function AgentSessionList({
                               "animate-spin motion-reduce:animate-none",
                           )}
                         />
-                        <span>Refresh sessions</span>
+                        <span>{t("sidebar.agents.refreshSessions")}</span>
                       </Menu.Item>
                     </Menu.Popup>
                   </Menu.Positioner>
@@ -663,7 +670,7 @@ function AgentSessionList({
           )
         }
       >
-        {grouping === "workspace" ? "Workspaces" : "Sessions"}
+        {grouping === "workspace" ? t("sidebar.agents.workspacesHeading") : t("sidebar.agents.sessionsHeading")}
       </AgentListLabel>
       {grouping === "workspace" ? (
         <SidebarAgentWorkspaces

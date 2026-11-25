@@ -2,6 +2,7 @@
 
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { move } from "@dnd-kit/helpers";
@@ -84,6 +85,7 @@ export function SidebarAgentWorkspaces({
   providerFilter: AgentProviderId | null;
   organizing: boolean;
 }) {
+  const { t } = useTranslation();
   const { data: session } = authClient.useSession();
   const { drawerRef } = useSidebar();
   const navigate = useNavigate();
@@ -124,8 +126,8 @@ export function SidebarAgentWorkspaces({
       }
       toast.success({
         title: pendingRemovalWorktree
-          ? "Worktree removed"
-          : "Workspace removed",
+          ? t("sidebar.agents.worktreeRemoved")
+          : t("sidebar.agents.workspaceRemoved"),
         description: pendingRemoval.name,
       });
       setPendingRemoval(null);
@@ -133,7 +135,7 @@ export function SidebarAgentWorkspaces({
       setRemovalError(
         error instanceof Error
           ? error.message
-          : "The workspace could not be removed.",
+          : t("sidebar.agents.removeErrorFallback"),
       );
     }
   }
@@ -222,7 +224,7 @@ export function SidebarAgentWorkspaces({
           setDragGroups(null);
         }}
       >
-        <ul aria-label="Agent workspaces" className="flex flex-col gap-0.5">
+        <ul aria-label={t("sidebar.agents.workspacesListLabel")} className="flex flex-col gap-0.5">
           {groups.map((group, index) => (
             <WorkspaceNode
               key={group.key}
@@ -293,8 +295,8 @@ export function SidebarAgentWorkspaces({
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               {pendingRemovalWorktree
-                ? "Remove worktree?"
-                : "Remove workspace?"}
+                ? t("sidebar.agents.removeWorktreeTitle")
+                : t("sidebar.agents.removeWorkspaceTitle")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
               {pendingRemovalWorktree ? (
@@ -303,13 +305,13 @@ export function SidebarAgentWorkspaces({
                   name={pendingRemoval?.name ?? ""}
                 />
               ) : (
-                <>
-                  <span className="font-medium text-foreground">
-                    {pendingRemoval?.name}
-                  </span>{" "}
-                  and its agent chats will be removed from OvertChat. Files and
-                  native agent sessions remain on the host.
-                </>
+                <Trans
+                  i18nKey="sidebar.agents.removeWorkspaceDescription"
+                  values={{ name: pendingRemoval?.name ?? "" }}
+                  components={{
+                    name: <span className="font-medium text-foreground" />,
+                  }}
+                />
               )}
             </AlertDialog.Description>
             {removalError && (
@@ -327,7 +329,7 @@ export function SidebarAgentWorkspaces({
                   />
                 }
               >
-                Cancel
+                {t("sidebar.agents.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -335,7 +337,7 @@ export function SidebarAgentWorkspaces({
                 disabled={removal.isPending || worktreeInspection.isLoading}
                 onClick={() => void confirmRemoval()}
               >
-                {removal.isPending ? "Removing…" : "Remove"}
+                {removal.isPending ? t("sidebar.agents.removing") : t("sidebar.agents.remove")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -374,6 +376,7 @@ function WorkspaceNode({
   ) => React.ReactNode;
   sortGroup?: string;
 }) {
+  const { t } = useTranslation();
   const { ref, handleRef, isDragSource, isDropping } = useSortable({
     id: group.key,
     index,
@@ -478,7 +481,7 @@ function WorkspaceNode({
         <button
           type="button"
           onClick={() => onExpandedChange(!open)}
-          aria-label={open ? `Collapse ${group.name}` : `Expand ${group.name}`}
+          aria-label={open ? t("sidebar.agents.collapseWorkspace", { name: group.name }) : t("sidebar.agents.expandWorkspace", { name: group.name })}
           aria-expanded={open}
           aria-controls={sessionListId}
           className={cn(
@@ -509,7 +512,7 @@ function WorkspaceNode({
               {!open && urgentState !== "idle" && (
                 <span
                   role="status"
-                  aria-label={`${agentSessionStateLabel(urgentState)} in ${group.name}`}
+                  aria-label={t("sidebar.agents.statusInWorkspace", { status: agentSessionStateLabel(urgentState), name: group.name })}
                   title={agentSessionStateLabel(urgentState)}
                   className="flex shrink-0 items-center"
                 >
@@ -543,8 +546,8 @@ function WorkspaceNode({
           <button
             type="button"
             onClick={onRemove}
-            aria-label={`Remove ${group.name}`}
-            title={`Remove ${group.name}`}
+            aria-label={t("sidebar.agents.removeWorkspaceAction", { name: group.name })}
+            title={t("sidebar.agents.removeWorkspaceAction", { name: group.name })}
             className="flex min-h-10 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground motion-colors hover:bg-destructive/10 hover:text-destructive max-md:min-h-11 max-md:w-11"
           >
             <Trash2 aria-hidden="true" className="size-3.5" />
@@ -555,8 +558,8 @@ function WorkspaceNode({
               <button
                 type="button"
                 onClick={() => setWorktreeOpen(true)}
-                aria-label={`New worktree from ${group.name}`}
-                title={`New worktree from ${group.name}`}
+                aria-label={t("sidebar.agents.newWorktreeFrom", { name: group.name })}
+                title={t("sidebar.agents.newWorktreeFrom", { name: group.name })}
                 className={cn(
                   "absolute inset-y-0 right-7 flex w-7 items-center justify-center rounded-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:right-11 max-md:w-11",
                   motionClasses.hoverReveal,
@@ -569,11 +572,11 @@ function WorkspaceNode({
               type="button"
               onClick={startNewSession}
               disabled={sessionTargets.length === 0}
-              aria-label={`New session in ${group.name}`}
+              aria-label={t("sidebar.agents.newSessionIn", { name: group.name })}
               title={
                 sessionTargets.length > 0
-                  ? `New session in ${group.name}`
-                  : "No agents are currently available on this machine"
+                  ? t("sidebar.agents.newSessionIn", { name: group.name })
+                  : t("sidebar.agents.noAgentsAvailable")
               }
               className={cn(
                 "absolute inset-y-0 right-0 flex w-7 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
@@ -588,8 +591,8 @@ function WorkspaceNode({
           ref={handleRef}
           type="button"
           disabled={!sortable}
-          aria-label={`Reorder ${group.name}`}
-          title="Drag to reorder"
+          aria-label={t("sidebar.agents.reorderWorkspace", { name: group.name })}
+          title={t("sidebar.agents.dragToReorder")}
           className={cn(
             "flex min-h-10 w-7 shrink-0 touch-none cursor-grab items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40 max-md:min-h-11 max-md:w-11",
             !organizing && "hidden",
@@ -625,10 +628,11 @@ function WorkspaceNode({
             })}
             {filteredSessions.length === 0 && (
               <li className="py-1.5 pr-2 pl-4 text-xs text-muted-foreground">
-                No{" "}
                 {providerFilter
-                  ? `${agentProviderMetadata(providerFilter).label} sessions`
-                  : "sessions"}
+                  ? t("sidebar.agents.noProviderSessions", {
+                      provider: agentProviderMetadata(providerFilter).label,
+                    })
+                  : t("sidebar.agents.noSessions")}
               </li>
             )}
             {filteredSessions.length > AGENT_SESSION_PREVIEW_COUNT &&
@@ -645,7 +649,7 @@ function WorkspaceNode({
       </ul>
       {worktrees.length > 0 && (
         <ul
-          aria-label={`Worktrees of ${group.name}`}
+          aria-label={t("sidebar.agents.worktreesOf", { name: group.name })}
           hidden={!open}
           className={cn("mt-0.5 flex-col gap-0.5 pl-3", open ? "flex" : "hidden")}
         >
@@ -684,12 +688,13 @@ function WorkspaceGitMeta({
   status: AgentWorkspaceGitStatus | undefined;
   workspaceId: string;
 }) {
+  const { t } = useTranslation();
   if (!status?.isGit) return null;
   const detail = [
-    status.branch ?? "Detached HEAD",
+    status.branch ?? t("sidebar.agents.git.detachedHead"),
     status.dirty
-      ? `${status.changedFiles} changed file${status.changedFiles === 1 ? "" : "s"}`
-      : "Clean",
+      ? t("sidebar.agents.git.changedFiles", { count: status.changedFiles })
+      : t("sidebar.agents.git.clean"),
     status.lineStatsComplete && status.dirty
       ? `+${status.additions} −${status.deletions}`
       : null,
@@ -704,12 +709,12 @@ function WorkspaceGitMeta({
     >
       <span className="flex min-w-0 flex-1 items-center gap-1">
         <GitBranch aria-hidden="true" className="size-3 shrink-0" />
-        <span className="truncate">{status.branch ?? "Detached HEAD"}</span>
+        <span className="truncate">{status.branch ?? t("sidebar.agents.git.detachedHead")}</span>
       </span>
       {status.dirty && (
         <span
           className="flex shrink-0 items-center gap-0.5 tabular-nums text-amber-500"
-          aria-label={`${status.changedFiles} changed file${status.changedFiles === 1 ? "" : "s"}`}
+          aria-label={t("sidebar.agents.git.changedFiles", { count: status.changedFiles })}
         >
           <FileDiff aria-hidden="true" className="size-3" />
           {status.changedFiles}

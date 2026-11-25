@@ -2,6 +2,7 @@ import { accent } from "./accent";
 import { account } from "./account";
 import { activity } from "./activity";
 import { agents } from "./agents";
+import { app } from "./app";
 import { auth } from "./auth";
 import { common } from "./common";
 import { connections } from "./connections";
@@ -14,6 +15,7 @@ import { projects } from "./projects";
 import { scheduled } from "./scheduled";
 import { services } from "./services";
 import { settings } from "./settings";
+import { sidebar } from "./sidebar";
 import { tools } from "./tools";
 import { users } from "./users";
 
@@ -26,6 +28,7 @@ export const en = {
   account,
   activity,
   agents,
+  app,
   auth,
   common,
   connections,
@@ -38,6 +41,7 @@ export const en = {
   scheduled,
   services,
   settings,
+  sidebar,
   tools,
   users,
 } as const;

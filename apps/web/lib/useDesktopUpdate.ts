@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { i18n } from "@overtchat/shared/i18n";
 import type { DesktopUpdateState } from "@overtchat/shared/desktop";
 import { desktopBridge } from "@/lib/desktop";
 
@@ -27,14 +28,14 @@ export function useDesktopUpdate(): DesktopUpdateState | null {
 
 export function desktopUpdateLabel(state: DesktopUpdateState | null): string {
   switch (state?.status) {
-    case "checking": return "Checking…";
-    case "available": return "Desktop app update available";
-    case "downloading": return `Downloading ${state.downloadPercent ?? 0}%`;
-    case "ready": return "Desktop update ready";
-    case "installing": return "Restarting…";
-    case "error": return "Retry desktop update";
-    case "blocked": return "Update requires attention";
-    case "unsupported": return "View update options";
-    default: return "Check for updates";
+    case "checking": return i18n.t("app.desktopUpdate.checking");
+    case "available": return i18n.t("app.desktopUpdate.available");
+    case "downloading": return i18n.t("app.desktopUpdate.downloading", { percent: state.downloadPercent ?? 0 });
+    case "ready": return i18n.t("app.desktopUpdate.ready");
+    case "installing": return i18n.t("app.desktopUpdate.installing");
+    case "error": return i18n.t("app.desktopUpdate.error");
+    case "blocked": return i18n.t("app.desktopUpdate.blocked");
+    case "unsupported": return i18n.t("app.desktopUpdate.unsupported");
+    default: return i18n.t("app.desktopUpdate.check");
   }
 }

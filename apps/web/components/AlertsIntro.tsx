@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +37,7 @@ function alertsNeverChosen(): boolean {
  * The desktop app has alerts on from the start and never shows this.
  */
 export function AlertsIntro({ agents }: { agents: boolean }) {
+  const { t } = useTranslation();
   const { sound, systemWanted, setSound, setSystem, access } = useAgentAlertChoices();
   const [answered, setAnswered] = useLocalStorage<boolean>(AGENT_ALERT_INTRO_KEY, false);
   const [untouched] = useState(alertsNeverChosen);
@@ -62,24 +64,24 @@ export function AlertsIntro({ agents }: { agents: boolean }) {
 
   return (
     <section
-      aria-label="Alerts"
+      aria-label={t("settings.alerts.title")}
       className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-2 text-sm"
     >
       <Bell className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <p className="min-w-0 flex-1 basis-56 text-muted-foreground">
         {blocked
-          ? "Your browser is blocking notifications for this site. Allow them there, then turn on Alerts in Settings."
+          ? t("app.alertsIntro.blocked")
           : agents
-            ? "Get notified when an agent needs you or a reply is ready."
-            : "Get notified when a reply is ready."}
+            ? t("app.alertsIntro.promptWithAgents")
+            : t("app.alertsIntro.prompt")}
       </p>
       <div className="ml-auto flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="sm" onClick={() => setAnswered(true)}>
-          {blocked ? "Dismiss" : "Not now"}
+          {blocked ? t("app.alertsIntro.dismiss") : t("app.alertsIntro.notNow")}
         </Button>
         {!blocked && (
           <Button size="sm" onClick={() => void enable()}>
-            Enable notifications
+            {t("app.alertsIntro.enable")}
           </Button>
         )}
       </div>
