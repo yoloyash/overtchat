@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import type { Ionicons } from "@expo/vector-icons";
 import type { AgentRewindMode } from "@overtchat/agent-bridge";
@@ -8,8 +9,6 @@ import {
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { AgentMenu, type AgentMenuItem } from "./AgentMenu";
 import { AgentIconButton } from "./AgentPrimitives";
-
-export const AGENT_REWIND_NOTE = "This action cannot be undone";
 
 const icons: Record<
   AgentRewindMode,
@@ -45,6 +44,7 @@ export function AgentRewindMenu({
   pending: boolean;
   onRewind: (mode: AgentRewindMode) => void;
 }) {
+  const { t } = useTranslation();
   const menu = useMeasuredPopoverAnchor();
   const items = agentRewindMenuItems(capabilities, onRewind);
   if (!items.length) return null;
@@ -52,7 +52,7 @@ export function AgentRewindMenu({
     <>
       <View ref={menu.anchorRef} collapsable={false}>
         <AgentIconButton
-          label="Rewind to this message"
+          label={t("agents.rewind.toMessage")}
           icon="arrow-undo-outline"
           disabled={disabled || pending}
           loading={pending}
@@ -62,7 +62,7 @@ export function AgentRewindMenu({
       <AgentMenu
         from={menu.anchorRect}
         visible={menu.visible}
-        sections={[{ note: AGENT_REWIND_NOTE, items }]}
+        sections={[{ note: t("agents.rewind.cannotBeUndone"), items }]}
         onClose={menu.close}
       />
     </>

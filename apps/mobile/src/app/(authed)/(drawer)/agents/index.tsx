@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Keyboard, StyleSheet, Text, View } from "react-native";
 import { router, Stack, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
@@ -49,6 +50,7 @@ import { getAuthClient } from "@/lib/auth/client";
  * the machine, folder and agent; the draft follows the switch.
  */
 export default function NewAgentScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{
     workspace?: string;
     provider?: string;
@@ -89,15 +91,18 @@ export default function NewAgentScreen() {
     if (connections.isPending) {
       return (
         <View style={[styles.centered, { backgroundColor: colors.background }]}>
-          <Stack.Screen options={{ title: "New agent" }} />
-          <ActivityIndicator accessibilityLabel="Loading workspaces" color={colors.mutedForeground} />
+          <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
+          <ActivityIndicator
+            accessibilityLabel={t("agents.mobile.newSession.loadingWorkspaces")}
+            color={colors.mutedForeground}
+          />
         </View>
       );
     }
     if (connections.error) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <Stack.Screen options={{ title: "New agent" }} />
+          <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
           <AgentFeedback
             error={connections.error.message}
             retry={() => void connections.refetch()}
@@ -108,22 +113,23 @@ export default function NewAgentScreen() {
     if (requested) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <Stack.Screen options={{ title: "New agent" }} />
-          <AgentFeedback error="This workspace is no longer available. Pick another from the drawer." />
+          <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
+          <AgentFeedback
+            error={t("agents.mobile.errors.workspaceUnavailableDrawer")}
+          />
         </View>
       );
     }
     return (
       <View style={[styles.centered, { backgroundColor: colors.background, gap: 12, padding: 24 }]}>
-        <Stack.Screen options={{ title: "New agent" }} />
+        <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
         <Ionicons name="folder-open-outline" size={32} color={colors.mutedForeground} />
-        <AgentText title>Your agents, on your phone</AgentText>
+        <AgentText title>{t("agents.mobile.newSession.emptyTitle")}</AgentText>
         <AgentText muted>
-          Add an Agent Connection and a workspace on the web, then start a
-          session here.
+          {t("agents.mobile.newSession.emptyDescription")}
         </AgentText>
         <AgentButton
-          label="Agent connections"
+          label={t("agents.mobile.newSession.agentConnections")}
           icon="settings-outline"
           onPress={() => router.push("/settings/connections")}
         />
@@ -158,6 +164,7 @@ function NewAgent({
   fork?: string;
   chooseWorkspace?: boolean;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const authSession = getAuthClient().useSession();
   const isAdmin =
@@ -283,11 +290,16 @@ function NewAgent({
       if (!mounted.current) return;
       if (!sessionId)
         setError(
-          `${cause instanceof Error ? cause.message : "Couldn't start the session."} If the connection was lost, check the session list before trying again.`,
+          t("agents.mobile.errors.startSessionFailedHint", {
+            message:
+              cause instanceof Error
+                ? cause.message
+                : t("agents.mobile.errors.startSessionFailed"),
+          }),
         );
       else
         toastError(
-          "First message couldn't be confirmed. Your draft is saved in the chat.",
+          t("agents.mobile.errors.firstMessageUnconfirmed"),
           cause,
         );
     } finally {
@@ -318,11 +330,13 @@ function NewAgent({
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
-      <Stack.Screen options={{ title: "New agent" }} />
+      <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
       <View style={styles.hero}>
         <AgentProviderIcon provider={provider} size={40} />
         <AgentText title>
-          New {agentProviderMetadata(provider).label} session
+          {t("agents.newSession.heading", {
+            provider: agentProviderMetadata(provider).label,
+          })}
         </AgentText>
         <Text
           numberOfLines={1}
@@ -345,7 +359,7 @@ function NewAgent({
       >
         {catalog.isPending && (
           <ActivityIndicator
-            accessibilityLabel="Loading models"
+            accessibilityLabel={t("agents.mobile.newSession.loadingModels")}
             color={colors.mutedForeground}
           />
         )}
@@ -360,11 +374,11 @@ function NewAgent({
               error ??
               storageError ??
               catalog.error?.message ??
-              "No models are available for this agent."
+              t("agents.mobile.errors.noModelsAvailable")
             }
             action={
               catalog.error
-                ? { label: "Retry", onPress: () => void catalog.refetch() }
+                ? { label: t("agents.common.retry"), onPress: () => void catalog.refetch() }
                 : undefined
             }
           />
@@ -372,14 +386,16 @@ function NewAgent({
         {draft.forkContext && (
           <AgentNotice
             icon="git-branch-outline"
-            message={`Chat history attached · ${name}`}
+            message={t("agents.mobile.newSession.chatHistoryAttachedIn", {
+              workspace: name,
+            })}
             actions={[
               {
-                label: "Change workspace",
+                label: t("agents.mobile.newSession.changeWorkspace"),
                 onPress: () => setPicker("workspace"),
               },
               {
-                label: "Remove history",
+                label: t("agents.mobile.newSession.removeHistory"),
                 onPress: () =>
                   setDraft(
                     ({ forkContext: _context, ...current }) => current,
@@ -415,8 +431,8 @@ function NewAgent({
           sending={pending}
           running={false}
           isAdmin={isAdmin}
-          modelLabel={model?.label ?? "Loading model…"}
-          thinkingLabel={thinkingLabel(model ?? undefined, selection.thinkingOptionId)}
+          modelLabel={model?.label ?? t("agents.composer.loadingModel")}
+          thinkingLabel={thinkingLabel(model ?? undefined, selection.thinkingOptionId, t)}
           permission={(() => {
             const mode = selection.modes.find((item) => item.id === selection.modeId);
             return mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined;

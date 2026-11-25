@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -19,6 +20,7 @@ export function AgentImage({
   width?: number;
   height?: number;
 }) {
+  const { t } = useTranslation();
   const { colors, radii } = useTheme();
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -38,7 +40,7 @@ export function AgentImage({
     return (
       <View
         accessible
-        accessibilityLabel={`${label}, preview unavailable`}
+        accessibilityLabel={t("agents.mobile.image.previewUnavailable", { label })}
         style={[frame, styles.center]}
       >
         <Ionicons name="image-outline" size={22} color={colors.mutedForeground} />
@@ -49,7 +51,9 @@ export function AgentImage({
       <Pressable
         accessibilityRole="imagebutton"
         accessibilityLabel={
-          failed ? `${label}, preview failed. Retry` : `View ${label}`
+          failed
+            ? t("agents.mobile.image.previewFailed", { label })
+            : t("agents.mobile.image.viewImage", { label })
         }
         onPress={() => {
           if (failed) setFailed(false);

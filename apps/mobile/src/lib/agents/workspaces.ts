@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
@@ -30,7 +31,7 @@ export type WorkspaceGroup = {
 export function agentHostLabel(
   host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
 ): string {
-  return host.sshAlias || host.name || "This server";
+  return host.sshAlias || host.name || i18n.t("connections.dialog.thisServer");
 }
 
 /**
@@ -141,7 +142,7 @@ export function findAgentSession(groups: WorkspaceGroup[], id: string) {
   return null;
 }
 export function sessionTitle(session: AgentSessionListItem) {
-  return agentSessionDisplayTitle(session) || "New session";
+  return agentSessionDisplayTitle(session) || i18n.t("agents.session.newSession");
 }
 /**
  * Where a new session in a folder starts: with the agent used there most

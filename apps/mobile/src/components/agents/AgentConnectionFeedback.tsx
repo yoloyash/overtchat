@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import type { StreamStatus } from "@/lib/agents/stream";
 import { AgentFeedback, AgentNotice } from "./AgentPrimitives";
@@ -19,6 +20,7 @@ export function AgentConnectionFeedback({
 }
 
 function ReconnectingFeedback({ retry }: { retry: () => void }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setVisible(true), 1000);
@@ -31,8 +33,8 @@ function ReconnectingFeedback({ retry }: { retry: () => void }) {
       <AgentNotice
         icon="cloud-offline-outline"
         warning
-        message="Reconnecting to your agent…"
-        actions={[{ label: "Retry", onPress: retry }]}
+        message={t("agents.mobile.connection.reconnecting")}
+        actions={[{ label: t("agents.common.retry"), onPress: retry }]}
       />
     </View>
   );
