@@ -29,6 +29,7 @@ import {
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { i18n } from "@overtchat/shared/i18n";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ThinkingContent } from "@/components/chat/ThinkingContent";
 import {
   agentThoughtPreview,
@@ -195,7 +196,8 @@ export function AgentActivityGroup({
   sequencePosition: AgentActivitySequencePosition;
 }) {
   const { t } = useTranslation();
-  const presentation = describeAgentActivity(entries, active);
+  const locale = useFormatLocale();
+  const presentation = describeAgentActivity(entries, active, t, locale);
   const hasError = presentation.status === "failed";
   const [open, setOpen] = useState(hasError);
   const holdDisclosure = useContext(AgentDisclosureContext);
@@ -349,12 +351,12 @@ function liveStepPresentation(
     };
   }
   if (step.type === "subagent") {
-    return { icon: <Users className={iconClass} />, ...describeSubagentActivity(step.activity) };
+    return { icon: <Users className={iconClass} />, ...describeSubagentActivity(step.activity, t) };
   }
-  const presentation = describeAgentTool(step.tool);
+  const presentation = describeAgentTool(step.tool, t);
   return {
     icon: <ToolCategoryIcon category={presentation.category} className={iconClass} />,
-    label: agentToolStepLabel(presentation.category, agentToolStatus(step.tool, true)),
+    label: agentToolStepLabel(presentation.category, agentToolStatus(step.tool, true), t),
     summary: presentation.summary,
   };
 }
@@ -370,6 +372,7 @@ function ActivityStep({
   last: boolean;
   showDetailedStep: boolean;
 }) {
+  const { t } = useTranslation();
   if (entry.type === "thinking") {
     if (!showDetailedStep) {
       return (
@@ -403,7 +406,7 @@ function ActivityStep({
     <TimelineStep
       icon={
         <ToolCategoryIcon
-          category={describeAgentTool(entry.tool).category}
+          category={describeAgentTool(entry.tool, t).category}
           className="size-3.5"
         />
       }
@@ -435,7 +438,7 @@ function SubagentActivityStep({
         : "completed";
   const [open, setOpen] = useState(status === "failed");
   const holdDisclosure = useContext(AgentDisclosureContext);
-  const { label, summary } = describeSubagentActivity(activity);
+  const { label, summary } = describeSubagentActivity(activity, t);
   const canOpen =
     Boolean(activity.prompt) ||
     activity.receivers.length > 0 ||
@@ -664,7 +667,7 @@ function ToolActivityStep({
   showIcon?: boolean;
 }) {
   const { t } = useTranslation();
-  const presentation = describeAgentTool(tool);
+  const presentation = describeAgentTool(tool, t);
   const status = agentToolStatus(tool, active);
   const detail = toolDetail(tool, presentation.category, t);
   const [open, setOpen] = useState(status === "failed");
@@ -725,7 +728,7 @@ function ToolActivityStep({
           )}
         >
           <span className="shrink-0 font-normal motion-colors group-hover:text-foreground">
-            {agentToolStepLabel(presentation.category, status)}
+            {agentToolStepLabel(presentation.category, status, t)}
           </span>
           {presentation.summary && (
             <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
@@ -995,6 +998,7 @@ function ActivityIcon({
   status: AgentToolStatus;
   toolSummary: boolean;
 }) {
+  const { t } = useTranslation();
   if (status === "failed" || status === "stopped") {
     return (
       <CircleAlert
@@ -1020,7 +1024,7 @@ function ActivityIcon({
   }
   const categories = new Set(
     entries.flatMap((entry) =>
-      entry.type === "tool" ? [describeAgentTool(entry.tool).category] : [],
+      entry.type === "tool" ? [describeAgentTool(entry.tool, t).category] : [],
     ),
   );
   if (categories.size === 0) {

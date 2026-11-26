@@ -48,7 +48,9 @@ export function ErrorNotice({
             lineHeight: 19,
           }}
         >
-          {typeof message === "string" ? message : getErrorMessage(message, fallback)}
+          {typeof message === "string"
+            ? message
+            : getErrorMessage(message, fallback ?? t("common.errors.generic"))}
         </Text>
         {action && (
           <Pressable

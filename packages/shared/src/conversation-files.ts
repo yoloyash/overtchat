@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type { UIMessage } from "ai";
 import {
   codeExecutionFiles,
@@ -31,7 +31,10 @@ export interface ConversationFiles {
 const UPLOAD_URL = /^\/api\/uploads\/([a-zA-Z0-9_-]+)$/;
 
 /** The files a conversation made or was given, for a list of its files. */
-export function conversationFiles(messages: readonly UIMessage[]): ConversationFiles {
+export function conversationFiles(
+  messages: readonly UIMessage[],
+  t: TFunction,
+): ConversationFiles {
   const outputs = new Map<string, ConversationOutput>();
   const uploads = new Map<string, PanelFile>();
   for (const message of messages) {
@@ -42,7 +45,7 @@ export function conversationFiles(messages: readonly UIMessage[]): ConversationF
           uploads.set(id, {
             id,
             url: part.url,
-            name: part.filename || i18n.t("chat.queue.attachmentFallback"),
+            name: part.filename || t("chat.queue.attachmentFallback"),
             mediaType: part.mediaType,
           });
         }

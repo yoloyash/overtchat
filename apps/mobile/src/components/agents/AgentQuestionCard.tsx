@@ -39,7 +39,7 @@ export function AgentQuestionCard({
 }) {
   const { t } = useTranslation();
   const { colors, fonts } = useTheme();
-  const fields = agentQuestionFields(request);
+  const fields = agentQuestionFields(request, t);
   const [values, setValues] = useState(() => initialQuestionValues(fields));
   const [index, setIndex] = useState(0);
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
@@ -140,7 +140,7 @@ export function AgentQuestionCard({
       </Text>
       {field && (
         <View key={field.id} style={{ gap: 8 }}>
-          {questionOptions(field).length > 0 && (
+          {questionOptions(field, t).length > 0 && (
             <View
               accessibilityRole={
                 field.type === "multiselect" ? undefined : "radiogroup"
@@ -150,7 +150,7 @@ export function AgentQuestionCard({
               })}
               style={{ gap: 4 }}
             >
-              {questionOptions(field).map((option) => {
+              {questionOptions(field, t).map((option) => {
                 const selected =
                   field.type === "boolean"
                     ? value === (option.value === "true")

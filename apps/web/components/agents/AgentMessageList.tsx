@@ -21,6 +21,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { stripMarkdown } from "@/lib/chat/message";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -169,6 +170,7 @@ export function AgentMessageList({
   onImplementPlan: (plan: string) => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({
       initial: "instant",
@@ -185,8 +187,8 @@ export function AgentMessageList({
   }, [messages, history?.loading, scrollRef]);
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
   const projectedTranscript = useMemo(
-    () => projectAgentTranscript(messages),
-    [messages],
+    () => projectAgentTranscript(messages, t, locale),
+    [messages, t, locale],
   );
   const unsettled = streaming || Boolean(activity || error || question);
   const transcript = useMemo(
@@ -385,7 +387,7 @@ export function AgentMessageList({
                 )
               )}
               {question && <div className="mt-4">{question}</div>}
-              {error && <AgentErrorNotice error={presentAgentError(error)} />}
+              {error && <AgentErrorNotice error={presentAgentError(error, t)} />}
             </div>
           )}
         </div>
@@ -439,6 +441,7 @@ function AgentTranscriptRow({
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
+  const { t } = useTranslation();
   const actionBar = responseActions && (
     <div className="mt-2">
       <MessageActions show alwaysVisible>
@@ -482,7 +485,7 @@ function AgentTranscriptRow({
           className="flex min-h-8 cursor-pointer items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums motion-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-testid="agent-work-summary"
         >
-          {agentWorkLabel(item.durationMs)}
+          {agentWorkLabel(item.durationMs, t)}
           <ChevronRight className={cn("size-3.5 motion-transform", item.expanded && "rotate-90")} />
         </button>
       </div>

@@ -8,7 +8,7 @@ import {
   API_FORMATS,
   findProvider,
   isProviderId,
-  PROVIDERS,
+  providerDisplayLabel,
 } from "@overtchat/shared/provider-catalog";
 import { AdminGate } from "@/components/settings/AdminGate";
 import {
@@ -171,16 +171,19 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
               : [
                   {
                     value: draft.providerId,
-                    label: providerLabel({
-                      providerId: draft.providerId,
-                      displayProvider: model?.displayProvider,
-                    }),
+                    label: providerLabel(
+                      {
+                        providerId: draft.providerId,
+                        displayProvider: model?.displayProvider,
+                      },
+                      t,
+                    ),
                     leading: <SettingsModelIcon provider={draft.providerId} />,
                   },
                 ]),
             ...modelProviders(draft.modelType).map((id) => ({
               value: id as string,
-              label: PROVIDERS[id].label,
+              label: providerDisplayLabel(id, t),
               leading: <SettingsModelIcon provider={id} />,
             })),
           ]}

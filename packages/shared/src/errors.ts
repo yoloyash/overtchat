@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { i18n } from "./i18n/i18n";
 
 /** Public, transport-neutral error information shared by web and native clients. */
@@ -41,6 +42,7 @@ export function isSpeechErrorCode(code: unknown): code is SpeechErrorCode {
 
 export function speechErrorMessage(
   service: SpeechService,
+  t: TFunction,
   code?: string,
 ): string {
   const keys =
@@ -67,28 +69,28 @@ export function speechErrorMessage(
         } as const);
   switch (code) {
     case "speech_disabled":
-      return i18n.t(keys.speech_disabled);
+      return t(keys.speech_disabled);
     case "speech_not_configured":
-      return i18n.t(keys.speech_not_configured);
+      return t(keys.speech_not_configured);
     case "speech_unreachable":
-      return i18n.t(keys.speech_unreachable);
+      return t(keys.speech_unreachable);
     case "speech_timeout":
-      return i18n.t(keys.speech_timeout);
+      return t(keys.speech_timeout);
     case "speech_provider_auth":
-      return i18n.t(keys.speech_provider_auth);
+      return t(keys.speech_provider_auth);
     case "speech_rate_limited":
-      return i18n.t(keys.speech_rate_limited);
+      return t(keys.speech_rate_limited);
     case "speech_invalid_response":
-      return i18n.t(keys.speech_invalid_response);
+      return t(keys.speech_invalid_response);
     default:
-      return i18n.t(keys.fallback);
+      return t(keys.fallback);
   }
 }
 
 /** Only normalized API errors carry a message intended for display. */
 export function getErrorMessage(
   error: unknown,
-  fallback = i18n.t("common.errors.generic"),
+  fallback: string,
 ): string {
   return error instanceof ApiError ? error.message : fallback;
 }
@@ -117,13 +119,14 @@ export function apiError(
       : undefined;
   let message: string;
   if (service && isSpeechErrorCode(code))
-    message = speechErrorMessage(service, code);
+    message = speechErrorMessage(service, i18n.t, code);
   else if (status === 401) message = i18n.t("common.errors.signInRequired");
   else if (status === 403) message = i18n.t("common.errors.permissionDenied");
   else if (status === 429) message = i18n.t("common.errors.tooManyRequests");
   else if (service && status >= 500)
     message = speechErrorMessage(
       service,
+      i18n.t,
       status === 504 ? "speech_timeout" : undefined,
     );
   // OvertChat's API error field is public display copy. Do not unwrap nested

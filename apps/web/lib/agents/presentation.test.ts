@@ -1,4 +1,5 @@
 import { AGENT_PROVIDERS } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import { describe, expect, it } from "vitest";
 import {
   foldAgentTranscript,
@@ -62,7 +63,7 @@ function result(
 }
 
 function projectedTools(messages: unknown[]) {
-  const activity = projectAgentTranscript(messages).find(
+  const activity = projectAgentTranscript(messages, i18n.t, "en-US").find(
     (item) => item.type === "activity",
   );
   if (!activity || activity.type !== "activity") {
@@ -91,7 +92,7 @@ describe("projectAgentTranscript", () => {
           display: true,
           timestamp: 4,
         },
-      ]),
+      ], i18n.t, "en-US"),
     ).toEqual([
       {
         type: "notification",
@@ -115,7 +116,7 @@ describe("projectAgentTranscript", () => {
       "</system-notice>",
     ].join("\n");
 
-    expect(presentOmpSystemNotice(notice)).toEqual({
+    expect(presentOmpSystemNotice(notice, i18n.t)).toEqual({
       level: "error",
       message: "Background job DocsSmokeTwo failed",
     });
@@ -147,7 +148,7 @@ describe("projectAgentTranscript", () => {
         [{ type: "text", text: "Removed the old image." }],
         4,
       ),
-    ]);
+    ], i18n.t, "en-US");
 
     expect(projected.map((item) => item.type)).toEqual([
       "message",
@@ -193,7 +194,7 @@ describe("projectAgentTranscript", () => {
       ),
       result("first", "read", "a"),
       result("second", "read", "b"),
-    ]);
+    ], i18n.t, "en-US");
 
     expect(projected.map((item) => item.type)).toEqual([
       "activity",
@@ -222,7 +223,7 @@ describe("projectAgentTranscript", () => {
       ),
       assistant([call("second", "bash", { command: "two" })], 3),
       result("second", "bash", "two"),
-    ]);
+    ], i18n.t, "en-US");
 
     expect(
       projected.map((item) =>
@@ -257,7 +258,7 @@ describe("projectAgentTranscript", () => {
         content: "I'm checking the release image.\n\nThe image is ready.",
         durationMs: 246_355,
       },
-    ]);
+    ], i18n.t, "en-US");
 
     expect(projected).toEqual([
       expect.objectContaining({
@@ -300,7 +301,7 @@ describe("projectAgentTranscript", () => {
         1,
         { id: "turn-1:assistant" },
       ),
-    ]);
+    ], i18n.t, "en-US");
     const textItems = projected.filter(
       (item) => item.type === "assistant_text",
     );
@@ -361,7 +362,7 @@ describe("projectAgentTranscript", () => {
       output: "clean",
       direct: true,
     });
-    expect(formatAgentToolDetail(tool)).toBe("$ git status\n\nclean");
+    expect(formatAgentToolDetail(tool, i18n.t)).toBe("$ git status\n\nclean");
   });
 
   it("retains hidden-message boundaries and assistant errors correctly", () => {
@@ -371,7 +372,7 @@ describe("projectAgentTranscript", () => {
       }),
       result("call", "bash", ""),
       { role: "custom", display: false, content: "internal", timestamp: 2 },
-    ]);
+    ], i18n.t, "en-US");
 
     expect(projected.map((item) => item.type)).toEqual([
       "activity",
@@ -418,7 +419,7 @@ describe("projectAgentTranscript", () => {
         ],
         1,
       ),
-    ]);
+    ], i18n.t, "en-US");
 
     expect(projected.map((item) => item.type)).toEqual([
       "activity",
@@ -477,7 +478,7 @@ describe("projectAgentTranscript", () => {
       ),
     ];
 
-    expect(projectAgentTranscript(messages)).toEqual(
+    expect(projectAgentTranscript(messages, i18n.t, "en-US")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "task_list",
@@ -516,15 +517,15 @@ describe("structured tool task lists", () => {
     });
     const messages = [assistant([call("todo-1", "todo", {})], 1),
       assistant([{ type: "text", text: "Working" }], 2), nativeResult];
-    expect(projectAgentTranscript(messages).map((row) => row.type)).toEqual(["assistant_text", "task_list"]);
-    expect(projectAgentTranscript([nativeResult]).map((row) => row.type)).toEqual(["task_list"]);
+    expect(projectAgentTranscript(messages, i18n.t, "en-US").map((row) => row.type)).toEqual(["assistant_text", "task_list"]);
+    expect(projectAgentTranscript([nativeResult], i18n.t, "en-US").map((row) => row.type)).toEqual(["task_list"]);
     expect(latestAgentTaskList(messages)?.tasks).toEqual(tasks.items);
     // A failed result must remain inspectable and must not clear the badge.
     const cleared = result("todo-2", "todo", "Cleared", { content: [{ ...tasks, id: "tasks:todo-2", items: [] }] });
     expect(latestAgentTaskList([...messages, { ...cleared, isError: true }])?.tasks).toEqual(tasks.items);
-    expect(projectAgentTranscript([{ ...cleared, isError: true }])[0]?.type).toBe("activity");
+    expect(projectAgentTranscript([{ ...cleared, isError: true }], i18n.t, "en-US")[0]?.type).toBe("activity");
     expect(latestAgentTaskList([...messages, cleared])?.tasks).toEqual([]);
-    expect(projectAgentTranscript([cleared])).toEqual([]);
+    expect(projectAgentTranscript([cleared], i18n.t, "en-US")).toEqual([]);
   });
 });
 
@@ -537,7 +538,7 @@ describe("agent activity sequences", () => {
       assistant([{ type: "text", text: "Visible update" }], 3),
       assistant([call("test", "bash", { command: "npm test" })], 4),
       result("test", "bash", "passed"),
-    ]);
+    ], i18n.t, "en-US");
 
     expect(
       projected.map((item, index) =>
@@ -553,7 +554,7 @@ describe("agent error presentation", () => {
       "400 This model's maximum context length is 131072 tokens. However, you requested 32768 output tokens and your prompt contains 98305 input tokens.\n" +
       "raw-http-request=/home/user/.omp/logs/request.json";
 
-    expect(presentAgentError(raw)).toEqual({
+    expect(presentAgentError(raw, i18n.t)).toEqual({
       summary:
         "Context limit exceeded. Compact the conversation or reduce the maximum output tokens.",
       details: raw,
@@ -562,7 +563,7 @@ describe("agent error presentation", () => {
 
   it("bounds unknown errors to their first line", () => {
     const firstLine = `Provider failure ${"x".repeat(300)}`;
-    const error = presentAgentError(`${firstLine}\ninternal detail`);
+    const error = presentAgentError(`${firstLine}\ninternal detail`, i18n.t);
 
     expect(error.summary).toHaveLength(240);
     expect(error.summary).toMatch(/\.\.\.$/u);
@@ -596,7 +597,7 @@ describe("agent activity presentation", () => {
     const read = tool("read", "read_file", { path: "src/app.ts" });
     const edit = tool("edit", "apply_patch", { path: "src/app.ts" });
 
-    expect(describeAgentTool(shell)).toEqual({
+    expect(describeAgentTool(shell, i18n.t)).toEqual({
       category: "shell",
       label: "Terminal",
       summary: "npm test",
@@ -609,6 +610,8 @@ describe("agent activity presentation", () => {
           { type: "tool", id: "edit", tool: edit },
         ],
         false,
+        i18n.t,
+        "en-US",
       ),
     ).toEqual({
       label: "Edited 1 file, ran 1 command, and read 1 file",
@@ -626,6 +629,8 @@ describe("agent activity presentation", () => {
       describeAgentActivity(
         [{ type: "tool", id: "shell", tool: shell }],
         true,
+        i18n.t,
+        "en-US",
       ),
     ).toEqual({
       label: "Ran 1 command",
@@ -641,6 +646,8 @@ describe("agent activity presentation", () => {
       describeAgentActivity(
         [{ type: "tool", id: "shell", tool: shell }],
         true,
+        i18n.t,
+        "en-US",
       ),
     ).toEqual({
       label: "Ran 1 command",
@@ -666,6 +673,8 @@ describe("agent activity presentation", () => {
           { type: "tool", id: "search", tool: search },
         ],
         true,
+        i18n.t,
+        "en-US",
       ),
     ).toEqual({
       label: "Ran 1 command and searched 1 time",
@@ -682,12 +691,12 @@ describe("agent activity presentation", () => {
       { type: "thinking" as const, id: "after", content: "Now read the log." },
     ];
 
-    expect(describeAgentActivity(entries, true)).toEqual({
+    expect(describeAgentActivity(entries, true, i18n.t, "en-US")).toEqual({
       label: "Ran 1 command",
       secondary: null,
       status: "running",
     });
-    expect(describeAgentActivity(entries, false)).toEqual({
+    expect(describeAgentActivity(entries, false, i18n.t, "en-US")).toEqual({
       label: "Ran 1 command",
       secondary: null,
       status: "completed",
@@ -784,6 +793,8 @@ describe("agent activity presentation", () => {
           tool: entry,
         })),
         false,
+        i18n.t,
+        "en-US",
       ),
     ).toEqual({
       label: "Edited 1 file and read 1 file",
@@ -805,6 +816,8 @@ describe("agent activity presentation", () => {
           { type: "tool", id: "second", tool: second },
         ],
         false,
+        i18n.t,
+        "en-US",
       ),
     ).toEqual({
       label: "Ran 2 commands, 1 failed",
@@ -817,22 +830,22 @@ describe("agent activity presentation", () => {
 describe("rewind presentation", () => {
   it("offers only the provider's native rewind modes", () => {
     expect(
-      agentRewindOptions(AGENT_PROVIDERS.claude.capabilities).map(
+      agentRewindOptions(AGENT_PROVIDERS.claude.capabilities, i18n.t).map(
         (item) => item.mode,
       ),
     ).toEqual(["conversation", "files", "both"]);
     for (const provider of ["pi", "omp", "codex"] as const)
       expect(
-        agentRewindOptions(AGENT_PROVIDERS[provider].capabilities).map(
+        agentRewindOptions(AGENT_PROVIDERS[provider].capabilities, i18n.t).map(
           (item) => item.mode,
         ),
       ).toEqual(["conversation"]);
     expect(
-      agentRewindOptions(AGENT_PROVIDERS.opencode.capabilities).map(
+      agentRewindOptions(AGENT_PROVIDERS.opencode.capabilities, i18n.t).map(
         (item) => item.mode,
       ),
     ).toEqual(["both"]);
-    expect(agentRewindOptions({})).toEqual([]);
+    expect(agentRewindOptions({}, i18n.t)).toEqual([]);
   });
   it("preserves the human draft and restores into an empty composer", () => {
     expect(restoreAgentComposer("existing", "previous")).toBe("existing");
@@ -846,11 +859,11 @@ describe("agentActiveTurnStart", () => {
 
   it("keeps all current-turn text and tools active while preserving earlier responses", () => {
     const messages = [user("previous"), reply("previous-answer"), user("current"), reply("progress")];
-    const start = agentActiveTurnStart(projectAgentTranscript(messages), true);
+    const start = agentActiveTurnStart(projectAgentTranscript(messages, i18n.t, "en-US"), true);
     expect(start).toBe(3);
     const withTool = [...messages, assistant([call("tool", "bash", { command: "ls" })], 2)];
-    expect(agentActiveTurnStart(projectAgentTranscript(withTool), true)).toBe(start);
-    const withAnswer = projectAgentTranscript([...withTool, reply("final-answer")]);
+    expect(agentActiveTurnStart(projectAgentTranscript(withTool, i18n.t, "en-US"), true)).toBe(start);
+    const withAnswer = projectAgentTranscript([...withTool, reply("final-answer")], i18n.t, "en-US");
     expect(agentActiveTurnStart(withAnswer, true)).toBe(start);
     expect(agentActiveTurnStart(withAnswer, false)).toBe(withAnswer.length);
   });
@@ -860,12 +873,12 @@ describe("agentActiveTurnStart", () => {
       user("question"), reply("answer"),
       { role: "turnFooter", messageId: "answer", content: "answer" },
       reply("next-turn"),
-    ]);
+    ], i18n.t, "en-US");
     expect(agentActiveTurnStart(items, true)).toBe(3);
   });
 
   it("treats loaded output without a user boundary as active until the run finishes", () => {
-    const items = projectAgentTranscript([reply("progress"), assistant([call("tool", "bash", {})], 2)]);
+    const items = projectAgentTranscript([reply("progress"), assistant([call("tool", "bash", {})], 2)], i18n.t, "en-US");
     expect(agentActiveTurnStart(items, true)).toBe(0);
     expect(agentActiveTurnStart(items, false)).toBe(items.length);
     expect(agentActiveTurnStart([], true)).toBe(0);
@@ -875,8 +888,8 @@ describe("agentActiveTurnStart", () => {
 it("retains native message keys when older transcript pages are prepended", () => {
   const current = { id: "current", role: "user", content: "Recent" };
   const older = { id: "older", role: "user", content: "Older" };
-  const key = projectAgentTranscript([current])[0]!.key;
-  expect(projectAgentTranscript([older, current])[1]!.key).toBe(key);
+  const key = projectAgentTranscript([current], i18n.t, "en-US")[0]!.key;
+  expect(projectAgentTranscript([older, current], i18n.t, "en-US")[1]!.key).toBe(key);
 });
 
 
@@ -888,7 +901,7 @@ describe("compaction timeline", () => {
       { id: "compact", role: "compactionSummary", status: "completed", trigger: "auto", tokensBefore: 120000, tokensAfter: 12000 },
       { id: "answer", role: "assistant", content: [{ type: "text", text: "Done" }] },
       { id: "imported", role: "compactionSummary", summary: "Private context", tokensBefore: 0 },
-    ]);
+    ], i18n.t, "en-US");
     const folded = foldAgentTranscript(projected, { unsettled: false, expanded: new Set() });
     expect(folded.filter((item) => item.type === "compaction")).toMatchObject([
       { label: "Context automatically compacted", detail: "120,000 → 12,000 tokens", active: false },
@@ -917,16 +930,17 @@ describe("subagent activity presentation", () => {
     expect(
       describeSubagentActivity(
         activity({ status: "running", title: "Survey tests", agentType: "Explore" }),
+        i18n.t,
       ),
     ).toEqual({ label: "Running subagent", summary: "Explore · Survey tests" });
-    expect(describeSubagentActivity(activity({ status: "failed" }))).toEqual({
+    expect(describeSubagentActivity(activity({ status: "failed" }), i18n.t)).toEqual({
       label: "Subagent failed",
       summary: null,
     });
     expect(
-      describeSubagentActivity(activity({ status: "stopped", title: "Survey" })),
+      describeSubagentActivity(activity({ status: "stopped", title: "Survey" }), i18n.t),
     ).toMatchObject({ label: "Subagent stopped", summary: "Survey" });
-    expect(describeSubagentActivity(activity({}))).toMatchObject({
+    expect(describeSubagentActivity(activity({}), i18n.t)).toMatchObject({
       label: "Ran subagent",
     });
   });
@@ -935,10 +949,11 @@ describe("subagent activity presentation", () => {
     expect(
       describeSubagentActivity(
         activity({ action: "spawnAgent", status: "inProgress" }),
+        i18n.t,
       ),
     ).toMatchObject({ label: "Starting subagent" });
     expect(
-      describeSubagentActivity(activity({ action: "wait", status: "completed" })),
+      describeSubagentActivity(activity({ action: "wait", status: "completed" }), i18n.t),
     ).toMatchObject({ label: "Waited for subagents" });
   });
 
@@ -950,6 +965,8 @@ describe("subagent activity presentation", () => {
           { type: "subagent", id: "b", activity: activity({ status: "failed" }) },
         ],
         false,
+        i18n.t,
+        "en-US",
       ),
     ).toMatchObject({ label: "Used 2 subagents", status: "failed" });
   });

@@ -89,7 +89,7 @@ export function AgentsDrawer({
   onNavigate: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [grouping, setGroupingState] = useState<AgentDrawerGrouping>(readGrouping);
   const [collapsed, setCollapsedState] = useState<string[]>(readCollapsed);
   const [showAllDone, setShowAllDone] = useState(false);
@@ -100,13 +100,17 @@ export function AgentsDrawer({
   );
   const entries = useMemo(
     () =>
-      agentDrawerEntries(groups, {
-        grouping,
-        collapsed,
-        showAllDone,
-        activeSessionId,
-      }),
-    [groups, grouping, collapsed, showAllDone, activeSessionId, i18n.language],
+      agentDrawerEntries(
+        groups,
+        {
+          grouping,
+          collapsed,
+          showAllDone,
+          activeSessionId,
+        },
+        t,
+      ),
+    [groups, grouping, collapsed, showAllDone, activeSessionId, t],
   );
   const sections = useMemo(() => agentAttentionSections(groups), [groups]);
   const working = useMemo(

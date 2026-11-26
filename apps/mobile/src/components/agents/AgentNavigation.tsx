@@ -1,9 +1,9 @@
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useTheme } from "@/lib/theme";
 import {
   agentSessionRowMeta,
@@ -95,10 +95,10 @@ export function AgentSearch({
 /** What a row announces: its state, title, agent and folder. */
 export function agentSessionRowLabel(
   entry: AgentAttentionItem,
-  t: TFunction = i18n.t.bind(i18n),
+  t: TFunction,
 ): string {
   const { item, group, state } = entry;
-  const stateLabel = agentSessionStateLabel(state);
+  const stateLabel = agentSessionStateLabel(state, t);
   const params = {
     title: agentSessionRowTitle(entry),
     provider: agentProviderMetadata(item.provider).label,
@@ -140,6 +140,7 @@ export function AgentSessionRow({
   onLongPress?: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const theme = useTheme();
   const { colors, fonts, radii } = theme;
   const { item, state } = entry;
@@ -187,7 +188,7 @@ export function AgentSessionRow({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {time ?? agentSessionRowTime(entry, now)}
+            {time ?? agentSessionRowTime(entry, now, t, locale)}
           </Text>
         </View>
         <View style={styles.metaLine}>

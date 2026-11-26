@@ -9,6 +9,7 @@ import {
   scheduledTaskIsCompleted,
   scheduledTaskOfToolPart,
 } from "../src/scheduled-tasks.ts";
+import { i18n } from "../src/i18n/index.ts";
 
 test("a schedule keeps only the fields its frequency uses", () => {
   assert.deepEqual(
@@ -60,7 +61,7 @@ test("anything that is not a schedule is refused", () => {
 });
 
 test("a schedule reads in plain words", () => {
-  const words = (schedule) => describeTaskSchedule(schedule, "en-US");
+  const words = (schedule) => describeTaskSchedule(schedule, i18n.t, "en-US");
   assert.equal(words({ frequency: "hourly", minute: 0 }), "Every hour");
   assert.equal(words({ frequency: "hourly", minute: 5 }), "Every hour at :05");
   assert.equal(words({ frequency: "daily", hour: 9, minute: 0 }), "Every day at 9:00 AM");
@@ -132,25 +133,26 @@ test("a scheduled tasks step says what it did", () => {
 
   const created = part("create_scheduled_task", { output: { task } });
   assert.equal(scheduledTaskOfToolPart(created).name, "Morning news");
-  assert.equal(scheduledTaskActivityLabel(created, false), "Scheduled “Morning news”");
-  assert.equal(scheduledTaskActivityLabel(created, true), "Scheduling a task…");
+  assert.equal(scheduledTaskActivityLabel(created, false, i18n.t), "Scheduled “Morning news”");
+  assert.equal(scheduledTaskActivityLabel(created, true, i18n.t), "Scheduling a task…");
   assert.equal(
-    scheduledTaskActivityLabel(part("update_scheduled_task", { output: { task } }), false),
+    scheduledTaskActivityLabel(part("update_scheduled_task", { output: { task } }), false, i18n.t),
     "Updated “Morning news”",
   );
   assert.equal(
     scheduledTaskActivityLabel(
       part("delete_scheduled_task", { output: { task, deleted: true } }),
       false,
+      i18n.t,
     ),
     "Deleted “Morning news”",
   );
   assert.equal(
-    scheduledTaskActivityLabel(part("list_scheduled_tasks", { output: { tasks: [task] } }), false),
+    scheduledTaskActivityLabel(part("list_scheduled_tasks", { output: { tasks: [task] } }), false, i18n.t),
     "Checked 1 scheduled task",
   );
   assert.equal(
-    scheduledTaskActivityLabel(part("list_scheduled_tasks", { output: { tasks: [] } }), false),
+    scheduledTaskActivityLabel(part("list_scheduled_tasks", { output: { tasks: [] } }), false, i18n.t),
     "Checked 0 scheduled tasks",
   );
 
@@ -171,5 +173,5 @@ test("a scheduled tasks step says what it did", () => {
 
   const failed = part("create_scheduled_task", { state: "output-error", errorText: "No." });
   assert.equal(scheduledTaskOfToolPart(failed), null);
-  assert.equal(scheduledTaskActivityLabel(failed, false), "Could not schedule the task");
+  assert.equal(scheduledTaskActivityLabel(failed, false, i18n.t), "Could not schedule the task");
 });

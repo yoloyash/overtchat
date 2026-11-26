@@ -319,7 +319,7 @@ export function AgentComposer({
       />
       {dictation.error && (
         <ErrorNotice
-          message={dictationErrorMessage(dictation.error, isAdmin)}
+          message={dictationErrorMessage(dictation.error, isAdmin, t)}
           onDismiss={dictation.clearError}
           action={
             dictation.error.kind === "empty" || dictation.error.kind === "other" ||

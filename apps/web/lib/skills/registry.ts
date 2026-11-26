@@ -9,6 +9,7 @@ import {
   OPENUI_PRESENT_TOOL_NAME,
   type ChatSkillId,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   CALENDAR_TOOL_PROMPT,
   calendarAccess,
@@ -116,7 +117,7 @@ export async function resolveChatSkills({
     const offered = gmailOfferedToolNames(options);
     skills.push({
       id: "gmail",
-      name: chatSkillName("gmail"),
+      name: chatSkillName("gmail", i18n.t),
       description:
         "Search, read and organize the user's own Gmail, and write emails for them to send. Load it when a request needs their mail.",
       content:
@@ -145,7 +146,7 @@ export async function resolveChatSkills({
       calendar.status === "available" ? createCalendarTools(userId) : {};
     skills.push({
       id: "calendar",
-      name: chatSkillName("calendar"),
+      name: chatSkillName("calendar", i18n.t),
       description:
         "Read the user's own Google Calendar and add, change or delete events. Load it when a request needs their schedule.",
       content:
@@ -163,7 +164,7 @@ export async function resolveChatSkills({
   if (interactiveUi.offered) {
     skills.push({
       id: "interactive_ui",
-      name: chatSkillName("interactive_ui"),
+      name: chatSkillName("interactive_ui", i18n.t),
       description: `Present an answer as an interactive interface with charts, data tables, forms, dashboards, KPI cards, carousels, tabs or step-by-step guides, rendered by ${OPENUI_PRESENT_TOOL_NAME}. Load it when the user asks for an interactive interface or when such components clearly help.`,
       content: OPENUI_TOOL_PROMPT,
       tools: {},
@@ -180,7 +181,7 @@ export async function resolveChatSkills({
     });
     skills.push({
       id: "scheduled_tasks",
-      name: chatSkillName("scheduled_tasks"),
+      name: chatSkillName("scheduled_tasks", i18n.t),
       description: SCHEDULED_TASKS_SKILL_DESCRIPTION,
       content: scheduledTasksPrompt(
         scheduledTasks.timeZone,

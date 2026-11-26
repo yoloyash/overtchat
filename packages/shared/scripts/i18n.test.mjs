@@ -123,12 +123,12 @@ test("the instance starts in English and switches synchronously", () => {
   assert.equal(i18n.t("agents.refresh.synced", { count: 1 }), "1 agent workspace synced.");
   assert.equal(i18n.t("agents.refresh.synced", { count: 3 }), "3 agent workspaces synced.");
   const now = new Date(2026, 9, 23, 15, 0).getTime();
-  assert.equal(formatUpdatedAt(now - 5 * 60_000, now), "5m ago");
+  assert.equal(formatUpdatedAt(now - 5 * 60_000, i18n.t, "en-US", now), "5m ago");
   try {
     setLocale("zh-CN");
     assert.equal(i18n.language, "zh-CN");
     assert.equal(i18n.t("agents.refresh.synced", { count: 3 }), "已同步 3 个智能体工作区。");
-    assert.equal(formatUpdatedAt(now - 5 * 60_000, now), "5 分钟前");
+    assert.equal(formatUpdatedAt(now - 5 * 60_000, i18n.t, "zh-CN", now), "5 分钟前");
   } finally {
     setLocale("en");
   }

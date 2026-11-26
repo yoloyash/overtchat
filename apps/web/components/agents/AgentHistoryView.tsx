@@ -10,6 +10,7 @@ import {
   type AgentProviderId,
 } from "@overtchat/agent-bridge";
 import { formatUpdatedAt } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import {
   AgentProviderLogo,
@@ -78,6 +79,7 @@ const SORT_KEYS: Record<AgentSessionSort, "sortActivity" | "sortCreated"> = {
  */
 export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const navigate = useNavigate();
   const { data: connections = [], isPending } = useAgentConnections();
   const groups = useMemo(() => groupAgentWorkspaces(connections), [connections]);
@@ -361,7 +363,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                       <HistoryRow
                         key={entry.item.session.id}
                         entry={entry}
-                        time={formatUpdatedAt(updatedAt, now)}
+                        time={formatUpdatedAt(updatedAt, t, locale, now)}
                       />
                     ))}
                   </ul>

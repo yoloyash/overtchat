@@ -1,4 +1,4 @@
-import { i18n } from "@overtchat/shared/i18n";
+import type { TFunction } from "i18next";
 import {
   agentProviderMetadata,
   type AgentSessionListItem,
@@ -54,10 +54,15 @@ export function agentSessionRowMeta(
 }
 
 /** How long a session has been working, or how long ago it last changed. */
-export function agentSessionRowTime(entry: AgentAttentionItem, now: number): string {
+export function agentSessionRowTime(
+  entry: AgentAttentionItem,
+  now: number,
+  t: TFunction,
+  locale: string,
+): string {
   return entry.state === "working"
-    ? formatAgentWorkingTime(now - entry.since)
-    : formatAgentSessionAge(entry.since, now);
+    ? formatAgentWorkingTime(now - entry.since, t)
+    : formatAgentSessionAge(entry.since, now, t, locale);
 }
 
 export function agentSessionRowTitle(entry: AgentAttentionItem): string {
@@ -106,15 +111,17 @@ export type AgentDrawerOptions = {
 export function agentDrawerEntries(
   groups: readonly WorkspaceGroup[],
   options: AgentDrawerOptions,
+  t: TFunction,
 ): AgentDrawerEntry[] {
   return options.grouping === "workspace"
-    ? workspaceEntries(groups, options)
-    : statusEntries(groups, options);
+    ? workspaceEntries(groups, options, t)
+    : statusEntries(groups, options, t);
 }
 
 function statusEntries(
   groups: readonly WorkspaceGroup[],
   options: AgentDrawerOptions,
+  t: TFunction,
 ): AgentDrawerEntry[] {
   const sections = agentAttentionSections(groups);
   const entries: AgentDrawerEntry[] = [];
@@ -125,7 +132,7 @@ function statusEntries(
     entries.push({
       kind: "group",
       key,
-      label: agentAttentionSectionLabel(key),
+      label: agentAttentionSectionLabel(key, t),
       state,
       collapsed,
     });
@@ -157,12 +164,13 @@ function statusEntries(
   }
   return entries.length
     ? entries
-    : [{ kind: "empty", key: "empty", text: i18n.t("sidebar.agents.noSessionsYet") }];
+    : [{ kind: "empty", key: "empty", text: t("sidebar.agents.noSessionsYet") }];
 }
 
 function workspaceEntries(
   groups: readonly WorkspaceGroup[],
   options: AgentDrawerOptions,
+  t: TFunction,
 ): AgentDrawerEntry[] {
   const entries: AgentDrawerEntry[] = [];
   for (const group of groups) {
@@ -185,7 +193,7 @@ function workspaceEntries(
       entries.push({
         kind: "empty",
         key: `${group.key}:empty`,
-        text: i18n.t("sidebar.agents.noSessionsYet"),
+        text: t("sidebar.agents.noSessionsYet"),
       });
       continue;
     }
@@ -200,5 +208,5 @@ function workspaceEntries(
   }
   return entries.length
     ? entries
-    : [{ kind: "empty", key: "empty", text: i18n.t("agents.mobile.drawer.noWorkspacesYet") }];
+    : [{ kind: "empty", key: "empty", text: t("agents.mobile.drawer.noWorkspacesYet") }];
 }

@@ -1,4 +1,5 @@
 import { agentForkMessageId } from "@overtchat/agent-bridge";
+import { i18n } from "./i18n/i18n";
 import {
   describeAgentTool,
   projectAgentTranscript,
@@ -55,7 +56,7 @@ export function buildAgentForkContext(
   });
   const lines: string[] = [];
   const seenActivities = new Set<string>();
-  for (const item of projectAgentTranscript(selected)) {
+  for (const item of projectAgentTranscript(selected, i18n.t, "en-US")) {
     if (item.type === "message") {
       const row = record(item.message);
       const text = textContent(row.content);
@@ -98,7 +99,7 @@ export function buildAgentForkContext(
             );
             if (tool.output.trim()) lines.push(tool.output.trim());
           } else {
-            const display = describeAgentTool(tool);
+            const display = describeAgentTool(tool, i18n.t);
             lines.push(
               activityLine(
                 display.category === "shell"

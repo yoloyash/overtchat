@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type { AgentTurnChanges } from "@overtchat/agent-bridge";
 
 export type AgentTurnChangesFileNode = {
@@ -139,10 +139,14 @@ export function agentTurnChangesDirectories(
   );
 }
 
-export function agentTurnChangesLabel(files: number): string {
-  return i18n.t("agents.messages.changedFilesCount", {
+export function agentTurnChangesLabel(
+  files: number,
+  t: TFunction,
+  locale: string,
+): string {
+  return t("agents.messages.changedFilesCount", {
     count: files,
-    formattedCount: files.toLocaleString(),
+    formattedCount: files.toLocaleString(locale),
   });
 }
 

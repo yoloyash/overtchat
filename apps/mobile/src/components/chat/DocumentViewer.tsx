@@ -56,7 +56,7 @@ export function DocumentViewer({
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const view = useMemo(() => documentView(messages, toolCallId), [messages, toolCallId]);
+  const view = useMemo(() => documentView(messages, toolCallId, t), [messages, toolCallId, t]);
   const [showSource, setShowSource] = useState(false);
   const [saving, setSaving] = useState(false);
   const missing = !view;

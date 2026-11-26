@@ -50,7 +50,7 @@ export function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="min-w-0 truncate font-medium text-foreground">
-          {scheduledTaskActivityLabel(part, !settled)}
+          {scheduledTaskActivityLabel(part, !settled, t)}
         </span>
         {output && (
           <Link

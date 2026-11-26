@@ -236,7 +236,7 @@ export function MessageList({
                   fontSize: 12,
                 }}
               >
-                {contextStatusLabel(visibleContextStatus)}
+                {contextStatusLabel(visibleContextStatus, t)}
               </Text>
             </View>
           );

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import type {
   AgentConnectionListItem,
   AgentSessionListItem,
@@ -100,7 +101,7 @@ describe("agent session state", () => {
     [60 * 60_000, "1h"],
     [65 * 60_000, "1h 5m"],
   ])("formats %d ms of work as %s", (elapsed, label) => {
-    expect(formatAgentWorkingTime(elapsed)).toBe(label);
+    expect(formatAgentWorkingTime(elapsed, i18n.t)).toBe(label);
   });
 
   it.each([
@@ -112,15 +113,15 @@ describe("agent session state", () => {
     [15 * 86_400_000, "2w"],
   ])("formats an age of %d ms as %s", (elapsed, label) => {
     const now = Date.UTC(2026, 9, 27, 12);
-    expect(formatAgentSessionAge(now - elapsed, now)).toBe(label);
+    expect(formatAgentSessionAge(now - elapsed, now, i18n.t, "en-US")).toBe(label);
   });
 
   it("formats older ages as a date", () => {
     const now = new Date(2026, 9, 27, 12).getTime();
-    const age = formatAgentSessionAge(new Date(2026, 7, 3, 12).getTime(), now);
+    const age = formatAgentSessionAge(new Date(2026, 7, 3, 12).getTime(), now, i18n.t, "en-US");
     expect(age).toMatch(/Aug|8/);
     expect(age).not.toMatch(/2026/);
-    expect(formatAgentSessionAge(new Date(2025, 7, 3).getTime(), now)).toMatch(/2025/);
+    expect(formatAgentSessionAge(new Date(2025, 7, 3).getTime(), now, i18n.t, "en-US")).toMatch(/2025/);
   });
 });
 

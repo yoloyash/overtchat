@@ -31,7 +31,7 @@ const request: AgentQuestionRequest = {
 afterEach(() => vi.unstubAllGlobals());
 
 it("separates a long provider warning from the command without duplicating either", () => {
-  const result = approvalDetails(request);
+  const result = approvalDetails(request, i18n.t);
   expect(result.title).toBe("Run command?");
   expect(result.message).toBe(warning);
   expect(result.sections).toEqual([
@@ -59,7 +59,7 @@ it("preserves edit previews, unknown tool arguments, and other providers' choice
         newText: "new",
       },
     },
-  });
+  }, i18n.t);
   expect(edit.title).toBe("Allow file changes?");
   expect(edit.message).toBe("");
   expect(edit.sections).toEqual([
@@ -74,7 +74,7 @@ it("preserves edit previews, unknown tool arguments, and other providers' choice
     approveValue: "yes",
     alwaysValue: "persist",
     denyValue: "no",
-  });
+  }, i18n.t);
   expect(other.title).toBe("Grant network access");
   expect(other.sections).toContainEqual({
     label: "Network · Enabled",

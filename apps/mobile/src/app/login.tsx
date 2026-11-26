@@ -126,7 +126,7 @@ export default function LoginScreen() {
       const result = await signInWithProvider(serverUrl, providerSignInDevice);
       if (result.ok) await session.refetch();
       else if (!signInCancelled(result.error)) {
-        setError(ssoErrorMessage(result.error, sso.name));
+        setError(ssoErrorMessage(result.error, sso.name, t));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.login.failed"));

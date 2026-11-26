@@ -327,6 +327,10 @@ vi.mock("expo-secure-store", () => ({
   getItem: (key: string) => mocks.storage.get(key) ?? null,
   setItem: (key: string, value: string) => mocks.storage.set(key, value),
 }));
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "en-US" }],
+  useLocales: () => [{ languageTag: "en-US" }],
+}));
 vi.mock("expo-router", async () => ({
   useFocusEffect: (await import("react")).useEffect,
   useNavigation: () => mocks.navigation,

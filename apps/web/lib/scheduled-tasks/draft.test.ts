@@ -8,6 +8,7 @@ import {
   type ScheduledTask,
   type TaskSchedule,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 
 const NOW = new Date(2026, 10, 30, 22, 0);
 const task = (schedule: TaskSchedule): ScheduledTask => ({
@@ -54,7 +55,7 @@ describe("a task draft", () => {
     for (const schedule of schedules) {
       const draft = taskDraftOf(task(schedule), NOW);
       expect(scheduleOfDraft(draft)).toEqual(schedule);
-      expect(taskDraftProblem(draft)).toBeNull();
+      expect(taskDraftProblem(draft, i18n.t)).toBeNull();
       expect(draft).toMatchObject({
         name: "Morning news",
         modelConfigId: "one",
@@ -72,22 +73,22 @@ describe("a task draft", () => {
       taskDraftOf({ ...task({ frequency: "hourly", minute: 0 }), projectId: "p" }, NOW)
         .projectId,
     ).toBe("p");
-    expect(taskDraftProblem(draft)).toBe("Choose a model.");
+    expect(taskDraftProblem(draft, i18n.t)).toBe("Choose a model.");
   });
 
   it("names the first thing that stops a save", () => {
     const draft = { ...emptyTaskDraft("one", "UTC", NOW), name: "Task", prompt: "Do it." };
-    expect(taskDraftProblem(draft)).toBeNull();
-    expect(taskDraftProblem({ ...draft, name: "  " })).toBe("Give the task a name.");
-    expect(taskDraftProblem({ ...draft, prompt: "" })).toBe("Say what the task should do.");
-    expect(taskDraftProblem({ ...draft, time: "" })).toBe("Choose a time.");
-    expect(taskDraftProblem({ ...draft, frequency: "weekly", daysOfWeek: [] })).toBe(
+    expect(taskDraftProblem(draft, i18n.t)).toBeNull();
+    expect(taskDraftProblem({ ...draft, name: "  " }, i18n.t)).toBe("Give the task a name.");
+    expect(taskDraftProblem({ ...draft, prompt: "" }, i18n.t)).toBe("Say what the task should do.");
+    expect(taskDraftProblem({ ...draft, time: "" }, i18n.t)).toBe("Choose a time.");
+    expect(taskDraftProblem({ ...draft, frequency: "weekly", daysOfWeek: [] }, i18n.t)).toBe(
       "Choose at least one day.",
     );
-    expect(taskDraftProblem({ ...draft, frequency: "once", date: "" })).toBe(
+    expect(taskDraftProblem({ ...draft, frequency: "once", date: "" }, i18n.t)).toBe(
       "Choose a date and a time.",
     );
     // An hourly task has no time of day to be missing.
-    expect(taskDraftProblem({ ...draft, frequency: "hourly", time: "" })).toBeNull();
+    expect(taskDraftProblem({ ...draft, frequency: "hourly", time: "" }, i18n.t)).toBeNull();
   });
 });

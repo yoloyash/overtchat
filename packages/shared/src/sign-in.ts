@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 
 /** Sign-in contract shared by the server and the web, desktop, and mobile clients. */
 
@@ -125,24 +125,28 @@ export function signInCancelled(code: string): boolean {
  * Why signing in with the identity provider failed, from the `error` code the
  * server puts on the redirect back to the login screen or app.
  */
-export function ssoErrorMessage(code: string, providerName: string): string {
+export function ssoErrorMessage(
+  code: string,
+  providerName: string,
+  t: TFunction,
+): string {
   switch (code) {
     case "signup_disabled":
-      return i18n.t("auth.sso.errors.signupDisabled", { provider: providerName });
+      return t("auth.sso.errors.signupDisabled", { provider: providerName });
     case "account_not_linked":
     case "unable_to_link_account":
-      return i18n.t("auth.sso.errors.accountNotLinked", { provider: providerName });
+      return t("auth.sso.errors.accountNotLinked", { provider: providerName });
     case "email_not_found":
     case "email_is_missing":
-      return i18n.t("auth.sso.errors.emailMissing", { provider: providerName });
+      return t("auth.sso.errors.emailMissing", { provider: providerName });
     case "banned":
     case "BANNED_USER":
-      return i18n.t("auth.sso.errors.banned");
+      return t("auth.sso.errors.banned");
     case "access_denied":
-      return i18n.t("auth.sso.errors.cancelled");
+      return t("auth.sso.errors.cancelled");
     case "expired":
-      return i18n.t("auth.sso.errors.expired");
+      return t("auth.sso.errors.expired");
     default:
-      return i18n.t("auth.sso.errors.generic", { provider: providerName });
+      return t("auth.sso.errors.generic", { provider: providerName });
   }
 }

@@ -8,6 +8,7 @@ import {
   type CalendarEventRow,
   type CalendarToolPart,
 } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
  */
 export function CalendarStep({ part }: { part: CalendarToolPart }) {
   const { t } = useTranslation();
-  const display = describeCalendarToolPart(part);
+  const display = describeCalendarToolPart(part, t);
   const running = display.status === "running";
 
   return (
@@ -54,10 +55,11 @@ export function CalendarStep({ part }: { part: CalendarToolPart }) {
 /** When, then what and where, then how many guests: the columns of an agenda. */
 function EventRow({ row }: { row: CalendarEventRow }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const content = (
     <>
       <span className="w-[42%] max-w-60 shrink-0 truncate tabular-nums text-muted-foreground">
-        {formatCalendarEventTime(row)}
+        {formatCalendarEventTime(row, locale)}
       </span>
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
         <span

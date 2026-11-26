@@ -2,11 +2,12 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { useActivityProfile } from "@/lib/queries/activity";
-import { PROVIDERS } from "@/lib/providers/catalog";
+import { isProviderId, providerDisplayLabel } from "@/lib/providers/catalog";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { ActivityMetric } from "./ActivityMetric";
 import { formatCompact, formatDate } from "./activity-format";
@@ -146,7 +147,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
                         {model.model}
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {providerLabel(model.providerId)}
+                        {providerLabel(model.providerId, t)}
                       </span>
                     </div>
                     <div
@@ -177,9 +178,10 @@ export function ActivityProfile({ userId }: { userId: string }) {
   );
 }
 
-function providerLabel(providerId: string): string {
-  return Object.values(PROVIDERS).find((provider) => provider.id === providerId)
-    ?.label ?? providerId.replaceAll("-", " ");
+function providerLabel(providerId: string, t: TFunction): string {
+  return isProviderId(providerId)
+    ? providerDisplayLabel(providerId, t)
+    : providerId.replaceAll("-", " ");
 }
 
 function ProfileSkeleton() {

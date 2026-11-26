@@ -55,6 +55,7 @@ import {
 } from "@overtchat/shared";
 import { agentThoughtPreview } from "@overtchat/shared/agent-presentation";
 import type { DynamicToolUIPart } from "ai";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import { useChatPreferences } from "@/lib/chatPreferences";
@@ -566,7 +567,7 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          {codeRunStatus(part)}
+          {codeRunStatus(part, t)}
         </Text>
       </View>
       {code ? <CodeBlock code={code} language="python" /> : null}
@@ -738,7 +739,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
   const [showAll, setShowAll] = useLayoutState(false);
   const query = part.input?.query?.trim();
   const results = webSearchResults(part.output);
-  const provider = webSearchProviderLabel(part.output);
+  const provider = webSearchProviderLabel(part.output, t);
   const hasAnswer =
     part.output !== undefined &&
     !Array.isArray(part.output) &&
@@ -1004,7 +1005,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
   const [showAll, setShowAll] = useLayoutState(false);
-  const display = describeGmailToolPart(part);
+  const display = describeGmailToolPart(part, t);
   const visible = showAll
     ? display.rows
     : display.rows.slice(0, RESULTS_PREVIEW);
@@ -1132,8 +1133,9 @@ function GmailStep({ part }: { part: GmailToolPart }) {
 function CalendarStep({ part }: { part: CalendarToolPart }) {
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [showAll, setShowAll] = useLayoutState(false);
-  const display = describeCalendarToolPart(part);
+  const display = describeCalendarToolPart(part, t);
   const visible = showAll
     ? display.rows
     : display.rows.slice(0, RESULTS_PREVIEW);
@@ -1200,7 +1202,7 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
               ]}
             >
               <Text numberOfLines={1} style={[styles.calendarWhen, muted]}>
-                {formatCalendarEventTime(row)}
+                {formatCalendarEventTime(row, locale)}
               </Text>
               <Text
                 numberOfLines={1}
@@ -1254,7 +1256,7 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
 /** A model scheduling, changing, listing or deleting the user's tasks. */
 function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
   const { colors, fonts } = useTheme();
-  useTranslation();
+  const { t } = useTranslation();
   return (
     <View style={styles.searchStep}>
       <Text
@@ -1263,7 +1265,7 @@ function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
           { color: colors.foreground, fontFamily: fonts.sansMedium },
         ]}
       >
-        {scheduledTaskActivityLabel(part, !isToolSettled(part))}
+        {scheduledTaskActivityLabel(part, !isToolSettled(part), t)}
       </Text>
       {part.state === "output-error" && part.errorText ? (
         <Text
@@ -1282,7 +1284,7 @@ function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
 /** A model reading a skill's instructions before using it. */
 function SkillStep({ part }: { part: ViewSkillToolPart }) {
   const { colors, fonts } = useTheme();
-  useTranslation();
+  const { t } = useTranslation();
   const note =
     part.state === "output-error"
       ? part.errorText
@@ -1297,7 +1299,7 @@ function SkillStep({ part }: { part: ViewSkillToolPart }) {
           { color: colors.foreground, fontFamily: fonts.sansMedium },
         ]}
       >
-        {viewSkillActivityLabel(part, !isToolSettled(part))}
+        {viewSkillActivityLabel(part, !isToolSettled(part), t)}
       </Text>
       {note ? (
         <Text
@@ -1344,7 +1346,7 @@ function ReadFileStep({ part }: { part: ReadFilePart }) {
           {part.state === "output-error"
             ? t("chat.activity.failed")
             : output
-              ? readFileRangeLabel(output)
+              ? readFileRangeLabel(output, t)
               : t("chat.activity.readingEllipsis")}
         </Text>
       </View>
@@ -1514,11 +1516,11 @@ function activeLabel(last: ActivityPart | undefined, t: TFunction): string {
       : t("chat.activity.searchingFilesEllipsis");
   }
   if (isCodeExecutionPart(last)) return t("chat.activity.runningCode");
-  if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
-  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
-  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true);
+  if (isGmailToolPart(last)) return gmailActivityLabel(last, true, t);
+  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true, t);
+  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true, t);
   if (isScheduledTaskToolPart(last)) {
-    return scheduledTaskActivityLabel(last, true);
+    return scheduledTaskActivityLabel(last, true, t);
   }
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
@@ -1581,16 +1583,16 @@ function settledLabel(
     return ok ? t("chat.activity.ranCode") : t("chat.activity.codeEndedWithError");
   }
   if (lastTool && isGmailToolPart(lastTool)) {
-    return gmailActivityLabel(lastTool, false);
+    return gmailActivityLabel(lastTool, false, t);
   }
   if (lastTool && isCalendarToolPart(lastTool)) {
-    return calendarActivityLabel(lastTool, false);
+    return calendarActivityLabel(lastTool, false, t);
   }
   if (lastTool && isViewSkillToolPart(lastTool)) {
-    return viewSkillActivityLabel(lastTool, false);
+    return viewSkillActivityLabel(lastTool, false, t);
   }
   if (lastTool && isScheduledTaskToolPart(lastTool)) {
-    return scheduledTaskActivityLabel(lastTool, false);
+    return scheduledTaskActivityLabel(lastTool, false, t);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

@@ -24,7 +24,7 @@ function shortDate(iso: string | undefined): string {
  */
 export function GmailStep({ part }: { part: GmailToolPart }) {
   const { t } = useTranslation();
-  const display = describeGmailToolPart(part);
+  const display = describeGmailToolPart(part, t);
 
   const running = display.status === "running";
 

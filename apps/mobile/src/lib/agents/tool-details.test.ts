@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import type { AgentToolActivity } from "@overtchat/shared/agent-presentation";
 import { approvalDetails, toolDetails } from "./tool-details";
 const tool = (overrides: Partial<AgentToolActivity>): AgentToolActivity => ({
@@ -30,6 +31,7 @@ describe("tool detail presentation", () => {
         fullOutputPath: "/tmp/full.txt",
         terminalInputs: ["yes"],
       }),
+      i18n.t,
     );
     expect(result.sections).toEqual(
       expect.arrayContaining([
@@ -47,6 +49,7 @@ describe("tool detail presentation", () => {
     expect(
       toolDetails(
         tool({ name: "apply_patch", args: { patch: "@@\n-old\n+new" } }),
+        i18n.t,
       ).sections[0],
     ).toEqual({ label: "Changes", value: "@@\n-old\n+new", kind: "diff" });
     expect(
@@ -55,6 +58,7 @@ describe("tool detail presentation", () => {
           name: "Edit",
           args: { file_path: "a.ts", old_string: "", new_string: "new" },
         }),
+        i18n.t,
       ).sections,
     ).toEqual([
       { label: "Path", value: "a.ts", kind: "code" },
@@ -65,7 +69,7 @@ describe("tool detail presentation", () => {
       approvalDetails({
         approvalKind: "tool",
         toolDetail: { type: "edit", filePath: "a.ts" },
-      }).sections,
+      }, i18n.t).sections,
     ).toEqual([{ label: "Path", value: "a.ts", kind: "code" }]);
   });
   it("turns unknown nested inputs into labelled values without losing values", () => {
@@ -79,7 +83,7 @@ describe("tool detail presentation", () => {
           retries: 0,
         },
       },
-    });
+    }, i18n.t);
     expect(
       result.sections.map((section) => [section.label, section.value]),
     ).toEqual([
@@ -98,7 +102,7 @@ describe("tool detail presentation", () => {
       approveValue: "Approve",
       alwaysValue: "Allow always",
       denyValue: "Deny",
-    });
+    }, i18n.t);
     expect(result.message).toBe("");
     expect(result.choices.map((choice) => choice.value)).toEqual([
       "Approve",
@@ -120,14 +124,14 @@ describe("tool detail presentation", () => {
       toolDetail: { type: "shell", command: "npm install\necho finished" },
       options: ["Allow once", "Allow for session", "Deny"],
     };
-    const result = approvalDetails(request);
+    const result = approvalDetails(request, i18n.t);
     expect(result.message).toBe("Needs network access");
     expect(result.sections).toEqual([
       { label: "Command", value: "npm install\necho finished", kind: "code" },
     ]);
     expect(result.choices[1].value).toBe("Allow for session");
     expect(
-      approvalDetails({ ...request, approvalKind: undefined }).choices,
+      approvalDetails({ ...request, approvalKind: undefined }, i18n.t).choices,
     ).toEqual([]);
   });
 });
@@ -144,7 +148,7 @@ it("renders Codex network and filesystem permissions as labelled values", () => 
     options: ["Allow once", "Allow for session", "Deny"],
     message: "Needs access",
     toolDetail: { type: "json", value: { network: { enabled: true }, fileSystem: { write: ["/repo"] } } },
-  });
+  }, i18n.t);
   expect(result.message).toBe("Needs access");
   expect(result.sections.map((section) => section.value)).toEqual([
     "true",
@@ -163,7 +167,7 @@ it("preserves all provider approval scopes and their action details", () => {
     approvalKind: "tool",
     approvalChoices: choices,
     toolDetail: { type: "json", value: { command: "echo approved" } },
-  });
+  }, i18n.t);
   expect(result.choices).toEqual(choices);
   expect(result.sections).toContainEqual({
     label: "Command",

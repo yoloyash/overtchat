@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type { ToolState } from "./tools";
 
 /**
@@ -33,8 +33,8 @@ const CHAT_SKILL_NAME_KEYS = {
   scheduled_tasks: "chat.activity.skills.names.scheduled_tasks",
 } as const;
 
-export function chatSkillName(id: ChatSkillId): string {
-  return i18n.t(CHAT_SKILL_NAME_KEYS[id]);
+export function chatSkillName(id: ChatSkillId, t: TFunction): string {
+  return t(CHAT_SKILL_NAME_KEYS[id]);
 }
 
 export function isChatSkillId(value: unknown): value is ChatSkillId {
@@ -78,25 +78,26 @@ export function viewedSkillId(part: { type: string }): ChatSkillId | null {
 export function viewSkillActivityLabel(
   part: ViewSkillToolPart,
   active: boolean,
+  t: TFunction,
 ): string {
   const id = part.input?.id;
   const known = isChatSkillId(id);
-  const name = known ? chatSkillName(id) : undefined;
+  const name = known ? chatSkillName(id, t) : undefined;
   if (active) {
     return name
-      ? i18n.t("chat.activity.skills.loadingNamed", { name })
-      : i18n.t("chat.activity.skills.loadingUnknown");
+      ? t("chat.activity.skills.loadingNamed", { name })
+      : t("chat.activity.skills.loadingUnknown");
   }
   if (part.state === "output-error") {
-    return i18n.t("chat.activity.skills.failed");
+    return t("chat.activity.skills.failed");
   }
   if (part.state !== "output-available") {
-    return i18n.t("chat.activity.skills.incomplete");
+    return t("chat.activity.skills.incomplete");
   }
-  if (!viewedSkillId(part)) return i18n.t("chat.activity.skills.unavailable");
+  if (!viewedSkillId(part)) return t("chat.activity.skills.unavailable");
   return name
-    ? i18n.t("chat.activity.skills.loadedNamed", { name })
-    : i18n.t("chat.activity.skills.loadedUnknown");
+    ? t("chat.activity.skills.loadedNamed", { name })
+    : t("chat.activity.skills.loadedUnknown");
 }
 
 type SkillMessage = {

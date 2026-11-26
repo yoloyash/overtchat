@@ -2,8 +2,8 @@
 
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,12 @@ import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AdminModelConfig } from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
-import { findProvider, modelIconForModel } from "@/lib/providers/catalog";
+import {
+  findProvider,
+  isProviderId,
+  modelIconForModel,
+  providerDisplayLabel,
+} from "@/lib/providers/catalog";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
@@ -83,7 +88,7 @@ export function ModelsPanel() {
         m.model,
         m.baseUrl,
         host,
-        providerLabel(m),
+        providerLabel(m, t),
         m.enabled ? "enabled" : "disabled",
         m.taskModel ? `task ${t("models.item.taskBadge")}` : "",
         m.modelType,
@@ -323,7 +328,7 @@ export function ModelsPanel() {
                         )}
                       </div>
                       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <span>{providerLabel(m)}</span>
+                        <span>{providerLabel(m, t)}</span>
                         <span
                           aria-hidden="true"
                           className="text-muted-foreground/50"
@@ -499,15 +504,10 @@ export function ModelsPanel() {
 }
 
 /** The desktop app can list providers that its bundled catalog predates. */
-function providerLabel(model: AdminModelConfig): string {
-  if (model.providerId === "custom") {
-    return i18n.t("models.providers.custom");
-  }
-  return (
-    findProvider(model.providerId)?.label ??
-    model.displayProvider ??
-    model.providerId
-  );
+function providerLabel(model: AdminModelConfig, t: TFunction): string {
+  return isProviderId(model.providerId)
+    ? providerDisplayLabel(model.providerId, t)
+    : (model.displayProvider ?? model.providerId);
 }
 
 function hostnameOf(url: string): string {

@@ -59,7 +59,7 @@ export function AgentToolRow({
 }) {
   const { t } = useTranslation();
   const { colors, fonts } = useTheme();
-  const presentation = describeAgentTool(tool);
+  const presentation = describeAgentTool(tool, t);
   const status = agentToolStatus(tool, active);
   const statusLabel = t(`agents.activity.toolStatus.${status}`);
   return (
@@ -152,7 +152,7 @@ export function AgentToolDetails({
 }) {
   const { t } = useTranslation();
   const status = agentToolStatus(tool, active);
-  const details = toolDetails(tool);
+  const details = toolDetails(tool, t);
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

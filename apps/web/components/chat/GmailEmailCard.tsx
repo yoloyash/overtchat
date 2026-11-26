@@ -39,7 +39,7 @@ export function GmailEmailCard({
   const send = useSendGmailEmail();
   const save = useSaveGmailEmail();
   const [expanded, setExpanded] = useState(false);
-  const loaded = describeGmailEmail(part, replaced);
+  const loaded = describeGmailEmail(part, t, replaced);
   // What this page did since, which outlives the card scrolling out of view.
   const done = useSyncExternalStore(
     subscribeGmailEmailResults,
@@ -49,6 +49,7 @@ export function GmailEmailCard({
   const email = done
     ? describeGmailEmail(
         { ...part, output: { ...(part.output as object), ...done } },
+        t,
         replaced,
       )
     : loaded;

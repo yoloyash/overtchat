@@ -72,8 +72,8 @@ export function DocumentPanel({
 }) {
   const { t } = useTranslation();
   const view = useMemo(
-    () => documentView(messages, toolCallId),
-    [messages, toolCallId],
+    () => documentView(messages, toolCallId, t),
+    [messages, toolCallId, t],
   );
   const [showSource, setShowSource] = useState(false);
   const [exporting, setExporting] = useState(false);

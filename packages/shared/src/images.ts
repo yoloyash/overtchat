@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type { ToolState } from "./tools";
 
 export const IMAGE_SIZES = [
@@ -25,11 +25,11 @@ const IMAGE_SIZE_KEYS = {
   "1024x1536": "chat.image.sizes.1024x1536",
 } as const;
 
-export function imageSizeLabel(size: ImageSize): string {
+export function imageSizeLabel(size: ImageSize, t: TFunction): string {
   const key = Object.hasOwn(IMAGE_SIZE_KEYS, size)
     ? IMAGE_SIZE_KEYS[size]
     : "chat.image.sizes.auto";
-  return i18n.t(key);
+  return t(key);
 }
 
 export interface ImageCapability {

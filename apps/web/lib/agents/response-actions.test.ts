@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import { agentResponseActions, projectAgentTranscript } from "./presentation";
 
 const user = (id: string) => ({ role: "user", id, content: id });
@@ -10,7 +11,7 @@ const tool = {
   content: [{ type: "toolCall", id: "call", name: "bash", arguments: {} }],
 };
 const actions = (messages: unknown[], unsettled = false) =>
-  [...agentResponseActions(projectAgentTranscript(messages), unsettled).values()];
+  [...agentResponseActions(projectAgentTranscript(messages, i18n.t, "en-US"), unsettled).values()];
 
 describe("agent response actions", () => {
   it("assigns actions only to the completed response, not progress updates", () => {
@@ -36,7 +37,7 @@ describe("agent response actions", () => {
     for (const messageId of ["boundary", null]) {
       const projected = projectAgentTranscript([...messages, {
         role: "turnFooter", content: "Full response", messageId,
-      }]);
+      }], i18n.t, "en-US");
       const result = agentResponseActions(projected, true);
       expect([...result.keys()]).toEqual([projected.at(-1)!.key]);
       expect([...result.values()]).toEqual([{ text: "Full response", messageId }]);

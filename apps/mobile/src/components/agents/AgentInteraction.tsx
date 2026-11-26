@@ -35,7 +35,7 @@ export function AgentInteraction({
 }) {
   const { t } = useTranslation();
   const [linkError, setLinkError] = useState<string>();
-  const approval = approvalDetails(request);
+  const approval = approvalDetails(request, t);
   const tool = approval.choices.length > 0;
   const url = safeExternalUrl(request.url);
   return (

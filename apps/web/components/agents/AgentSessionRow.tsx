@@ -2,9 +2,11 @@
 
 import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import { i18n } from "@overtchat/shared/i18n";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   AgentProviderLogo,
   AgentSessionReadToggle,
@@ -52,10 +54,15 @@ export function agentSessionRowMeta(
 }
 
 /** How long a session has been working, or how long ago it last changed. */
-export function agentSessionRowTime(entry: AgentAttentionItem, now: number): string {
+export function agentSessionRowTime(
+  entry: AgentAttentionItem,
+  now: number,
+  t: TFunction,
+  locale: string,
+): string {
   return entry.state === "working"
-    ? formatAgentWorkingTime(now - entry.since)
-    : formatAgentSessionAge(entry.since, now);
+    ? formatAgentWorkingTime(now - entry.since, t)
+    : formatAgentSessionAge(entry.since, now, t, locale);
 }
 
 /** One agent session in the sidebar, in either grouping. */
@@ -71,6 +78,7 @@ export function AgentSessionRow({
   onNavigate?: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
   const { item, group, state } = entry;
@@ -123,7 +131,7 @@ export function AgentSessionRow({
                   "group-has-[:focus-visible]:invisible [@media(hover:hover)]:group-hover:invisible [@media(hover:none)]:group-has-[:focus-visible]:visible",
               )}
             >
-              {agentSessionRowTime(entry, now)}
+              {agentSessionRowTime(entry, now, t, locale)}
             </span>
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">

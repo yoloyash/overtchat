@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import { agentWorkLabel, foldAgentTranscript, projectAgentTranscript } from "./presentation";
 
 const user = (id: string) => ({ role: "user", id, content: id });
@@ -11,7 +12,7 @@ const tool = (id: string, extra = {}) => ({
 const result = (id: string, extra = {}) => ({ role: "toolResult", toolCallId: id, content: "ok", ...extra });
 const turn = [user("request"), text("progress"), tool("cmd"), result("cmd"), text("answer")];
 const fold = (messages: unknown[], unsettled = false, expanded = new Set<string>()) =>
-  foldAgentTranscript(projectAgentTranscript(messages), { unsettled, expanded });
+  foldAgentTranscript(projectAgentTranscript(messages, i18n.t, "en-US"), { unsettled, expanded });
 const texts = (items: ReturnType<typeof fold>) => items.flatMap((item) => item.type === "assistant_text" ? [item.text] : []);
 
 describe("completed agent work", () => {
@@ -23,27 +24,27 @@ describe("completed agent work", () => {
     ];
     const summary = fold(messages).find((item) => item.type === "work_summary");
     expect(summary).toMatchObject({ durationMs: 65000 });
-    expect(agentWorkLabel(summary!.durationMs)).toBe("Worked for 1m 5s");
+    expect(agentWorkLabel(summary!.durationMs, i18n.t)).toBe("Worked for 1m 5s");
     expect(fold(messages.map((message) => message.id === "answer"
       ? { ...message, updatedAt: "2026-09-30T10:01:10.000Z" } : message))
       .find((item) => item.type === "work_summary")).toMatchObject({ durationMs: 70000 });
     expect(fold([...messages, { role: "turnFooter", durationMs: 70000 }])
       .find((item) => item.type === "work_summary")).toMatchObject({ durationMs: 70000 });
-    expect(agentWorkLabel(null)).toBe("Worked");
-    expect(agentWorkLabel(3600000)).toBe("Worked for 1h");
+    expect(agentWorkLabel(null, i18n.t)).toBe("Worked");
+    expect(agentWorkLabel(3600000, i18n.t)).toBe("Worked for 1h");
     expect(fold(messages.map((message) => ({ ...message, timestamp: "invalid" })))
       .find((item) => item.type === "work_summary")).toMatchObject({ durationMs: null });
   });
 
   it("retains closing rows with stable keys only when requested by an animated client", () => {
-    const projected = projectAgentTranscript(turn);
+    const projected = projectAgentTranscript(turn, i18n.t, "en-US");
     const rows = foldAgentTranscript(projected, { unsettled: false, expanded: new Set(), retainFolded: true });
     expect(rows.filter((item) => item.folded).map((item) => item.type)).toEqual(["assistant_text", "activity"]);
     expect(rows.filter((item) => !item.folded)).toEqual(fold(turn));
     expect(rows.filter((item) => item.type !== "work_summary").map((item) => item.key)).toEqual(projected.map((item) => item.key));
   });
   it("keeps live work visible, folds on completion, and expands without changing the transcript", () => {
-    const projected = projectAgentTranscript(turn);
+    const projected = projectAgentTranscript(turn, i18n.t, "en-US");
     const original = structuredClone(projected);
     expect(fold(turn, true)).toEqual(projected);
     const completed = fold(turn);
@@ -128,7 +129,7 @@ describe("completed agent work", () => {
     const summary = rows.find((item) => item.type === "work_summary")!;
     const expanded = fold(messages, false, new Set([summary.key]));
     expect(expanded.filter((item) => item.type !== "work_summary"))
-      .toEqual(projectAgentTranscript(messages));
+      .toEqual(projectAgentTranscript(messages, i18n.t, "en-US"));
   });
 
   it("keeps earlier turns folded while a later turn runs", () => {
@@ -151,7 +152,7 @@ describe("completed agent work", () => {
   it("keeps work before steering visible until the native turn finishes", () => {
     const messages = [user("u"), text("progress"), text("checking"), user("steer"), text("continuing")]
       .map((message) => ({ ...message, overtchatTurnId: "native" }));
-    expect(fold(messages, true)).toEqual(projectAgentTranscript(messages));
+    expect(fold(messages, true)).toEqual(projectAgentTranscript(messages, i18n.t, "en-US"));
     expect(fold([...messages, { role: "turnFooter", overtchatTurnId: "native" }], true)
       .some((item) => item.type === "work_summary")).toBe(true);
   });

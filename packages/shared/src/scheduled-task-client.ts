@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import {
   parseTaskSchedule,
   type ScheduledTask,
@@ -107,17 +107,20 @@ export function scheduleOfDraft(draft: ScheduledTaskDraft): TaskSchedule | null 
 }
 
 /** What stops a draft from being saved, in words; null when nothing does. */
-export function taskDraftProblem(draft: ScheduledTaskDraft): string | null {
-  if (!draft.name.trim()) return i18n.t("scheduled.validation.missingName");
-  if (!draft.prompt.trim()) return i18n.t("scheduled.validation.missingPrompt");
-  if (!draft.modelConfigId) return i18n.t("scheduled.validation.missingModel");
+export function taskDraftProblem(
+  draft: ScheduledTaskDraft,
+  t: TFunction,
+): string | null {
+  if (!draft.name.trim()) return t("scheduled.validation.missingName");
+  if (!draft.prompt.trim()) return t("scheduled.validation.missingPrompt");
+  if (!draft.modelConfigId) return t("scheduled.validation.missingModel");
   if (draft.frequency === "weekly" && draft.daysOfWeek.length === 0) {
-    return i18n.t("scheduled.validation.missingDay");
+    return t("scheduled.validation.missingDay");
   }
   if (!scheduleOfDraft(draft)) {
     return draft.frequency === "once"
-      ? i18n.t("scheduled.validation.missingDateAndTime")
-      : i18n.t("scheduled.validation.missingTime");
+      ? t("scheduled.validation.missingDateAndTime")
+      : t("scheduled.validation.missingTime");
   }
   return null;
 }
@@ -148,7 +151,7 @@ export function unreadRunChatIds(
 export function formatScheduledRunTime(
   timestamp: number,
   timeZone: string,
-  locale?: string,
+  locale: string,
 ): string {
   const own = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return new Intl.DateTimeFormat(locale, {

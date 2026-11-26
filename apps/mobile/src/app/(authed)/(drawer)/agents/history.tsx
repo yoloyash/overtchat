@@ -11,6 +11,7 @@ import {
   type AgentProviderId,
 } from "@overtchat/agent-bridge";
 import { formatAgentSessionAge } from "@overtchat/shared/agent-attention";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AgentFeedback, AgentText } from "@/components/agents/AgentPrimitives";
 import { AgentSearch, AgentSessionRow } from "@/components/agents/AgentNavigation";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
@@ -59,6 +60,7 @@ export function agentHistorySnippet(
  */
 export default function AgentHistoryScreen() {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const params = useLocalSearchParams<{ focus?: string }>();
   const { colors, fonts } = useTheme();
   const insets = useSafeAreaInsets();
@@ -222,7 +224,7 @@ export default function AgentHistoryScreen() {
             entry={entry}
             context="all"
             now={now}
-            time={formatAgentSessionAge(updatedAt, now)}
+            time={formatAgentSessionAge(updatedAt, now, t, locale)}
             detail={agentHistorySnippet(entry, t)}
             onPress={() =>
               router.navigate({

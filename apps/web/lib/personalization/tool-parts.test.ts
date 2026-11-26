@@ -7,6 +7,7 @@ import {
   memoryToolArtifactLabel,
   memoryToolStatusLabel,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 
 type Part = UIMessage["parts"][number];
 
@@ -26,7 +27,7 @@ describe("memory tool parts", () => {
 
     expect(isMemoryToolPart(toolPart)).toBe(true);
     if (!isMemoryToolPart(toolPart)) throw new Error("expected memory tool");
-    expect(describeMemoryToolPart(toolPart)).toEqual({
+    expect(describeMemoryToolPart(toolPart, i18n.t)).toEqual({
       action: "set",
       status: "success",
       key: "style",
@@ -44,7 +45,7 @@ describe("memory tool parts", () => {
     });
 
     if (!isMemoryToolPart(toolPart)) throw new Error("expected memory tool");
-    expect(describeMemoryToolPart(toolPart)).toEqual({
+    expect(describeMemoryToolPart(toolPart, i18n.t)).toEqual({
       action: "delete",
       status: "missing",
       key: "missing",
@@ -69,7 +70,7 @@ describe("memory tool parts", () => {
     });
 
     if (!isMemoryToolPart(toolPart)) throw new Error("expected memory tool");
-    expect(describeMemoryToolPart(toolPart).status).toBe(status);
+    expect(describeMemoryToolPart(toolPart, i18n.t).status).toBe(status);
   });
 
   it("only reports an actual successful mutation", () => {
@@ -120,10 +121,10 @@ describe("memory tool parts", () => {
       },
     ] as const;
 
-    expect(memoryToolArtifactLabel(details)).toBe(
+    expect(memoryToolArtifactLabel(details, i18n.t)).toBe(
       "Memories updated with errors",
     );
-    expect(memoryToolStatusLabel(details[0])).toBe("Updated");
-    expect(memoryToolStatusLabel(details[1])).toBe("Failed");
+    expect(memoryToolStatusLabel(details[0], i18n.t)).toBe("Updated");
+    expect(memoryToolStatusLabel(details[1], i18n.t)).toBe("Failed");
   });
 });

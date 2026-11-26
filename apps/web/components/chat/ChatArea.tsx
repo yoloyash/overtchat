@@ -595,7 +595,7 @@ export function ChatArea({
   const openFile = useCallback((file: PanelFile) => setPanel({ kind: "file", file }), []);
   const documentTarget = panel?.kind === "document" ? panel.toolCallId : null;
   const fileTarget = panel?.kind === "file" ? panel.file : null;
-  const files = useMemo(() => conversationFiles(messages), [messages]);
+  const files = useMemo(() => conversationFiles(messages, t), [messages, t]);
   const documentPanel = useMemo(
     () => ({ activeToolCallId: documentTarget, open: openDocument }),
     [documentTarget, openDocument],

@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import {
   describeAgentTool,
   type AgentToolActivity,
@@ -48,6 +48,7 @@ function label(key: string) {
 // than a JSON blob. Nested paths remain visible so context is never discarded.
 export function argumentSections(
   value: unknown,
+  t: TFunction,
   prefix = "",
   depth = 0,
 ): ToolSection[] {
@@ -55,7 +56,7 @@ export function argumentSections(
   if (value === null || typeof value !== "object")
     return [
       {
-        label: prefix || i18n.t("agents.activity.input"),
+        label: prefix || t("agents.activity.input"),
         value: typeof value === "string" ? value : String(value),
         kind: "code",
       },
@@ -63,7 +64,7 @@ export function argumentSections(
   if (depth > 8)
     return [
       {
-        label: prefix || i18n.t("agents.activity.input"),
+        label: prefix || t("agents.activity.input"),
         value: JSON.stringify(value, null, 2),
         kind: "code",
       },
@@ -72,20 +73,21 @@ export function argumentSections(
   if (!entries.length)
     return [
       {
-        label: prefix || i18n.t("agents.activity.input"),
+        label: prefix || t("agents.activity.input"),
         value: Array.isArray(value)
-          ? i18n.t("agents.toolDetails.emptyList")
-          : i18n.t("agents.toolDetails.noValues"),
+          ? t("agents.toolDetails.emptyList")
+          : t("agents.toolDetails.noValues"),
         kind: "text",
       },
     ];
   return entries.flatMap(([key, child]) =>
     argumentSections(
       child,
+      t,
       [
         prefix,
         Array.isArray(value)
-          ? i18n.t("agents.toolDetails.itemIndex", { index: Number(key) + 1 })
+          ? t("agents.toolDetails.itemIndex", { index: Number(key) + 1 })
           : label(key),
       ]
         .filter(Boolean)
@@ -95,8 +97,8 @@ export function argumentSections(
   );
 }
 
-export function toolDetails(tool: AgentToolActivity): ToolDetails {
-  const { category } = describeAgentTool(tool);
+export function toolDetails(tool: AgentToolActivity, t: TFunction): ToolDetails {
+  const { category } = describeAgentTool(tool, t);
   const args = record(tool.args);
   const sections: ToolSection[] = [];
   const used = new Set<string>();
@@ -111,54 +113,54 @@ export function toolDetails(tool: AgentToolActivity): ToolDetails {
       sections.push({ label: title, value, kind });
     }
   }
-  if (category === "shell") take(["command", "cmd"], i18n.t("agents.toolDetails.command"));
-  take(["filePath", "file_path", "path"], i18n.t("agents.toolDetails.path"));
-  take(["cwd", "workdir", "workingDirectory"], i18n.t("agents.toolDetails.workingDirectory"));
-  take(["patch", "diff", "unifiedDiff", "unified_diff"], i18n.t("agents.activity.changes"), "diff");
-  take(["oldString", "old_string", "oldText", "old_text"], i18n.t("agents.toolDetails.before"));
-  take(["newString", "new_string", "newText", "new_text"], i18n.t("agents.toolDetails.after"));
-  take(["content", "text", "fileText", "file_text"], i18n.t("agents.activity.content"));
+  if (category === "shell") take(["command", "cmd"], t("agents.toolDetails.command"));
+  take(["filePath", "file_path", "path"], t("agents.toolDetails.path"));
+  take(["cwd", "workdir", "workingDirectory"], t("agents.toolDetails.workingDirectory"));
+  take(["patch", "diff", "unifiedDiff", "unified_diff"], t("agents.activity.changes"), "diff");
+  take(["oldString", "old_string", "oldText", "old_text"], t("agents.toolDetails.before"));
+  take(["newString", "new_string", "newText", "new_text"], t("agents.toolDetails.after"));
+  take(["content", "text", "fileText", "file_text"], t("agents.activity.content"));
   const remaining = Object.fromEntries(
     Object.entries(args).filter(([key]) => !used.has(key)),
   );
   if (Object.keys(remaining).length)
-    sections.push(...argumentSections(remaining));
+    sections.push(...argumentSections(remaining, t));
   else if (typeof tool.args === "string" && tool.args)
-    sections.push({ label: i18n.t("agents.activity.input"), value: tool.args, kind: "code" });
+    sections.push({ label: t("agents.activity.input"), value: tool.args, kind: "code" });
   if (tool.output)
     sections.push({
       label: tool.isError
-        ? i18n.t("agents.toolDetails.errorOutput")
-        : i18n.t("agents.activity.output"),
+        ? t("agents.toolDetails.errorOutput")
+        : t("agents.activity.output"),
       value: readableToolText(tool.output),
       kind: "code",
     });
   if (tool.terminalInputs.length)
     sections.push({
-      label: i18n.t("agents.toolDetails.terminalInput"),
+      label: t("agents.toolDetails.terminalInput"),
       value: tool.terminalInputs.join("\n"),
       kind: "code",
     });
   if (tool.exitCode !== null)
     sections.push({
-      label: i18n.t("agents.toolDetails.exitCode"),
+      label: t("agents.toolDetails.exitCode"),
       value: String(tool.exitCode),
       kind: "text",
     });
   if (tool.cancelled)
     sections.push({
-      label: i18n.t("agents.toolDetails.status"),
-      value: i18n.t("agents.toolDetails.cancelled"),
+      label: t("agents.toolDetails.status"),
+      value: t("agents.toolDetails.cancelled"),
       kind: "text",
     });
   if (tool.truncated)
     sections.push({
-      label: i18n.t("agents.toolDetails.outputLimit"),
+      label: t("agents.toolDetails.outputLimit"),
       value: tool.fullOutputPath
-        ? i18n.t("agents.toolDetails.truncatedWithPath", {
+        ? t("agents.toolDetails.truncatedWithPath", {
             path: tool.fullOutputPath,
           })
-        : i18n.t("agents.toolDetails.truncated"),
+        : t("agents.toolDetails.truncated"),
       kind: "text",
     });
   return { category, sections };
@@ -166,6 +168,7 @@ export function toolDetails(tool: AgentToolActivity): ToolDetails {
 
 export function approvalDetails(
   request: Record<string, unknown>,
+  t: TFunction,
 ): ToolDetails & {
   title: string;
   message: string;
@@ -196,9 +199,9 @@ export function approvalDetails(
   if (description && !message.includes(description))
     message = [message, description].filter(Boolean).join("\n\n");
   const suppliedTitle = text(request.title);
-  let title = suppliedTitle || i18n.t("agents.approval.permissionRequired");
+  let title = suppliedTitle || t("agents.approval.permissionRequired");
   if (request.approvalKind === "tool") {
-    const shortTitle = i18n.t(
+    const shortTitle = t(
       detail.type === "shell"
         ? "agents.approval.titles.shell"
         : detail.type === "edit"
@@ -235,7 +238,7 @@ export function approvalDetails(
     if (suppliedChoices.length) choices.push(...suppliedChoices);
     else {
       choices.push({
-        label: i18n.t("agents.approval.choices.allowOnce"),
+        label: t("agents.approval.choices.allowOnce"),
         value: text(request.approveValue) || "Approve",
         kind: "allow",
       });
@@ -243,12 +246,12 @@ export function approvalDetails(
         choices.push({
           label:
             text(request.alwaysLabel) ||
-            i18n.t("agents.approval.choices.allowAlways"),
+            t("agents.approval.choices.allowAlways"),
           value: text(request.alwaysValue),
           kind: "always",
         });
       choices.push({
-        label: i18n.t("agents.approval.choices.deny"),
+        label: t("agents.approval.choices.deny"),
         value: text(request.denyValue) || "Deny",
         kind: "deny",
       });
@@ -277,7 +280,7 @@ export function approvalDetails(
       fullOutputPath: null,
       terminalInputs: [],
     };
-    sections.push(...toolDetails(fake).sections);
+    sections.push(...toolDetails(fake, t).sections);
     if (
       message === `Command: ${detail.command}` ||
       message === `File: ${detail.filePath}` ||
@@ -295,7 +298,7 @@ export function approvalDetails(
       sections.push({
         label: destination ? `${path} → ${destination}` : path,
         value:
-          text(change.patch) || i18n.t("agents.approval.noChangePreview"),
+          text(change.patch) || t("agents.approval.noChangePreview"),
         kind: text(change.patch) ? "diff" : "text",
       });
     }

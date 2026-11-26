@@ -97,7 +97,7 @@ export function AgentUserMessage({
       note: t("agents.rewind.cannotBeUndone"),
       items:
         rewindable && !disabled && !rewinding
-          ? agentRewindMenuItems(capabilities, rewind)
+          ? agentRewindMenuItems(capabilities, rewind, t)
           : [],
     },
   ];

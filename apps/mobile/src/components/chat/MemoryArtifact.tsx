@@ -22,7 +22,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
   const { colors, fonts, radii } = useTheme();
   const { t } = useTranslation();
   const [open, setOpen] = useLayoutState(false);
-  const details = parts.map(describeMemoryToolPart);
+  const details = parts.map((part) => describeMemoryToolPart(part, t));
   const running = details.some((detail) => detail.status === "running");
   const failed = details.some(
     (detail) =>
@@ -30,7 +30,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
       detail.status === "missing" ||
       detail.status === "incomplete",
   );
-  const label = memoryToolArtifactLabel(details);
+  const label = memoryToolArtifactLabel(details, t);
 
   return (
     <View
@@ -163,7 +163,7 @@ function MemoryDetail({
             },
           ]}
         >
-          {memoryToolStatusLabel(detail)}
+          {memoryToolStatusLabel(detail, t)}
         </Text>
       </View>
       {detail.value ? (

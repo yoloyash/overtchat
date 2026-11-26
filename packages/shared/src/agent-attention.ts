@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type {
   AgentConnectionListItem,
   AgentProviderId,
@@ -53,8 +53,8 @@ const SESSION_STATE_KEYS = {
   unread: "agents.sessionState.unread",
 } as const;
 
-export function agentSessionStateLabel(state: AgentSessionState): string {
-  return state === "idle" ? "" : i18n.t(SESSION_STATE_KEYS[state]);
+export function agentSessionStateLabel(state: AgentSessionState, t: TFunction): string {
+  return state === "idle" ? "" : t(SESSION_STATE_KEYS[state]);
 }
 
 /** The most recent time anything happened in the session. */
@@ -136,8 +136,9 @@ const SECTION_LABEL_KEYS = {
 
 export function agentAttentionSectionLabel(
   key: AgentAttentionSectionKey,
+  t: TFunction,
 ): string {
-  return i18n.t(SECTION_LABEL_KEYS[key]);
+  return t(SECTION_LABEL_KEYS[key]);
 }
 
 /** Every session filed by what it needs from its owner, newest first. */
@@ -228,20 +229,20 @@ export function agentSessionCanToggleRead(
 }
 
 /** A compact running time such as "45s", "12m" or "1h 5m". */
-export function formatAgentWorkingTime(elapsedMs: number): string {
+export function formatAgentWorkingTime(elapsedMs: number, t: TFunction): string {
   const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
   if (seconds < 60) {
-    return i18n.t("agents.activity.elapsedSeconds", { seconds });
+    return t("agents.activity.elapsedSeconds", { seconds });
   }
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) {
-    return i18n.t("agents.activity.elapsedMinutes", { minutes });
+    return t("agents.activity.elapsedMinutes", { minutes });
   }
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return remainder
-    ? i18n.t("agents.activity.elapsedHoursMinutes", { hours, minutes: remainder })
-    : i18n.t("agents.activity.elapsedHours", { hours });
+    ? t("agents.activity.elapsedHoursMinutes", { hours, minutes: remainder })
+    : t("agents.activity.elapsedHours", { hours });
 }
 
 const MINUTE_MS = 60_000;
@@ -249,24 +250,29 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 /** A compact age for list rows, such as "now", "5m", "3h", "2d" or "Oct 4". */
-export function formatAgentSessionAge(timestamp: number, now: number): string {
+export function formatAgentSessionAge(
+  timestamp: number,
+  now: number,
+  t: TFunction,
+  locale: string,
+): string {
   const elapsed = Math.max(0, now - timestamp);
-  if (elapsed < MINUTE_MS) return i18n.t("agents.age.now");
+  if (elapsed < MINUTE_MS) return t("agents.age.now");
   if (elapsed < HOUR_MS) {
-    return i18n.t("agents.age.minutes", { count: Math.floor(elapsed / MINUTE_MS) });
+    return t("agents.age.minutes", { count: Math.floor(elapsed / MINUTE_MS) });
   }
   if (elapsed < DAY_MS) {
-    return i18n.t("agents.age.hours", { count: Math.floor(elapsed / HOUR_MS) });
+    return t("agents.age.hours", { count: Math.floor(elapsed / HOUR_MS) });
   }
   if (elapsed < 7 * DAY_MS) {
-    return i18n.t("agents.age.days", { count: Math.floor(elapsed / DAY_MS) });
+    return t("agents.age.days", { count: Math.floor(elapsed / DAY_MS) });
   }
   if (elapsed < 5 * 7 * DAY_MS) {
-    return i18n.t("agents.age.weeks", { count: Math.floor(elapsed / (7 * DAY_MS)) });
+    return t("agents.age.weeks", { count: Math.floor(elapsed / (7 * DAY_MS)) });
   }
   const sameYear =
     new Date(timestamp).getFullYear() === new Date(now).getFullYear();
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  return new Date(timestamp).toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),

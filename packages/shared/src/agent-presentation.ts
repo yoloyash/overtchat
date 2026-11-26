@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import {
   agentForkMessageId,
   agentTurnChangesOf,
@@ -305,39 +305,39 @@ export function foldAgentTranscript(
   return output;
 }
 
-export function agentWorkLabel(durationMs: number | null): string {
-  if (durationMs === null) return i18n.t("agents.messages.worked");
+export function agentWorkLabel(durationMs: number | null, t: TFunction): string {
+  if (durationMs === null) return t("agents.messages.worked");
   const seconds = Math.max(1, Math.round(durationMs / 1000));
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainder = seconds % 60;
   const duration =
     hours && minutes && remainder
-      ? i18n.t("agents.activity.elapsedHoursMinutesSeconds", {
+      ? t("agents.activity.elapsedHoursMinutesSeconds", {
           hours,
           minutes,
           seconds: remainder,
         })
       : hours && minutes
-        ? i18n.t("agents.activity.elapsedHoursMinutes", { hours, minutes })
+        ? t("agents.activity.elapsedHoursMinutes", { hours, minutes })
         : hours && remainder
-          ? i18n.t("agents.activity.elapsedHoursSeconds", {
+          ? t("agents.activity.elapsedHoursSeconds", {
               hours,
               seconds: remainder,
             })
           : hours
-            ? i18n.t("agents.activity.elapsedHours", { hours })
+            ? t("agents.activity.elapsedHours", { hours })
             : minutes && remainder
-              ? i18n.t("agents.activity.elapsedMinutesSeconds", {
+              ? t("agents.activity.elapsedMinutesSeconds", {
                   minutes,
                   seconds: remainder,
                 })
               : minutes
-                ? i18n.t("agents.activity.elapsedMinutes", { minutes })
-                : i18n.t("agents.activity.elapsedSeconds", {
+                ? t("agents.activity.elapsedMinutes", { minutes })
+                : t("agents.activity.elapsedSeconds", {
                     seconds: remainder,
                   });
-  return i18n.t("agents.messages.workedFor", { duration });
+  return t("agents.messages.workedFor", { duration });
 }
 
 export type AgentToolStatus =
@@ -667,6 +667,7 @@ function ompNoticeFirstLine(text: string): string | null {
 
 export function presentOmpSystemNotice(
   text: string,
+  t: TFunction,
 ): AgentNotificationPresentation | null {
   if (!text.trimStart().startsWith(OMP_SYSTEM_NOTICE_OPEN_TAG)) return null;
 
@@ -686,7 +687,7 @@ export function presentOmpSystemNotice(
       const normalized = normalizedOmpJobStatus(status);
       return {
         level: ompNotificationLevel(status),
-        message: formatOmpBackgroundJobNotice(id, normalized),
+        message: formatOmpBackgroundJobNotice(id, normalized, t),
       };
     }
   }
@@ -699,39 +700,40 @@ export function presentOmpSystemNotice(
       message: formatOmpBackgroundJobNotice(
         backgroundJob[1],
         normalizedOmpJobStatus(backgroundJob[2]),
+        t,
       ),
     };
   }
   return firstLine ? { level: "info", message: firstLine } : null;
 }
 
-function formatOmpBackgroundJobNotice(id: string, status: string): string {
+function formatOmpBackgroundJobNotice(id: string, status: string, t: TFunction): string {
   switch (status) {
     case "completed":
-      return i18n.t("agents.notifications.backgroundJob.completed", { id });
+      return t("agents.notifications.backgroundJob.completed", { id });
     case "failed":
-      return i18n.t("agents.notifications.backgroundJob.failed", { id });
+      return t("agents.notifications.backgroundJob.failed", { id });
     case "canceled":
-      return i18n.t("agents.notifications.backgroundJob.canceled", { id });
+      return t("agents.notifications.backgroundJob.canceled", { id });
     case "stopped":
-      return i18n.t("agents.notifications.backgroundJob.stopped", { id });
+      return t("agents.notifications.backgroundJob.stopped", { id });
     default:
-      return i18n.t("agents.notifications.backgroundJob.other", { id, status });
+      return t("agents.notifications.backgroundJob.other", { id, status });
   }
 }
 
 const MAX_ERROR_SUMMARY_LENGTH = 240;
 
-export function presentAgentError(value: string): AgentErrorPresentation {
+export function presentAgentError(value: string, t: TFunction): AgentErrorPresentation {
   const details = value.trim();
   const contextLimit =
     /maximum context length|context length.{0,80}(?:exceed|requested)|input_tokens/iu.test(
       details,
     );
   let summary = contextLimit
-    ? i18n.t("agents.errors.contextLimitExceeded")
+    ? t("agents.errors.contextLimitExceeded")
     : (details.split(/\r?\n/u).find((line) => line.trim())?.trim() ??
-      i18n.t("agents.errors.commandFailed"));
+      t("agents.errors.commandFailed"));
   if (summary.length > MAX_ERROR_SUMMARY_LENGTH) {
     summary = `${summary.slice(0, MAX_ERROR_SUMMARY_LENGTH - 3).trimEnd()}...`;
   }
@@ -867,6 +869,8 @@ function directShellTool(
 
 export function projectAgentTranscript(
   messages: unknown[],
+  t: TFunction,
+  locale: string,
 ): AgentTranscriptItem[] {
   const items: AgentTranscriptItem[] = [];
   const { callIds, results } = collectToolData(messages);
@@ -897,7 +901,7 @@ export function projectAgentTranscript(
     if (role === "compactionSummary") {
       const active = record.status === "running";
       const failed = record.status === "failed";
-      const label = i18n.t(
+      const label = t(
         active
           ? "agents.compaction.running"
           : failed
@@ -914,7 +918,7 @@ export function projectAgentTranscript(
       );
       const tokens = (value: unknown) =>
         typeof value === "number" && Number.isFinite(value) && value >= 0
-          ? value.toLocaleString()
+          ? value.toLocaleString(locale)
           : null;
       const before = tokens(record.tokensBefore);
       const after = tokens(record.tokensAfter);
@@ -931,9 +935,9 @@ export function projectAgentTranscript(
           record.status === "skipped"
             ? null
             : before !== null && after !== null
-              ? i18n.t("agents.compaction.tokensBeforeAfter", { before, after })
+              ? t("agents.compaction.tokensBeforeAfter", { before, after })
               : before !== null
-                ? i18n.t("agents.compaction.tokensBefore", { before })
+                ? t("agents.compaction.tokensBefore", { before })
                 : null,
       });
       return;
@@ -1151,7 +1155,7 @@ export function projectAgentTranscript(
         items.push({
           type: "assistant_error",
           key: `assistant-error:${identity}`,
-          error: presentAgentError(record.errorMessage),
+          error: presentAgentError(record.errorMessage, t),
         });
       }
       return;
@@ -1165,7 +1169,7 @@ export function projectAgentTranscript(
         items.push({
           type: "assistant_error",
           key: `assistant-error:${identity}`,
-          error: presentAgentError(record.errorMessage),
+          error: presentAgentError(record.errorMessage, t),
         });
       }
       const durationMs = record.durationMs;
@@ -1222,7 +1226,7 @@ export function projectAgentTranscript(
     }
     if (role === "custom" && record.display === false) return;
     if (role === "custom") {
-      const notification = presentOmpSystemNotice(textOfContent(record.content));
+      const notification = presentOmpSystemNotice(textOfContent(record.content), t);
       if (notification) {
         items.push({
           type: "notification",
@@ -1293,14 +1297,14 @@ function stringArgument(args: unknown, keys: string[]): string | null {
   return null;
 }
 
-function humanizeToolName(name: string): string {
+function humanizeToolName(name: string, t: TFunction): string {
   const normalized = name
     .trim()
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[._:/-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!normalized) return i18n.t("agents.activity.toolLabels.other");
+  if (!normalized) return t("agents.activity.toolLabels.other");
   return normalized
     .split(" ")
     .map((part) => part[0].toUpperCase() + part.slice(1))
@@ -1309,19 +1313,20 @@ function humanizeToolName(name: string): string {
 
 export function describeAgentTool(
   tool: AgentToolActivity,
+  t: TFunction,
 ): AgentToolPresentation {
   const name = normalizedToolName(tool.name);
   if (hasName(name, ["bash", "shell", "terminal", "exec", "execute"])) {
     return {
       category: "shell",
-      label: i18n.t("agents.activity.toolLabels.shell"),
+      label: t("agents.activity.toolLabels.shell"),
       summary: stringArgument(tool.args, ["command", "cmd"]),
     };
   }
   if (hasName(name, ["read", "read_file", "readfile"])) {
     return {
       category: "read",
-      label: i18n.t("agents.activity.toolLabels.read"),
+      label: t("agents.activity.toolLabels.read"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
@@ -1336,14 +1341,14 @@ export function describeAgentTool(
   ) {
     return {
       category: "edit",
-      label: i18n.t("agents.activity.toolLabels.edit"),
+      label: t("agents.activity.toolLabels.edit"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
   if (hasName(name, ["write", "write_file", "create_file"])) {
     return {
       category: "write",
-      label: i18n.t("agents.activity.toolLabels.write"),
+      label: t("agents.activity.toolLabels.write"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
@@ -1361,7 +1366,7 @@ export function describeAgentTool(
   ) {
     return {
       category: "search",
-      label: i18n.t("agents.activity.toolLabels.search"),
+      label: t("agents.activity.toolLabels.search"),
       summary: stringArgument(tool.args, [
         "query",
         "pattern",
@@ -1373,13 +1378,13 @@ export function describeAgentTool(
   if (hasName(name, ["fetch", "web_fetch", "webfetch", "fetch_url"])) {
     return {
       category: "fetch",
-      label: i18n.t("agents.activity.toolLabels.fetch"),
+      label: t("agents.activity.toolLabels.fetch"),
       summary: stringArgument(tool.args, ["url"]),
     };
   }
   return {
     category: "other",
-    label: humanizeToolName(tool.name),
+    label: humanizeToolName(tool.name, t),
     summary: null,
   };
 }
@@ -1398,47 +1403,48 @@ export function agentToolStatus(
 export function agentToolStepLabel(
   category: AgentToolCategory,
   status: AgentToolStatus,
+  t: TFunction,
 ): string {
   const running = status === "running";
   switch (category) {
     case "shell":
-      return i18n.t(
+      return t(
         running
           ? "agents.activity.toolStepRunning.shell"
           : "agents.activity.toolStepDone.shell",
       );
     case "read":
-      return i18n.t(
+      return t(
         running
           ? "agents.activity.toolStepRunning.read"
           : "agents.activity.toolStepDone.read",
       );
     case "edit":
-      return i18n.t(
+      return t(
         running
           ? "agents.activity.toolStepRunning.edit"
           : "agents.activity.toolStepDone.edit",
       );
     case "write":
-      return i18n.t(
+      return t(
         running
           ? "agents.activity.toolStepRunning.write"
           : "agents.activity.toolStepDone.write",
       );
     case "search":
-      return i18n.t(
+      return t(
         running
           ? "agents.activity.toolStepRunning.search"
           : "agents.activity.toolStepDone.search",
       );
     case "fetch":
-      return i18n.t(
+      return t(
         running
           ? "agents.activity.toolStepRunning.fetch"
           : "agents.activity.toolStepDone.fetch",
       );
     case "other":
-      return i18n.t(
+      return t(
         running
           ? "agents.activity.toolStepRunning.other"
           : "agents.activity.toolStepDone.other",
@@ -1448,11 +1454,11 @@ export function agentToolStepLabel(
 
 type SummaryClause = { lead: string; inline: string };
 
-function naturalSummaryList(parts: SummaryClause[]): string {
+function naturalSummaryList(parts: SummaryClause[], t: TFunction): string {
   if (parts.length === 0) return "";
   if (parts.length === 1) return parts[0].lead;
   if (parts.length === 2) {
-    return i18n.t("agents.activity.summary.listTwo", {
+    return t("agents.activity.summary.listTwo", {
       first: parts[0].lead,
       second: parts[1].inline,
     });
@@ -1460,8 +1466,8 @@ function naturalSummaryList(parts: SummaryClause[]): string {
   const items = [
     parts[0].lead,
     ...parts.slice(1, -1).map((part) => part.inline),
-  ].join(i18n.t("agents.activity.summary.listSep"));
-  return i18n.t("agents.activity.summary.listMany", {
+  ].join(t("agents.activity.summary.listSep"));
+  return t("agents.activity.summary.listMany", {
     items,
     last: parts.at(-1)!.inline,
   });
@@ -1476,6 +1482,7 @@ export function isSubagentRunning(status: string): boolean {
  * Code agent type and task description. */
 export function describeSubagentActivity(
   activity: AgentSubagentActivity,
+  t: TFunction,
 ): { label: string; summary: string | null } {
   const running = isSubagentRunning(activity.status);
   const count = Math.max(1, activity.receivers.length);
@@ -1484,7 +1491,7 @@ export function describeSubagentActivity(
     .join(" · ") || null;
   if (activity.action === "task") {
     return {
-      label: i18n.t(
+      label: t(
         running
           ? "agents.activity.subagent.running"
           : activity.status === "failed"
@@ -1498,28 +1505,30 @@ export function describeSubagentActivity(
   }
   const label =
     activity.action === "spawnAgent"
-      ? i18n.t(
+      ? t(
           running
             ? "agents.activity.subagent.starting"
             : "agents.activity.subagent.started",
         )
       : activity.action === "sendInput"
-        ? i18n.t("agents.activity.subagent.sentInput")
+        ? t("agents.activity.subagent.sentInput")
         : activity.action === "wait"
-          ? i18n.t(
+          ? t(
               running
                 ? "agents.activity.subagent.waiting"
                 : "agents.activity.subagent.waited",
             )
           : activity.action === "closeAgent"
-            ? i18n.t("agents.activity.subagent.closed")
-            : i18n.t("agents.activity.subagent.count", { count });
+            ? t("agents.activity.subagent.closed")
+            : t("agents.activity.subagent.count", { count });
   return { label, summary };
 }
 
 export function describeAgentActivity(
   entries: AgentActivityEntry[],
   active: boolean,
+  t: TFunction,
+  locale: string,
 ): AgentActivityPresentation {
   const tools = entries.flatMap((entry) =>
     entry.type === "tool" ? [entry.tool] : [],
@@ -1534,13 +1543,13 @@ export function describeAgentActivity(
         (entry) => entry.activity.status === "failed",
       );
       return {
-        label: i18n.t(
+        label: t(
           running
             ? "agents.activity.subagent.runningCount"
             : "agents.activity.subagent.usedCount",
           {
             count: subagents.length,
-            formattedCount: subagents.length.toLocaleString(),
+            formattedCount: subagents.length.toLocaleString(locale),
           },
         ),
         secondary: null,
@@ -1548,7 +1557,7 @@ export function describeAgentActivity(
       };
     }
     return {
-      label: i18n.t(
+      label: t(
         active ? "agents.activity.thinking" : "agents.activity.thoughts",
       ),
       secondary: null,
@@ -1574,7 +1583,7 @@ export function describeAgentActivity(
   let searchCount = 0;
   let otherToolCount = 0;
   for (const tool of tools) {
-    const presentation = describeAgentTool(tool);
+    const presentation = describeAgentTool(tool, t);
     const identity = presentation.summary?.trim() || `tool:${tool.id}`;
     switch (presentation.category) {
       case "edit":
@@ -1601,68 +1610,67 @@ export function describeAgentActivity(
   if (editedFiles.size) {
     const opts = {
       count: editedFiles.size,
-      formattedCount: editedFiles.size.toLocaleString(),
+      formattedCount: editedFiles.size.toLocaleString(locale),
     };
     summary.push({
-      lead: i18n.t("agents.activity.summary.editedLead", opts),
-      inline: i18n.t("agents.activity.summary.edited", opts),
+      lead: t("agents.activity.summary.editedLead", opts),
+      inline: t("agents.activity.summary.edited", opts),
     });
   }
   if (commandCount) {
     const opts = {
       count: commandCount,
-      formattedCount: commandCount.toLocaleString(),
+      formattedCount: commandCount.toLocaleString(locale),
     };
     summary.push({
-      lead: i18n.t("agents.activity.summary.ranLead", opts),
-      inline: i18n.t("agents.activity.summary.ran", opts),
+      lead: t("agents.activity.summary.ranLead", opts),
+      inline: t("agents.activity.summary.ran", opts),
     });
   }
   if (readFiles.size) {
     const opts = {
       count: readFiles.size,
-      formattedCount: readFiles.size.toLocaleString(),
+      formattedCount: readFiles.size.toLocaleString(locale),
     };
     summary.push({
-      lead: i18n.t("agents.activity.summary.readLead", opts),
-      inline: i18n.t("agents.activity.summary.read", opts),
+      lead: t("agents.activity.summary.readLead", opts),
+      inline: t("agents.activity.summary.read", opts),
     });
   }
   if (searchCount) {
     const opts = {
       count: searchCount,
-      formattedCount: searchCount.toLocaleString(),
+      formattedCount: searchCount.toLocaleString(locale),
     };
     summary.push({
-      lead: i18n.t("agents.activity.summary.searchedLead", opts),
-      inline: i18n.t("agents.activity.summary.searched", opts),
+      lead: t("agents.activity.summary.searchedLead", opts),
+      inline: t("agents.activity.summary.searched", opts),
     });
   }
   if (otherToolCount) {
     const opts = {
       count: otherToolCount,
-      formattedCount: otherToolCount.toLocaleString(),
+      formattedCount: otherToolCount.toLocaleString(locale),
     };
     summary.push({
-      lead: i18n.t("agents.activity.summary.otherLead", opts),
-      inline: i18n.t("agents.activity.summary.other", opts),
+      lead: t("agents.activity.summary.otherLead", opts),
+      inline: t("agents.activity.summary.other", opts),
     });
   }
   const failed = statuses.filter((candidate) => candidate === "failed").length;
   const stopped = statuses.filter((candidate) => candidate === "stopped").length;
-  const baseSummary = naturalSummaryList(summary);
+  const baseSummary = naturalSummaryList(summary, t);
   const label = failed
-    ? i18n.t("agents.activity.summary.withFailed", {
+    ? t("agents.activity.summary.withFailed", {
         summary: baseSummary,
-        formattedCount: failed.toLocaleString(),
+        formattedCount: failed.toLocaleString(locale),
       })
     : stopped
-      ? i18n.t("agents.activity.summary.withStopped", {
+      ? t("agents.activity.summary.withStopped", {
           summary: baseSummary,
-          formattedCount: stopped.toLocaleString(),
+          formattedCount: stopped.toLocaleString(locale),
         })
       : baseSummary;
-
   return {
     label,
     secondary: null,
@@ -1760,21 +1768,21 @@ export function agentActivityIsLive(entries: AgentActivityEntry[]): boolean {
   return describeAgentLiveActivity(entries) !== null;
 }
 
-export function formatAgentToolDetail(tool: AgentToolActivity): string {
-  const presentation = describeAgentTool(tool);
+export function formatAgentToolDetail(tool: AgentToolActivity, t: TFunction): string {
+  const presentation = describeAgentTool(tool, t);
   if (presentation.category === "shell") {
     const command = presentation.summary ?? formatUnknown(tool.args);
     const sections = [command ? `$ ${command}` : ""];
     if (tool.output) sections.push(tool.output.replace(/^\n+/, ""));
-    if (tool.cancelled) sections.push(i18n.t("agents.activity.commandCancelled"));
+    if (tool.cancelled) sections.push(t("agents.activity.commandCancelled"));
     else if (tool.exitCode !== null && tool.exitCode !== 0) {
       sections.push(
-        i18n.t("agents.activity.commandExitedWithCode", { code: tool.exitCode }),
+        t("agents.activity.commandExitedWithCode", { code: tool.exitCode }),
       );
     }
     if (tool.truncated && tool.fullOutputPath) {
       sections.push(
-        i18n.t("agents.activity.outputTruncated", { path: tool.fullOutputPath }),
+        t("agents.activity.outputTruncated", { path: tool.fullOutputPath }),
       );
     }
     return sections.filter(Boolean).join("\n\n");
@@ -1782,8 +1790,8 @@ export function formatAgentToolDetail(tool: AgentToolActivity): string {
 
   const input = formatUnknown(tool.args);
   const sections = [
-    input ? `${i18n.t("agents.activity.input")}\n${input}` : "",
-    tool.output ? `${i18n.t("agents.activity.output")}\n${tool.output}` : "",
+    input ? `${t("agents.activity.input")}\n${input}` : "",
+    tool.output ? `${t("agents.activity.output")}\n${tool.output}` : "",
   ];
   return sections.filter(Boolean).join("\n\n");
 }
@@ -1805,6 +1813,7 @@ export type AgentRewindCapabilities = Pick<
 
 export function agentRewindOptions(
   capabilities: AgentRewindCapabilities,
+  t: TFunction,
 ): Array<{ mode: AgentRewindMode; label: string }> {
   const options: Array<{
     enabled: boolean | undefined;
@@ -1814,17 +1823,17 @@ export function agentRewindOptions(
     {
       enabled: capabilities.rewindConversation,
       mode: "conversation",
-      label: i18n.t("agents.rewind.conversation"),
+      label: t("agents.rewind.conversation"),
     },
     {
       enabled: capabilities.rewindFiles,
       mode: "files",
-      label: i18n.t("agents.rewind.files"),
+      label: t("agents.rewind.files"),
     },
     {
       enabled: capabilities.rewindBoth,
       mode: "both",
-      label: i18n.t("agents.rewind.both"),
+      label: t("agents.rewind.both"),
     },
   ];
   return options.flatMap(({ enabled, mode, label }) =>

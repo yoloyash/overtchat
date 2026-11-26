@@ -22,7 +22,7 @@ function withCurrent(
 }
 
 /** Times of day a quarter of an hour apart, as 24-hour HH:MM. */
-export function timeOptions(current: string, locale?: string): FormOption[] {
+export function timeOptions(current: string, locale: string): FormOption[] {
   const options: FormOption[] = [];
   for (let hour = 0; hour < 24; hour += 1) {
     for (const minute of [0, 15, 30, 45]) {

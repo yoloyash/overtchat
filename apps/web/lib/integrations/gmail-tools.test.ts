@@ -11,6 +11,7 @@ import {
   subscribeGmailEmailResults,
   type GmailToolPart,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { z } from "zod";
 import { INTEGRATIONS } from "@/lib/integrations/schema";
 import { createIntegrationTestDatabase } from "@/lib/integrations/test-database";
@@ -319,7 +320,7 @@ describe("display", () => {
       },
     });
 
-    const display = describeGmailToolPart(search);
+    const display = describeGmailToolPart(search, i18n.t);
     expect(display).toMatchObject({
       action: "search",
       status: "done",
@@ -339,10 +340,10 @@ describe("display", () => {
     // Without a thread to point at, a row is not a link.
     expect(display.rows[1].href).toBeUndefined();
     expect(JSON.stringify(display)).not.toContain("private words");
-    expect(gmailActivityLabel(search, true)).toBe(
+    expect(gmailActivityLabel(search, true, i18n.t)).toBe(
       'Searching Gmail for "from:grace is:unread"',
     );
-    expect(gmailActivityLabel(search, false)).toBe("Searched Gmail");
+    expect(gmailActivityLabel(search, false, i18n.t)).toBe("Searched Gmail");
   });
 
   it("shows a thread by its subject and senders, never its text", () => {
@@ -363,6 +364,7 @@ describe("display", () => {
           ],
         },
       }),
+      i18n.t,
     );
     const href =
       "https://mail.google.com/mail/?authuser=ada%40example.test#all/thread-1";
@@ -389,7 +391,7 @@ describe("display", () => {
         pageCount: 3,
       },
     });
-    const display = describeGmailToolPart(attachment);
+    const display = describeGmailToolPart(attachment, i18n.t);
     expect(display).toMatchObject({
       action: "attachment",
       title: "Read attachment",
@@ -397,13 +399,14 @@ describe("display", () => {
       note: "3 pages",
     });
     expect(JSON.stringify(display)).not.toContain("private words");
-    expect(gmailActivityLabel(attachment, true)).toBe("Reading attachment…");
+    expect(gmailActivityLabel(attachment, true, i18n.t)).toBe("Reading attachment…");
     expect(
       describeGmailToolPart(
         part({
           type: "tool-gmail_read_attachment",
           output: { filename: "notes.txt", offset: 60_000, pageCount: null },
         }),
+        i18n.t,
       ).note,
     ).toBe("Continued");
   });
@@ -415,6 +418,7 @@ describe("display", () => {
           type: "tool-gmail_modify_labels",
           output: { account: "ada@example.test", threads, added, removed },
         }),
+        i18n.t,
       );
 
     expect(sort([], ["INBOX"])).toMatchObject({
@@ -432,8 +436,8 @@ describe("display", () => {
     });
 
     const running = part({ type: "tool-gmail_modify_labels", state: "input-available" });
-    expect(describeGmailToolPart(running).title).toBe("Sorting mail");
-    expect(gmailActivityLabel(running, true)).toBe("Sorting mail…");
+    expect(describeGmailToolPart(running, i18n.t).title).toBe("Sorting mail");
+    expect(gmailActivityLabel(running, true, i18n.t)).toBe("Sorting mail…");
 
     expect(
       describeGmailToolPart(
@@ -441,6 +445,7 @@ describe("display", () => {
           type: "tool-gmail_list_labels",
           output: { labels: [{ id: "INBOX" }, { id: "Label_1" }] },
         }),
+        i18n.t,
       ),
     ).toMatchObject({ action: "labels", title: "Listed Gmail labels", note: "2 labels" });
   });
@@ -454,36 +459,38 @@ describe("display", () => {
           input: { subject: "Hi" },
           output: undefined,
         }),
+        i18n.t,
       ),
     ).toMatchObject({ status: "running", title: "Writing draft", detail: "Hi" });
   });
 
   it("reports a running, failed, or interrupted step", () => {
     const running = part({ state: "input-available", input: {} });
-    expect(describeGmailToolPart(running)).toMatchObject({
+    expect(describeGmailToolPart(running, i18n.t)).toMatchObject({
       status: "running",
       title: "Searching Gmail",
     });
-    expect(gmailActivityLabel(running, false)).toBe(
+    expect(gmailActivityLabel(running, false, i18n.t)).toBe(
       "Gmail request did not complete",
     );
 
     const failed = part({ state: "output-error", errorText: "Gmail needs to be reconnected." });
-    expect(describeGmailToolPart(failed)).toMatchObject({
+    expect(describeGmailToolPart(failed, i18n.t)).toMatchObject({
       status: "error",
       error: "Gmail needs to be reconnected.",
     });
-    expect(gmailActivityLabel(failed, false)).toBe("Gmail request failed");
+    expect(gmailActivityLabel(failed, false, i18n.t)).toBe("Gmail request failed");
   });
 
   it("survives a saved step whose shape it does not recognize", () => {
     expect(
-      describeGmailToolPart(part({ input: "x", output: { messages: "nope" } })),
+      describeGmailToolPart(part({ input: "x", output: { messages: "nope" } }), i18n.t),
     ).toMatchObject({ status: "done", rows: [], note: "No results" });
 
     // A step saved before results named their mailbox opens nothing.
     const [row] = describeGmailToolPart(
       part({ output: { messages: [{ threadId: "t1", from: "a@example.test" }] } }),
+      i18n.t,
     ).rows;
     expect(row).toMatchObject({ sender: "a@example.test" });
     expect(row.href).toBeUndefined();
@@ -497,6 +504,7 @@ describe("display", () => {
             messages: [{ threadId: "t1/../x", from: "a@example.test" }],
           },
         }),
+        i18n.t,
       ).rows[0].href,
     ).toBeUndefined();
   });
@@ -581,15 +589,15 @@ describe("in a conversation", () => {
 
   it("names the step while an email is being written", () => {
     const writing = { ...composed, state: "input-available", output: undefined };
-    expect(gmailActivityLabel(writing as never, true)).toBe("Writing email…");
-    expect(describeGmailToolPart(writing as never)).toMatchObject({
+    expect(gmailActivityLabel(writing as never, true, i18n.t)).toBe("Writing email…");
+    expect(describeGmailToolPart(writing as never, i18n.t)).toMatchObject({
       action: "compose",
       title: "Writing email",
     });
   });
 
   it("describes a draft before and after the user sends it", () => {
-    expect(describeGmailEmail(savedDraft as never)).toEqual({
+    expect(describeGmailEmail(savedDraft as never, i18n.t)).toEqual({
       id: "r-42",
       status: "draft",
       source: "draft",
@@ -607,7 +615,7 @@ describe("in a conversation", () => {
           ...savedDraft.output,
           sent: { at: "2026-11-05T12:00:00.000Z", threadId: "t9" },
         },
-      } as never),
+      } as never, i18n.t),
     ).toMatchObject({
       status: "sent",
       sentAt: "2026-11-05T12:00:00.000Z",
@@ -618,7 +626,7 @@ describe("in a conversation", () => {
   it("describes a composed email in the chat, in Gmail, and sent", () => {
     // Only the chat holds it: there is nothing in Gmail to open, and the card
     // sends what the model wrote.
-    expect(describeGmailEmail(composed as never)).toEqual({
+    expect(describeGmailEmail(composed as never, i18n.t)).toEqual({
       id: "e-1",
       status: "unsent",
       source: "composed",
@@ -638,7 +646,7 @@ describe("in a conversation", () => {
     });
 
     const saved = { ...composed.output, saved: { draftId: "r-7" } };
-    expect(describeGmailEmail({ ...composed, output: saved } as never)).toMatchObject({
+    expect(describeGmailEmail({ ...composed, output: saved } as never, i18n.t)).toMatchObject({
       id: "e-1",
       status: "draft",
       href: "https://mail.google.com/mail/?authuser=ada%40example.test#drafts",
@@ -647,7 +655,7 @@ describe("in a conversation", () => {
       describeGmailEmail({
         ...composed,
         output: { ...saved, sent: { at: "2026-11-05T12:00:00.000Z", threadId: "t9" } },
-      } as never),
+      } as never, i18n.t),
     ).toMatchObject({
       status: "sent",
       href: "https://mail.google.com/mail/?authuser=ada%40example.test#all/t9",
@@ -695,7 +703,7 @@ describe("in a conversation", () => {
     expect(
       groupMessageParts([sent] as never).map((segment) => segment.kind),
     ).toEqual(["gmail-email"]);
-    expect(describeGmailEmail(sent as never)).toEqual({
+    expect(describeGmailEmail(sent as never, i18n.t)).toEqual({
       id: "call-5",
       status: "sent",
       source: "model",
@@ -711,14 +719,14 @@ describe("in a conversation", () => {
     expect(groupMessageParts([sending] as never).map((segment) => segment.kind)).toEqual([
       "activity",
     ]);
-    expect(gmailActivityLabel(sending as never, true)).toBe("Sending email…");
+    expect(gmailActivityLabel(sending as never, true, i18n.t)).toBe("Sending email…");
     expect(
       describeGmailToolPart({
         ...sent,
         state: "output-error",
         output: undefined,
         errorText: "Gmail returned an error.",
-      } as never),
+      } as never, i18n.t),
     ).toMatchObject({ action: "send", status: "error", error: "Gmail returned an error." });
   });
 
@@ -734,13 +742,14 @@ describe("in a conversation", () => {
       { parts: [{ type: "text" }, later] },
     ] as never);
     expect([...replaced]).toEqual(["e-1"]);
-    expect(describeGmailEmail(composed as never, replaced).status).toBe("replaced");
-    expect(describeGmailEmail(later as never, replaced).status).toBe("unsent");
+    expect(describeGmailEmail(composed as never, i18n.t, replaced).status).toBe("replaced");
+    expect(describeGmailEmail(later as never, i18n.t, replaced).status).toBe("unsent");
 
     // In Gmail or sent, it is still what that says it is.
     expect(
       describeGmailEmail(
         { ...composed, output: { ...composed.output, saved: { draftId: "r-7" } } } as never,
+        i18n.t,
         replaced,
       ).status,
     ).toBe("draft");

@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 export type ToolState =
   | "input-streaming"
   | "input-available"
@@ -77,9 +77,10 @@ export function webSearchResults(
 
 export function webSearchProviderLabel(
   output: PersistedWebSearchOutput | undefined,
+  t: TFunction,
 ): string | undefined {
   if (!output || Array.isArray(output)) return undefined;
-  if (output.provider === "none") return i18n.t("chat.activity.noSearchProvider");
+  if (output.provider === "none") return t("chat.activity.noSearchProvider");
   return WEB_SEARCH_PROVIDER_LABELS[output.provider];
 }
 

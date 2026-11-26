@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import type {
   AgentConnectionListItem,
   AgentProviderSnapshot,
@@ -126,7 +127,7 @@ describe("agent drawer entries", () => {
       collapsed: [],
       showAllDone: false,
       activeSessionId: "done-8",
-    });
+    }, i18n.t);
     expect(
       entries.map((entry) =>
         entry.kind === "group"
@@ -158,7 +159,7 @@ describe("agent drawer entries", () => {
         collapsed: ["done", "working"],
         showAllDone: false,
         activeSessionId: null,
-      }).map((entry) => (entry.kind === "group" ? `${entry.label}${entry.collapsed ? " (folded)" : ""}` : entry.kind)),
+      }, i18n.t).map((entry) => (entry.kind === "group" ? `${entry.label}${entry.collapsed ? " (folded)" : ""}` : entry.kind)),
     ).toEqual([
       "Needs input",
       "session",
@@ -175,7 +176,7 @@ describe("agent drawer entries", () => {
         collapsed: [],
         showAllDone: true,
         activeSessionId: null,
-      }).filter((entry) => entry.kind === "session"),
+      }, i18n.t).filter((entry) => entry.kind === "session"),
     ).toHaveLength(14);
   });
 
@@ -185,7 +186,7 @@ describe("agent drawer entries", () => {
       collapsed: [groups[0]!.key, groups[2]!.key],
       showAllDone: false,
       activeSessionId: null,
-    });
+    }, i18n.t);
     expect(
       entries.map((entry) =>
         entry.kind === "workspace"
@@ -206,7 +207,7 @@ describe("agent drawer entries", () => {
       collapsed: [groups[2]!.key],
       showAllDone: false,
       activeSessionId: "claude-done",
-    });
+    }, i18n.t);
     const rows = open.flatMap((entry) => (entry.kind === "session" ? [entry.entry] : []));
     expect(rows.map((entry) => entry.item.session.id)).toContain("claude-done");
     // Under its folder a row names its agent; a waiting one still shows its request.
@@ -220,7 +221,7 @@ describe("agent drawer entries", () => {
       collapsed: [],
       showAllDone: false,
       activeSessionId: null,
-    }).filter((entry) => entry.kind === "session");
+    }, i18n.t).filter((entry) => entry.kind === "session");
     expect(agentSessionRowMeta(entries[0]!.entry, "all")).toBe("Allow Bash · npm ci");
     expect(agentSessionRowMeta(entries[1]!.entry, "all")).toBe("app · This machine");
     expect(agentSessionRowMeta(entries[1]!.entry, "workspace")).toBe("Codex");
@@ -228,10 +229,10 @@ describe("agent drawer entries", () => {
 
   it("lists nothing to see without sessions or workspaces", () => {
     expect(
-      agentDrawerEntries([], { grouping: "status", collapsed: [], showAllDone: false, activeSessionId: null }),
+      agentDrawerEntries([], { grouping: "status", collapsed: [], showAllDone: false, activeSessionId: null }, i18n.t),
     ).toEqual([{ kind: "empty", key: "empty", text: "No sessions yet." }]);
     expect(
-      agentDrawerEntries([], { grouping: "workspace", collapsed: [], showAllDone: false, activeSessionId: null }),
+      agentDrawerEntries([], { grouping: "workspace", collapsed: [], showAllDone: false, activeSessionId: null }, i18n.t),
     ).toEqual([{ kind: "empty", key: "empty", text: "No workspaces yet." }]);
   });
 });

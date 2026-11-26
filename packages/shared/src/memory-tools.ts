@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type { UIMessage } from "ai";
 
 type MessagePart = UIMessage["parts"][number];
@@ -39,6 +39,7 @@ export function isMemoryToolPart(part: MessagePart): part is MemoryToolPart {
 
 export function describeMemoryToolPart(
   part: MemoryToolPart,
+  t: TFunction,
 ): MemoryToolDisplay {
   const action = part.type === "tool-set_memory" ? "set" : "delete";
   const input = record(part.input);
@@ -64,7 +65,7 @@ export function describeMemoryToolPart(
       status: "error",
       key,
       value,
-      error: part.errorText || i18n.t("chat.steps.memory.toolFailed"),
+      error: part.errorText || t("chat.steps.memory.toolFailed"),
     };
   }
 
@@ -74,7 +75,7 @@ export function describeMemoryToolPart(
       status: "error",
       key,
       value,
-      error: i18n.t("chat.steps.memory.denied"),
+      error: t("chat.steps.memory.denied"),
     };
   }
 
@@ -91,7 +92,7 @@ export function describeMemoryToolPart(
       status: "error",
       key,
       value,
-      error: error ?? i18n.t("chat.steps.memory.updateFailed"),
+      error: error ?? t("chat.steps.memory.updateFailed"),
     };
   }
 
@@ -102,26 +103,30 @@ export function hasSuccessfulMemoryMutation(message: UIMessage): boolean {
   return message.parts.some(
     (part) =>
       isMemoryToolPart(part) &&
-      describeMemoryToolPart(part).status === "success",
+      part.state === "output-available" &&
+      record(part.output)?.ok === true,
   );
 }
 
-export function memoryToolStatusLabel(detail: MemoryToolDisplay): string {
+export function memoryToolStatusLabel(
+  detail: MemoryToolDisplay,
+  t: TFunction,
+): string {
   if (detail.status === "running") {
-    return i18n.t(
+    return t(
       detail.action === "set"
         ? "common.states.updating"
         : "common.states.removing",
     );
   }
-  if (detail.status === "error") return i18n.t("chat.steps.memory.status.failed");
+  if (detail.status === "error") return t("chat.steps.memory.status.failed");
   if (detail.status === "missing") {
-    return i18n.t("chat.steps.memory.status.notFound");
+    return t("chat.steps.memory.status.notFound");
   }
   if (detail.status === "incomplete") {
-    return i18n.t("chat.steps.memory.status.incomplete");
+    return t("chat.steps.memory.status.incomplete");
   }
-  return i18n.t(
+  return t(
     detail.action === "set"
       ? "chat.steps.memory.status.updated"
       : "chat.steps.memory.status.removed",
@@ -130,42 +135,43 @@ export function memoryToolStatusLabel(detail: MemoryToolDisplay): string {
 
 export function memoryToolArtifactLabel(
   details: readonly MemoryToolDisplay[],
+  t: TFunction,
 ): string {
   if (details.some((detail) => detail.status === "running")) {
     if (details.length > 1) {
-      return i18n.t("chat.steps.memory.artifact.updatingMany");
+      return t("chat.steps.memory.artifact.updatingMany");
     }
-    return i18n.t(
+    return t(
       details[0]?.action === "delete"
         ? "chat.steps.memory.artifact.removingOne"
         : "chat.steps.memory.artifact.updatingOne",
     );
   }
   if (details.some((detail) => detail.status === "error")) {
-    return i18n.t(
+    return t(
       details.some((detail) => detail.status === "success")
         ? "chat.steps.memory.artifact.updatedWithErrors"
         : "chat.steps.memory.artifact.updateFailed",
     );
   }
   if (details.every((detail) => detail.status === "missing")) {
-    return i18n.t(
+    return t(
       details.length > 1
         ? "chat.steps.memory.artifact.notFoundMany"
         : "chat.steps.memory.artifact.notFoundOne",
     );
   }
   if (details.some((detail) => detail.status === "incomplete")) {
-    return i18n.t("chat.steps.memory.artifact.incomplete");
+    return t("chat.steps.memory.artifact.incomplete");
   }
   if (details.length > 1) {
-    return i18n.t(
+    return t(
       details.every((detail) => detail.action === "delete")
         ? "chat.steps.memory.artifact.removedMany"
         : "chat.steps.memory.artifact.updatedMany",
     );
   }
-  return i18n.t(
+  return t(
     details[0]?.action === "delete"
       ? "chat.steps.memory.artifact.removedOne"
       : "chat.steps.memory.artifact.updatedOne",
