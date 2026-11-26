@@ -149,7 +149,7 @@ function GoogleAccessForm({
             disabled={busy}
             onClick={() => setConfirmingRemoval(false)}
           >
-            {t("tools.connectors.googleAccess.cancel")}
+            {t("tools.connectors.connectGoogle.cancel")}
           </Button>
           <Button
             type="button"
@@ -233,7 +233,7 @@ function GoogleAccessForm({
             disabled={busy}
             onClick={onClose}
           >
-            {t("tools.connectors.googleAccess.cancel")}
+            {t("tools.connectors.connectGoogle.cancel")}
           </Button>
           <Button type="submit" size="sm" disabled={busy}>
             {save.isPending

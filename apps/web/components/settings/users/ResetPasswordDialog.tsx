@@ -80,7 +80,7 @@ export function ResetPasswordDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {t("users.resetPasswordDialog.title")}
+            {t("users.list.resetPassword")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {t("users.resetPasswordDialog.description", {
@@ -140,12 +140,12 @@ export function ResetPasswordDialog({
                 disabled={submitting}
                 onClick={onClose}
               >
-                {t("users.resetPasswordDialog.cancel")}
+                {t("users.roleDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting
                   ? t("users.resetPasswordDialog.resetting")
-                  : t("users.resetPasswordDialog.submit")}
+                  : t("users.list.resetPassword")}
               </Button>
             </SettingsActions>
           </form>

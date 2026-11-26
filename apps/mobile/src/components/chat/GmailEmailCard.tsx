@@ -125,7 +125,7 @@ export function GmailEmailCard({
               hitSlop={8}
             >
               <Text style={[styles.meta, muted]}>
-                {expanded ? t("chat.steps.showLess") : t("chat.steps.showAll")}
+                {expanded ? t("chat.messages.showLess") : t("chat.steps.showAll")}
               </Text>
             </Pressable>
           ) : null}
@@ -164,7 +164,7 @@ export function GmailEmailCard({
                   { color: colors.foreground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {save.isPending ? t("chat.steps.saving") : t("chat.steps.saveToGmail")}
+                {save.isPending ? t("chat.share.saving") : t("chat.steps.saveToGmail")}
               </Text>
             </Pressable>
           ) : null}
@@ -191,7 +191,7 @@ export function GmailEmailCard({
                 { color: colors.primaryForeground, fontFamily: fonts.sansMedium },
               ]}
             >
-              {send.isPending ? t("chat.steps.sending") : t("chat.steps.send")}
+              {send.isPending ? t("chat.voice.sending") : t("chat.steps.send")}
             </Text>
           </Pressable>
         </View>

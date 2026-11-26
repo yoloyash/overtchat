@@ -160,7 +160,7 @@ export function SearchChatsPalette({
             motionClasses.palette,
           )}
         >
-          <Dialog.Title className="sr-only">{t("sidebar.searchPalette.title")}</Dialog.Title>
+          <Dialog.Title className="sr-only">{t("sidebar.nav.searchChats")}</Dialog.Title>
           <div className="flex items-center gap-2 border-b px-3 py-2.5">
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <input
@@ -224,7 +224,7 @@ export function SearchChatsPalette({
                     )}
                   >
                     <Pencil className="size-4 shrink-0 text-muted-foreground" />
-                    <span>{t("sidebar.searchPalette.newChat")}</span>
+                    <span>{t("sidebar.nav.newChat")}</span>
                   </button>
                 );
               }
@@ -242,7 +242,7 @@ export function SearchChatsPalette({
                     )}
                   >
                     <span className="truncate">
-                      {row.chat.title ?? t("sidebar.searchPalette.untitled")}
+                      {row.chat.title ?? t("sidebar.chat.untitled")}
                     </span>
                   </button>
                 );
@@ -260,7 +260,7 @@ export function SearchChatsPalette({
                   )}
                 >
                   <span className="truncate w-full">
-                    {row.hit.title ?? t("sidebar.searchPalette.untitled")}
+                    {row.hit.title ?? t("sidebar.chat.untitled")}
                   </span>
                   {row.hit.snippet && (
                     <span className="line-clamp-2 text-xs text-muted-foreground [&_mark]:bg-transparent [&_mark]:font-medium [&_mark]:text-foreground">

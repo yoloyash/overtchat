@@ -432,7 +432,7 @@ function NewAgent({
           running={false}
           isAdmin={isAdmin}
           modelLabel={model?.label ?? t("agents.composer.loadingModel")}
-          thinkingLabel={thinkingLabel(model ?? undefined, selection.thinkingOptionId, t)}
+          thinkingLabel={thinkingLabel(model ?? undefined, selection.thinkingOptionId)}
           permission={(() => {
             const mode = selection.modes.find((item) => item.id === selection.modeId);
             return mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined;

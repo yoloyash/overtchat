@@ -700,7 +700,7 @@ function ToolActivityStep({
                 summary: presentation.summary,
                 status: t(`agents.activity.toolStatus.${status}`),
               })
-            : t("agents.activity.toolStepAria", {
+            : t("agents.activity.toolGroupAria", {
                 label: presentation.label,
                 status: t(`agents.activity.toolStatus.${status}`),
               })

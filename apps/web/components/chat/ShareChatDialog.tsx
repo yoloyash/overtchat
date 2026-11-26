@@ -104,7 +104,7 @@ export function ShareChatDialog({
                   onFocus={(e) => e.target.select()}
                 />
                 <Button onClick={() => void copy()}>
-                  {copied ? t("chat.share.copied") : t("chat.share.copyLink")}
+                  {copied ? t("chat.messages.copied") : t("chat.share.copyLink")}
                 </Button>
               </div>
               <a

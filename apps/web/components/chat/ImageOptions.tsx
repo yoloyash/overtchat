@@ -28,7 +28,7 @@ export function ImageOptions({
       <span className="font-medium">
         {model
           ? t("chat.image.createTitleWithModel", { model })
-          : t("chat.image.createTitle")}
+          : t("chat.composer.createImage")}
       </span>
       {configuredSize ? (
         <span>

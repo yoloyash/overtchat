@@ -239,6 +239,7 @@ export default function AgentHistoryScreen() {
       />
       <SelectionSheet
         title={t("agents.setup.machine")}
+        searchLabel={t("agents.mobile.setup.searchMachine")}
         visible={picker === "host"}
         value={host ?? ALL}
         options={[
@@ -253,6 +254,7 @@ export default function AgentHistoryScreen() {
       />
       <SelectionSheet
         title={t("agents.mobile.history.folder")}
+        searchLabel={t("agents.mobile.history.searchFolder")}
         visible={picker === "workspace"}
         value={workspace ?? ALL}
         options={[
@@ -267,6 +269,7 @@ export default function AgentHistoryScreen() {
       />
       <SelectionSheet
         title={t("agents.setup.agent")}
+        searchLabel={t("agents.mobile.setup.searchAgent")}
         visible={picker === "provider"}
         value={provider ?? ALL}
         options={[
@@ -285,6 +288,7 @@ export default function AgentHistoryScreen() {
       />
       <SelectionSheet<AgentSessionSort>
         title={t("agents.history.sortBy")}
+        searchLabel={t("agents.mobile.history.searchSortBy")}
         visible={picker === "sort"}
         value={sort}
         options={[

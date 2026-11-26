@@ -467,7 +467,7 @@ function ChatSurface({
     ? t("chat.mobile.voice.requiresUpdate")
     : !configured
       ? modelLoading
-        ? t("chat.composer.unavailable.loadingModel")
+        ? t("chat.composer.loadingModelPlaceholder")
         : t("chat.composer.unavailable.configureModelBeforeVoice")
       : voiceCapability?.unavailableReason === "stt-unavailable"
         ? t("chat.composer.unavailable.sttDisabled")

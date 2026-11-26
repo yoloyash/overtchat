@@ -5,7 +5,6 @@ export const models = {
       "Manage chat, image, and background task models. One image model can be enabled at a time.",
     addModel: "Add model",
     searchPlaceholder: "Search models",
-    searchLabel: "Search models",
     configuredCount: "{{count}} configured",
     empty: "No models configured.",
     addFirstModel: "Add your first model",
@@ -21,7 +20,6 @@ export const models = {
     taskModelTitle: "Task model",
     taskModelDescription:
       "Used to generate chat titles. A fast, inexpensive, non-reasoning model works best.",
-    taskModelLabel: "Task model",
     sameAsChatModel: "Same as chat model",
     notInChat: "Not in chat",
   },
@@ -48,7 +46,6 @@ export const models = {
     descriptionTaskModel:
       "<name>{{name}}</name> will be removed from chat. Existing chats keep their messages. Background tasks will return to using the active chat model.",
     cancel: "Cancel",
-    delete: "Delete",
     deleting: "Deleting…",
   },
   toast: {
@@ -83,7 +80,6 @@ export const models = {
   },
   editor: {
     editTitle: "Edit model",
-    addTitle: "Add model",
     description: "Configure a model that everyone on this server can use.",
     backLabel: "Back to models",
     modelTypeSection: "Model type",
@@ -111,7 +107,6 @@ export const models = {
       "Allow tools such as web search. Custom servers rarely report this reliably, so use Test connection to verify the served template and parser.",
     toolCallingDisableLabel: "Disable tool calling",
     toolCallingEnableLabel: "Enable tool calling",
-    testConnectionTitle: "Test connection",
     testConnectionWithTools:
       "Send a short request and verify tool calling with the current connection settings.",
     testConnectionTextOnly:
@@ -149,10 +144,8 @@ export const models = {
       "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count.",
     usageCostOpenRouterNotice:
       "No rates are needed for OpenRouter image models.",
-    cancel: "Cancel",
     saving: "Saving…",
     saveChanges: "Save changes",
-    addModel: "Add model",
     perUserSaveFirst:
       "Save this model, then set each person's own key or endpoint under People.",
     errors: {
@@ -212,8 +205,6 @@ export const models = {
     modelImageDescription: "Choose an image model or enter its ID manually.",
     modelChatDescription: "Choose a fetched model or enter an id.",
     fetchedModelsLabel: "Fetched models",
-    searchModelsPlaceholder: "Search models",
-    searchModelsLabel: "Search models",
     noMatchingModels: "No matching models.",
     refresh: "Refresh",
     fetch: "Fetch",
@@ -330,7 +321,6 @@ export const models = {
     checkTitle: "Check",
     checkDescription:
       "Renders the prompt template for each level without generating a reply. Fields the server handles outside the template aren't reflected.",
-    checking: "Checking…",
     checkWithServer: "Check with server",
     useAsDefault: "Use {{level}} as default",
     checkUnavailable:
@@ -377,7 +367,6 @@ export const models = {
     apiKeyPlaceholder: "Leave empty to use the model's key",
     endpointLabel: "Endpoint for {{who}}",
     endpointPlaceholder: "Leave empty to use {{baseUrl}}",
-    cancel: "Cancel",
     save: "Save",
     saveLabel: "Save credential for {{who}}",
     remove: "Remove",
@@ -416,6 +405,7 @@ export const models = {
       emptyDetail: "Add your first chat or image model.",
       backgroundTasksDescription:
         "The task model generates chat titles for everyone on this server.",
+      searchTaskModel: "Search task model",
     },
     editor: {
       notFound: "Model no longer exists.",
@@ -428,6 +418,8 @@ export const models = {
       discoverModels: "Discover models",
       noModelsDiscovered: "No models found. Enter a model ID manually.",
       discoveredModels: "Discovered models",
+      searchProvider: "Search provider",
+      searchDiscoveredModels: "Search discovered models",
       modelIdLabel: "Model ID",
       hideAdvanced: "Hide advanced settings",
       showAdvanced: "Show advanced settings",

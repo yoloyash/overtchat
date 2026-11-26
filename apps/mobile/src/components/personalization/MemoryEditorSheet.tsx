@@ -140,8 +140,8 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
             ]}
           >
             {memory
-              ? t("personalization.memories.dialog.editTitle")
-              : t("personalization.memories.dialog.addTitle")}
+              ? t("personalization.memories.editTitle")
+              : t("personalization.memories.add")}
           </Text>
           <Text
             style={[
@@ -275,7 +275,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
               accessibilityLabel={
                 memory
                   ? t("personalization.memories.dialog.saveChanges")
-                  : t("personalization.memories.dialog.addSubmit")
+                  : t("personalization.memories.add")
               }
               disabled={!canSubmit}
               onPress={() => void submit()}
@@ -306,7 +306,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                 >
                   {memory
                     ? t("personalization.memories.dialog.saveChanges")
-                    : t("personalization.memories.dialog.addSubmit")}
+                    : t("personalization.memories.add")}
                 </Text>
               )}
             </Pressable>

@@ -162,6 +162,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
         <Choice
           disabled={busy}
           title={t("models.connection.providerTitle")}
+          searchLabel={t("models.mobile.editor.searchProvider")}
           value={draft.providerId}
           options={[
             // Keep a provider from a newer server selectable as-is.
@@ -239,6 +240,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
           <Choice
             disabled={busy}
             title={t("models.mobile.editor.discoveredModels")}
+            searchLabel={t("models.mobile.editor.searchDiscoveredModels")}
             value={draft.model}
             options={discovered.map((m) => ({
               value: m.id,
@@ -474,7 +476,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
                 [
                   { text: t("models.deleteDialog.cancel"), style: "cancel" },
                   {
-                    text: t("models.deleteDialog.delete"),
+                    text: t("models.item.delete"),
                     style: "destructive",
                     onPress: () =>
                       void action.run(async () => {

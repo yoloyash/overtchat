@@ -170,5 +170,9 @@ export const settings: Translation["settings"] = {
       phoneSettingsTitle: "手机通知设置",
       phoneSettingsDetail: "权限、提示音和锁屏显示方式",
     },
+    appearance: {
+      searchFont: "搜索界面字体",
+      searchLanguage: "搜索语言",
+    },
   },
 };

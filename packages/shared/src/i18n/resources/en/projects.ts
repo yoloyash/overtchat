@@ -67,13 +67,11 @@ export const projects = {
     addFiles: "Add files",
     inputLabel: "Project files to add",
     loadError: "Could not load the project files.",
-    listLabel: "Files",
     pages_one: "{{count}} page",
     pages_other: "{{count}} pages",
     fromChat: "from <chatLink>{{chat}}</chatLink>",
     fromUnnamedChat: "from <chatLink>a chat</chatLink>",
     removeFileLabel: "Remove {{filename}} from project",
-    removeFromProject: "Remove from project",
     uploading: "Uploading…",
     footer:
       "{{used}} of {{max}} files. The model reads and searches them with the file tools when a question needs them.",

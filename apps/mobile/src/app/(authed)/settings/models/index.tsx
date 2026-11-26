@@ -88,7 +88,7 @@ function ModelList() {
         <>
           {!reordering && (
             <SearchField
-              label={t("models.page.searchLabel")}
+              label={t("models.page.searchPlaceholder")}
               value={search}
               onChangeText={setSearch}
             />
@@ -245,6 +245,7 @@ function ModelList() {
           >
             <Choice
               title={t("models.backgroundTasks.taskModelTitle")}
+              searchLabel={t("models.mobile.list.searchTaskModel")}
               value={models.find((m) => m.taskModel)?.id ?? ""}
               disabled={mutation.isPending || reorder.isPending}
               options={[

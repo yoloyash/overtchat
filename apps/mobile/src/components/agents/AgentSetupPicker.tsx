@@ -143,6 +143,7 @@ export function AgentSetupPicker({
       )}
       <SelectionSheet
         title={t("agents.setup.machine")}
+        searchLabel={t("agents.mobile.setup.searchMachine")}
         visible={open === "host"}
         value={current.hostKey}
         options={hosts.map((host) => ({ value: host.hostKey, label: host.hostLabel }))}
@@ -152,6 +153,7 @@ export function AgentSetupPicker({
       />
       <SelectionSheet
         title={t("agents.setup.workspace")}
+        searchLabel={t("agents.mobile.setup.searchWorkspace")}
         visible={open === "workspace"}
         value={current.workspacePath}
         options={workspaces.map((workspace) => ({
@@ -174,6 +176,7 @@ export function AgentSetupPicker({
       />
       <SelectionSheet
         title={t("agents.setup.agent")}
+        searchLabel={t("agents.mobile.setup.searchAgent")}
         visible={open === "agent"}
         value={provider}
         options={agents.map((agent) => ({

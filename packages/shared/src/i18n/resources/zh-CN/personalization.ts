@@ -47,8 +47,6 @@ export const personalization: Translation["personalization"] = {
     editAriaLabel: "编辑 {{key}}",
     editTitle: "编辑记忆",
     dialog: {
-      editTitle: "编辑记忆",
-      addTitle: "添加记忆",
       description: "开启个性化后，已保存的记忆会包含在后续对话中。",
       valueLabel: "希望 OvertChat 记住什么？",
       valueAriaLabel: "记忆内容",
@@ -58,9 +56,7 @@ export const personalization: Translation["personalization"] = {
       keyHint:
         "用于之后更新这条记忆。请以字母开头，仅使用小写字母、数字或下划线。",
       cancel: "取消",
-      saving: "正在保存…",
       saveChanges: "保存更改",
-      addSubmit: "添加记忆",
       updatedToast: "记忆已更新",
       addedToast: "记忆已添加",
       updateError: "更新记忆失败。",
@@ -71,7 +67,6 @@ export const personalization: Translation["personalization"] = {
       buttonTitle: "删除记忆",
       title: "删除这条记忆？",
       description: "OvertChat 将不再在后续对话中包含这条记忆。",
-      cancel: "取消",
       deleting: "正在删除…",
       confirm: "删除",
       deletedToast: "记忆已删除",
@@ -82,9 +77,7 @@ export const personalization: Translation["personalization"] = {
       title: "清空所有记忆？",
       description:
         "这会永久删除所有已保存的记忆。你的个人资料字段不受影响。",
-      cancel: "取消",
       clearing: "正在清空…",
-      confirm: "全部清空",
       error: "清空记忆失败。",
     },
   },

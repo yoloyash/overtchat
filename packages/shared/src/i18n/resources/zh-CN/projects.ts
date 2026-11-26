@@ -34,7 +34,7 @@ export const projects: Translation["projects"] = {
     untitled: "未命名",
     filterPlaceholder: "筛选对话",
     empty: {
-      title: "还没有对话",
+      title: "暂无对话",
       description: "在上方发起对话。这里的对话共享此项目的指令和默认模型。",
       noMatches: "没有匹配 <query>{{query}}</query> 的对话。",
     },
@@ -49,15 +49,15 @@ export const projects: Translation["projects"] = {
     },
     toast: {
       deleted: "对话已删除",
-      renameError: "无法重命名对话",
+      renameError: "重命名对话失败",
       removedTitle: "已从项目中移除",
       removedDescription: "该对话已移至你的主列表。",
-      moveError: "无法移动对话",
+      moveError: "移动对话失败",
     },
     errors: {
       deleteFailed: "删除失败",
       renameFallback: "对话标题未更改。",
-      moveFallback: "对话保留在原位置。",
+      moveFallback: "对话仍留在原位置。",
     },
   },
   files: {
@@ -67,12 +67,10 @@ export const projects: Translation["projects"] = {
     addFiles: "添加文件",
     inputLabel: "要添加的项目文件",
     loadError: "无法加载项目文件。",
-    listLabel: "文件",
     pages_other: "{{count}} 页",
     fromChat: "来自 <chatLink>{{chat}}</chatLink>",
     fromUnnamedChat: "来自<chatLink>一个对话</chatLink>",
     removeFileLabel: "从项目中移除 {{filename}}",
-    removeFromProject: "从项目中移除",
     uploading: "正在上传…",
     footer: "已添加 {{used}}/{{max}} 个文件。需要时，模型会使用文件工具读取和搜索这些文件。",
     toast: {

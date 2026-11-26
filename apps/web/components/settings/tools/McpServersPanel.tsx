@@ -92,15 +92,15 @@ export function McpServersPanel() {
       >
         {isPending ? (
           <SettingsNotice className="py-6">
-            {t("tools.mcp.manage.loading")}
+            {t("tools.mcp.available.loading")}
           </SettingsNotice>
         ) : error ? (
           <SettingsNotice tone="error" className="py-6">
-            {getErrorMessage(error, t("tools.mcp.manage.loadError"))}
+            {getErrorMessage(error, t("tools.mcp.available.loadError"))}
           </SettingsNotice>
         ) : servers.length === 0 ? (
           <SettingsEmptyState
-            title={t("tools.mcp.manage.emptyTitle")}
+            title={t("tools.mcp.available.emptyTitle")}
             description={t("tools.mcp.manage.emptyDescription")}
           />
         ) : (
@@ -246,7 +246,7 @@ export function McpServersPanel() {
                 disabled={deleteServer.isPending}
                 onClick={() => setPendingDelete(null)}
               >
-                {t("tools.mcp.manage.cancel")}
+                {t("tools.connectors.connectGoogle.cancel")}
               </Button>
               <Button
                 variant="destructive"

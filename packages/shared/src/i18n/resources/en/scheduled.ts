@@ -194,5 +194,11 @@ export const scheduled = {
     deleteTask: "Delete task",
     deleteDialogMessage:
       "{{name}} will stop running. The chats it wrote are kept.",
+    searchMinutePastHour: "Search minute past the hour",
+    searchTime: "Search time",
+    searchDate: "Search date",
+    searchDayOfMonth: "Search day of the month",
+    searchModel: "Search model",
+    searchProject: "Search project",
   },
 } as const;

@@ -199,7 +199,7 @@ function SearchRow({
           { color: colors.foreground, fontFamily: fonts.sansSemiBold },
         ]}
       >
-        {hit.title?.trim() || t("sidebar.searchPalette.untitled")}
+        {hit.title?.trim() || t("sidebar.chat.untitled")}
       </Text>
       {segments.length > 0 && (
         <Text

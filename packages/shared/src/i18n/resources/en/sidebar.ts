@@ -39,12 +39,9 @@ export const sidebar = {
     older: "Older",
   },
   searchPalette: {
-    title: "Search chats",
     placeholder: "Search chats…",
     close: "Close",
     results: "Results",
-    newChat: "New chat",
-    untitled: "Untitled",
     searching: "Searching…",
     noMatches: "No chats match “{{query}}”",
   },
@@ -84,9 +81,7 @@ export const sidebar = {
     collapse: "Collapse",
     expand: "Expand",
     newChatIn: "New chat in {{name}}",
-    noChatsYet: "No chats yet",
     createDialog: {
-      title: "New project",
       description:
         "Give it a name. You can add instructions after creating it.",
       nameLabel: "Name",
@@ -94,7 +89,6 @@ export const sidebar = {
       nameRequired: "Name is required",
       createdTitle: "Project created",
       createError: "Failed to create project.",
-      cancel: "Cancel",
       create: "Create",
       creating: "Creating…",
     },
@@ -135,7 +129,6 @@ export const sidebar = {
     removeWorkspaceTitle: "Remove workspace?",
     removeWorkspaceDescription:
       "<name>{{name}}</name> and its agent chats will be removed from OvertChat. Files and native agent sessions remain on the host.",
-    cancel: "Cancel",
     remove: "Remove",
     removing: "Removing…",
     collapseWorkspace: "Collapse {{name}}",

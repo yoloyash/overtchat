@@ -49,10 +49,6 @@ export const common: Translation["common"] = {
       retry: "重试",
     },
     errors: {
-      adminRequired: "需要管理员权限。",
-      settingUnavailable: "此设置不可用，请检查服务器版本。",
-      serviceNotInstalled: "此服务尚未安装。请在服务器上运行 overtchat setup。",
-      requestFailedShort: "无法完成请求。",
       shareChangeFailed: "无法更改对话分享设置。",
       sharePreviewFailed: "无法预览此对话。",
       loadChats: "加载对话失败（{{status}}）",
@@ -72,7 +68,7 @@ export const common: Translation["common"] = {
       saveDefaultModel: "无法保存默认模型",
       loadCapabilities: "无法加载服务器功能。",
       loadSignInOptions: "无法加载登录选项。",
-      loadTwoFactorStatus: "无法加载双因素认证状态。",
+      loadTwoFactorStatus: "无法加载双重验证状态。",
     },
   },
 };

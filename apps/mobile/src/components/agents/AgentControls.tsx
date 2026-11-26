@@ -9,7 +9,6 @@ import type {
   AgentSelectOption,
 } from "@overtchat/agent-bridge";
 import { i18n } from "@overtchat/shared/i18n";
-import { thinkingOptionLabel } from "@/lib/agents/model";
 import {
   AgentButton,
   AgentInput,
@@ -136,15 +135,10 @@ export function AgentControls({
             <AgentButton
               label={t("agents.mobile.controls.reasoningEffort")}
               detail={
-                thinking !== undefined
-                  ? (thinkingOptionLabel(
-                      thinking,
-                      model.thinkingOptions.find(
-                        (option) => option.id === thinking,
-                      )?.label,
-                      t,
-                    ) ?? thinking)
-                  : t("agents.composer.thinking.default")
+                model.thinkingOptions.find((option) => option.id === thinking)
+                  ?.label ??
+                thinking ??
+                t("agents.composer.thinking.default")
               }
               icon="sparkles-outline"
               chevron
@@ -225,7 +219,7 @@ export function AgentControls({
           {model?.thinkingOptions?.map((option) => (
             <AgentButton
               key={option.id}
-              label={thinkingOptionLabel(option.id, option.label, t) ?? option.label}
+              label={option.label}
               icon="sparkles-outline"
               detail={option.description}
               selected={thinking === option.id}

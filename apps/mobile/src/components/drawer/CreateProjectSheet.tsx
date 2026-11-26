@@ -74,7 +74,7 @@ export const CreateProjectSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          {t("sidebar.projects.createDialog.title")}
+          {t("sidebar.sections.newProject")}
         </Text>
         <Text
           style={[
@@ -108,7 +108,7 @@ export const CreateProjectSheet = forwardRef<
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("sidebar.projects.createDialog.cancel")}
+            accessibilityLabel={t("sidebar.chat.cancel")}
             onPress={dismiss}
             style={({ pressed }) => [
               styles.button,
@@ -126,7 +126,7 @@ export const CreateProjectSheet = forwardRef<
                 { color: colors.foreground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              {t("sidebar.projects.createDialog.cancel")}
+              {t("sidebar.chat.cancel")}
             </Text>
           </Pressable>
           <Pressable

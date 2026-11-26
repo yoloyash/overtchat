@@ -29,23 +29,23 @@ export const account: Translation["account"] = {
     statusTitle: "状态",
     loading: "正在加载…",
     loadError: "无法加载双重验证状态。",
-    backupCodesIntro: "旧的备用恢复码已失效。请将这些恢复码妥善保存在安全的地方。",
+    backupCodesIntro: "旧的备用恢复码已失效。请将这些备用恢复码妥善保存在安全的地方。",
     authenticatorTitle: "身份验证器应用",
     enabledDescription:
       "已开启。在新设备登录时，你也可以从已登录的设备批准登录。请妥善保存备用恢复码，以防设备丢失。",
-    newBackupCodes: "重新生成备用码",
+    newBackupCodes: "重新生成备用恢复码",
     turnOff: "关闭",
     enabledToast: "已开启双重验证",
     off: "已关闭",
-    setUp: "设置",
+    setUp: "配置",
     disabledToast: "已关闭双重验证",
     confirm: {
       passwordLabel: "你的密码",
       cancel: "取消",
       backupCodes: {
-        title: "重新生成备用码",
+        title: "重新生成备用恢复码",
         description: "当前的备用恢复码将会失效。",
-        submit: "生成新备用码",
+        submit: "生成新备用恢复码",
         pending: "正在生成…",
         error: "无法生成备用恢复码。",
       },
@@ -78,7 +78,7 @@ export const account: Translation["account"] = {
     twoFactor: {
       on: "已开启",
       manageTitle: "管理双重验证",
-      manageDetail: "在浏览器中设置或关闭身份验证器应用。",
+      manageDetail: "在浏览器中配置或关闭身份验证器应用。",
     },
   },
 };

@@ -168,7 +168,7 @@ function UserCredentialRow({
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
-              {t("models.userCredentials.cancel")}
+              {t("models.deleteDialog.cancel")}
             </Button>
             <Button
               type="submit"

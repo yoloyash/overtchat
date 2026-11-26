@@ -449,7 +449,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                           },
                         ]}
                       >
-                        {t("sidebar.projects.noChatsYet")}
+                        {t("sidebar.sections.noChatsYet")}
                       </Text>
                     );
                   case "new-project":
@@ -521,7 +521,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("app.accountMenu.settings")}
+          accessibilityLabel={t("app.pages.settings.title")}
           onPress={() => {
             props.navigation.closeDrawer();
             router.push("/settings");

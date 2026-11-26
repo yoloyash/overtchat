@@ -56,11 +56,6 @@ export const common = {
       retry: "Retry",
     },
     errors: {
-      adminRequired: "Administrator access is required.",
-      settingUnavailable: "This setting is unavailable. Check your server version.",
-      serviceNotInstalled:
-        "This service is not installed. Run overtchat setup on the server.",
-      requestFailedShort: "Couldn’t complete the request.",
       shareChangeFailed: "Could not change chat sharing.",
       sharePreviewFailed: "Could not preview this chat.",
       loadChats: "Failed to load chats ({{status}})",

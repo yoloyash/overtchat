@@ -177,7 +177,7 @@ export function TwoFactorSetup({
           )}
           <Button type="submit" size="sm" disabled={submitting}>
             {submitting
-              ? t("auth.twoFactor.setup.verifying")
+              ? t("auth.twoFactor.code.verifying")
               : t("auth.twoFactor.setup.turnOn")}
           </Button>
         </div>

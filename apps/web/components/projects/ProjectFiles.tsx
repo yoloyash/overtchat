@@ -154,7 +154,7 @@ export function ProjectFilesCard({
             <Plus /> {t("projects.files.addFiles")}
           </Button>
         ) : (
-          <ul aria-label={t("projects.files.listLabel")} className="max-h-80 space-y-0.5 overflow-y-auto">
+          <ul aria-label={t("projects.files.title")} className="max-h-80 space-y-0.5 overflow-y-auto">
             {files?.map((file) => (
               <li
                 key={file.uploadId}
@@ -216,7 +216,7 @@ export function ProjectFilesCard({
                   variant="ghost"
                   size="icon-sm"
                   aria-label={t("projects.files.removeFileLabel", { filename: file.filename })}
-                  title={t("projects.files.removeFromProject")}
+                  title={t("projects.chats.removeFromProject")}
                   className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                   disabled={removeMut.isPending}
                   onClick={() => remove(file)}

@@ -329,7 +329,7 @@ export function SidebarAgentWorkspaces({
                   />
                 }
               >
-                {t("sidebar.agents.cancel")}
+                {t("sidebar.chat.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"

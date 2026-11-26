@@ -21,6 +21,7 @@ import { useTheme } from "@/lib/theme";
 /** A single-choice picker using the same sheet presentation as the drawer. */
 export function SelectionSheet<T extends string>({
   title,
+  searchLabel,
   visible,
   value,
   options,
@@ -29,6 +30,7 @@ export function SelectionSheet<T extends string>({
   onSelect,
 }: {
   title: string;
+  searchLabel?: string;
   visible: boolean;
   value: T;
   options: readonly { value: T; label: string; leading?: ReactNode }[];
@@ -161,7 +163,9 @@ export function SelectionSheet<T extends string>({
         </View>
         {searchable && (
           <BottomSheetTextInput
-            accessibilityLabel={t("app.mobile.selectionSheet.searchLabel", { title })}
+            accessibilityLabel={
+              searchLabel ?? t("app.mobile.selectionSheet.searchPlaceholder")
+            }
             placeholder={t("app.mobile.selectionSheet.searchPlaceholder")}
             placeholderTextColor={colors.mutedForeground}
             value={search}

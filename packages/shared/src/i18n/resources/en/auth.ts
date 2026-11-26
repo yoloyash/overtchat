@@ -147,7 +147,6 @@ export const auth = {
       qrLabel: "Authenticator setup code",
       manualKey: "Can't scan it? Enter this key instead: <key>{{key}}</key>",
       verifyStep: "2. Enter the 6-digit code it shows",
-      verifying: "Verifying…",
       turnOn: "Turn on two-factor",
       backupCodesIntro:
         "Two-factor is on. Save these backup codes somewhere safe. Each one signs you in once if you lose your authenticator.",

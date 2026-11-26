@@ -19,7 +19,7 @@ export const services: Translation["services"] = {
         bundled: "内置 SearXNG",
         brave: "Brave Search API",
         searxng: "现有 SearXNG",
-        disabled: "已停用",
+        disabled: "已禁用",
       },
     },
     tts: {
@@ -31,7 +31,7 @@ export const services: Translation["services"] = {
       providers: {
         bundled: "内置 Kokoro",
         "openai-compatible": "OpenAI 兼容 API",
-        disabled: "已停用",
+        disabled: "已禁用",
       },
     },
     stt: {
@@ -43,14 +43,14 @@ export const services: Translation["services"] = {
       providers: {
         bundled: "内置 Parakeet",
         "openai-compatible": "OpenAI 兼容 API",
-        disabled: "已停用",
+        disabled: "已禁用",
       },
     },
   },
   fields: {
     providerTitle: "服务商",
     bundledMissingDescription:
-      "此服务器未安装{{provider}}。请运行：overtchat setup",
+      "此服务器未安装 {{provider}}。请运行：overtchat setup",
     providerOptionNotInstalled: "{{provider}} — 未安装",
     apiBaseUrlTitle: "API 基础 URL",
     apiKeyTitle: "API 密钥",
@@ -62,7 +62,7 @@ export const services: Translation["services"] = {
     defaultVoiceTitle: "默认音色",
   },
   actions: {
-    testing: "测试中…",
+    testing: "正在测试…",
     testConnection: "测试连接",
     saving: "正在保存…",
     save: "保存",
@@ -70,7 +70,7 @@ export const services: Translation["services"] = {
   errors: {
     updateUnchanged: "服务商未更改。",
     connectFailed: "无法连接到服务商。",
-    loadCapabilitiesFailed: "无法加载服务器能力。",
+    loadCapabilitiesFailed: "无法加载服务器功能。",
     serviceRequestFailed: "无法完成服务请求。",
   },
   voice: {

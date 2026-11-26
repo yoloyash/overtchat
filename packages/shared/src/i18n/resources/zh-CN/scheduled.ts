@@ -9,7 +9,7 @@ export const scheduled: Translation["scheduled"] = {
     listLabel: "定时任务",
   },
   empty: {
-    title: "还没有定时任务",
+    title: "暂无定时任务",
     description:
       "在这里创建一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
   },
@@ -49,10 +49,10 @@ export const scheduled: Translation["scheduled"] = {
     },
     statusManual: "{{status}} · 手动运行",
     lastRun: {
-      success: "{{time}}完成",
-      error: "{{time}}失败",
-      skipped: "{{time}}跳过",
-      interrupted: "{{time}}停止",
+      success: "{{time}} 完成",
+      error: "{{time}} 失败",
+      skipped: "{{time}} 跳过",
+      interrupted: "{{time}} 停止",
     },
   },
   deleteDialog: {
@@ -169,7 +169,7 @@ export const scheduled: Translation["scheduled"] = {
     checkFailed: "无法查看定时任务",
     scheduleFailed: "无法创建定时任务",
     updateFailed: "无法更新定时任务",
-    deleteFailed: "无法删除定时任务",
+    deleteFailed: "无法删除任务",
     checked_other: "已查看 {{count}} 个定时任务",
     scheduledNamed: "已创建“{{name}}”",
     scheduled: "已创建定时任务",
@@ -189,5 +189,11 @@ export const scheduled: Translation["scheduled"] = {
     backToTasks: "返回任务列表",
     deleteTask: "删除任务",
     deleteDialogMessage: "{{name}} 将停止运行。它生成的对话会被保留。",
+    searchMinutePastHour: "搜索每小时第几分钟",
+    searchTime: "搜索时间",
+    searchDate: "搜索日期",
+    searchDayOfMonth: "搜索每月日期",
+    searchModel: "搜索模型",
+    searchProject: "搜索项目",
   },
 };

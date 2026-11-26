@@ -318,7 +318,7 @@ export function ConnectGoogleDialog({
                 >
                   {connect.isPending
                     ? t("tools.connectors.connectGoogle.connecting")
-                    : t("tools.connectors.connectGoogle.connect")}
+                    : t("tools.connectors.google.connect")}
                 </Button>
               </div>
             </SettingsActions>

@@ -56,14 +56,14 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
     stats.cacheReadTokens !== undefined
       ? {
           id: "cacheRead",
-          label: t("chat.stats.cacheRead"),
+          label: t("chat.usage.cacheRead"),
           value: formatInteger(stats.cacheReadTokens),
         }
       : null,
     stats.cacheWriteTokens !== undefined
       ? {
           id: "cacheWrite",
-          label: t("chat.stats.cacheWrite"),
+          label: t("chat.usage.cacheWrite"),
           value: formatInteger(stats.cacheWriteTokens),
         }
       : null,

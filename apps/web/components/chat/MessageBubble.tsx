@@ -634,7 +634,7 @@ function SpeakButton({
   const label = live
     ? t("chat.messages.stopSpeaking")
     : loading
-      ? t("chat.messages.loadingSpeech")
+      ? t("chat.speech.loading")
       : t("chat.messages.speak");
   const icon = loading ? (
     <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />

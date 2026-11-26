@@ -120,7 +120,7 @@ export function AccountMenu() {
           <span className="min-w-0 flex-1 text-left">
             {isPending || !session ? (
               <span className="block truncate text-sm font-medium text-muted-foreground">
-                {t("app.accountMenu.loading")}
+                {t("app.modelPicker.loading")}
               </span>
             ) : (
               <span className="block truncate text-sm font-medium">
@@ -162,7 +162,7 @@ export function AccountMenu() {
               )}
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium leading-tight">
-                  {session?.user.name ?? t("app.accountMenu.loading")}
+                  {session?.user.name ?? t("app.modelPicker.loading")}
                 </span>
                 {session && (
                   <span className="truncate text-xs leading-tight text-muted-foreground">
@@ -188,7 +188,7 @@ export function AccountMenu() {
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Settings className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>{t("app.accountMenu.settings")}</span>
+              <span>{t("app.pages.settings.title")}</span>
             </Menu.Item>
             <Menu.Item
               onClick={() => setMobileAppOrigin(getApiOrigin() || window.location.origin)}
@@ -333,7 +333,7 @@ function AppUpdateDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {t("app.accountMenu.updateDialog.title")}
+            {t("app.accountMenu.serverUpdateAvailable")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {method === "compose"

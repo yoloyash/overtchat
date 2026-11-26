@@ -495,8 +495,8 @@ export function ConnectionFields({
                 </ComboboxTrigger>
                 <ComboboxContent aria-label={t("models.connection.fetchedModelsLabel")}>
                   <ComboboxInput
-                    placeholder={t("models.connection.searchModelsPlaceholder")}
-                    aria-label={t("models.connection.searchModelsLabel")}
+                    placeholder={t("models.page.searchPlaceholder")}
+                    aria-label={t("models.page.searchPlaceholder")}
                   />
                   <ComboboxEmpty>
                     {t("models.connection.noMatchingModels")}

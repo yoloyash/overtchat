@@ -179,5 +179,9 @@ export const settings = {
       phoneSettingsTitle: "Phone notification settings",
       phoneSettingsDetail: "Permission, sounds, and lock-screen visibility",
     },
+    appearance: {
+      searchFont: "Search interface font",
+      searchLanguage: "Search language",
+    },
   },
 } as const;

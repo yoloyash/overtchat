@@ -534,7 +534,7 @@ function AgentSession({
           onBeforeDictate={stopSpeech}
           provider={snapshot?.provider}
           modelLabel={model?.label || modelId || t("agents.composer.model")}
-          thinkingLabel={thinkingLabel(model, thinking, t)}
+          thinkingLabel={thinkingLabel(model, thinking)}
           permission={
             mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined
           }

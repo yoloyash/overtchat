@@ -3,15 +3,15 @@ import type { Translation } from "../../catalog";
 export const profile: Translation["profile"] = {
   title: "个人资料",
   description: "选择你在此服务器上向他人展示的方式。",
-  viewActivity: "查看活跃度主页",
+  viewActivity: "查看活动主页",
   identity: {
     title: "身份信息",
-    description: "你的个人资料会显示在排行榜和活跃度页面上。",
+    description: "你的个人资料会显示在排行榜和活动页面上。",
   },
   preview: {
     title: "预览",
     description: "编辑时会实时更新。",
-    subtitle: "活跃度主页",
+    subtitle: "活动主页",
   },
   displayName: {
     title: "显示名称",

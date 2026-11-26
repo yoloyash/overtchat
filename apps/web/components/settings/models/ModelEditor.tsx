@@ -361,7 +361,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     <SettingsPage>
       <SettingsPageHeader
         title={
-          isEditing ? t("models.editor.editTitle") : t("models.editor.addTitle")
+          isEditing ? t("models.editor.editTitle") : t("models.page.addModel")
         }
         description={t("models.editor.description")}
         leading={
@@ -549,7 +549,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               </SettingsRow>
 
               <SettingsRow
-                title={t("models.editor.testConnectionTitle")}
+                title={t("models.connectionTester.testConnection")}
                 description={
                   draft.toolCallingEnabled
                     ? t("models.editor.testConnectionWithTools")
@@ -782,14 +782,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             variant="outline"
             render={<Link to="/settings/models" />}
           >
-            {t("models.editor.cancel")}
+            {t("models.deleteDialog.cancel")}
           </Button>
           <Button type="submit" disabled={!canSave}>
             {saving
               ? t("models.editor.saving")
               : isEditing
                 ? t("models.editor.saveChanges")
-                : t("models.editor.addModel")}
+                : t("models.page.addModel")}
           </Button>
         </SettingsActions>
       </form>

@@ -1,4 +1,3 @@
-import type { TFunction } from "i18next";
 import { i18n } from "@overtchat/shared/i18n";
 import {
   buildAgentPromptCommand,
@@ -47,37 +46,14 @@ export function sessionModel(snapshot: AgentRuntimeSnapshot): {
   return { id, model: snapshot.models.find((item) => item.id === id) };
 }
 
-const THINKING_LEVEL_KEYS = {
-  off: "agents.composer.thinking.off",
-  minimal: "agents.composer.thinking.minimal",
-  low: "agents.composer.thinking.low",
-  medium: "agents.composer.thinking.medium",
-  high: "agents.composer.thinking.high",
-  xhigh: "agents.composer.thinking.xhigh",
-  max: "agents.composer.thinking.max",
-  default: "agents.composer.thinking.default",
-} as const;
-
-export function thinkingOptionLabel(
-  id: string,
-  fallbackLabel?: string,
-  t: TFunction = i18n.t.bind(i18n),
-): string | undefined {
-  if (Object.hasOwn(THINKING_LEVEL_KEYS, id)) {
-    return t(THINKING_LEVEL_KEYS[id as keyof typeof THINKING_LEVEL_KEYS]);
-  }
-  if (fallbackLabel) return fallbackLabel;
-  return id ? id[0].toUpperCase() + id.slice(1) : undefined;
-}
-
 export function thinkingLabel(
   model: AgentModel | undefined,
   level: string,
-  t: TFunction = i18n.t.bind(i18n),
 ): string | undefined {
   if (!model?.thinkingOptions?.length) return undefined;
   const option = model.thinkingOptions.find((item) => item.id === level);
-  return thinkingOptionLabel(level, option?.label, t);
+  if (option) return option.label;
+  return level ? level[0].toUpperCase() + level.slice(1) : undefined;
 }
 
 export function submitCommand(

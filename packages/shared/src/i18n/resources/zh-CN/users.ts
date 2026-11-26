@@ -19,7 +19,7 @@ export const users: Translation["users"] = {
     },
     roleForLabel: "{{email}} 的角色",
     twoFactorOn: "已开启",
-    twoFactorOff: "未开启",
+    twoFactorOff: "已关闭",
     currentUser: "当前用户",
     resetPassword: "重置密码",
     resetTwoFactor: "重置双重验证",
@@ -40,15 +40,15 @@ export const users: Translation["users"] = {
     passwordResetTitle: "密码已重置",
     passwordResetDescription: "{{email}} 已在所有设备上退出登录。",
     twoFactorResetTitle: "双重验证已重置",
-    twoFactorResetDescription: "{{email}} 可以使用密码登录并重新设置。",
+    twoFactorResetDescription: "{{email}} 可以使用密码登录并重新配置。",
   },
   roleDialog: {
     grantTitle: "授予管理员权限？",
     removeTitle: "移除管理员权限？",
     grantDescription:
-      "<email>{{email}}</email> 将可以管理用户、模型和智能体工作区，包括在此服务器上运行代码和建立 SSH 连接。他们将在所有设备上退出登录。",
+      "<email>{{email}}</email> 将可以管理用户、模型和智能体工作区，包括在此服务器上运行代码和建立 SSH 连接。该用户将在所有设备上退出登录。",
     removeDescription:
-      "<email>{{email}}</email> 将失去管理员功能。他们正在运行的智能体任务将会停止。他们将在所有设备上退出登录。",
+      "<email>{{email}}</email> 将失去管理员功能。该用户正在运行的智能体任务将会停止，并将在所有设备上退出登录。",
     cancel: "取消",
     updating: "正在更新…",
     makeAdmin: "设为管理员",
@@ -58,46 +58,31 @@ export const users: Translation["users"] = {
     title: "删除用户？",
     description:
       "<email>{{email}}</email> 将无法再登录。已有的对话和项目不会被删除。",
-    cancel: "取消",
     deleting: "正在删除…",
-    delete: "删除",
   },
   addDialog: {
-    title: "添加用户",
-    ssoDescription: "他们将使用此邮箱通过 {{provider}} 登录。",
-    passwordDescription: "请通过其他安全渠道将密码告知对方。他们之后可以自行修改。",
-    nameLabel: "姓名",
-    emailLabel: "邮箱",
+    ssoDescription: "该用户将使用此邮箱通过 {{provider}} 登录。",
+    passwordDescription: "请通过其他安全渠道将密码告知对方，之后可自行修改。",
     passwordLabel: "密码",
-    roleLabel: "角色",
-    cancel: "取消",
     creating: "正在创建…",
     create: "创建",
   },
   resetPasswordDialog: {
-    title: "重置密码",
     description:
-      "为 {{email}} 设置替换密码。他们将在所有设备上退出登录。请私下告知对方该密码，他们可以在安全设置中修改。",
+      "为 {{email}} 设置替换密码。该用户将在所有设备上退出登录。请私下告知对方该密码，之后可在安全设置中修改。",
     currentPasswordLabel: "你的当前密码",
     replacementPasswordLabel: "替换密码",
     confirmPasswordLabel: "确认替换密码",
     mismatchError: "两次输入的替换密码不一致。",
     errorFallback: "无法重置密码。",
     networkError: "无法重置密码。请检查网络连接后重试。",
-    cancel: "取消",
     resetting: "正在重置…",
-    submit: "重置密码",
   },
   resetTwoFactorDialog: {
-    title: "重置双重验证",
     description:
-      "移除 {{email}} 的身份验证器和备用验证码（例如在手机丢失后）。他们将在所有设备上退出登录，并可在安全设置中重新启用双重验证。",
-    currentPasswordLabel: "你的当前密码",
+      "移除 {{email}} 的身份验证器和备用恢复码（例如在手机丢失后）。该用户将在所有设备上退出登录，并可在安全设置中重新配置双重验证。",
     errorFallback: "无法重置双重验证。",
     networkError: "无法重置双重验证。请检查网络连接后重试。",
-    cancel: "取消",
-    resetting: "正在重置…",
-    submit: "重置双重验证",
   },
   mobile: {
     roles: {
@@ -115,7 +100,7 @@ export const users: Translation["users"] = {
       selfPasswordHint: "请在安全设置中更改你自己的密码。",
     },
     create: {
-      passwordDescription: "请私下告知初始密码。他们可以在安全设置中修改。",
+      passwordDescription: "请私下告知初始密码，该用户可在安全设置中修改。",
       initialPasswordLabel: "初始密码",
       submit: "创建用户",
       backToUsers: "返回用户列表",
@@ -127,7 +112,7 @@ export const users: Translation["users"] = {
     },
     roleDialog: {
       grantMessage:
-        "{{email}} 将可以管理此服务器、用户和编程智能体。他们将在所有设备上退出登录。",
+        "{{email}} 将可以管理此服务器、用户和编程智能体，并将在所有设备上退出登录。",
       removeMessage:
         "{{email}} 将失去管理员功能，其正在运行的智能体任务将会停止，且将在所有设备上退出登录。",
       confirm: "更改角色",

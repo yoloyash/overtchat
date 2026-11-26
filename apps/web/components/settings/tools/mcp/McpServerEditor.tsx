@@ -358,14 +358,14 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
 
         <SettingsActions>
           <Button variant="outline" render={<Link to="/settings/tools" />}>
-            {t("tools.mcp.editor.cancel")}
+            {t("tools.connectors.connectGoogle.cancel")}
           </Button>
           <Button type="submit" disabled={saving}>
             {saving
-              ? t("tools.mcp.editor.saving")
+              ? t("tools.connectors.googleAccess.saving")
               : server
                 ? t("tools.mcp.editor.saveChanges")
-                : t("tools.mcp.editor.addServer")}
+                : t("tools.mcp.manage.addServer")}
           </Button>
         </SettingsActions>
       </form>

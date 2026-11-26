@@ -386,7 +386,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   <Button variant="ghost" size="sm" disabled={deleting} />
                 }
               >
-                {t("users.deleteDialog.cancel")}
+                {t("users.roleDialog.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -396,7 +396,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
               >
                 {deleting
                   ? t("users.deleteDialog.deleting")
-                  : t("users.deleteDialog.delete")}
+                  : t("users.list.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

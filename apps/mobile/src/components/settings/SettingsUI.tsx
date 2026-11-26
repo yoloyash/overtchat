@@ -113,7 +113,7 @@ export function Section({
   const { colors, radii } = useTheme();
   return (
     <View style={{ gap: 8 }}>
-      {title && <Label muted>{title.toUpperCase()}</Label>}
+      {title && <Label muted uppercase>{title}</Label>}
       <View
         style={{
           borderRadius: radii.lg,
@@ -133,10 +133,12 @@ export function Label({
   children,
   muted = false,
   error = false,
+  uppercase = false,
 }: {
   children: ReactNode;
   muted?: boolean;
   error?: boolean;
+  uppercase?: boolean;
 }) {
   const { colors, fonts } = useTheme();
   return (
@@ -151,6 +153,7 @@ export function Label({
         fontFamily: fonts.sansRegular,
         fontSize: muted ? 12 : 15,
         lineHeight: muted ? 18 : 22,
+        textTransform: uppercase ? "uppercase" : undefined,
       }}
     >
       {children}
@@ -304,6 +307,7 @@ export function Toggle({
 }
 export function Choice<T extends string>({
   title,
+  searchLabel,
   detail,
   value,
   options,
@@ -311,6 +315,7 @@ export function Choice<T extends string>({
   disabled,
 }: {
   title: string;
+  searchLabel?: string;
   detail?: string;
   value: T;
   options: readonly { value: T; label: string; leading?: ReactNode }[];
@@ -331,6 +336,7 @@ export function Choice<T extends string>({
       />
       <SelectionSheet
         title={title}
+        searchLabel={searchLabel}
         visible={open}
         value={value}
         options={options}

@@ -45,7 +45,7 @@ export default function PersonalizationScreen() {
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerShadowVisible: false,
-          headerBackTitle: t("app.accountMenu.settings"),
+          headerBackTitle: t("app.pages.settings.title"),
         }}
       />
       <KeyboardAvoidingView

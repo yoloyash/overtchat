@@ -27,6 +27,22 @@ const icons: Record<
   fetch: "globe-outline",
   other: "construct-outline",
 };
+const KNOWN_SECTION_COPY_KEYS = [
+  ["agents.toolDetails.command", "agents.mobile.toolDetails.copy.command", "agents.mobile.toolDetails.copied.command"],
+  ["agents.toolDetails.path", "agents.mobile.toolDetails.copy.path", "agents.mobile.toolDetails.copied.path"],
+  ["agents.toolDetails.workingDirectory", "agents.mobile.toolDetails.copy.workingDirectory", "agents.mobile.toolDetails.copied.workingDirectory"],
+  ["agents.activity.changes", "agents.mobile.toolDetails.copy.changes", "agents.mobile.toolDetails.copied.changes"],
+  ["agents.toolDetails.before", "agents.mobile.toolDetails.copy.before", "agents.mobile.toolDetails.copied.before"],
+  ["agents.toolDetails.after", "agents.mobile.toolDetails.copy.after", "agents.mobile.toolDetails.copied.after"],
+  ["agents.activity.content", "agents.mobile.toolDetails.copy.content", "agents.mobile.toolDetails.copied.content"],
+  ["agents.activity.input", "agents.mobile.toolDetails.copy.input", "agents.mobile.toolDetails.copied.input"],
+  ["agents.activity.output", "agents.mobile.toolDetails.copy.output", "agents.mobile.toolDetails.copied.output"],
+  ["agents.toolDetails.errorOutput", "agents.mobile.toolDetails.copy.errorOutput", "agents.mobile.toolDetails.copied.errorOutput"],
+  ["agents.toolDetails.terminalInput", "agents.mobile.toolDetails.copy.terminalInput", "agents.mobile.toolDetails.copied.terminalInput"],
+  ["agents.toolDetails.exitCode", "agents.mobile.toolDetails.copy.exitCode", "agents.mobile.toolDetails.copied.exitCode"],
+  ["agents.toolDetails.status", "agents.mobile.toolDetails.copy.status", "agents.mobile.toolDetails.copied.status"],
+  ["agents.toolDetails.outputLimit", "agents.mobile.toolDetails.copy.outputLimit", "agents.mobile.toolDetails.copied.outputLimit"],
+] as const;
 
 export function agentToolIcon(category: AgentToolCategory) {
   return icons[category];
@@ -56,7 +72,7 @@ export function AgentToolRow({
               summary: presentation.summary,
               status: statusLabel,
             })
-          : t("agents.activity.toolStepAria", {
+          : t("agents.activity.toolGroupAria", {
               label: presentation.label,
               status: statusLabel,
             })
@@ -262,15 +278,19 @@ function DetailSection({ section }: { section: ToolSection }) {
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={
-            copied
+          accessibilityLabel={(() => {
+            const known = KNOWN_SECTION_COPY_KEYS.find(
+              ([labelKey]) => t(labelKey) === section.label,
+            );
+            if (known) return t(copied ? known[2] : known[1]);
+            return copied
               ? t("agents.mobile.messages.copiedSectionLabel", {
-                  label: section.label.toLowerCase(),
+                  label: section.label,
                 })
               : t("agents.mobile.messages.copySectionLabel", {
-                  label: section.label.toLowerCase(),
-                })
-          }
+                  label: section.label,
+                });
+          })()}
           onPress={() => {
             void Clipboard.setStringAsync(section.value)
               .then(() => {

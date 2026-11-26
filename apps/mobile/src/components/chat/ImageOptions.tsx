@@ -41,7 +41,7 @@ export function ImageOptions({
         }}
       >
         <Text style={{ color: colors.foreground, flex: 1 }}>
-          {model ? t("chat.image.createTitleWithModel", { model }) : t("chat.image.createTitle")}
+          {model ? t("chat.image.createTitleWithModel", { model }) : t("chat.composer.createImage")}
         </Text>
         <Pressable
           accessibilityRole="button"

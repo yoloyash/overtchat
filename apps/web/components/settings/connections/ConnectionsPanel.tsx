@@ -533,7 +533,7 @@ export function ConnectionsPanel({
                   <Button variant="ghost" size="sm" disabled={detaching} />
                 }
               >
-                {t("connections.detachDialog.cancel")}
+                {t("connections.dialog.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"

@@ -48,8 +48,6 @@ export const personalization = {
     editAriaLabel: "Edit {{key}}",
     editTitle: "Edit memory",
     dialog: {
-      editTitle: "Edit memory",
-      addTitle: "Add memory",
       description:
         "Saved memories are included in future chats when personalization is on.",
       valueLabel: "What should OvertChat remember?",
@@ -60,9 +58,7 @@ export const personalization = {
       keyHint:
         "Used to update this memory later. Start with a letter and use lowercase letters, numbers, or underscores.",
       cancel: "Cancel",
-      saving: "Saving…",
       saveChanges: "Save changes",
-      addSubmit: "Add memory",
       updatedToast: "Memory updated",
       addedToast: "Memory added",
       updateError: "Failed to update memory.",
@@ -74,7 +70,6 @@ export const personalization = {
       title: "Delete this memory?",
       description:
         "OvertChat will no longer include it in future conversations.",
-      cancel: "Cancel",
       deleting: "Deleting…",
       confirm: "Delete",
       deletedToast: "Memory deleted",
@@ -85,9 +80,7 @@ export const personalization = {
       title: "Clear all memories?",
       description:
         "This permanently deletes every saved memory. Your profile fields are not affected.",
-      cancel: "Cancel",
       clearing: "Clearing…",
-      confirm: "Clear all",
       error: "Failed to clear memories.",
     },
   },

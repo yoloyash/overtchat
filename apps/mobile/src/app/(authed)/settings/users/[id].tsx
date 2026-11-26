@@ -85,14 +85,14 @@ function CreateUser() {
       >
         <Field
           editable={!action.busy && !created}
-          label={t("users.addDialog.nameLabel")}
+          label={t("users.list.columns.name")}
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
         />
         <Field
           editable={!action.busy && !created}
-          label={t("users.addDialog.emailLabel")}
+          label={t("users.list.columns.email")}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -111,7 +111,7 @@ function CreateUser() {
         )}
         <Choice
           disabled={action.busy || created}
-          title={t("users.addDialog.roleLabel")}
+          title={t("users.list.columns.role")}
           value={role}
           onChange={setRole}
           options={roles}
@@ -199,12 +199,12 @@ function ManageUser({ user }: { user: SettingsUser }) {
         />
         {self ? (
           <Row
-            title={t("users.addDialog.roleLabel")}
+            title={t("users.list.columns.role")}
             value={t("users.mobile.detail.roleSelfAdmin")}
           />
         ) : (
           <Choice
-            title={t("users.addDialog.roleLabel")}
+            title={t("users.list.columns.role")}
             value={user.role === "admin" ? "admin" : "user"}
             options={roles}
             disabled={action.busy}
@@ -251,7 +251,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
           {passwords && (
             <Section>
               <Row
-                title={t("users.resetPasswordDialog.title")}
+                title={t("users.list.resetPassword")}
                 icon="key-outline"
                 expanded={reset}
                 onPress={() => setReset(!reset)}
@@ -261,7 +261,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
           {passwords && reset && (
             <>
               <Section
-                title={t("users.resetPasswordDialog.title")}
+                title={t("users.list.resetPassword")}
                 description={t("users.mobile.resetPassword.description")}
               >
                 <Field
@@ -347,9 +347,9 @@ function ManageUser({ user }: { user: SettingsUser }) {
                   t("users.deleteDialog.title"),
                   t("users.mobile.deleteDialog.message", { email: user.email }),
                   [
-                    { text: t("users.deleteDialog.cancel"), style: "cancel" },
+                    { text: t("users.roleDialog.cancel"), style: "cancel" },
                     {
-                      text: t("users.deleteDialog.delete"),
+                      text: t("users.list.delete"),
                       style: "destructive",
                       onPress: () =>
                         void action.run(async () => {

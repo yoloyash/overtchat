@@ -38,7 +38,7 @@ export const app: Translation["app"] = {
     activityMetrics: {
       chatTokens: "对话 token",
       responses: "回复数",
-      activePeople: "活跃人数",
+      activePeople: "活跃成员",
     },
   },
   pages: {
@@ -72,12 +72,10 @@ export const app: Translation["app"] = {
     loadFailed: "无法加载分享的对话。",
   },
   accountMenu: {
-    loading: "加载中…",
     serverUpdateAvailable: "服务器有可用更新",
     profile: "个人资料",
-    settings: "设置",
     getMobileApp: "获取移动应用",
-    administration: "系统管理",
+    administration: "管理",
     releaseNotes: "更新日志",
     privacy: "隐私",
     logOut: "退出登录",
@@ -87,7 +85,6 @@ export const app: Translation["app"] = {
     versionTooltipWithServer:
       "桌面端 v{{desktopVersion}} · 服务端 v{{serverVersion}}",
     updateDialog: {
-      title: "服务器有可用更新",
       descriptionCompose:
         "服务器 v{{version}} 已发布。如果你的 Compose 文件固定了应用镜像版本，请将其标签更改为 {{version}}，然后在 Compose 目录中运行以下命令（如使用 Podman，请改用 podman compose）。",
       descriptionHost:
@@ -109,7 +106,7 @@ export const app: Translation["app"] = {
     ready: "桌面更新已就绪",
     installing: "正在重启…",
     error: "重试桌面更新",
-    blocked: "更新需要注意",
+    blocked: "更新需要处理",
     unsupported: "查看更新选项",
     check: "检查更新",
     retry: "重试",
@@ -161,7 +158,7 @@ export const app: Translation["app"] = {
     description: "只需几个简单步骤即可启动你的工作区。",
     firstModelTitle: "添加你的第一个模型",
     firstModelDescription:
-      "支持 Anthropic、Google Gemini 或任意兼容 OpenAI 的接口。",
+      "支持 Anthropic、Google Gemini 或任意 OpenAI 兼容端点。",
     addModel: "添加模型",
     addAnother: "再添加一个",
     inviteTitle: "邀请团队成员",
@@ -181,7 +178,7 @@ export const app: Translation["app"] = {
     enable: "开启通知",
   },
   modelPicker: {
-    loading: "加载中…",
+    loading: "正在加载…",
     selectModel: "选择模型",
     noModels: "未配置模型",
     triggerWithThinking: "{{label}}，思考 {{level}}",
@@ -231,7 +228,7 @@ export const app: Translation["app"] = {
     },
     qrScanner: {
       title: "扫描服务器二维码",
-      instructions: "在网页端打开账号菜单 → 获取移动应用 → 连接你的手机。",
+      instructions: "在网页端打开“账号菜单 → 获取移动应用 → 连接手机”。",
       footer: "扫描即可连接并登录。",
       checkingPermission: "正在检查相机权限…",
       permissionPrompt:
@@ -241,7 +238,7 @@ export const app: Translation["app"] = {
       errors: {
         checkPermission: "无法检查相机权限。请重试或手动输入服务器地址。",
         notServerAddress:
-          "此二维码不是服务器地址。请在网页端的移动应用弹窗中打开“连接你的手机”并扫描该二维码。",
+          "此二维码不是服务器地址。请在网页端的移动应用弹窗中打开“连接手机”并扫描该二维码。",
         localOnly:
           "此地址仅在服务器本机可用。请运行 overtchat setup 并选择“On my home network”，然后打开显示的网络地址重新扫描。",
         cameraMount: "无法启动相机。请重试或手动输入服务器地址。",
@@ -255,9 +252,8 @@ export const app: Translation["app"] = {
       goBack: "返回",
     },
     selectionSheet: {
-      closeLabel: "关闭{{title}}",
+      closeLabel: "关闭 {{title}}",
       searchPlaceholder: "搜索",
-      searchLabel: "搜索{{title}}",
       noMatches: "没有匹配的选项",
     },
     notifications: {
@@ -271,7 +267,7 @@ export const app: Translation["app"] = {
       permissionDisabled: "通知已在手机设置中关闭。请在手机设置中开启后重试。",
       notConfigured: "此应用版本未配置推送通知。",
       registerFailed: "无法注册推送通知。请检查网络连接及应用的推送配置。",
-      introTitle: "第一时间获知完成通知",
+      introTitle: "结果就绪时及时提醒",
       introBody:
         "在回复就绪、智能体需要你或完成任务，或有人登录你的账号时接收通知。",
       enableFailedTitle: "无法开启通知",

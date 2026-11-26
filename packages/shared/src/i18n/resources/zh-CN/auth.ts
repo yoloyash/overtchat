@@ -12,7 +12,7 @@ export const auth: Translation["auth"] = {
   },
   desktopServer: {
     connectedTo: "已连接到 <host>{{host}}</host>",
-    changeServer: "切换服务器",
+    changeServer: "更换服务器",
   },
   login: {
     title: "欢迎回来",
@@ -81,15 +81,15 @@ export const auth: Translation["auth"] = {
       approveOnAnotherDevice: "在另一台设备上批准",
     },
     code: {
-      title: "双因素认证",
+      title: "双重验证",
       totpDescription: "输入身份验证器应用中的 6 位验证码。",
-      backupDescription: "输入你设置双因素认证时保存的任一备用恢复码。",
+      backupDescription: "输入你配置双重验证时保存的任一备用恢复码。",
       totpLabel: "验证码",
       backupLabel: "备用恢复码",
       verify: "验证",
       verifying: "正在验证…",
       lostHelp:
-        "丢失了身份验证器和备用恢复码？请联系服务器管理员为你重置双因素认证。",
+        "丢失了身份验证器和备用恢复码？请联系服务器管理员为你重置双重验证。",
     },
     approval: {
       title: "批准此次登录",
@@ -119,32 +119,31 @@ export const auth: Translation["auth"] = {
       fallback: "无法验证该验证码。请重试。",
     },
     required: {
-      title: "设置双因素认证",
+      title: "配置双重验证",
       description:
         "此服务器要求管理员登录时除密码外，还需输入身份验证器应用的验证码。",
     },
     prompt: {
       title: "保护你的账号",
       description:
-        "开启双因素认证，防止密码泄露后他人直接登录。登录时还将要求输入手机身份验证器应用中的验证码。整个过程大约需要一分钟。",
-      notNow: "暂不设置",
-      setup: "设置双因素认证",
+        "开启双重验证，防止密码泄露后他人直接登录。登录时还将要求输入手机身份验证器应用中的验证码。整个过程大约需要一分钟。",
+      notNow: "暂不",
+      setup: "配置双重验证",
       settingsHint: "你随时可以在“设置 → 安全”中找到此选项。",
     },
     setup: {
       confirmPassword: "确认你的密码",
       checking: "正在检查…",
       continue: "继续",
-      startFailed: "无法开始双因素认证设置。",
+      startFailed: "无法开始双重验证配置。",
       scanStep:
         "<lead>1. 扫描此二维码</lead>，使用 1Password、Google Authenticator 或 Authy 等身份验证器应用。",
-      qrLabel: "身份验证器设置二维码",
+      qrLabel: "身份验证器配置二维码",
       manualKey: "无法扫描？请改用此密钥：<key>{{key}}</key>",
       verifyStep: "2. 输入应用显示的 6 位验证码",
-      verifying: "正在验证…",
-      turnOn: "开启双因素认证",
+      turnOn: "开启双重验证",
       backupCodesIntro:
-        "双因素认证已开启。请将这些备用恢复码保存在安全的地方。如果你丢失了身份验证器，每个恢复码都可以用于登录一次。",
+        "双重验证已开启。请将这些备用恢复码保存在安全的地方。如果你丢失了身份验证器，每个备用恢复码都可以用于登录一次。",
     },
     backupCodes: {
       listLabel: "备用恢复码",
@@ -163,13 +162,13 @@ export const auth: Translation["auth"] = {
       verifyFailed: "无法验证该验证码。",
       recoveryAlertMessage:
         "请联系你的服务器管理员重置密码。如果你是管理员，也可以请其他管理员协助处理。\n\n如果所有管理员都无法登录，服务器所有者可以在服务器上运行 overtchat reset-password，或在丢失身份验证器时运行 overtchat reset-two-factor。",
-      changeServerShort: "切换",
+      changeServerShort: "更换",
     },
     requiredTwoFactor: {
       description:
-        "此服务器要求管理员登录时除密码外，还需输入身份验证器应用的验证码。请在网页端完成设置后再返回。",
-      setupOnWeb: "前往网页端设置",
-      doneSetup: "我已完成设置",
+        "此服务器要求管理员登录时除密码外，还需输入身份验证器应用的验证码。请在网页端完成配置后再返回。",
+      setupOnWeb: "前往网页端配置",
+      doneSetup: "我已完成配置",
       signingOut: "正在退出登录…",
     },
     signInRequest: {

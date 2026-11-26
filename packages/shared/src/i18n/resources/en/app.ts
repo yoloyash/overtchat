@@ -72,10 +72,8 @@ export const app = {
     loadFailed: "Could not load the shared chat.",
   },
   accountMenu: {
-    loading: "Loading…",
     serverUpdateAvailable: "Server update available",
     profile: "Profile",
-    settings: "Settings",
     getMobileApp: "Get the mobile app",
     administration: "Administration",
     releaseNotes: "Release notes",
@@ -87,7 +85,6 @@ export const app = {
     versionTooltipWithServer:
       "Desktop v{{desktopVersion}} · Server v{{serverVersion}}",
     updateDialog: {
-      title: "Server update available",
       descriptionCompose:
         "Server v{{version}} is available. If your Compose file pins the app image, change its tag to {{version}}. Then run this in the Compose directory, using podman compose with Podman.",
       descriptionHost:
@@ -262,7 +259,6 @@ export const app = {
     selectionSheet: {
       closeLabel: "Close {{title}}",
       searchPlaceholder: "Search",
-      searchLabel: "Search {{title}}",
       noMatches: "No matching options",
     },
     notifications: {

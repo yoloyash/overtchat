@@ -106,7 +106,6 @@ export const tools = {
       startAgain: "Start again",
       cancel: "Cancel",
       connecting: "Connecting…",
-      connect: "Connect",
     },
     googleAccess: {
       title: "Google access",
@@ -120,7 +119,6 @@ export const tools = {
       removeErrorFallback: "Could not remove Google access.",
       confirmRemoval:
         "Remove Google access? Everyone's Google connection on this server will be deleted, and nobody can connect until it is set up again.",
-      cancel: "Cancel",
       removing: "Removing…",
       remove: "Remove",
       clientIdLabel: "Client ID",
@@ -165,9 +163,6 @@ export const tools = {
       description:
         "Connect external tool servers and choose who can use them. Commands run inside the OvertChat server environment.",
       addServer: "Add server",
-      loading: "Loading MCP servers…",
-      loadError: "Unable to load MCP servers.",
-      emptyTitle: "No MCP servers available",
       emptyDescription:
         "Connect a server to make its tools available in chats.",
       availableTo: "Available to",
@@ -186,7 +181,6 @@ export const tools = {
       deleteDialogTitle: "Delete MCP server?",
       deleteDialogDescription:
         "<name>{{name}}</name> and its configuration will be removed.",
-      cancel: "Cancel",
       deleting: "Deleting…",
     },
     editor: {
@@ -233,10 +227,7 @@ export const tools = {
       addEnvHeader: "Add environment header",
       removeEnvHeaderRow: "Remove environment variable http headers row",
       bearerTokenEnvVarLabel: "Bearer token environment variable",
-      cancel: "Cancel",
-      saving: "Saving…",
       saveChanges: "Save changes",
-      addServer: "Add server",
       validationFallback: "Check the server configuration.",
       updatedTitle: "MCP server updated",
       addedTitle: "MCP server added",

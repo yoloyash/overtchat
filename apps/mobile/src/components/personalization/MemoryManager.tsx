@@ -396,7 +396,7 @@ export function MemoryManager({
         ref={clearSheetRef}
         title={t("personalization.memories.clearDialog.title")}
         message={t("personalization.memories.clearDialog.description")}
-        confirmLabel={t("personalization.memories.clearDialog.confirm")}
+        confirmLabel={t("personalization.memories.clearDialog.trigger")}
         destructive
         onConfirm={confirmClear}
       />

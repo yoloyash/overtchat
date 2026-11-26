@@ -197,7 +197,7 @@ export function ModelsPanel() {
               disabled={taskModelMut.isPending}
             >
               <SelectTrigger
-                aria-label={t("models.backgroundTasks.taskModelLabel")}
+                aria-label={t("models.backgroundTasks.taskModelTitle")}
                 className="w-full"
               >
                 <SelectValue>
@@ -244,7 +244,7 @@ export function ModelsPanel() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("models.page.searchPlaceholder")}
               className="pl-8"
-              aria-label={t("models.page.searchLabel")}
+              aria-label={t("models.page.searchPlaceholder")}
             />
           </div>
           <p className="text-xs text-muted-foreground">
@@ -488,7 +488,7 @@ export function ModelsPanel() {
               >
                 {deleteMut.isPending
                   ? t("models.deleteDialog.deleting")
-                  : t("models.deleteDialog.delete")}
+                  : t("models.item.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

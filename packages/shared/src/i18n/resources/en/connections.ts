@@ -80,11 +80,9 @@ export const connections = {
       "<name>{{name}}</name> and every agent that uses it will be removed from OvertChat. Files and native agent sessions remain on their machines.",
     workspaceDescription:
       "<name>{{name}}</name> and its agent chats will be removed from OvertChat. Files and native agent sessions remain on the host.",
-    cancel: "Cancel",
     remove: "Remove",
   },
   dialog: {
-    title: "Add workspace",
     description:
       "Choose a project directory. Available agents and their chats are discovered automatically.",
     machineTitle: "Machine",
@@ -110,7 +108,6 @@ export const connections = {
     alreadyAttached: "That directory is already in Agent workspaces.",
     chooseFolderPrompt: "Choose a project folder",
     cancel: "Cancel",
-    submit: "Add workspace",
     validation: {
       invalidSshAlias: "Enter a valid SSH host alias.",
       missingMachine: "Choose a machine first.",

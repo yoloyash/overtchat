@@ -58,25 +58,17 @@ export const users = {
     title: "Delete user?",
     description:
       "<email>{{email}}</email> will no longer be able to sign in. Existing chats and projects are not deleted.",
-    cancel: "Cancel",
     deleting: "Deleting…",
-    delete: "Delete",
   },
   addDialog: {
-    title: "Add user",
     ssoDescription: "They sign in with {{provider}}, using this email address.",
     passwordDescription:
       "Share the password with them out-of-band. They can change it later.",
-    nameLabel: "Name",
-    emailLabel: "Email",
     passwordLabel: "Password",
-    roleLabel: "Role",
-    cancel: "Cancel",
     creating: "Creating…",
     create: "Create",
   },
   resetPasswordDialog: {
-    title: "Reset password",
     description:
       "Set a replacement password for {{email}}. They will be signed out on all devices. Share the password privately; they can change it in Security settings.",
     currentPasswordLabel: "Your current password",
@@ -86,21 +78,14 @@ export const users = {
     errorFallback: "Failed to reset password.",
     networkError:
       "Could not reset the password. Check your connection and try again.",
-    cancel: "Cancel",
     resetting: "Resetting…",
-    submit: "Reset password",
   },
   resetTwoFactorDialog: {
-    title: "Reset two-factor",
     description:
       "Remove {{email}}'s authenticator and backup codes, for example after they lose their phone. They will be signed out on all devices and can set two-factor up again in Security settings.",
-    currentPasswordLabel: "Your current password",
     errorFallback: "Failed to reset two-factor.",
     networkError:
       "Could not reset two-factor. Check your connection and try again.",
-    cancel: "Cancel",
-    resetting: "Resetting…",
-    submit: "Reset two-factor",
   },
   mobile: {
     roles: {

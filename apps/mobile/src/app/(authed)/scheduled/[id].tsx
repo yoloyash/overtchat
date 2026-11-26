@@ -200,6 +200,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
         {draft.frequency === "hourly" ? (
           <Choice
             title={t("scheduled.form.minutePastHour")}
+            searchLabel={t("scheduled.mobile.searchMinutePastHour")}
             value={String(draft.minute).padStart(2, "0")}
             options={minuteOptions(draft.minute)}
             onChange={(minute) => change({ minute: Number(minute) })}
@@ -207,6 +208,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
         ) : (
           <Choice
             title={t("scheduled.form.time")}
+            searchLabel={t("scheduled.mobile.searchTime")}
             value={draft.time}
             options={timeOptions(draft.time)}
             onChange={(time) => change({ time })}
@@ -215,6 +217,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
         {draft.frequency === "once" && (
           <Choice
             title={t("scheduled.form.date")}
+            searchLabel={t("scheduled.mobile.searchDate")}
             value={draft.date}
             options={dateOptions(draft.date)}
             onChange={(date) => change({ date })}
@@ -269,6 +272,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
         {draft.frequency === "monthly" && (
           <Choice
             title={t("scheduled.form.dayOfMonth")}
+            searchLabel={t("scheduled.mobile.searchDayOfMonth")}
             value={String(draft.dayOfMonth).padStart(2, "0")}
             options={dayOfMonthOptions()}
             onChange={(day) => change({ dayOfMonth: Number(day) })}
@@ -293,6 +297,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
       <Section title={t("scheduled.mobile.runsWithSection")}>
         <Choice
           title={t("scheduled.form.model")}
+          searchLabel={t("scheduled.mobile.searchModel")}
           value={modelKnown ? draft.modelConfigId : ""}
           options={
             modelKnown
@@ -304,6 +309,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
         {(projects.length > 0 || draft.projectId) && (
           <Choice
             title={t("scheduled.form.project")}
+            searchLabel={t("scheduled.mobile.searchProject")}
             detail={t("scheduled.form.projectHint")}
             value={draft.projectId ?? NO_PROJECT}
             options={[

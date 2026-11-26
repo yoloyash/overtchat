@@ -98,7 +98,7 @@ export function AddUserDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {t("users.addDialog.title")}
+            {t("users.page.addUser")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {provider
@@ -108,7 +108,7 @@ export function AddUserDialog({
 
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="new-name">{t("users.addDialog.nameLabel")}</Label>
+              <Label htmlFor="new-name">{t("users.list.columns.name")}</Label>
               <Input
                 id="new-name"
                 type="text"
@@ -122,7 +122,7 @@ export function AddUserDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-email">
-                {t("users.addDialog.emailLabel")}
+                {t("users.list.columns.email")}
               </Label>
               <Input
                 id="new-email"
@@ -154,7 +154,7 @@ export function AddUserDialog({
               </div>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="new-role">{t("users.addDialog.roleLabel")}</Label>
+              <Label htmlFor="new-role">{t("users.list.columns.role")}</Label>
               <Select
                 value={role}
                 onValueChange={(next) => {
@@ -164,7 +164,7 @@ export function AddUserDialog({
               >
                 <SelectTrigger
                   id="new-role"
-                  aria-label={t("users.addDialog.roleLabel")}
+                  aria-label={t("users.list.columns.role")}
                   className="w-full"
                 >
                   <SelectValue>{t(`users.roles.${role}`)}</SelectValue>
@@ -187,7 +187,7 @@ export function AddUserDialog({
                 size="sm"
                 onClick={() => onOpenChange(false)}
               >
-                {t("users.addDialog.cancel")}
+                {t("users.roleDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting
