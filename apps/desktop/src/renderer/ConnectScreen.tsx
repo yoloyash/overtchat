@@ -3,6 +3,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { failureText } from "./failure-reason";
 import { hostOf, shell } from "./shell";
 import type { LocalServer } from "../shared/ipc";
 import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
@@ -33,7 +34,7 @@ export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
     try {
       const result = await shell.connect(target);
       if (!result.ok) {
-        setError(result.message);
+        setError(failureText(result, t));
         return;
       }
       window.location.reload();
@@ -143,7 +144,7 @@ export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
         <Trans
           i18nKey="app.desktopShell.connect.noServerYet"
           components={{
-            link: (
+            setup: (
               <a
                 href="https://overtchat.com"
                 target="_blank"

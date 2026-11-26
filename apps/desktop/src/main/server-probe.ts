@@ -1,12 +1,12 @@
 import { isIP } from "node:net";
 import { CLIENT_API_LEVEL, type PingResponse } from "@overtchat/shared";
-import type { ServerProblem } from "../shared/ipc";
+import type { ConnectFailureReason, ServerProblem } from "../shared/ipc";
 
 const PING_TIMEOUT_MS = 8_000;
 
 export type PingResult =
   | { ok: true; origin: string; version: string | null; apiLevel: number; problem: ServerProblem | null }
-  | { ok: false; message: string };
+  | { ok: false; message: string; reason?: ConnectFailureReason };
 
 export interface PingOptions {
   timeoutMs?: number;
@@ -76,18 +76,19 @@ export async function probeServer(
   } catch (error) {
     const reason = error instanceof Error ? error.message : "";
     if (/CERT|SSL/i.test(reason)) {
-      return { ok: false, message: `${host} uses a certificate this computer doesn't trust.` };
+      return { ok: false, message: `${host} uses a certificate this computer doesn't trust.`, reason: { code: "untrusted-certificate", host } };
     }
     if (signal.aborted) {
-      return { ok: false, message: `${host} took too long to respond.` };
+      return { ok: false, message: `${host} took too long to respond.`, reason: { code: "timeout", host } };
     }
     return {
       ok: false,
       message: `Nothing answered at ${host}. Check the address and that the server is running.`,
+      reason: { code: "no-answer", host },
     };
   }
   if (!response.ok || body?.name !== "overtchat") {
-    return { ok: false, message: `${host} responded, but it isn't an OvertChat server.` };
+    return { ok: false, message: `${host} responded, but it isn't an OvertChat server.`, reason: { code: "not-overtchat", host } };
   }
   const destination = new URL(response.url || `${origin}/api/ping`);
   const requested = new URL(origin);
@@ -99,7 +100,7 @@ export async function probeServer(
   // for another host, a downgrade, or a server mounted below a path.
   if ((!sameOrigin && !secureUpgrade) || destination.username || destination.password ||
     destination.pathname !== "/api/ping" || destination.search || destination.hash) {
-    return { ok: false, message: `${host} redirected to another address. Enter the server's final URL directly.` };
+    return { ok: false, message: `${host} redirected to another address. Enter the server's final URL directly.`, reason: { code: "redirected", host } };
   }
   const version = typeof body.version === "string" ? body.version : null;
   const apiLevel = Number.isSafeInteger(body.apiLevel) && body.apiLevel! > 0 ? body.apiLevel! : 0;

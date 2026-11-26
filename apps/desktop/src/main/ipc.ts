@@ -51,7 +51,7 @@ async function boot(): Promise<BootState> {
   return {
     server: {
       origin: result.ok ? result.origin : origin,
-      problem: result.ok ? result.problem : { kind: "unreachable", message: result.message },
+      problem: result.ok ? result.problem : { kind: "unreachable", message: result.message, reason: result.reason },
     },
     lastAddress: getLastAddress(),
   };
@@ -59,7 +59,13 @@ async function boot(): Promise<BootState> {
 
 async function connect(address: string): Promise<ConnectResult> {
   const origin = typeof address === "string" ? serverOrigin(address) : null;
-  if (!origin) return { ok: false, message: "Enter a server address, like chat.example.com." };
+  if (!origin) {
+    return {
+      ok: false,
+      message: "Enter a server address, like chat.example.com.",
+      reason: { code: "address-required", host: "" },
+    };
+  }
   setUpdateOrigin(null);
   const result = await pingServer(origin);
   if (!result.ok) return result;
@@ -69,6 +75,7 @@ async function connect(address: string): Promise<ConnectResult> {
     return {
       ok: false,
       message: `${displayHost(origin)} runs ${version}. Update the server to use the desktop app.`,
+      reason: { code: "server-outdated", host: displayHost(origin), version: result.version },
     };
   }
   if (result.problem?.kind === "app-outdated") {
@@ -76,6 +83,7 @@ async function connect(address: string): Promise<ConnectResult> {
     return {
       ok: false,
       message: `${displayHost(origin)} runs ${version}, which is newer than this app. Update the desktop app.`,
+      reason: { code: "app-outdated", host: displayHost(origin), version: result.version },
     };
   }
   setServer(result.origin, result.origin);

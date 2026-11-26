@@ -4,13 +4,14 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 import type { ServerProblem } from "../shared/ipc";
+import { failureText } from "./failure-reason";
 import { hostOf, shell } from "./shell";
 
 function describe(host: string, problem: ServerProblem, t: TFunction): { title: string; message: string } {
   const version = problem.kind === "unreachable" ? undefined : problem.version;
   switch (problem.kind) {
     case "unreachable":
-      return { title: t("app.desktopShell.problem.unreachableTitle", { host }), message: problem.message };
+      return { title: t("app.desktopShell.problem.unreachableTitle", { host }), message: failureText(problem, t) };
     case "server-outdated":
       return {
         title: t("app.desktopShell.problem.serverOutdatedTitle", { host }),
