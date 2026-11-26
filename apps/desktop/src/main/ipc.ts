@@ -7,7 +7,9 @@ import {
   type ConnectResult,
 } from "../shared/ipc";
 import { displayHost, pingServer, serverOrigin } from "./server";
+import { followInterfaceLanguage } from "./language";
 import { discoverLocalServers } from "./local-discovery";
+import { installMenu } from "./menu";
 import {
   clearServer,
   getLastAddress,
@@ -143,5 +145,8 @@ export function registerIpc(): void {
     if (!fromApp(event) || (scheme !== "light" && scheme !== "dark")) return;
     setColorScheme(scheme);
     applyColorScheme();
+  });
+  ipcMain.on(IPC.language, (event, language: unknown) => {
+    if (fromApp(event) && followInterfaceLanguage(language)) installMenu();
   });
 }

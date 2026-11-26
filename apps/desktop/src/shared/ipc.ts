@@ -12,6 +12,7 @@ export const IPC = {
   toggleMaximize: "desktop:toggle-maximize",
   close: "desktop:close",
   theme: "desktop:theme",
+  language: "desktop:language",
   command: "desktop:command",
   updateState: "desktop:update-state",
   updateStateChanged: "desktop:update-state-changed",

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import type { DesktopUpdateState } from "@overtchat/shared/desktop";
 import type { AppUpdaterEvents } from "electron-updater/out/AppUpdater";
 
@@ -35,7 +36,7 @@ export function createUpdateController(
     update({
       status: downloadedVersion ? "ready" : "error",
       availableVersion: downloadedVersion ?? state.availableVersion,
-      message: error instanceof Error ? error.message : "Could not update the desktop app. Try again.",
+      message: error instanceof Error ? error.message : i18n.t("app.desktopNative.updates.failed"),
     });
   }
 
