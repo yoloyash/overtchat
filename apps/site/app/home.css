@@ -1,0 +1,2483 @@
+/* Homepage visuals: the live hero demo, section demos, and scroll motion.
+ * Shared page furniture (header, buttons, type scale) stays in globals.css. */
+
+:root {
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --demo-accent: var(--ring);
+}
+
+/* ── Scroll reveal ───────────────────────────────────────────────────────
+ * `HomeEffects` adds `.reveal-ready` after marking what is already on screen,
+ * so the page stays fully visible without JavaScript. */
+
+[data-reveal] {
+  transition:
+    opacity 700ms var(--motion-ease-out),
+    transform 700ms var(--motion-ease-out);
+}
+
+.reveal-ready [data-reveal]:not([data-revealed]) {
+  opacity: 0;
+  transform: translateY(1.5rem);
+}
+
+[data-reveal="stagger"] {
+  transition: none;
+}
+
+[data-reveal="stagger"] > * {
+  transition:
+    opacity 650ms var(--motion-ease-out),
+    transform 650ms var(--motion-ease-out);
+}
+
+.reveal-ready [data-reveal="stagger"]:not([data-revealed]) {
+  opacity: 1;
+  transform: none;
+}
+
+.reveal-ready [data-reveal="stagger"]:not([data-revealed]) > * {
+  opacity: 0;
+  transform: translateY(1.25rem);
+}
+
+[data-reveal="stagger"] > :nth-child(2) { transition-delay: 70ms; }
+[data-reveal="stagger"] > :nth-child(3) { transition-delay: 140ms; }
+[data-reveal="stagger"] > :nth-child(4) { transition-delay: 210ms; }
+[data-reveal="stagger"] > :nth-child(5) { transition-delay: 280ms; }
+[data-reveal="stagger"] > :nth-child(6) { transition-delay: 350ms; }
+
+/* ── Hero ────────────────────────────────────────────────────────────── */
+
+.hero::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 calc(50% - 50vw);
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--foreground) 13%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 1.5rem 1.5rem;
+  content: "";
+  mask-image: radial-gradient(ellipse 60% 70% at 62% 42%, black, transparent);
+  pointer-events: none;
+}
+
+/* The copy paints at once: it is the page's largest content, and fading it in
+ * would delay what visitors came to read. Only the demo and underline move. */
+.hero .demo {
+  animation: hero-rise 1000ms var(--motion-ease-out) 120ms both;
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1.1rem);
+  }
+}
+
+.hero-headline-punch {
+  position: relative;
+  width: fit-content;
+}
+
+.hero-underline {
+  position: absolute;
+  right: -0.06em;
+  bottom: -0.26em;
+  left: -0.06em;
+  width: calc(100% + 0.12em);
+  height: 0.32em;
+  overflow: visible;
+  color: var(--demo-accent);
+  pointer-events: none;
+}
+
+.hero-underline {
+  animation: hero-underline 900ms var(--motion-ease-out) 700ms both;
+}
+
+.hero-underline path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+@keyframes hero-underline {
+  from {
+    clip-path: inset(-100% 100% -100% 0);
+  }
+
+  to {
+    clip-path: inset(-100% -5% -100% -5%);
+  }
+}
+
+/* ── Hero demo: a scaled-down OvertChat window ───────────────────────── */
+
+.demo {
+  position: relative;
+  min-width: 0;
+}
+
+/* On wide screens the window reaches past the text column's right edge. */
+@media (min-width: 1051px) {
+  .hero .demo {
+    margin-right: clamp(-4rem, calc((1180px + 5rem - 100vw) / 2), 0px);
+  }
+}
+
+.demo-glow {
+  position: absolute;
+  inset: 6% 4% 10%;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--demo-accent) 24%, transparent);
+  filter: blur(80px);
+  animation: demo-drift 16s ease-in-out infinite alternate;
+}
+
+@keyframes demo-drift {
+  from {
+    transform: translate3d(-4%, -3%, 0) scale(0.96);
+  }
+
+  to {
+    transform: translate3d(5%, 4%, 0) scale(1.06);
+  }
+}
+
+.demo-window {
+  position: relative;
+  display: grid;
+  height: 40rem;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  border-radius: 1.25rem;
+  background: var(--background);
+  box-shadow: var(--shadow-soft);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.demo-window svg {
+  flex-shrink: 0;
+}
+
+.demo-sidebar {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  padding: 0.6rem 0.5rem;
+  background: var(--sidebar);
+}
+
+.demo-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.45rem 0.7rem;
+  color: var(--muted-foreground);
+}
+
+.demo-sidebar-header svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.demo-brand {
+  color: var(--foreground);
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: 0.84rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.demo-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 0.5rem;
+  border-radius: 0.55rem;
+  padding: 0.14rem;
+  background: var(--sidebar-accent);
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.demo-mode span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border-radius: 0.42rem;
+  padding: 0.28rem 0;
+}
+
+.demo-mode span[data-active] {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+.demo-mode svg,
+.demo-nav svg {
+  width: 0.78rem;
+  height: 0.78rem;
+}
+
+.demo-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.demo-nav span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.34rem 0.45rem;
+}
+
+.demo-nav svg {
+  color: var(--muted-foreground);
+}
+
+.demo-sidebar-label {
+  margin: 0.85rem 0.45rem 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.demo-chats {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.demo-chats button {
+  overflow: hidden;
+  border: 0;
+  border-radius: 0.45rem;
+  padding: 0.4rem 0.45rem;
+  background: transparent;
+  color: var(--sidebar-foreground);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 160ms var(--motion-ease-standard);
+}
+
+.demo-chats button:hover,
+.demo-chats button[aria-pressed="true"] {
+  background: var(--sidebar-accent);
+}
+
+.demo-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 -0.5rem -0.6rem;
+  border-top: 1px solid var(--sidebar-border);
+  padding: 0.6rem 0.9rem;
+}
+
+.demo-profile span {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--demo-accent) 30%, var(--muted));
+  font-size: 0.58rem;
+  font-weight: 700;
+  place-items: center;
+}
+
+.demo-profile strong {
+  flex: 1;
+  font-weight: 600;
+}
+
+.demo-profile svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  color: var(--muted-foreground);
+}
+
+.demo-chat {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.demo-chat-header {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0 1rem;
+}
+
+.demo-chat-header strong {
+  overflow: hidden;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: demo-fade 400ms ease both;
+}
+
+.demo-chat-header svg {
+  width: 0.82rem;
+  height: 0.82rem;
+  color: var(--muted-foreground);
+}
+
+.demo-messages {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.85rem;
+  overflow: hidden;
+  padding: 1.1rem clamp(1rem, 4.5%, 2rem) 0;
+}
+
+.demo-messages > p {
+  margin: 0;
+}
+
+.demo-messages[data-animate] > p,
+.demo-card[data-animate] > .demo-block {
+  animation: demo-rise 520ms var(--motion-ease-out) both;
+}
+
+@keyframes demo-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
+}
+
+@keyframes demo-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.demo-user {
+  max-width: 88%;
+  align-self: flex-end;
+  border-radius: 1rem;
+  padding: 0.55rem 0.8rem;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.demo-thinking,
+.demo-tool {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted-foreground);
+}
+
+.demo-thinking span {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.demo-thinking i {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: demo-bounce 1s ease-in-out infinite;
+}
+
+.demo-thinking i:nth-child(2) { animation-delay: 140ms; }
+.demo-thinking i:nth-child(3) { animation-delay: 280ms; }
+
+@keyframes demo-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-0.2rem);
+  }
+}
+
+.demo-tool svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.demo-tool[data-running] {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 35%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 65%
+  );
+  background-clip: text;
+  background-size: 250% 100%;
+  color: transparent;
+  animation: demo-shimmer 1.3s linear infinite;
+}
+
+.demo-tool[data-running] svg {
+  color: var(--muted-foreground);
+  animation: demo-spin 2.4s linear infinite;
+}
+
+@keyframes demo-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -50% 0;
+  }
+}
+
+@keyframes demo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.demo-card {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* Only charts give up height when a narrow window runs out of room. */
+.demo-block {
+  flex-shrink: 0;
+}
+
+.demo-block-line,
+.demo-block-bars {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  flex-shrink: 1;
+}
+
+.demo-block-header .demo-card-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.demo-block-header p:not(.demo-card-title) {
+  margin: 0.2rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+}
+
+.demo-block-title {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.demo-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.demo-metric {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--card);
+  transition:
+    border-color 200ms var(--motion-ease-standard),
+    transform 300ms var(--motion-ease-out);
+}
+
+.demo-metric:hover {
+  border-color: color-mix(in oklch, var(--demo-accent) 55%, var(--border));
+  transform: translateY(-2px);
+}
+
+.demo-metric dt {
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+}
+
+.demo-metric dd {
+  display: flex;
+  flex-direction: column;
+  margin: 0.35rem 0 0;
+}
+
+.demo-metric strong {
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.demo-metric small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.6rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demo-chart {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  margin: 0;
+}
+
+.demo-chart figcaption,
+.demo-chart-xaxis {
+  flex-shrink: 0;
+}
+
+.demo-chart figcaption {
+  margin-bottom: 0.3rem;
+  color: var(--muted-foreground);
+  font-size: 0.6rem;
+}
+
+.demo-chart-body {
+  display: grid;
+  min-height: 5rem;
+  flex: 0 1 7.6rem;
+  grid-template-columns: 1.6rem minmax(0, 1fr);
+}
+
+.demo-chart-yaxis,
+.demo-chart-plot,
+.demo-chart-xaxis {
+  position: relative;
+}
+
+.demo-chart-yaxis span {
+  position: absolute;
+  left: 0;
+  color: var(--muted-foreground);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+  transform: translateY(50%);
+}
+
+.demo-chart-plot {
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+.demo-chart-plot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  animation: demo-wipe 1300ms cubic-bezier(0.4, 0, 0.2, 1) 150ms both;
+}
+
+@keyframes demo-wipe {
+  from {
+    clip-path: inset(-10% 100% -10% 0);
+  }
+
+  to {
+    clip-path: inset(-10% -2% -10% 0);
+  }
+}
+
+.demo-chart-grid {
+  stroke: var(--border);
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.demo-chart-line {
+  fill: none;
+  stroke: var(--demo-accent);
+  stroke-linecap: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.demo-chart-fade-start {
+  stop-color: var(--demo-accent);
+  stop-opacity: 0.28;
+}
+
+.demo-chart-fade-end {
+  stop-color: var(--demo-accent);
+  stop-opacity: 0;
+}
+
+.demo-chart-guide,
+.demo-chart-dot,
+.demo-chart-tip {
+  position: absolute;
+  pointer-events: none;
+  animation: demo-fade 300ms ease 1250ms both;
+}
+
+.demo-chart-guide {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in oklab, var(--demo-accent) 55%, transparent);
+  opacity: 0;
+  transition: left 140ms var(--motion-ease-out);
+}
+
+.demo-chart-plot[data-hovering] .demo-chart-guide {
+  opacity: 1;
+  animation: none;
+}
+
+.demo-chart-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 2px solid var(--background);
+  border-radius: 50%;
+  background: var(--demo-accent);
+  box-shadow: 0 0 0 0 color-mix(in oklab, var(--demo-accent) 50%, transparent);
+  translate: -50% -50%;
+  transition:
+    left 140ms var(--motion-ease-out),
+    top 140ms var(--motion-ease-out);
+}
+
+.demo-chart-plot:not([data-hovering]) .demo-chart-dot {
+  animation:
+    demo-fade 300ms ease 1250ms both,
+    demo-ping 2.2s ease-out 1600ms infinite;
+}
+
+@keyframes demo-ping {
+  to {
+    box-shadow: 0 0 0 0.55rem transparent;
+  }
+}
+
+.demo-chart-tip {
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.5rem;
+  padding: 0.28rem 0.5rem;
+  background: var(--foreground);
+  color: var(--background);
+  box-shadow: 0 6px 18px color-mix(in oklab, var(--foreground) 22%, transparent);
+  line-height: 1.3;
+  white-space: nowrap;
+  transition:
+    left 140ms var(--motion-ease-out),
+    top 140ms var(--motion-ease-out),
+    translate 140ms var(--motion-ease-out);
+}
+
+.demo-chart-tip[data-side="left"] {
+  translate: calc(-100% - 0.5rem) -90%;
+}
+
+.demo-chart-tip[data-side="right"] {
+  translate: 0.5rem -115%;
+}
+
+.demo-chart-tip strong {
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.demo-chart-tip small {
+  font-size: 0.56rem;
+  opacity: 0.7;
+}
+
+.demo-chart-xaxis {
+  height: 1.1rem;
+  margin-left: 1.6rem;
+}
+
+.demo-chart-xaxis span {
+  position: absolute;
+  top: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.58rem;
+  white-space: nowrap;
+  translate: -50% 0;
+  transition: color 140ms var(--motion-ease-standard);
+}
+
+.demo-chart-xaxis span[data-active] {
+  color: var(--foreground);
+}
+
+.demo-chart-xaxis-even {
+  display: flex;
+}
+
+.demo-chart-xaxis-even span {
+  position: static;
+  flex: 1;
+  padding-top: 0.25rem;
+  text-align: center;
+  translate: none;
+}
+
+.demo-chart-bars .demo-chart-plot {
+  cursor: default;
+}
+
+.demo-bar-grid {
+  position: absolute;
+  right: 0;
+  left: 0;
+  border-top: 1px dashed var(--border);
+}
+
+.demo-bar-row {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.demo-bar-column {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.demo-bar {
+  position: relative;
+  width: 46%;
+  max-width: 2.6rem;
+  border-radius: 0.3rem 0.3rem 0 0;
+  background: color-mix(in oklch, var(--demo-accent) 62%, var(--background));
+  transform-origin: bottom;
+  animation: demo-grow 700ms var(--motion-ease-out) both;
+  transition: background 160ms var(--motion-ease-standard);
+}
+
+@keyframes demo-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+.demo-bar-column:hover .demo-bar {
+  background: var(--demo-accent);
+}
+
+.demo-bar-tip {
+  position: absolute;
+  bottom: calc(100% + 0.3rem);
+  left: 50%;
+  border-radius: 0.4rem;
+  padding: 0.18rem 0.42rem;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.6rem;
+  font-weight: 650;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0.2rem);
+  transition:
+    opacity 160ms var(--motion-ease-standard),
+    transform 160ms var(--motion-ease-standard);
+  white-space: nowrap;
+}
+
+.demo-bar-column:hover .demo-bar-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.demo-dishes {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0;
+  background: var(--card);
+  list-style: none;
+}
+
+.demo-dishes li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.42rem 0.7rem;
+}
+
+.demo-dishes li + li {
+  border-top: 1px solid var(--border);
+}
+
+.demo-dishes span {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demo-dishes small {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+}
+
+.demo-checklist-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.demo-checklist-count {
+  color: var(--muted-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.58rem;
+}
+
+.demo-checklist-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+  margin-top: 0.3rem;
+}
+
+.demo-checklist-groups p {
+  margin: 0 0 0.15rem;
+  color: var(--muted-foreground);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.demo-checklist label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-inline: -0.3rem;
+  border-radius: 0.4rem;
+  padding: 0.2rem 0.3rem;
+  cursor: pointer;
+  transition: background 140ms var(--motion-ease-standard);
+}
+
+.demo-checklist label:hover {
+  background: var(--muted);
+}
+
+.demo-checklist input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.demo-checkbox {
+  display: grid;
+  width: 0.82rem;
+  height: 0.82rem;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in oklab, var(--foreground) 35%, transparent);
+  border-radius: 0.24rem;
+  place-items: center;
+  transition:
+    background 140ms var(--motion-ease-standard),
+    border-color 140ms var(--motion-ease-standard);
+}
+
+.demo-checkbox svg {
+  width: 0.6rem;
+  height: 0.6rem;
+  color: var(--primary-foreground);
+  opacity: 0;
+  stroke-width: 3;
+  transform: scale(0.4);
+  transition:
+    opacity 140ms var(--motion-ease-standard),
+    transform 220ms var(--motion-ease-out);
+}
+
+.demo-checklist input:checked + .demo-checkbox {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.demo-checklist input:checked + .demo-checkbox svg {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.demo-checklist input:focus-visible + .demo-checkbox {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.demo-checklist label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 140ms var(--motion-ease-standard);
+}
+
+.demo-checklist input:checked ~ span:last-child {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.demo-table table {
+  width: 100%;
+  margin-top: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--card);
+}
+
+.demo-table th,
+.demo-table td {
+  padding: 0.34rem 0.7rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+.demo-table tr + tr th,
+.demo-table tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+.demo-table th {
+  width: 3rem;
+  color: var(--muted-foreground);
+}
+
+.demo-table td:last-child {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.demo-followups {
+  display: flex;
+  flex-direction: column;
+}
+
+.demo-followups .demo-block-title {
+  padding-bottom: 0.3rem;
+}
+
+.demo-followups button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  padding: 0.42rem 0.1rem;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    color 160ms var(--motion-ease-standard),
+    padding 260ms var(--motion-ease-out);
+}
+
+.demo-followups button svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--muted-foreground);
+  opacity: 0.55;
+  transition:
+    opacity 160ms var(--motion-ease-standard),
+    transform 260ms var(--motion-ease-out);
+}
+
+.demo-followups button:hover {
+  padding-left: 0.4rem;
+}
+
+.demo-followups button:hover svg {
+  color: var(--demo-accent);
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+
+.demo-composer {
+  margin: 0.7rem clamp(0.8rem, 3.5%, 1.6rem) 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 1.1rem;
+  padding: 0.65rem 0.75rem 0.55rem;
+  background: var(--background);
+  box-shadow: 0 8px 26px color-mix(in oklab, var(--foreground) 5%, transparent);
+  transition: border-color 200ms var(--motion-ease-standard);
+}
+
+.demo-composer:has(.demo-caret) {
+  border-color: color-mix(in oklch, var(--demo-accent) 70%, var(--border));
+}
+
+.demo-composer p {
+  display: -webkit-box;
+  min-height: 1.1rem;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.demo-composer p[data-empty] {
+  color: var(--muted-foreground);
+}
+
+.demo-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 0.95em;
+  margin-left: 1px;
+  background: var(--foreground);
+  vertical-align: text-bottom;
+  animation: demo-blink 1s steps(2, start) infinite;
+}
+
+@keyframes demo-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.demo-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  color: var(--muted-foreground);
+}
+
+.demo-composer-icon,
+.demo-send {
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  place-items: center;
+}
+
+.demo-composer-icon svg,
+.demo-send svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.demo-composer-mic {
+  margin-left: auto;
+}
+
+.demo-model {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.demo-model svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.demo-model svg:last-child {
+  width: 0.65rem;
+  height: 0.65rem;
+  color: var(--muted-foreground);
+}
+
+.demo-send {
+  background: color-mix(in oklch, var(--foreground) 82%, var(--background));
+  color: var(--background);
+  transition:
+    background 200ms var(--motion-ease-standard),
+    transform 300ms var(--motion-ease-out);
+}
+
+.demo-send[data-ready] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  transform: scale(1.08);
+}
+
+.demo-controls {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 1rem;
+}
+
+.demo-playback,
+.demo-tab {
+  position: relative;
+  display: inline-flex;
+  min-height: 1.85rem;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--background) 80%, transparent);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition:
+    border-color 160ms var(--motion-ease-standard),
+    color 160ms var(--motion-ease-standard),
+    background 160ms var(--motion-ease-standard);
+}
+
+.demo-playback {
+  width: 1.85rem;
+  justify-content: center;
+}
+
+.demo-playback svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.demo-tab {
+  padding: 0 0.75rem;
+}
+
+.demo-playback:hover,
+.demo-tab:hover,
+.demo-tab[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--foreground) 30%, var(--border));
+  color: var(--foreground);
+}
+
+.demo-tab[aria-pressed="true"] {
+  background: var(--muted);
+}
+
+.demo-tab-progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--demo-accent);
+  transform-origin: left;
+  animation: demo-progress linear both;
+}
+
+@keyframes demo-progress {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ── Model endpoints marquee ─────────────────────────────────────────── */
+
+.trust-strip-inner {
+  display: flex;
+  min-height: 4.5rem;
+  align-items: center;
+  gap: 1.35rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.trust-strip-label {
+  flex-shrink: 0;
+  padding-right: 1.35rem;
+  border-right: 1px solid var(--border);
+  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  font-weight: 600;
+}
+
+.trust-strip-track {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  padding-block: 0.6rem;
+  mask-image: linear-gradient(90deg, transparent, black 5%, black 95%, transparent);
+}
+
+.trust-strip-track ul {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2.5rem;
+  margin: 0;
+  padding: 0 1.25rem;
+  list-style: none;
+  animation: trust-marquee 44s linear infinite;
+}
+
+.trust-strip-track:hover ul,
+.trust-strip-track:focus-visible ul {
+  animation-play-state: paused;
+}
+
+@keyframes trust-marquee {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.trust-strip-track li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.trust-strip-track li:hover {
+  color: var(--foreground);
+}
+
+.trust-strip-track svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+/* ── A front door: one server, separate private spaces ───────────────── */
+
+.access-link {
+  position: relative;
+  width: clamp(1.25rem, 3.5vw, 3rem);
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--muted-foreground) 55%, transparent) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.access-link i {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin: -0.2rem 0 0 -0.2rem;
+  border-radius: 50%;
+  background: var(--demo-accent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--demo-accent) 18%, transparent);
+  animation: access-flow 2.4s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.access-link ~ .access-link i {
+  animation-delay: 1.2s;
+}
+
+@keyframes access-flow {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+
+  15%,
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+.access-node,
+.access-people {
+  border-radius: 1rem;
+  transition: box-shadow 300ms var(--motion-ease-out);
+}
+
+button.access-person {
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 200ms var(--motion-ease-standard),
+    background 200ms var(--motion-ease-standard),
+    transform 300ms var(--motion-ease-out);
+}
+
+.access-person > span {
+  transition:
+    background 200ms var(--motion-ease-standard),
+    color 200ms var(--motion-ease-standard);
+}
+
+.access-person[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--demo-accent) 70%, var(--border));
+  background: color-mix(in oklch, var(--accent) 55%, var(--background));
+  transform: translateX(-0.3rem);
+}
+
+.access-person[aria-pressed="true"] > span {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.access-space {
+  display: flex;
+  min-height: 3.4rem;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1.25rem;
+  border: 1px dashed color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-radius: 1rem;
+  padding: 0.7rem 1rem;
+  background: color-mix(in oklab, var(--background) 70%, transparent);
+}
+
+.access-space p {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.access-space p svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--demo-accent);
+}
+
+.access-space ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.access-space li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  animation: demo-rise 450ms var(--motion-ease-out) both;
+}
+
+.access-space li:nth-child(2) { animation-delay: 60ms; }
+.access-space li:nth-child(3) { animation-delay: 120ms; }
+.access-space li:nth-child(4) { animation-delay: 180ms; }
+
+.access-space li svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* Hovering a step lights up the part of the diagram it describes. */
+#sharing:has(.step-card:nth-child(1):hover) .access-node:not(.access-node-primary),
+#sharing:has(.step-card:nth-child(2):hover) .access-people,
+#sharing:has(.step-card:nth-child(3):hover) .access-node-primary,
+#sharing:has(.step-card:nth-child(3):hover) .access-people {
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--demo-accent) 32%, transparent);
+}
+
+.steps-grid > .step-card {
+  transition:
+    opacity 650ms var(--motion-ease-out),
+    transform 650ms var(--motion-ease-out),
+    background 200ms var(--motion-ease-standard);
+}
+
+.steps-grid > .step-card:hover {
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+}
+
+.step-number {
+  transition: color 200ms var(--motion-ease-standard);
+}
+
+.step-card:hover .step-number {
+  color: var(--demo-accent);
+}
+
+/* ── Voice console ───────────────────────────────────────────────────── */
+
+.voice-console {
+  --voice: oklch(0.86 0.09 150);
+  --voice-amp: 1;
+  --voice-beat: 900ms;
+}
+
+.voice-console[data-phase="thinking"] {
+  --voice: oklch(0.87 0.09 95);
+  --voice-amp: 0.14;
+  --voice-beat: 1500ms;
+}
+
+.voice-console[data-phase="speaking"] {
+  --voice: oklch(0.86 0.07 215);
+  --voice-amp: 0.78;
+  --voice-beat: 640ms;
+}
+
+.voice-console .voice-live-dot {
+  background: var(--voice);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--voice) 18%, transparent);
+  transition: background 300ms ease;
+}
+
+.voice-console[data-active] .voice-live-dot {
+  animation: voice-pulse 1.6s ease-out infinite;
+}
+
+@keyframes voice-pulse {
+  to {
+    box-shadow: 0 0 0 9px transparent;
+  }
+}
+
+.voice-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin: 1rem;
+  border: 1px solid oklch(1 0 0 / 9%);
+  border-radius: 1rem;
+  padding: 1.5rem 1.25rem 1.1rem;
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in oklab, var(--voice) 16%, transparent), transparent 12rem),
+    oklch(0.18 0.015 120);
+}
+
+.voice-orb {
+  display: flex;
+  height: 5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+}
+
+.voice-orb-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in oklab, var(--voice) 40%, transparent);
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--voice) 12%, transparent);
+  color: var(--voice);
+  place-items: center;
+  animation: demo-fade 300ms ease both;
+}
+
+.voice-orb-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.voice-wave {
+  display: flex;
+  height: 4.25rem;
+  align-items: center;
+  gap: 0.24rem;
+}
+
+.voice-wave span {
+  --h: 0.34;
+  width: 0.2rem;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--voice);
+  transform: scaleY(calc(0.1 + 0.9 * var(--h)));
+  transition: background 300ms ease;
+}
+
+.voice-wave span:nth-child(3n + 1) { --h: 0.55; }
+.voice-wave span:nth-child(4n + 2) { --h: 0.8; }
+.voice-wave span:nth-child(5n) { --h: 1; }
+.voice-wave span:nth-child(7n) { --h: 0.42; }
+.voice-wave span:nth-child(-n + 3),
+.voice-wave span:nth-last-child(-n + 3) { --h: 0.22; }
+
+.voice-console[data-active] .voice-wave span {
+  animation: voice-wave var(--voice-beat) ease-in-out infinite alternate;
+}
+
+.voice-console[data-active] .voice-wave span:nth-child(2n) { animation-delay: -220ms; }
+.voice-console[data-active] .voice-wave span:nth-child(3n) { animation-delay: -410ms; }
+.voice-console[data-active] .voice-wave span:nth-child(5n) { animation-delay: -630ms; }
+.voice-console[data-active] .voice-wave span:nth-child(7n) { animation-delay: -90ms; }
+
+@keyframes voice-wave {
+  from {
+    transform: scaleY(calc(0.08 + 0.16 * var(--voice-amp)));
+  }
+
+  to {
+    transform: scaleY(calc(0.08 + 0.92 * var(--voice-amp) * var(--h)));
+  }
+}
+
+.voice-transcript {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.voice-line {
+  display: grid;
+  min-height: 2.5rem;
+  grid-template-columns: 2.6rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.voice-line small {
+  color: oklch(0.62 0.012 120);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.voice-line span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.voice-line:first-child span {
+  color: oklch(0.8 0.012 120);
+}
+
+.voice-line[data-cut] span {
+  color: oklch(0.55 0.012 120);
+}
+
+.voice-cut {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in oklab, var(--voice) 45%, transparent);
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  background: color-mix(in oklab, var(--voice) 12%, transparent);
+  color: var(--voice);
+  cursor: pointer;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    opacity 200ms ease,
+    background 200ms ease,
+    transform 300ms var(--motion-ease-out);
+}
+
+.voice-cut svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.voice-cut:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--voice) 24%, transparent);
+  transform: translateY(-1px);
+}
+
+.voice-cut:disabled {
+  border-color: oklch(1 0 0 / 10%);
+  background: transparent;
+  color: oklch(0.55 0.012 120);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.voice-pipeline > div {
+  transition:
+    border-color 300ms ease,
+    background 300ms ease,
+    transform 400ms var(--motion-ease-out);
+}
+
+.voice-pipeline div svg {
+  color: var(--voice);
+  transition: color 300ms ease;
+}
+
+.voice-console[data-active] .voice-pipeline > div[data-current] {
+  border-color: color-mix(in oklab, var(--voice) 55%, transparent);
+  background: color-mix(in oklab, var(--voice) 10%, transparent);
+  transform: translateY(-0.2rem);
+}
+
+/* ── Feature cards: pointer glow and small scenes ────────────────────── */
+
+.feature-card,
+.architecture-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-card::before,
+.architecture-card::before {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    20rem circle at var(--glow-x, 50%) var(--glow-y, 0%),
+    color-mix(in oklab, var(--demo-accent) 13%, transparent),
+    transparent 65%
+  );
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms ease;
+}
+
+.architecture-card::before {
+  background: radial-gradient(
+    22rem circle at var(--glow-x, 50%) var(--glow-y, 0%),
+    color-mix(in oklab, var(--band-foreground) 9%, transparent),
+    transparent 65%
+  );
+}
+
+.feature-card:hover::before,
+.architecture-card:hover::before {
+  opacity: 1;
+}
+
+.feature-card > * {
+  position: relative;
+}
+
+.feature-visual {
+  display: flex;
+  height: 6.75rem;
+  align-items: center;
+  margin-bottom: 1.6rem;
+}
+
+.feature-card h3 {
+  margin-top: 0;
+}
+
+.scene {
+  display: flex;
+  width: 100%;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.scene svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex-shrink: 0;
+}
+
+.scene-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.24rem 0.62rem;
+  background: var(--background);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.scene-live {
+  width: 0.42rem;
+  height: 0.42rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--demo-accent);
+  animation: scene-live 1.6s ease-out infinite;
+}
+
+@keyframes scene-live {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--demo-accent) 55%, transparent);
+  }
+
+  to {
+    box-shadow: 0 0 0 0.4rem transparent;
+  }
+}
+
+.scene-persist {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.scene-chip-closed {
+  opacity: 0.65;
+  text-decoration: line-through;
+}
+
+.scene-lines {
+  display: grid;
+  width: 100%;
+  gap: 0.34rem;
+}
+
+.scene-lines i {
+  width: 88%;
+  height: 0.34rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 13%, transparent);
+}
+
+.scene-lines i:nth-child(2) {
+  width: 70%;
+}
+
+.scene-lines i:nth-child(3) {
+  width: 62%;
+  background: color-mix(in oklab, var(--demo-accent) 60%, transparent);
+  transform-origin: left;
+  animation: scene-write 4.5s cubic-bezier(0.3, 0, 0.3, 1) infinite;
+}
+
+@keyframes scene-write {
+  0% {
+    transform: scaleX(0.08);
+  }
+
+  80%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.scene-search {
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.scene-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.65rem;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.scene-field span {
+  overflow: hidden;
+  border-right: 1.5px solid var(--demo-accent);
+  padding-right: 2px;
+  white-space: nowrap;
+  animation: scene-type 7s steps(17, end) infinite;
+}
+
+@keyframes scene-type {
+  0% {
+    max-width: 0;
+  }
+
+  30%,
+  92% {
+    max-width: 8.5rem;
+  }
+
+  100% {
+    max-width: 0;
+  }
+}
+
+.scene-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.16rem 0.65rem;
+}
+
+.scene-result small {
+  margin-left: auto;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.6rem;
+}
+
+.scene-files {
+  padding-left: 0.5rem;
+}
+
+.scene-files span {
+  display: flex;
+  width: 2.9rem;
+  height: 3.7rem;
+  flex-direction: column;
+  gap: 0.24rem;
+  margin-left: -0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.4rem 0.4rem;
+  background: var(--background);
+  box-shadow: 0 6px 16px color-mix(in oklab, var(--foreground) 6%, transparent);
+  transform: rotate(-5deg);
+  transition:
+    transform 450ms var(--motion-ease-out),
+    margin 450ms var(--motion-ease-out);
+}
+
+.scene-files span:nth-child(2n) {
+  transform: rotate(4deg) translateY(-0.25rem);
+}
+
+.scene-files span:nth-child(3n) {
+  transform: rotate(-2deg) translateY(0.2rem);
+}
+
+.feature-card:hover .scene-files span {
+  margin-left: 0.2rem;
+  transform: none;
+}
+
+.scene-files i {
+  height: 0.2rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+.scene-files i:nth-child(2) {
+  width: 70%;
+}
+
+.scene-files b {
+  margin-top: auto;
+  color: var(--foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.scene-people {
+  gap: 0.5rem;
+}
+
+.scene-people div {
+  position: relative;
+  display: flex;
+  flex: 1;
+  max-width: 5.5rem;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  padding: 0.6rem;
+  background: var(--background);
+  transition: transform 450ms var(--motion-ease-out);
+}
+
+.feature-card:hover .scene-people div:first-child {
+  transform: translateX(-0.2rem) rotate(-2deg);
+}
+
+.feature-card:hover .scene-people div:last-child {
+  transform: translateX(0.2rem) rotate(2deg);
+}
+
+.scene-people span {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-bottom: 0.25rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
+  place-items: center;
+}
+
+.scene-people i {
+  height: 0.24rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+.scene-people i:nth-of-type(2) {
+  width: 60%;
+}
+
+.scene-people svg {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.6rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  transition: color 300ms ease;
+}
+
+.feature-card:hover .scene-people svg {
+  color: var(--demo-accent);
+}
+
+.scene-tools {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.scene-segments {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 4.4rem);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.16rem;
+  background: var(--background);
+}
+
+.scene-segments::before {
+  position: absolute;
+  top: 0.16rem;
+  bottom: 0.16rem;
+  left: 0.16rem;
+  width: 4.4rem;
+  border-radius: 999px;
+  background: var(--secondary);
+  content: "";
+  animation: scene-segment 6s var(--motion-ease-out) infinite;
+}
+
+@keyframes scene-segment {
+  0%,
+  28% {
+    transform: translateX(0);
+  }
+
+  34%,
+  62% {
+    transform: translateX(100%);
+  }
+
+  68%,
+  94% {
+    transform: translateX(200%);
+  }
+}
+
+.scene-segments span {
+  position: relative;
+  padding: 0.24rem 0;
+  color: var(--foreground);
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.scene-chips {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.scene-agents {
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.scene-agents div {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.7rem;
+  background: var(--background);
+}
+
+.scene-agents b {
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-agents small {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.58rem;
+}
+
+.scene-agents svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-inline: -0.14rem;
+  color: var(--demo-accent);
+  stroke-width: 3;
+}
+
+/* ── Architecture: traffic moving through the diagram ────────────────── */
+
+.architecture-card > * {
+  position: relative;
+}
+
+.architecture-line {
+  position: relative;
+}
+
+.architecture-line::after {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--band-foreground);
+  content: "";
+  animation: architecture-flow 2.2s ease-in-out infinite;
+}
+
+@keyframes architecture-flow {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+
+  25%,
+  75% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+}
+
+.architecture-node {
+  transition:
+    border-color 250ms ease,
+    transform 350ms var(--motion-ease-out);
+}
+
+.architecture-node:hover {
+  border-color: color-mix(in oklab, var(--band-foreground) 55%, transparent);
+  transform: translateY(-2px);
+}
+
+/* ── Clients: the real apps, in frame ────────────────────────────────── */
+
+.client-visual {
+  position: relative;
+  height: clamp(15rem, 27vw, 19rem);
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 20% 0%, color-mix(in oklab, var(--accent) 85%, transparent), transparent 24rem),
+    color-mix(in oklab, var(--muted) 55%, transparent);
+}
+
+.client-card-mobile .client-visual {
+  background:
+    radial-gradient(circle at 80% 0%, color-mix(in oklab, var(--accent) 85%, transparent), transparent 24rem),
+    color-mix(in oklab, var(--muted) 55%, transparent);
+}
+
+.client-window,
+.client-phone {
+  position: absolute;
+  overflow: hidden;
+  background: oklch(0.145 0.012 120);
+  box-shadow: 0 24px 60px color-mix(in oklab, black 28%, transparent);
+  transition: transform 700ms var(--motion-ease-out);
+}
+
+.client-window img,
+.client-phone img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.client-window {
+  top: 2.25rem;
+  left: clamp(1.75rem, 3.5vw, 2.75rem);
+  width: 46rem;
+  border: 1px solid oklch(1 0 0 / 14%);
+  border-radius: 0.8rem;
+}
+
+.client-window-bar {
+  display: flex;
+  gap: 0.3rem;
+  border-bottom: 1px solid oklch(1 0 0 / 8%);
+  padding: 0.55rem 0.7rem;
+}
+
+.client-window-bar i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: oklch(0.43 0.015 120);
+}
+
+.client-card:hover .client-window {
+  transform: translate(-0.6rem, -0.5rem);
+}
+
+.client-phone {
+  top: 2rem;
+  left: 50%;
+  width: 14rem;
+  margin-left: -7rem;
+  border: 0.4rem solid oklch(0.24 0.012 120);
+  border-radius: 2rem;
+}
+
+.client-card:hover .client-phone {
+  transform: translateY(-0.9rem);
+}
+
+/* ── Install window ──────────────────────────────────────────────────── */
+
+.code-tabs {
+  display: flex;
+  gap: 0.15rem;
+  border-radius: 999px;
+  padding: 0.14rem;
+  background: oklch(1 0 0 / 5%);
+}
+
+.code-tabs button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background 160ms var(--motion-ease-standard),
+    color 160ms var(--motion-ease-standard);
+}
+
+.code-tabs button:hover {
+  color: white;
+}
+
+.code-tabs button[aria-pressed="true"] {
+  background: oklch(1 0 0 / 12%);
+  color: white;
+}
+
+.code-window code {
+  display: inline-block;
+  animation: demo-fade 350ms ease both;
+}
+
+.code-prompt {
+  margin-right: 0.75em;
+  color: oklch(0.6 0.02 120);
+  user-select: none;
+}
+
+.code-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.15em;
+  margin-left: 0.35em;
+  background: oklch(0.86 0.09 150);
+  vertical-align: text-bottom;
+  animation: demo-blink 1.1s steps(2, start) infinite;
+}
+
+.code-window-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  border-top: 1px solid oklch(1 0 0 / 10%);
+  padding: 0.9rem clamp(1.25rem, 3vw, 2rem) 1.1rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.64rem;
+  list-style: none;
+}
+
+.code-window-footer li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid oklch(1 0 0 / 14%);
+  border-radius: 999px;
+  padding: 0.24rem 0.62rem;
+  color: oklch(0.86 0.01 120);
+}
+
+.code-window-footer li[data-optional] {
+  border-style: dashed;
+  color: oklch(0.7 0.01 120);
+}
+
+.code-window-footer svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  color: oklch(0.86 0.09 150);
+}
+
+.code-window[data-revealed] .code-window-footer li {
+  animation: demo-rise 500ms var(--motion-ease-out) both;
+}
+
+.code-window-footer li:nth-child(1) { animation-delay: 250ms; }
+.code-window-footer li:nth-child(2) { animation-delay: 330ms; }
+.code-window-footer li:nth-child(3) { animation-delay: 410ms; }
+.code-window-footer li:nth-child(4) { animation-delay: 490ms; }
+.code-window-footer li:nth-child(5) { animation-delay: 570ms; }
+.code-window-footer li:nth-child(6) { animation-delay: 650ms; }
+
+/* ── Small touches ───────────────────────────────────────────────────── */
+
+.architecture-copy .section-lede,
+.client-card-body > p:not(.eyebrow) {
+  margin-top: 1.4rem;
+}
+
+.button svg {
+  transition: transform 300ms var(--motion-ease-out);
+}
+
+.button:hover .lucide-arrow-right {
+  transform: translateX(3px);
+}
+
+.hero-scroll-cue svg {
+  animation: hero-cue 2s ease-in-out infinite;
+}
+
+@keyframes hero-cue {
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+@media (max-width: 1050px) {
+  .demo {
+    width: min(100%, 52rem);
+    margin-inline: auto;
+  }
+}
+
+@media (max-width: 780px) {
+  .access-link {
+    width: 1px;
+    height: 1.5rem;
+    justify-self: center;
+    background: repeating-linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--muted-foreground) 55%, transparent) 0 4px,
+      transparent 4px 8px
+    );
+  }
+
+  .access-link i {
+    animation-name: access-flow-down;
+  }
+
+  .access-space {
+    grid-column: 1;
+  }
+
+  .access-person[aria-pressed="true"] {
+    transform: none;
+  }
+
+  .trust-strip-label {
+    display: none;
+  }
+}
+
+@keyframes access-flow-down {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+
+  15%,
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@media (max-width: 580px) {
+  .demo {
+    margin-inline: calc(var(--page-gutter) * -0.5);
+  }
+
+  .demo-window {
+    height: 42rem;
+  }
+
+  .demo-checklist-groups {
+    column-gap: 0.4rem;
+  }
+
+  .client-window {
+    width: 34rem;
+  }
+
+  .voice-stage {
+    padding-top: 3rem;
+  }
+
+  .voice-line {
+    min-height: 3.75rem;
+  }
+
+  .voice-line span {
+    -webkit-line-clamp: 3;
+  }
+
+  .voice-console .voice-pipeline {
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    gap: 0.3rem;
+  }
+
+  .voice-console .voice-pipeline > svg {
+    transform: none;
+  }
+
+  .voice-console .voice-pipeline small {
+    display: none;
+  }
+
+  .voice-console .voice-pipeline > div {
+    padding-inline: 0.25rem;
+  }
+
+  .voice-console .voice-pipeline strong {
+    font-size: 0.66rem;
+  }
+
+  .demo-window {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .demo-sidebar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal],
+  [data-reveal="stagger"] > * {
+    transition: none;
+  }
+
+  .hero .demo,
+  .hero-underline,
+  .hero-scroll-cue svg,
+  .demo-glow,
+  .demo-window *,
+  .demo-tab-progress,
+  .access-link i,
+  .access-space li,
+  .scene *,
+  .scene *::before,
+  .architecture-line::after,
+  .code-window *,
+  .trust-strip-track ul {
+    animation: none !important;
+  }
+
+  .access-link i,
+  .architecture-line::after {
+    display: none;
+  }
+
+  .trust-strip-track {
+    overflow-x: auto;
+    mask-image: none;
+  }
+
+  .trust-strip-track ul[aria-hidden] {
+    display: none;
+  }
+
+  .scene-field span {
+    max-width: none;
+  }
+}
