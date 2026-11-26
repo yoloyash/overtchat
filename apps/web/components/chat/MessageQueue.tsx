@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ChatMessageQueue, QueuedChatMessage } from "@overtchat/shared";
+import { useTranslation } from "react-i18next";
 import { ArrowUp, Loader2, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,14 +20,15 @@ export function MessageQueue({
   editingId,
   error,
 }: MessageQueueProps) {
+  const { t } = useTranslation();
   if (!messages.length && !error) return null;
   return (
     <section
-      aria-label="Queued messages"
+      aria-label={t("chat.queue.queuedMessages")}
       className="mb-2 max-h-64 overflow-y-auto rounded-2xl border bg-muted/30 p-2"
     >
       <p className="px-2 pb-1 text-xs text-muted-foreground" role="status">
-        {paused ? "Queue paused — use Send now to continue" : "Queued messages"}
+        {paused ? t("chat.queue.pausedStatus") : t("chat.queue.queuedMessages")}
       </p>
       {error && (
         <p role="alert" className="px-2 pb-2 text-xs text-destructive">
@@ -52,15 +54,15 @@ export function MessageQueue({
                     key={index}
                     className="truncate text-xs text-muted-foreground"
                   >
-                    {file.filename || "Attachment"}
+                    {file.filename || t("chat.queue.attachmentFallback")}
                   </p>
                 ))}
               </div>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Send now"
-                title="Stop the response and send now"
+                aria-label={t("chat.queue.sendNow")}
+                title={t("chat.queue.sendNowTitle")}
                 disabled={sendingId !== null}
                 onClick={() => void queue.sendNow(message.id)}
               >
@@ -73,8 +75,8 @@ export function MessageQueue({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Edit queued message"
-                title="Edit queued message"
+                aria-label={t("chat.queue.editMessage")}
+                title={t("chat.queue.editMessage")}
                 disabled={sendingId === message.id}
                 onClick={() => queue.edit(message.id)}
               >
@@ -83,8 +85,8 @@ export function MessageQueue({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Delete queued message"
-                title="Delete queued message"
+                aria-label={t("chat.queue.deleteMessage")}
+                title={t("chat.queue.deleteMessage")}
                 disabled={sendingId === message.id}
                 onClick={() => queue.remove(message.id)}
               >
@@ -105,11 +107,12 @@ function QueueEditor({
   message: QueuedChatMessage;
   queue: ChatMessageQueue;
 }) {
+  const { t } = useTranslation();
   const [text, setText] = useState(message.text);
   return (
     <div className="space-y-2">
       <Textarea
-        aria-label="Edit queued message text"
+        aria-label={t("chat.queue.editMessageText")}
         autoFocus
         value={text}
         onChange={(event) => setText(event.target.value)}
@@ -127,7 +130,7 @@ function QueueEditor({
       />
       {message.files.map((file, index) => (
         <p key={index} className="truncate text-xs text-muted-foreground">
-          {file.filename || "Attachment"}
+          {file.filename || t("chat.queue.attachmentFallback")}
         </p>
       ))}
       <div className="flex gap-2">
@@ -136,10 +139,10 @@ function QueueEditor({
           disabled={!text.trim() && !message.files.length}
           onClick={() => queue.save(message.id, text)}
         >
-          Save queued message
+          {t("chat.queue.saveMessage")}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => queue.edit(null)}>
-          Cancel edit
+          {t("chat.queue.cancelEdit")}
         </Button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { generateId } from "ai";
+import { i18n } from "@overtchat/shared/i18n";
 import type { Size } from "./diagram-viewport";
 
 export type RenderedDiagram = Size & { svg: string };
@@ -41,7 +42,7 @@ export function renderDiagram(
       width <= 0 ||
       height <= 0
     ) {
-      throw new Error("The diagram has no usable dimensions.");
+      throw new Error(i18n.t("chat.diagram.noDimensions"));
     }
     root.setAttribute("width", String(width));
     root.setAttribute("height", String(height));

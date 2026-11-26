@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
 import { SettingsChoiceGroup } from "../SettingsChoiceGroup";
 
 /**
@@ -9,16 +10,7 @@ import { SettingsChoiceGroup } from "../SettingsChoiceGroup";
  * stored setting stays a boolean (`alwaysOn`); the words are the choice
  * people make.
  */
-export const TOOL_ACCESS_OPTIONS = [
-  {
-    value: "always",
-    label: <span className="whitespace-nowrap">Always available</span>,
-  },
-  {
-    value: "on-demand",
-    label: <span className="whitespace-nowrap">On demand</span>,
-  },
-] as const;
+const TOOL_ACCESS_VALUES = ["always", "on-demand"] as const;
 
 export function ToolAccessChoice({
   label,
@@ -32,12 +24,23 @@ export function ToolAccessChoice({
   disabled?: boolean;
   onChange: (alwaysOn: boolean) => void;
 }) {
+  const { t } = useTranslation();
+  const options = TOOL_ACCESS_VALUES.map((value) => ({
+    value,
+    label: (
+      <span className="whitespace-nowrap">
+        {value === "always"
+          ? t("tools.accessChoice.alwaysAvailable")
+          : t("tools.accessChoice.onDemand")}
+      </span>
+    ),
+  }));
   return (
     <SettingsChoiceGroup
       label={label}
       value={alwaysOn ? "always" : "on-demand"}
       onValueChange={(value) => onChange(value === "always")}
-      options={TOOL_ACCESS_OPTIONS}
+      options={options}
       disabled={disabled}
       className="w-auto auto-cols-auto"
     />

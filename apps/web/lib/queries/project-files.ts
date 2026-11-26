@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { i18n } from "@overtchat/shared/i18n";
 import { apiUrl } from "@/lib/api-url";
 import { projectKeys } from "@/lib/queries/keys";
 import type { ProjectFileItem } from "@/lib/project-files";
@@ -49,7 +50,15 @@ export function useAddProjectFile(projectId: string) {
       const form = new FormData();
       form.append("file", file);
       const r = await fetch(apiUrl("/api/uploads"), { method: "POST", body: form });
-      if (!r.ok) throw new Error(await readError(r, `Upload failed (${r.status})`));
+      if (!r.ok)
+        throw new Error(
+          await readError(
+            r,
+            i18n.t("projects.saveToProject.errors.uploadFailed", {
+              status: r.status,
+            }),
+          ),
+        );
       const json = (await r.json()) as { url: string };
       const uploadId = json.url.slice(json.url.lastIndexOf("/") + 1);
       return linkProjectFile(projectId, { uploadId });

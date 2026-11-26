@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type {
   AgentInteractionValue,
   AgentRuntimeSnapshot,
@@ -223,7 +224,7 @@ export function agentQuestionFields(
       label:
         typeof request.title === "string"
           ? request.title
-          : "Your agent needs input",
+          : i18n.t("agents.questions.defaultTitle"),
       description:
         typeof request.message === "string" ? request.message : undefined,
       type:
@@ -291,8 +292,8 @@ export function dismissQuestion(
 export function questionOptions(field: InteractionFormField) {
   return field.type === "boolean"
     ? [
-        { value: "true", label: "Yes", description: undefined },
-        { value: "false", label: "No", description: undefined },
+        { value: "true", label: i18n.t("agents.questions.yes"), description: undefined },
+        { value: "false", label: i18n.t("agents.questions.no"), description: undefined },
       ]
     : field.options;
 }

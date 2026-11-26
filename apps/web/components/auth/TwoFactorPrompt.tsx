@@ -5,6 +5,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { twoFactorQuery } from "@/lib/queries/auth";
 import { motionClasses } from "@/lib/motion";
@@ -27,6 +28,7 @@ function alreadyPrompted() {
  * Administrators the server requires to use it get the setup screen instead.
  */
 export function TwoFactorPrompt() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(() => !alreadyPrompted());
   const { data: status } = useQuery({ ...twoFactorQuery, enabled: open });
@@ -68,16 +70,14 @@ export function TwoFactorPrompt() {
         >
           <ShieldCheck aria-hidden className="mb-3 size-6 text-ring" />
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Protect your account
+            {t("auth.twoFactor.prompt.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Turn on two-factor authentication so a stolen password isn&apos;t
-            enough to get in. Sign-in will also ask for a code from an
-            authenticator app on your phone. It takes about a minute.
+            {t("auth.twoFactor.prompt.description")}
           </Dialog.Description>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={close}>
-              Not now
+              {t("auth.twoFactor.prompt.notNow")}
             </Button>
             <Button
               type="button"
@@ -87,11 +87,11 @@ export function TwoFactorPrompt() {
                 void navigate({ to: "/settings/account", search: { setup: "two-factor" } });
               }}
             >
-              Set up two-factor
+              {t("auth.twoFactor.prompt.setup")}
             </Button>
           </div>
           <p className="mt-4 text-xs text-muted-foreground">
-            You can always find this in Settings → Security.
+            {t("auth.twoFactor.prompt.settingsHint")}
           </p>
         </Dialog.Popup>
       </Dialog.Portal>

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import { Plus, X } from "lucide-react";
 import { CategoryIcon } from "@/components/chat/attachment-icons";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ export function ProjectFilesCard({
   projectId: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const { data: files, isError, refetch } = useProjectFiles(projectId);
   const addMut = useAddProjectFile(projectId);
   const removeMut = useRemoveProjectFile(projectId);
@@ -49,11 +51,11 @@ export function ProjectFilesCard({
     const room = MAX_PROJECT_FILES - count - uploading.length;
     if (chosen.length > room) {
       toast.error({
-        title: `A project holds up to ${MAX_PROJECT_FILES} files`,
+        title: t("projects.files.toast.limitTitle", { count: MAX_PROJECT_FILES }),
         description:
           room > 0
-            ? `Only the first ${room} selected ${room === 1 ? "file was" : "files were"} added.`
-            : "Remove a file to add another.",
+            ? t("projects.files.toast.limitPartial", { count: room })
+            : t("projects.files.toast.limitFull"),
       });
     }
     const accepted: File[] = [];
@@ -71,8 +73,8 @@ export function ProjectFilesCard({
         await addMut.mutateAsync(file);
       } catch (err) {
         toast.error({
-          title: `Could not add ${file.name}`,
-          description: getErrorMessage(err, "The file was not added."),
+          title: t("projects.files.toast.addError", { filename: file.name }),
+          description: getErrorMessage(err, t("projects.files.errors.addFallback")),
         });
       } finally {
         setUploading((prev) => {
@@ -87,8 +89,8 @@ export function ProjectFilesCard({
     removeMut.mutate(file.uploadId, {
       onError: (err) => {
         toast.error({
-          title: `Could not remove ${file.filename}`,
-          description: getErrorMessage(err, "The file is still in the project."),
+          title: t("projects.files.toast.removeError", { filename: file.filename }),
+          description: getErrorMessage(err, t("projects.files.errors.removeFallback")),
         });
       },
     });
@@ -96,22 +98,22 @@ export function ProjectFilesCard({
 
   return (
     <section
-      aria-label="Project files"
+      aria-label={t("projects.files.sectionLabel")}
       className={cn("rounded-xl border bg-card/40 p-4", className)}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-sm font-medium">Files</h2>
+          <h2 className="text-sm font-medium">{t("projects.files.title")}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Reference material the model can read in every chat here.
+            {t("projects.files.description")}
           </p>
         </div>
         {count > 0 && (
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Add files"
-            title="Add files"
+            aria-label={t("projects.files.addFiles")}
+            title={t("projects.files.addFiles")}
             disabled={full}
             onClick={() => inputRef.current?.click()}
           >
@@ -124,7 +126,7 @@ export function ProjectFilesCard({
         type="file"
         multiple
         accept={DOCUMENT_ACCEPT}
-        aria-label="Project files to add"
+        aria-label={t("projects.files.inputLabel")}
         className="sr-only"
         tabIndex={-1}
         onChange={(event) => {
@@ -137,9 +139,9 @@ export function ProjectFilesCard({
       <div className="mt-3">
         {isError ? (
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>Could not load the project files.</span>
+            <span>{t("projects.files.loadError")}</span>
             <Button variant="ghost" size="sm" onClick={() => void refetch()}>
-              Try again
+              {t("projects.actions.tryAgain")}
             </Button>
           </div>
         ) : count === 0 && uploading.length === 0 ? (
@@ -149,10 +151,10 @@ export function ProjectFilesCard({
             className="w-full"
             onClick={() => inputRef.current?.click()}
           >
-            <Plus /> Add files
+            <Plus /> {t("projects.files.addFiles")}
           </Button>
         ) : (
-          <ul aria-label="Files" className="max-h-80 space-y-0.5 overflow-y-auto">
+          <ul aria-label={t("projects.files.listLabel")} className="max-h-80 space-y-0.5 overflow-y-auto">
             {files?.map((file) => (
               <li
                 key={file.uploadId}
@@ -172,17 +174,40 @@ export function ProjectFilesCard({
                   <span className="block truncate text-sm">{file.filename}</span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {humanMediaLabel(file.mediaType)} · {formatSize(file.size)}
-                    {file.pageCount ? ` · ${file.pageCount} ${file.pageCount === 1 ? "page" : "pages"}` : ""}
+                    {file.pageCount
+                      ? ` · ${t("projects.files.pages", { count: file.pageCount })}`
+                      : ""}
                     {file.sourceChat && (
                       <>
-                        {" · from "}
-                        <Link
-                          to="/chat/$id"
-                          params={{ id: file.sourceChat.id }}
-                          className="underline-offset-2 hover:underline"
-                        >
-                          {file.sourceChat.title ?? "a chat"}
-                        </Link>
+                        {" · "}
+                        {file.sourceChat.title != null ? (
+                          <Trans
+                            i18nKey="projects.files.fromChat"
+                            values={{ chat: file.sourceChat.title }}
+                            components={{
+                              chatLink: (
+                                <Link
+                                  to="/chat/$id"
+                                  params={{ id: file.sourceChat.id }}
+                                  className="underline-offset-2 hover:underline"
+                                />
+                              ),
+                            }}
+                          />
+                        ) : (
+                          <Trans
+                            i18nKey="projects.files.fromUnnamedChat"
+                            components={{
+                              chatLink: (
+                                <Link
+                                  to="/chat/$id"
+                                  params={{ id: file.sourceChat.id }}
+                                  className="underline-offset-2 hover:underline"
+                                />
+                              ),
+                            }}
+                          />
+                        )}
                       </>
                     )}
                   </span>
@@ -190,8 +215,8 @@ export function ProjectFilesCard({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Remove ${file.filename} from project`}
-                  title="Remove from project"
+                  aria-label={t("projects.files.removeFileLabel", { filename: file.filename })}
+                  title={t("projects.files.removeFromProject")}
                   className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                   disabled={removeMut.isPending}
                   onClick={() => remove(file)}
@@ -208,7 +233,7 @@ export function ProjectFilesCard({
               >
                 <CategoryIcon category={undefined} className="size-4 shrink-0" />
                 <span className="truncate">{name}</span>
-                <span className="ml-auto shrink-0 text-xs">Uploading…</span>
+                <span className="ml-auto shrink-0 text-xs">{t("projects.files.uploading")}</span>
               </li>
             ))}
           </ul>
@@ -216,7 +241,7 @@ export function ProjectFilesCard({
       </div>
       {count > 0 && (
         <p className="mt-2 text-xs text-muted-foreground">
-          {count} of {MAX_PROJECT_FILES} files. The model reads and searches them with the file tools when a question needs them.
+          {t("projects.files.footer", { used: count, max: MAX_PROJECT_FILES })}
         </p>
       )}
     </section>

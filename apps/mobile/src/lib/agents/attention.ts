@@ -4,6 +4,7 @@ import {
 } from "@overtchat/agent-bridge";
 import {
   AGENT_ATTENTION_SECTIONS,
+  agentAttentionSectionLabel,
   agentAttentionSections,
   formatAgentSessionAge,
   formatAgentWorkingTime,
@@ -116,11 +117,17 @@ function statusEntries(
 ): AgentDrawerEntry[] {
   const sections = agentAttentionSections(groups);
   const entries: AgentDrawerEntry[] = [];
-  for (const { key, label, state } of AGENT_ATTENTION_SECTIONS) {
+  for (const { key, state } of AGENT_ATTENTION_SECTIONS) {
     const items = sections[key];
     if (items.length === 0) continue;
     const collapsed = options.collapsed.includes(key);
-    entries.push({ kind: "group", key, label, state, collapsed });
+    entries.push({
+      kind: "group",
+      key,
+      label: agentAttentionSectionLabel(key),
+      state,
+      collapsed,
+    });
     if (collapsed) continue;
     const shown =
       key === "done" && !options.showAllDone

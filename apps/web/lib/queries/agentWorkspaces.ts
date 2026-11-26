@@ -1,6 +1,7 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import {
@@ -26,7 +27,7 @@ async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
     error?: string;
   } | null;
-  return apiError(response.status, data, "Could not complete the request. Please try again.");
+  return apiError(response.status, data, i18n.t("common.errors.requestFailed"));
 }
 
 async function fetchAgentWorkspaceGitStatus(

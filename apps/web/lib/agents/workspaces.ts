@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
@@ -39,7 +40,7 @@ export type AgentWorkspaceProviderTarget = {
 export function agentHostLabel(
   host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
 ): string {
-  return host.sshAlias || host.name || "This server";
+  return host.sshAlias || host.name || i18n.t("connections.dialog.thisServer");
 }
 
 export function agentTargetKey(target: AgentDiscoveryTarget): string {

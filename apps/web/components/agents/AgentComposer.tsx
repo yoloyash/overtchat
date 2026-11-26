@@ -23,6 +23,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -58,18 +59,6 @@ import {
 } from "./AgentComposerControls";
 import { serverUrl } from "@/lib/api-url";
 
-function commandSource(source: AgentSlashCommand["source"]): string {
-  const labels: Record<AgentSlashCommand["source"], string> = {
-    builtin: "Built-in",
-    extension: "Extension",
-    prompt: "Prompt",
-    skill: "Skill",
-    custom: "Custom",
-    mcp_prompt: "MCP prompt",
-    file: "File",
-  };
-  return labels[source];
-}
 
 export interface AgentComposerHandle {
   /** Attaches dropped files the same way the picker and paste do. */
@@ -146,6 +135,7 @@ export const AgentComposer = forwardRef<
   draftUserId,
   draftScope,
 }: AgentComposerProps, ref) {
+  const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const handleDraftRestore = useCallback(() => {
     requestAnimationFrame(() => {
@@ -356,20 +346,24 @@ export const AgentComposer = forwardRef<
     if (files.some((file) => !file.type.startsWith("image/"))) {
       // Coding agents read other files from the workspace by path.
       toast.error({
-        title: `${providerLabel} accepts images only`,
-        description: "Mention other files by their path instead.",
+        title: t("agents.composer.imagesOnlyTitle", {
+          provider: providerLabel,
+        }),
+        description: t("agents.composer.imagesOnlyDescription"),
       });
     } else if (images.length === 0) {
-      toast.error({ title: "Use PNG, JPEG, GIF, or WebP images" });
+      toast.error({ title: t("agents.composer.supportedImageTypes") });
     }
     if (images.length === 0) return;
     if (!supportsImages) {
-      toast.error({ title: "The selected model does not support images" });
+      toast.error({ title: t("agents.composer.modelNoImages") });
       return;
     }
     const available = Math.max(0, MAX_AGENT_IMAGES - attachments.length);
     if (available === 0) {
-      toast.error({ title: `Attach up to ${MAX_AGENT_IMAGES} images` });
+      toast.error({
+        title: t("agents.composer.maxImages", { count: MAX_AGENT_IMAGES }),
+      });
       return;
     }
     let totalBytes = attachments.reduce(
@@ -378,18 +372,24 @@ export const AgentComposer = forwardRef<
     );
     const accepted = images.slice(0, available).filter((file) => {
       if (file.size > MAX_AGENT_IMAGE_BYTES) {
-        toast.error({ title: `${file.name || "Image"} exceeds 10MB` });
+        toast.error({
+          title: file.name
+            ? t("agents.composer.imageExceedsLimit", { name: file.name })
+            : t("agents.composer.imageExceedsLimitUnnamed"),
+        });
         return false;
       }
       if (totalBytes + file.size > MAX_AGENT_IMAGE_TOTAL_BYTES) {
-        toast.error({ title: "Image attachments must total 20MB or less" });
+        toast.error({ title: t("agents.composer.totalImagesExceedLimit") });
         return false;
       }
       totalBytes += file.size;
       return true;
     });
     if (images.length > available) {
-      toast.error({ title: `Attach up to ${MAX_AGENT_IMAGES} images` });
+      toast.error({
+        title: t("agents.composer.maxImages", { count: MAX_AGENT_IMAGES }),
+      });
     }
     addFiles(accepted);
   }
@@ -506,7 +506,9 @@ export const AgentComposer = forwardRef<
           <div
             id={listboxId}
             role="listbox"
-            aria-label={`${providerLabel} commands`}
+            aria-label={t("agents.composer.commandsLabel", {
+              provider: providerLabel,
+            })}
             className="max-h-72 overflow-y-auto p-1.5"
           >
             {filteredCommands.map((command, index) => (
@@ -541,7 +543,7 @@ export const AgentComposer = forwardRef<
                   )}
                 </span>
                 <span className="shrink-0 text-[10px] text-muted-foreground">
-                  {commandSource(command.source)}
+                  {t(`agents.composer.commandSource.${command.source}`)}
                 </span>
               </button>
             ))}
@@ -551,7 +553,7 @@ export const AgentComposer = forwardRef<
 
       {queuedMessages.length > 0 && (
         <section
-          aria-label="Pending messages"
+          aria-label={t("agents.composer.pendingMessages")}
           className="mx-3 mb-2 max-h-44 space-y-2 overflow-y-auto"
         >
           {queuedMessages.map((queuedMessage) => {
@@ -579,17 +581,24 @@ export const AgentComposer = forwardRef<
                     title={queuedMessage.message}
                   >
                     {queuedMessage.message ||
-                      `${imageCount} attached ${imageCount === 1 ? "image" : "images"}`}
+                      t("agents.composer.attachedImages", {
+                        count: imageCount,
+                      })}
                   </p>
                   <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
-                    {uncertain
-                      ? "Delivery unknown — inspect the session before resending"
-                      : sending
-                        ? "Sending"
-                        : "Queued"}
-                    {imageCount > 0
-                      ? ` · ${imageCount} ${imageCount === 1 ? "image" : "images"}`
-                      : ""}
+                    {(() => {
+                      const statusText = uncertain
+                        ? t("agents.composer.deliveryUnknown")
+                        : sending
+                          ? t("agents.composer.sending")
+                          : t("agents.composer.queued");
+                      return imageCount > 0
+                        ? t("agents.composer.queuedStatusWithImages", {
+                            status: statusText,
+                            count: imageCount,
+                          })
+                        : statusText;
+                    })()}
                   </p>
                 </div>
                 {!sending && (
@@ -607,11 +616,11 @@ export const AgentComposer = forwardRef<
                         attachments.length > 0
                       }
                       onClick={() => void editQueuedMessage(queuedMessage)}
-                      aria-label="Edit queued message"
+                      aria-label={t("agents.composer.editQueued")}
                       title={
                         input.trim() || attachments.length > 0
-                          ? "Clear the current draft before editing"
-                          : "Edit queued message"
+                          ? t("agents.composer.clearDraftBeforeEdit")
+                          : t("agents.composer.editQueued")
                       }
                     >
                       <Pencil />
@@ -626,11 +635,13 @@ export const AgentComposer = forwardRef<
                         onClick={() =>
                           void steerQueuedMessage(queuedMessage.id)
                         }
-                        aria-label="Steer with queued message"
-                        title={`Add this message to the active ${providerLabel} turn`}
+                        aria-label={t("agents.composer.steerWithQueued")}
+                        title={t("agents.composer.steerTooltip", {
+                          provider: providerLabel,
+                        })}
                       >
                         <CornerUpRight />
-                        Steer
+                        {t("agents.composer.steer")}
                       </Button>
                     )}
                     <Button
@@ -642,8 +653,8 @@ export const AgentComposer = forwardRef<
                       onClick={() =>
                         void deleteQueuedMessage(queuedMessage.id)
                       }
-                      aria-label="Delete queued message"
-                      title="Delete queued message"
+                      aria-label={t("agents.composer.deleteQueued")}
+                      title={t("agents.composer.deleteQueued")}
                     >
                       <Trash2 />
                     </Button>
@@ -682,7 +693,9 @@ export const AgentComposer = forwardRef<
           rows={1}
           value={input}
           disabled={disabled || pending || submitting}
-          placeholder={`Message ${providerLabel} or type / for commands`}
+          placeholder={t("agents.composer.placeholder", {
+            provider: providerLabel,
+          })}
           className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
           onChange={(event) => {
             setInput(event.target.value);
@@ -721,8 +734,8 @@ export const AgentComposer = forwardRef<
                   className="rounded-full"
                   disabled={pending || submitting || uploading || disabled}
                   onClick={() => fileInputRef.current?.click()}
-                  aria-label="Attach images"
-                  title="Attach images"
+                  aria-label={t("agents.composer.attachImages")}
+                  title={t("agents.composer.attachImages")}
                 >
                   <ImagePlus />
                 </Button>
@@ -755,8 +768,24 @@ export const AgentComposer = forwardRef<
                 className="rounded-full"
                 disabled={pending || submitting}
                 onClick={onStop}
-                aria-label={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
-                title={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
+                aria-label={
+                  stopping
+                    ? t("agents.composer.stoppingProvider", {
+                        provider: providerLabel,
+                      })
+                    : t("agents.composer.stopProvider", {
+                        provider: providerLabel,
+                      })
+                }
+                title={
+                  stopping
+                    ? t("agents.composer.stoppingProvider", {
+                        provider: providerLabel,
+                      })
+                    : t("agents.composer.stopProvider", {
+                        provider: providerLabel,
+                      })
+                }
               >
                 {stopping ? (
                   <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
@@ -780,14 +809,20 @@ export const AgentComposer = forwardRef<
               }
               onClick={submit}
               aria-label={
-                running ? `Queue message for ${providerLabel}` : "Send message"
+                running
+                  ? t("agents.composer.queueMessageFor", {
+                      provider: providerLabel,
+                    })
+                  : t("agents.composer.sendMessage")
               }
               title={
                 sendDisabledReason
                   ? sendDisabledReason
                   : running
-                    ? `Queue after ${providerLabel} finishes`
-                    : "Send message"
+                    ? t("agents.composer.queueAfterFinishes", {
+                        provider: providerLabel,
+                      })
+                    : t("agents.composer.sendMessage")
               }
             >
               <ArrowUp />
@@ -806,6 +841,7 @@ function AgentImageChip({
   attachment: ChatAttachment;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const src =
     attachment.previewUrl ??
     (attachment.part?.url && serverUrl(attachment.part.url));
@@ -829,13 +865,15 @@ function AgentImageChip({
           className="absolute inset-0 flex items-center justify-center bg-destructive/10 px-1 text-center text-[10px] text-destructive"
           title={attachment.error}
         >
-          Upload failed
+          {t("agents.composer.uploadFailed")}
         </span>
       )}
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`Remove ${attachment.filename}`}
+        aria-label={t("agents.composer.removeAttachment", {
+          filename: attachment.filename,
+        })}
         className="absolute top-1 right-1 rounded-full bg-foreground/70 p-0.5 text-background"
       >
         <X className="size-3" />

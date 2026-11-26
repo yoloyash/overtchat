@@ -20,3 +20,23 @@ export function formatDate(value: number): string {
     year: "numeric",
   }).format(value);
 }
+
+const utcDate = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+const utcMonth = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  timeZone: "UTC",
+});
+
+export function formatUtcDate(value: Date): string {
+  return utcDate.format(value);
+}
+
+export function formatUtcMonth(value: Date): string {
+  return utcMonth.format(value);
+}

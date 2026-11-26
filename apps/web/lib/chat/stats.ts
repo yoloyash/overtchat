@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import {
   parseMessageStats,
   isRecord,
@@ -38,10 +39,14 @@ export function formatInteger(value: number): string {
 }
 
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
+  if (ms < 1000) {
+    return i18n.t("chat.stats.durationMs", { value: Math.round(ms) });
+  }
+  return i18n.t("chat.stats.durationSec", { value: (ms / 1000).toFixed(2) });
 }
 
 export function formatTps(value: number): string {
-  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
+  return i18n.t("chat.stats.tpsValue", {
+    value: value >= 100 ? value.toFixed(0) : value.toFixed(1),
+  });
 }

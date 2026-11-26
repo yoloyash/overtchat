@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
 import { useAgentWorkspaceNavigation } from "./AgentWorkspaceNavigationContext";
 
 function positiveLine(value: unknown): number | undefined {
@@ -18,8 +19,10 @@ export function AgentWorkspaceLink({
   linestart?: unknown;
   lineend?: unknown;
 }) {
+  const { t } = useTranslation();
   const navigation = useAgentWorkspaceNavigation();
-  const workspacePath = typeof path === "string" ? path : "Workspace file";
+  const workspacePath =
+    typeof path === "string" ? path : t("agents.workspace.fileFallback");
   const lineStart = positiveLine(linestart);
   const lineEnd = positiveLine(lineend);
   const location = lineStart

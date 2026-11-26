@@ -2,6 +2,7 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { Folder, Server, Wifi } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { agentProviderMetadata, type AgentProviderId } from "@overtchat/agent-bridge";
 import {
   Select,
@@ -50,6 +51,7 @@ export function AgentSetupPicker({
   /** Land on the folder pill, for moving a fork elsewhere. */
   focusWorkspace?: boolean;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const setups = lockedProvider
     ? allSetups.filter((setup) => setup.provider === lockedProvider)
@@ -99,7 +101,12 @@ export function AgentSetupPicker({
             open(hostKey ? agentSetupWorkspaces(setups, hostKey)[0] : undefined)
           }
         >
-          <SelectTrigger size="sm" aria-label="Machine" title="Machine" className={PILL}>
+          <SelectTrigger
+            size="sm"
+            aria-label={t("agents.setup.machine")}
+            title={t("agents.setup.machine")}
+            className={PILL}
+          >
             <SelectValue className="min-w-0 gap-1.5">
               {() => (
                 <>
@@ -137,8 +144,8 @@ export function AgentSetupPicker({
       >
         <SelectTrigger
           size="sm"
-          aria-label="Workspace"
-          title="Workspace"
+          aria-label={t("agents.setup.workspace")}
+          title={t("agents.setup.workspace")}
           className={PILL}
           autoFocus={focusWorkspace}
         >
@@ -173,7 +180,12 @@ export function AgentSetupPicker({
           value={provider}
           onValueChange={(id) => open(agents.find((agent) => agent.provider === id))}
         >
-          <SelectTrigger size="sm" aria-label="Agent" title="Agent" className={PILL}>
+          <SelectTrigger
+            size="sm"
+            aria-label={t("agents.setup.agent")}
+            title={t("agents.setup.agent")}
+            className={PILL}
+          >
             <SelectValue className="min-w-0 gap-1.5">
               {() => (
                 <>
@@ -197,7 +209,9 @@ export function AgentSetupPicker({
                   {agentProviderMetadata(agent.provider).label}
                 </span>
                 {!agent.detected && (
-                  <span className="truncate text-muted-foreground">Not detected</span>
+                  <span className="truncate text-muted-foreground">
+                    {t("agents.setup.notDetected")}
+                  </span>
                 )}
               </SelectItem>
             ))}

@@ -1,4 +1,5 @@
-import { ApiError, speechErrorMessage, readableMessageText } from "@overtchat/shared";
+import { ApiError, readableMessageText } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { remark } from "remark";
 import strip from "strip-markdown";
 import type { UIMessage } from "ai";
@@ -19,29 +20,51 @@ export function speakableText(message: UIMessage): string {
   return stripMarkdown(stripCitationMarkers(readableMessageText(message)));
 }
 
+function sttUnavailableMessage(code: string | undefined, isAdmin: boolean): string {
+  switch (code) {
+    case "speech_disabled":
+      return isAdmin
+        ? i18n.t("chat.dictation.errors.disabled")
+        : i18n.t("chat.dictation.errors.disabledNonAdmin");
+    case "speech_not_configured":
+      return isAdmin
+        ? i18n.t("chat.dictation.errors.notConfigured")
+        : i18n.t("chat.dictation.errors.notConfiguredNonAdmin");
+    case "speech_unreachable":
+      return i18n.t("chat.dictation.errors.unreachable");
+    case "speech_timeout":
+      return i18n.t("chat.dictation.errors.timeout");
+    case "speech_provider_auth":
+      return i18n.t("chat.dictation.errors.providerAuth");
+    case "speech_rate_limited":
+      return i18n.t("chat.dictation.errors.rateLimited");
+    case "speech_invalid_response":
+      return i18n.t("chat.dictation.errors.invalidResponse");
+    default:
+      return i18n.t("chat.dictation.errors.unavailable");
+  }
+}
+
 export function dictationErrorMessage(
   err: DictationError,
   isAdmin: boolean,
 ): string {
   switch (err.kind) {
     case "permission":
-      return "Microphone access denied. Allow it in your browser settings to dictate.";
+      return i18n.t("chat.dictation.errors.permission");
     case "insecure_context":
-      return "Microphone access requires HTTPS on this address. Open OvertChat over HTTPS, or use localhost on the computer running the server.";
+      return i18n.t("chat.dictation.errors.insecureContext");
     case "unsupported":
-      return "Your browser doesn't support audio recording.";
+      return i18n.t("chat.dictation.errors.unsupported");
     case "stt_unavailable":
-      return speechErrorMessage("stt", err.code) +
-        (!isAdmin && (err.code === "speech_disabled" || err.code === "speech_not_configured")
-          ? " Ask an administrator to enable it." : "");
+      return sttUnavailableMessage(err.code, isAdmin);
     case "empty":
-      return "No speech detected. Try again.";
+      return i18n.t("chat.dictation.errors.empty");
     case "other":
       return err.message;
   }
 }
 
-const CHAT_ERROR_FALLBACK = "Couldn't complete the response. Please try again.";
 const CHAT_ERROR_MAX_LENGTH = 300;
 
 /**
@@ -52,9 +75,9 @@ const CHAT_ERROR_MAX_LENGTH = 300;
  */
 export function chatErrorMessage(error: Error): string {
   if (error instanceof ApiError) return error.message;
-  if (error instanceof TypeError) return CHAT_ERROR_FALLBACK;
+  if (error instanceof TypeError) return i18n.t("chat.errors.responseFailed");
   const message = error.message.trim();
-  if (!message) return CHAT_ERROR_FALLBACK;
+  if (!message) return i18n.t("chat.errors.responseFailed");
   return message.length > CHAT_ERROR_MAX_LENGTH
     ? `${message.slice(0, CHAT_ERROR_MAX_LENGTH - 1)}…`
     : message;

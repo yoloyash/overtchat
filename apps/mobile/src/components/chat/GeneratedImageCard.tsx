@@ -1,5 +1,5 @@
 import {
-  IMAGE_SIZE_LABELS,
+  imageSizeLabel,
   isGeneratedImage,
   type GeneratedImage,
   type ImageToolPart,
@@ -126,9 +126,7 @@ export function GeneratedImageCard({
           {part.output.model} · Requested format:{" "}
           {part.output.providerSize === "auto"
             ? "Backend default"
-            : (part.output.providerSize ??
-              IMAGE_SIZE_LABELS[part.output.size] ??
-              "Auto")}
+            : (part.output.providerSize ?? imageSizeLabel(part.output.size))}
           {part.output.providerSize === undefined &&
             ` · Quality: ${part.output.quality}`}
         </Text>

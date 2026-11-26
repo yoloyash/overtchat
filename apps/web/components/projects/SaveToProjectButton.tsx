@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { Trans, useTranslation } from "react-i18next";
 import {
   documentFilename,
   documentMediaType,
@@ -80,6 +81,7 @@ function SaveButton({
   disabled?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const { data: files } = useProjectFiles(target.project.id);
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -107,7 +109,11 @@ function SaveButton({
     );
     const r = await fetch(apiUrl("/api/uploads"), { method: "POST", body: form });
     const json = (await r.json().catch(() => ({}))) as { url?: string; error?: string };
-    if (!r.ok || !json.url) throw new Error(json.error ?? `Upload failed (${r.status})`);
+    if (!r.ok || !json.url) {
+      throw new Error(
+        json.error ?? t("projects.saveToProject.errors.uploadFailed", { status: r.status }),
+      );
+    }
     return json.url.slice(json.url.lastIndexOf("/") + 1);
   }
 
@@ -118,7 +124,9 @@ function SaveButton({
       const id = await uploadId();
       if (existing && existing.uploadId === id) {
         toast.success({
-          title: `Already in ${target.project.name}`,
+          title: t("projects.saveToProject.toast.alreadyInProject", {
+            project: target.project.name,
+          }),
           description: filename,
         });
         return;
@@ -128,17 +136,19 @@ function SaveButton({
         await unlinkProjectFile(target.project.id, existing.uploadId);
       }
       toast.success({
-        title: `Saved to ${target.project.name}`,
+        title: t("projects.saveToProject.toast.savedToProject", {
+          project: target.project.name,
+        }),
         description: filename,
         action: {
-          label: "Open project",
+          label: t("projects.saveToProject.toast.openProject"),
           onClick: () => void navigate({ to: "/projects/$id", params: { id: target.project.id } }),
         },
       });
     } catch (err) {
       toast.error({
-        title: `Could not save ${filename}`,
-        description: getErrorMessage(err, "The file was not added to the project."),
+        title: t("projects.saveToProject.toast.saveError", { filename }),
+        description: getErrorMessage(err, t("projects.saveToProject.errors.saveFallback")),
       });
     } finally {
       setSaving(false);
@@ -151,11 +161,19 @@ function SaveButton({
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={inProject ? "In project" : "Save to project"}
+        aria-label={
+          inProject
+            ? t("projects.saveToProject.inProject")
+            : t("projects.saveToProject.saveToProject")
+        }
         title={
           inProject
-            ? `In ${target.project.name}. Save again to replace or keep both.`
-            : `Save to ${target.project.name}`
+            ? t("projects.saveToProject.inProjectTitle", {
+                project: target.project.name,
+              })
+            : t("projects.saveToProject.saveToProjectTitle", {
+                project: target.project.name,
+              })
         }
         className={className}
         disabled={disabled || saving || !files}
@@ -187,22 +205,26 @@ function SaveButton({
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Replace {filename}?
+              {t("projects.saveToProject.conflictDialog.title", { filename })}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{target.project.name}</span>{" "}
-              already has a file with this name. Replacing keeps past chats as they
-              are; keeping both gives the new file a numbered name.
+              <Trans
+                i18nKey="projects.saveToProject.conflictDialog.description"
+                values={{ project: target.project.name }}
+                components={{
+                  project: <span className="font-medium text-foreground" />,
+                }}
+              />
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
               <AlertDialog.Close render={<Button variant="ghost" size="sm" />}>
-                Cancel
+                {t("projects.actions.cancel")}
               </AlertDialog.Close>
               <Button variant="outline" size="sm" onClick={() => void save("add")}>
-                Keep both
+                {t("projects.saveToProject.conflictDialog.keepBoth")}
               </Button>
               <Button size="sm" onClick={() => void save("replace")}>
-                Replace
+                {t("projects.saveToProject.conflictDialog.replace")}
               </Button>
             </div>
           </AlertDialog.Popup>

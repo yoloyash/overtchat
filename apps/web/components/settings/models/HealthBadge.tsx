@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { motionClasses } from "@/lib/motion";
 import { useModelHealth } from "@/lib/queries/modelConfigs";
 
@@ -10,6 +11,7 @@ export interface HealthBadgeProps {
 }
 
 export function HealthBadge({ id, enabled }: HealthBadgeProps) {
+  const { t } = useTranslation();
   const { data, isFetching, refetch } = useModelHealth(id);
 
   function onClick(e: React.MouseEvent) {
@@ -19,19 +21,19 @@ export function HealthBadge({ id, enabled }: HealthBadgeProps) {
   }
 
   let dotClass = "bg-muted-foreground/30";
-  let label = "Check";
-  let title = "Click to check connection";
+  let label = t("models.health.check");
+  let title = t("models.health.checkTitle");
   if (isFetching) {
     dotClass = "bg-muted-foreground/30";
-    label = "Checking…";
-    title = "Checking connection…";
+    label = t("models.health.checking");
+    title = t("models.health.checkingTitle");
   } else if (data?.ok === true) {
     dotClass = "bg-emerald-500";
     label = `${data.elapsedMs}ms`;
-    title = `Working — responded in ${data.elapsedMs}ms`;
+    title = t("models.health.workingTitle", { elapsedMs: data.elapsedMs });
   } else if (data?.ok === false) {
     dotClass = "bg-destructive";
-    label = "Down";
+    label = t("models.health.down");
     title = data.error;
   }
 

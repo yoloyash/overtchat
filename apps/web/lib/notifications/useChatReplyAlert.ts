@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { i18n } from "@overtchat/shared/i18n";
 import { playAgentAlertSound, useAgentAlertSoundUnlock } from "./sound";
 import {
   closeSystemNotification,
@@ -70,7 +71,7 @@ export function useChatReplyAlert(chatId: string) {
       void chimed.then((played) =>
         showSystemNotification({
           key: notificationKey(chatId),
-          title: "Your response is ready",
+          title: i18n.t("chat.notifications.responseReady"),
           body: chatReplyPreview(parts) || undefined,
           silent: !sound || played,
           onOpen: () => void navigate({ to: "/chat/$id", params: { id: chatId } }),

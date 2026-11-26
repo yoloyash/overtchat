@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { Undo2, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { AgentRewindMode } from "@overtchat/agent-bridge";
 import { Button } from "@/components/ui/button";
 
@@ -15,6 +16,7 @@ export function AgentRewindMenu({
   disabled: boolean;
   onRewind: (mode: AgentRewindMode) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<AgentRewindMode | null>(null);
   if (!options.length) return null;
@@ -28,8 +30,8 @@ export function AgentRewindMenu({
       <Menu.Trigger
         render={<Button variant="ghost" size="icon-sm" />}
         disabled={disabled || !!pending}
-        aria-label="Rewind to this message"
-        title="Rewind to this message"
+        aria-label={t("agents.rewind.toMessage")}
+        title={t("agents.rewind.toMessage")}
       >
         <Undo2 className="size-3.5" />
       </Menu.Trigger>
@@ -42,7 +44,7 @@ export function AgentRewindMenu({
         >
           <Menu.Popup className="min-w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none">
             <p className="px-2.5 py-2 text-xs text-muted-foreground">
-              This action cannot be undone
+              {t("agents.rewind.cannotBeUndone")}
             </p>
             <Menu.Separator className="my-1 h-px bg-border" />
             {options.map(({ mode, label }) => (

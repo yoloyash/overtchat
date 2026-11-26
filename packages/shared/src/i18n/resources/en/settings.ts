@@ -78,4 +78,29 @@ export const settings = {
         "Allow notifications for this site in your browser or system settings, then turn this on again.",
     },
   },
+  nav: {
+    ariaLabel: "Settings",
+    pageSelectLabel: "Settings page",
+    groups: {
+      preferences: "Preferences",
+      account: "Account",
+      administration: "Administration",
+    },
+    items: {
+      general: "General",
+      personalization: "Personalization",
+      tools: "Tools",
+      profile: "Profile",
+      security: "Security",
+      data: "Data",
+      models: "Models",
+      services: "Services",
+      agents: "Agents",
+      users: "Users",
+    },
+  },
+  pairs: {
+    keyLabel: "{{label}} key {{index}}",
+    valueLabel: "{{label}} value {{index}}",
+  },
 } as const;

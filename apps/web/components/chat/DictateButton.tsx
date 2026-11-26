@@ -1,6 +1,7 @@
 "use client";
 
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { Loader2, Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function DictateButton({
    */
   onBeforeStart?: () => void;
 }) {
+  const { t } = useTranslation();
   const recording = dictation.status === "recording";
   const transcribing = dictation.status === "transcribing";
   return (
@@ -51,7 +53,11 @@ export function DictateButton({
       }}
       disabled={transcribing || (disabled && !recording)}
       aria-label={
-        recording ? "Stop dictation" : transcribing ? "Transcribing" : "Dictate"
+        recording
+          ? t("chat.dictation.stop")
+          : transcribing
+            ? t("chat.dictation.transcribing")
+            : t("chat.dictation.start")
       }
       aria-pressed={recording}
     >
@@ -78,6 +84,7 @@ export function DictateError({
   onDismiss: () => void;
   onRecordAgain: () => void;
 }) {
+  const { t } = useTranslation();
   if (!error) return null;
   const setupRequired =
     error.kind === "stt_unavailable" &&
@@ -102,7 +109,7 @@ export function DictateError({
               size="sm"
               onClick={onRecordAgain}
             >
-              Record again
+              {t("chat.dictation.recordAgain")}
             </Button>
           )}
           {isAdmin && error.kind === "stt_unavailable" && (
@@ -110,7 +117,7 @@ export function DictateError({
               to="/settings/services"
               className="text-xs underline underline-offset-4"
             >
-              Speech settings
+              {t("chat.dictation.speechSettings")}
             </Link>
           )}
         </>

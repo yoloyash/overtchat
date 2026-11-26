@@ -1,6 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 export function BetaBadge({ className }: { className?: string }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -8,7 +10,7 @@ export function BetaBadge({ className }: { className?: string }) {
         className,
       )}
     >
-      Beta
+      {t("app.shell.beta")}
     </span>
   );
 }

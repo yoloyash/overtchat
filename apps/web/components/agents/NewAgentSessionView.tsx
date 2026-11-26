@@ -4,6 +4,7 @@ import { ErrorNotice } from "@/components/ui/error-notice";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { generateId } from "ai";
 import type {
   AgentPromptImage,
@@ -26,7 +27,6 @@ import {
   parseAgentCreatePreferences,
 } from "@/lib/agents/createPreferences";
 import {
-  AGENT_MODEL_DEFAULTS_LOADING_MESSAGE,
   agentSessionDraftRestoreKey,
   agentForkDraftKey,
   resolveAgentSessionDraftSelection,
@@ -65,6 +65,7 @@ export function NewAgentSessionView({
   /** Focus the folder picker so a fork can move to another workspace. */
   chooseWorkspace: boolean;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: authSession } = authClient.useSession();
   const isAdmin = authSession?.user.role === "admin";
@@ -152,8 +153,11 @@ export function NewAgentSessionView({
   const composerRef = useRef<AgentComposerHandle>(null);
 
   useEffect(() => {
-    document.title = `New ${providerMetadata.label} session · ${workspaceName}`;
-  }, [providerMetadata.label, workspaceName]);
+    document.title = t("agents.newSession.pageTitle", {
+      provider: providerMetadata.label,
+      workspace: workspaceName,
+    });
+  }, [providerMetadata.label, t, workspaceName]);
 
   function updateProviderPreferences(
     updates: Parameters<typeof mergeAgentProviderPreferences>[0]["updates"],
@@ -176,21 +180,23 @@ export function NewAgentSessionView({
       return false;
     }
     if (loadingDefaults) {
-      toast.error({ title: AGENT_MODEL_DEFAULTS_LOADING_MESSAGE });
+      toast.error({ title: t("agents.composer.modelDefaultsLoading") });
       return false;
     }
     if (!catalog.data) {
       toast.error({
-        title: "Model defaults could not be loaded",
+        title: t("agents.newSession.modelDefaultsErrorTitle"),
         description:
           catalog.error instanceof Error
             ? catalog.error.message
-            : `The ${providerMetadata.label} catalog is unavailable.`,
+            : t("agents.newSession.catalogUnavailable", {
+                provider: providerMetadata.label,
+              }),
       });
       return false;
     }
     if (!selectedModel) {
-      toast.error({ title: "Select a model" });
+      toast.error({ title: t("agents.newSession.selectModel") });
       return false;
     }
 
@@ -222,11 +228,13 @@ export function NewAgentSessionView({
       });
     } catch (cause) {
       toast.error({
-        title: `Failed to start ${providerMetadata.label}`,
+        title: t("agents.newSession.startFailedTitle", {
+          provider: providerMetadata.label,
+        }),
         description:
           cause instanceof Error
             ? cause.message
-            : "A new session could not be started.",
+            : t("agents.newSession.startFailedFallback"),
       });
       return false;
     }
@@ -245,11 +253,13 @@ export function NewAgentSessionView({
         prompt,
       );
       toast.error({
-        title: `${providerMetadata.label} command failed`,
+        title: t("agents.session.commandFailed", {
+          provider: providerMetadata.label,
+        }),
         description:
           cause instanceof Error
             ? cause.message
-            : "The first message could not be sent.",
+            : t("agents.newSession.firstMessageFailed"),
       });
     } finally {
       if (forkId) window.sessionStorage.removeItem(agentForkDraftKey(forkId));
@@ -270,7 +280,9 @@ export function NewAgentSessionView({
       <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
         <SidebarToggle />
         <div
-          aria-label={`${providerMetadata.label} agent`}
+          aria-label={t("agents.newSession.providerAgent", {
+            provider: providerMetadata.label,
+          })}
           className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium"
         >
           <span
@@ -305,7 +317,9 @@ export function NewAgentSessionView({
       <main className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:justify-center md:pb-[12vh]">
         <div className="mx-auto w-full max-w-3xl">
           <h1 className="mb-8 pl-3.5 text-2xl tracking-tight max-md:sr-only">
-            New {providerMetadata.label} session
+            {t("agents.newSession.heading", {
+              provider: providerMetadata.label,
+            })}
           </h1>
           {/* The first pill's icon lines up with the title and the composer's content. */}
           <div className="mb-4 flex min-w-0 flex-wrap items-center gap-1 px-1.5">
@@ -326,18 +340,32 @@ export function NewAgentSessionView({
             )}
           </div>
           {forkError && (
-            <ErrorNotice className="mb-3" message="Could not restore the forked conversation. Return to the original session and fork again." />
+            <ErrorNotice
+              className="mb-3"
+              message={t("agents.newSession.forkRestoreError")}
+            />
           )}
           {catalog.isError && !catalog.data && (
-            <ErrorNotice className="mb-3" message={catalog.error} fallback="Model defaults could not be loaded." actions={
-              <Button type="button" variant="outline" size="sm" disabled={catalog.isFetching} onClick={() => void catalog.refetch()}>
-                <RefreshCw /> Retry
-              </Button>
-            } />
+            <ErrorNotice
+              className="mb-3"
+              message={catalog.error}
+              fallback={t("agents.newSession.modelDefaultsErrorFallback")}
+              actions={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={catalog.isFetching}
+                  onClick={() => void catalog.refetch()}
+                >
+                  <RefreshCw /> {t("agents.common.retry")}
+                </Button>
+              }
+            />
           )}
           {forkContext && (
             <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-              <span>Chat history attached</span>
+              <span>{t("agents.newSession.chatHistoryAttached")}</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -349,7 +377,7 @@ export function NewAgentSessionView({
                     );
                 }}
               >
-                Remove
+                {t("agents.common.remove")}
               </Button>
             </div>
           )}
@@ -365,7 +393,7 @@ export function NewAgentSessionView({
             stopping={false}
             disabled={composerDisabled}
             sendDisabledReason={
-              loadingDefaults ? AGENT_MODEL_DEFAULTS_LOADING_MESSAGE : null
+              loadingDefaults ? t("agents.composer.modelDefaultsLoading") : null
             }
             autoFocus={!chooseWorkspace}
             isAdmin={isAdmin}

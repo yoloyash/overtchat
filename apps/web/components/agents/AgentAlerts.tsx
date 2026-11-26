@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { CircleCheck } from "lucide-react";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import { AgentSessionStatusIcon } from "@/components/agents/AgentSessionStatus";
 import { toast } from "@/components/ui/toast";
 import { agentAttentionCounts } from "@/lib/agents/attention";
@@ -114,7 +115,7 @@ export function AgentAlerts({
               </>
             ),
             icon: <AlertIcon reason={notification.reason} />,
-            action: { label: "Open", onClick: open },
+            action: { label: i18n.t("agents.alerts.open"), onClick: open },
           });
         };
         if (visible && document.hasFocus()) {

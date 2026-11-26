@@ -1,3 +1,5 @@
+import { i18n } from "./i18n/i18n";
+
 /** Server-emitted progress; transient chunks never replace chat messages. */
 export const CONTEXT_STATUS_DATA_TYPE = "data-context-status";
 export type ContextStatus =
@@ -16,10 +18,14 @@ export function isContextStatus(value: unknown): value is ContextStatus {
 }
 
 export function contextStatusLabel(status: ContextStatus): string {
-  if (status === "compacting") return "Auto compacting…";
-  if (status === "manual-compacting") return "Compacting…";
-  if (status === "manual-compacted") return "Compacted";
-  return "Auto compacted";
+  if (status === "compacting") return i18n.t("chat.messages.contextStatus.compacting");
+  if (status === "manual-compacting") {
+    return i18n.t("chat.messages.contextStatus.manualCompacting");
+  }
+  if (status === "manual-compacted") {
+    return i18n.t("chat.messages.contextStatus.manualCompacted");
+  }
+  return i18n.t("chat.messages.contextStatus.compacted");
 }
 
 /** A manual checkpoint is a transcript marker, with no model-authored answer. */

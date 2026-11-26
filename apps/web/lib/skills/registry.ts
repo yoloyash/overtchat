@@ -3,7 +3,7 @@ import { asSchema, type Tool } from "ai";
 import {
   CALENDAR_COMMAND,
   CALENDAR_COMMAND_PATTERN,
-  CHAT_SKILL_NAMES,
+  chatSkillName,
   GMAIL_COMMAND,
   GMAIL_COMMAND_PATTERN,
   OPENUI_PRESENT_TOOL_NAME,
@@ -116,7 +116,7 @@ export async function resolveChatSkills({
     const offered = gmailOfferedToolNames(options);
     skills.push({
       id: "gmail",
-      name: CHAT_SKILL_NAMES.gmail,
+      name: chatSkillName("gmail"),
       description:
         "Search, read and organize the user's own Gmail, and write emails for them to send. Load it when a request needs their mail.",
       content:
@@ -145,7 +145,7 @@ export async function resolveChatSkills({
       calendar.status === "available" ? createCalendarTools(userId) : {};
     skills.push({
       id: "calendar",
-      name: CHAT_SKILL_NAMES.calendar,
+      name: chatSkillName("calendar"),
       description:
         "Read the user's own Google Calendar and add, change or delete events. Load it when a request needs their schedule.",
       content:
@@ -163,7 +163,7 @@ export async function resolveChatSkills({
   if (interactiveUi.offered) {
     skills.push({
       id: "interactive_ui",
-      name: CHAT_SKILL_NAMES.interactive_ui,
+      name: chatSkillName("interactive_ui"),
       description: `Present an answer as an interactive interface with charts, data tables, forms, dashboards, KPI cards, carousels, tabs or step-by-step guides, rendered by ${OPENUI_PRESENT_TOOL_NAME}. Load it when the user asks for an interactive interface or when such components clearly help.`,
       content: OPENUI_TOOL_PROMPT,
       tools: {},
@@ -180,7 +180,7 @@ export async function resolveChatSkills({
     });
     skills.push({
       id: "scheduled_tasks",
-      name: CHAT_SKILL_NAMES.scheduled_tasks,
+      name: chatSkillName("scheduled_tasks"),
       description: SCHEDULED_TASKS_SKILL_DESCRIPTION,
       content: scheduledTasksPrompt(
         scheduledTasks.timeZone,

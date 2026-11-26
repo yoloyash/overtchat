@@ -1,6 +1,7 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Memory,
@@ -15,7 +16,7 @@ import { apiUrl } from "@/lib/api-url";
 
 async function responseError(response: Response): Promise<Error> {
   const body = (await response.json().catch(() => ({}))) as { error?: string };
-  return apiError(response.status, body, "Could not complete the request. Please try again.");
+  return apiError(response.status, body, i18n.t("common.errors.requestFailed"));
 }
 
 export function usePersonalization() {

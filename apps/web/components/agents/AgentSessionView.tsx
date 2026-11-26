@@ -26,6 +26,7 @@ import {
   LockKeyhole,
   RefreshCw,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
@@ -242,6 +243,7 @@ export function AgentSessionView({
   initialSessionName: string;
   hostLabel: string;
 }) {
+  const { t } = useTranslation();
   const providerLabel = agentProviderMetadata(provider).label;
   const navigate = useNavigate();
   const session = useAgentSession(sessionId);
@@ -430,7 +432,7 @@ export function AgentSessionView({
       }
       if (input.type === "fork_message") {
         if (!result.forkContext)
-          throw new Error("The agent did not return conversation history.");
+          throw new Error(t("agents.session.noForkHistory"));
         const draftId = generateId();
         window.sessionStorage.setItem(
           agentForkDraftKey(draftId),
@@ -449,7 +451,9 @@ export function AgentSessionView({
       }
       if (input.type === "rewind" || input.type === "edit_message") {
         if (!result.sessionId) {
-          throw new Error(`${providerLabel} did not return the updated session.`);
+          throw new Error(
+            t("agents.session.noUpdatedSession", { provider: providerLabel }),
+          );
         }
         const draft = result.draft;
         if (draft !== undefined) {
@@ -470,7 +474,9 @@ export function AgentSessionView({
       }
       if (input.type === "new_session") {
         if (!result.sessionId) {
-          throw new Error(`${providerLabel} did not return the new session.`);
+          throw new Error(
+            t("agents.session.noNewSession", { provider: providerLabel }),
+          );
         }
         void navigate({ to: "/agents/$id", params: { id: result.sessionId } });
         return true;
@@ -483,12 +489,14 @@ export function AgentSessionView({
       const message =
         cause instanceof Error
           ? cause.message
-          : `${providerLabel} command failed.`;
+          : t("agents.session.commandFailedPeriod", {
+              provider: providerLabel,
+            });
       if (renameOpen || compactOpen || snapshot?.pendingInteraction) {
         setDialogError(message);
       } else {
         toast.error({
-          title: `${providerLabel} command failed`,
+          title: t("agents.session.commandFailed", { provider: providerLabel }),
           description: message,
         });
       }
@@ -508,7 +516,7 @@ export function AgentSessionView({
       setUsageError(
         cause instanceof Error
           ? cause.message
-          : "Codex account usage could not be loaded.",
+          : t("agents.session.codexUsageLoadFailed"),
       );
       return false;
     }
@@ -523,11 +531,11 @@ export function AgentSessionView({
       input = commandForAgentSessionSubmit(snapshot!, message, images);
     } catch (cause) {
       toast.error({
-        title: `${providerLabel} command failed`,
+        title: t("agents.session.commandFailed", { provider: providerLabel }),
         description:
           cause instanceof Error
             ? cause.message
-            : `Invalid ${providerLabel} command.`,
+            : t("agents.session.invalidCommand", { provider: providerLabel }),
       });
       return false;
     }
@@ -542,9 +550,11 @@ export function AgentSessionView({
 
     const toastTitle =
       input.type === "set_session_name"
-        ? "Session renamed"
+        ? t("agents.session.renamedToast")
         : input.type === "set_auto_compaction"
-          ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
+          ? input.enabled
+            ? t("agents.session.autoCompactionEnabled")
+            : t("agents.session.autoCompactionDisabled")
           : undefined;
     return run(input, { toastTitle });
   }
@@ -561,8 +571,14 @@ export function AgentSessionView({
           <SidebarToggle />
         </header>
         <div className="flex flex-1 items-center justify-center px-6">
-          <ErrorNotice className="max-w-md" title={`${providerLabel} session could not be opened`}
-            message={session.error} fallback="The connection failed. Please try again." />
+          <ErrorNotice
+            className="max-w-md"
+            title={t("agents.session.openErrorTitle", {
+              provider: providerLabel,
+            })}
+            message={session.error}
+            fallback={t("agents.session.connectionFailedFallback")}
+          />
         </div>
       </div>
     );
@@ -670,7 +686,9 @@ export function AgentSessionView({
           <div className="flex min-h-0 flex-1 flex-col" inert={terminalOpen && terminalExpanded}>
           {readOnly && (
             <section
-              aria-label={`Read-only ${providerLabel} session`}
+              aria-label={t("agents.session.readOnlyLabel", {
+                provider: providerLabel,
+              })}
               className="border-b bg-muted/30 px-4 py-3"
             >
               <div className="mx-auto flex max-w-3xl items-start gap-3">
@@ -693,7 +711,7 @@ export function AgentSessionView({
                           : undefined
                       }
                     />
-                    Retry
+                    {t("agents.common.retry")}
                   </Button>
                 )}
               </div>
@@ -758,19 +776,19 @@ export function AgentSessionView({
                 onPauseGoal={() =>
                   void run(
                     { type: "update_goal", action: "pause" },
-                    { toastTitle: "Goal paused" },
+                    { toastTitle: t("agents.session.goalPaused") },
                   )
                 }
                 onResumeGoal={() =>
                   void run(
                     { type: "update_goal", action: "resume" },
-                    { toastTitle: "Goal resumed" },
+                    { toastTitle: t("agents.session.goalResumed") },
                   )
                 }
                 onClearGoal={() =>
                   void run(
                     { type: "update_goal", action: "clear" },
-                    { toastTitle: "Goal cleared" },
+                    { toastTitle: t("agents.session.goalCleared") },
                   )
                 }
               />
@@ -846,7 +864,7 @@ export function AgentSessionView({
                       }),
                     );
                     if (running && provider !== "omp") {
-                      toast.success("Permission mode applies next turn");
+                      toast.success(t("agents.session.permissionModeNextTurn"));
                     }
                     void run({ type: "set_mode", modeId: selectedModeId });
                   },
@@ -881,7 +899,7 @@ export function AgentSessionView({
             >
               <div
                 {...terminalResize.separatorProps}
-                aria-label="Resize workspace terminal"
+                aria-label={t("agents.session.resizeTerminal")}
                 tabIndex={0}
                 className={cn(
                   "group absolute inset-x-0 top-0 z-10 h-2 -translate-y-1/2 touch-none cursor-row-resize outline-none select-none",
@@ -895,7 +913,13 @@ export function AgentSessionView({
                   )}
                 />
               </div>
-              <Suspense fallback={<div className="p-3 text-xs text-muted-foreground">Opening terminal…</div>}>
+              <Suspense
+                fallback={
+                  <div className="p-3 text-xs text-muted-foreground">
+                    {t("agents.session.openingTerminal")}
+                  </div>
+                }
+              >
               <AgentTerminalPane
                 key={sessionId}
                 sessionId={sessionId}
@@ -927,7 +951,7 @@ export function AgentSessionView({
             onSubmit={(name) =>
               void run(
                 { type: "set_session_name", name },
-                { closeRename: true, toastTitle: "Session renamed" },
+                { closeRename: true, toastTitle: t("agents.session.renamedToast") },
               )
             }
           />
@@ -989,7 +1013,7 @@ export function AgentSessionView({
 
         <button
           type="button"
-          aria-label="Close workspace files"
+          aria-label={t("agents.session.closeFiles")}
           tabIndex={filesOpen ? 0 : -1}
           onClick={() => setFilesOpen(false)}
           className={cn(
@@ -1015,7 +1039,7 @@ export function AgentSessionView({
         >
           <div
             {...paneResize.separatorProps}
-            aria-label="Resize workspace files"
+            aria-label={t("agents.session.resizeFiles")}
             tabIndex={filesOpen ? 0 : -1}
             data-testid="agent-workspace-resize-handle"
             className="group absolute inset-y-0 left-0 z-40 hidden w-2 touch-none cursor-col-resize outline-none select-none xl:block"
@@ -1054,6 +1078,7 @@ export function AgentSessionView({
 }
 
 function AgentSessionLoading({ providerLabel }: { providerLabel: string }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div data-titlebar className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
@@ -1063,7 +1088,9 @@ function AgentSessionLoading({ providerLabel }: { providerLabel: string }) {
       <div className="flex flex-1 items-center justify-center">
         <Loader2
           className={`size-5 text-muted-foreground ${motionClasses.spinner}`}
-          aria-label={`Opening ${providerLabel} session`}
+          aria-label={t("agents.session.openingSession", {
+            provider: providerLabel,
+          })}
         />
       </div>
       <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">

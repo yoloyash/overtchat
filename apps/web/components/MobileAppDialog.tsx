@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Tabs } from "@base-ui/react/tabs";
+import { Trans, useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import { Check, Copy, ExternalLink, Smartphone, X } from "lucide-react";
 import { writeText } from "clipboard-polyfill";
@@ -17,14 +18,17 @@ import { cn } from "@/lib/utils";
 
 const stores = {
   ios: {
+    label: "iOS",
     name: "App Store",
     url: "https://apps.apple.com/us/app/overtchat/id6812165221",
   },
   android: {
+    label: "Android",
     name: "Google Play",
     url: "https://play.google.com/store/apps/details?id=com.overtchat.mobile",
   },
-};
+} as const;
+const storePlatforms = ["ios", "android"] as const;
 const tabClass =
   "flex-1 rounded-md px-3 py-2 text-sm font-medium outline-none data-[active]:bg-background data-[active]:text-foreground data-[active]:shadow-sm focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -35,6 +39,7 @@ export function MobileAppDialog({
   origin: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [platform, setPlatform] = useState<keyof typeof stores>("ios");
   const [copied, setCopied] = useState(false);
   const server = parseMobileServerUrl(origin);
@@ -48,8 +53,8 @@ export function MobileAppDialog({
       setCopied(true);
     } catch {
       toast.error({
-        title: "Could not copy address",
-        description: "Select and copy the server address manually.",
+        title: t("app.mobileAppDialog.copyErrorTitle"),
+        description: t("app.mobileAppDialog.copyErrorDescription"),
       });
     }
   }
@@ -78,10 +83,10 @@ export function MobileAppDialog({
             <Smartphone className="size-5" />
           </div>
           <Dialog.Title className="pr-6 text-lg font-semibold tracking-tight">
-            OvertChat on your phone
+            {t("app.mobileAppDialog.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Get the app or sign in on your phone.
+            {t("app.mobileAppDialog.description")}
           </Dialog.Description>
           <Dialog.Close
             render={
@@ -91,29 +96,29 @@ export function MobileAppDialog({
                 className="absolute right-3 top-3"
               />
             }
-            aria-label="Close mobile app dialog"
+            aria-label={t("app.mobileAppDialog.closeLabel")}
           >
             <X />
           </Dialog.Close>
           <Tabs.Root defaultValue="download" className="mt-5">
             <Tabs.List
-              aria-label="Mobile app"
+              aria-label={t("app.mobileAppDialog.tabsLabel")}
               className="flex rounded-lg bg-muted p-1 text-muted-foreground"
             >
               <Tabs.Tab value="download" className={tabClass}>
-                Get the app
+                {t("app.mobileAppDialog.getAppTab")}
               </Tabs.Tab>
               <Tabs.Tab value="connect" className={tabClass}>
-                Connect your phone
+                {t("app.mobileAppDialog.connectTab")}
               </Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value="download" className="pt-5 outline-none">
               <div
                 role="group"
-                aria-label="Phone platform"
+                aria-label={t("app.mobileAppDialog.platformLabel")}
                 className="flex justify-center gap-2"
               >
-                {(["ios", "android"] as const).map((value) => (
+                {storePlatforms.map((value) => (
                   <Button
                     key={value}
                     variant={platform === value ? "secondary" : "ghost"}
@@ -121,7 +126,7 @@ export function MobileAppDialog({
                     aria-pressed={platform === value}
                     onClick={() => setPlatform(value)}
                   >
-                    {value === "ios" ? "iOS" : "Android"}
+                    {stores[value].label}
                   </Button>
                 ))}
               </div>
@@ -129,7 +134,7 @@ export function MobileAppDialog({
                 <div className="order-2 sm:order-1">
                   <QrCode
                     value={store.url}
-                    label={`${store.name} download QR code`}
+                    label={t("app.mobileAppDialog.downloadQrLabel", { store: store.name })}
                   />
                 </div>
                 <a
@@ -138,20 +143,20 @@ export function MobileAppDialog({
                   rel="noopener noreferrer"
                   className={cn(buttonVariants(), "order-1 w-full sm:order-2")}
                 >
-                  Get it on {store.name}
+                  {t("app.mobileAppDialog.getItOn", { store: store.name })}
                   <ExternalLink />
                 </a>
                 <p className="order-3 text-center text-sm text-muted-foreground">
-                  Scan with your phone’s camera.
+                  {t("app.mobileAppDialog.scanWithCamera")}
                 </p>
               </div>
             </Tabs.Panel>
             <Tabs.Panel value="connect" className="space-y-4 pt-5 outline-none">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Server address</p>
+                <p className="text-sm font-medium">{t("app.mobileAppDialog.serverAddress")}</p>
                 <div className="flex items-center gap-2">
                   <p
-                    aria-label="Server address"
+                    aria-label={t("app.mobileAppDialog.serverAddress")}
                     className="min-w-0 flex-1 select-text break-all text-sm text-muted-foreground"
                   >
                     {server ?? origin}
@@ -161,7 +166,7 @@ export function MobileAppDialog({
                     size="icon"
                     disabled={!server || localOnly}
                     aria-label={
-                      copied ? "Server address copied" : "Copy server address"
+                      copied ? t("app.mobileAppDialog.serverAddressCopied") : t("app.mobileAppDialog.copyServerAddress")
                     }
                     onClick={() => void copyAddress()}
                   >
@@ -170,20 +175,21 @@ export function MobileAppDialog({
                 </div>
                 {localOnly && (
                   <p className="text-sm text-muted-foreground">
-                    To use OvertChat on other devices, run{" "}
-                    <code>overtchat setup</code> and choose{" "}
-                    <strong className="font-medium text-foreground">
-                      On my home network
-                    </strong>
-                    . Then open the network address shown.
+                    <Trans
+                      i18nKey="app.mobileAppDialog.localOnlyHint"
+                      components={{
+                        code: <code />,
+                        emphasis: <strong className="font-medium text-foreground" />,
+                      }}
+                    />
                   </p>
                 )}
               </div>
               {server && !localOnly && (
                 <div className="flex flex-col items-center gap-3">
-                  <QrCode value={server} label="Server connection QR code" />
+                  <QrCode value={server} label={t("app.mobileAppDialog.serverQrLabel")} />
                   <p className="text-sm text-muted-foreground">
-                    Scan with OvertChat.
+                    {t("app.mobileAppDialog.scanWithApp")}
                   </p>
                 </div>
               )}

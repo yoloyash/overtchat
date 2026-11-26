@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -93,9 +94,13 @@ export function ConnectionFields({
   apiKeyOptional = false,
   providerLabel,
 }: ConnectionFieldsProps) {
+  const { t } = useTranslation();
   // Undefined in a desktop app older than the provider; the server validates it.
   const provider = findProvider(draft.providerId);
-  const providerName = provider?.label ?? providerLabel ?? draft.providerId;
+  const providerName =
+    provider?.id === "custom"
+      ? t("models.page.providerCustom")
+      : (provider?.label ?? providerLabel ?? draft.providerId);
   const requiresKey = provider?.requiresApiKey ?? false;
 
   const [models, setModels] = useState<AvailableModel[]>([]);
@@ -242,11 +247,11 @@ export function ConnectionFields({
     ) {
       return;
     }
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       lastAutoProbeKeyRef.current = probeKey;
       void runAutoProbe();
     }, 500);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [autoFetchModels, canProbe, probeKey]);
 
   const modelIds = useMemo(() => models.map((model) => model.id), [models]);
@@ -263,8 +268,8 @@ export function ConnectionFields({
   return (
     <>
       <SettingsRow
-        title="Provider"
-        description="Selects model discovery, authentication, and runtime behavior."
+        title={t("models.connection.providerTitle")}
+        description={t("models.connection.providerDescription")}
         htmlFor="p-provider"
         align="center"
         controlAlign="end"
@@ -291,7 +296,7 @@ export function ConnectionFields({
             <ModelBrandIcon iconId={provider?.iconId ?? null} />
             <SelectValue>
               {imageModel && provider?.id === "custom"
-                ? "Custom (OpenAI-compatible)"
+                ? t("models.connection.customOpenAiCompatible")
                 : providerName}
             </SelectValue>
           </SelectTrigger>
@@ -313,8 +318,10 @@ export function ConnectionFields({
               <SelectItem key={id} value={id}>
                 <ModelBrandIcon iconId={PROVIDERS[id].iconId} />
                 {imageModel && id === "custom"
-                  ? "Custom (OpenAI-compatible)"
-                  : PROVIDERS[id].label}
+                  ? t("models.connection.customOpenAiCompatible")
+                  : id === "custom"
+                    ? t("models.page.providerCustom")
+                    : PROVIDERS[id].label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -323,11 +330,11 @@ export function ConnectionFields({
 
       {draft.providerId === "custom" && !imageModel && (
         <SettingsRow
-          title="API format"
+          title={t("models.connection.apiFormatTitle")}
           description={
             draft.apiFormat === "auto"
-              ? "Choose the protocol exposed by this endpoint."
-              : API_FORMATS[draft.apiFormat].description
+              ? t("models.connection.apiFormatAutoDescription")
+              : t(`models.connection.apiFormatDescriptions.${draft.apiFormat}`)
           }
           htmlFor="p-api-format"
           align="center"
@@ -344,7 +351,7 @@ export function ConnectionFields({
             <SelectTrigger id="p-api-format" className="w-full">
               <SelectValue>
                 {draft.apiFormat === "auto"
-                  ? "Automatic"
+                  ? t("models.connection.apiFormatAutomatic")
                   : API_FORMATS[draft.apiFormat].label}
               </SelectValue>
             </SelectTrigger>
@@ -362,11 +369,11 @@ export function ConnectionFields({
       )}
 
       <SettingsRow
-        title="Endpoint"
+        title={t("models.connection.endpointTitle")}
         description={
           provider?.localRuntime
-            ? "Base URL for the model API. If overtchat runs in Docker, use host.docker.internal instead of localhost."
-            : "Base URL for the model API."
+            ? t("models.connection.endpointLocalDescription")
+            : t("models.connection.endpointDescription")
         }
         htmlFor="p-base-url"
         align="center"
@@ -375,6 +382,7 @@ export function ConnectionFields({
         <Input
           id="p-base-url"
           className="w-full"
+          // eslint-disable-next-line i18next/no-literal-string -- example URL placeholder
           placeholder={provider?.defaultBaseUrl || "https://api.example.com/v1"}
           required
           autoFocus={draft.providerId === "custom"}
@@ -387,15 +395,19 @@ export function ConnectionFields({
       </SettingsRow>
 
       <SettingsRow
-        title="API key"
+        title={t("models.connection.apiKeyTitle")}
         description={
           apiKeyOptional
-            ? "Used by everyone without their own key under People. Leave empty if each person must bring one."
+            ? t("models.connection.apiKeyOptionalDescription")
             : requiresKey
-              ? `Required for ${providerName}.`
+              ? t("models.connection.apiKeyRequiredFor", {
+                  provider: providerName,
+                })
               : provider
-                ? "Optional for local or custom endpoints."
-                : `Enter the key ${providerName} needs, if any.`
+                ? t("models.connection.apiKeyOptionalLocalDescription")
+                : t("models.connection.apiKeyUnknownProvider", {
+                    provider: providerName,
+                  })
         }
         htmlFor="p-api-key"
         align="center"
@@ -405,7 +417,11 @@ export function ConnectionFields({
           <PasswordInput
             id="p-api-key"
             autoComplete="new-password"
-            placeholder={requiresKey && !apiKeyOptional ? "Required" : "Optional"}
+            placeholder={
+              requiresKey && !apiKeyOptional
+                ? t("models.connection.requiredPlaceholder")
+                : t("models.connection.optionalPlaceholder")
+            }
             required={requiresKey && !apiKeyOptional}
             value={draft.apiKey}
             onChange={(e) => {
@@ -416,10 +432,10 @@ export function ConnectionFields({
           {!draft.apiKey && previouslyUsedApiKeys.length > 0 && (
             <div
               role="group"
-              aria-label="Previously used API keys"
+              aria-label={t("models.connection.previouslyUsedGroupLabel")}
               className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground"
             >
-              <span>Previously used:</span>
+              <span>{t("models.connection.previouslyUsed")}</span>
               {previouslyUsedApiKeys.map((apiKey) => (
                 <Button
                   key={apiKey}
@@ -441,11 +457,11 @@ export function ConnectionFields({
       </SettingsRow>
 
       <SettingsRow
-        title="Model"
+        title={t("models.connection.modelTitle")}
         description={
           imageModel
-            ? "Choose an image model or enter its ID manually."
-            : "Choose a fetched model or enter an id."
+            ? t("models.connection.modelImageDescription")
+            : t("models.connection.modelChatDescription")
         }
         htmlFor="p-model"
         controlAlign="end"
@@ -477,12 +493,14 @@ export function ConnectionFields({
                     {draft.model}
                   </span>
                 </ComboboxTrigger>
-                <ComboboxContent aria-label="Fetched models">
+                <ComboboxContent aria-label={t("models.connection.fetchedModelsLabel")}>
                   <ComboboxInput
-                    placeholder="Search models"
-                    aria-label="Search models"
+                    placeholder={t("models.connection.searchModelsPlaceholder")}
+                    aria-label={t("models.connection.searchModelsLabel")}
                   />
-                  <ComboboxEmpty>No matching models.</ComboboxEmpty>
+                  <ComboboxEmpty>
+                    {t("models.connection.noMatchingModels")}
+                  </ComboboxEmpty>
                   <ComboboxList>
                     {(id: string) => (
                       <ComboboxItem key={id} value={id}>
@@ -500,13 +518,19 @@ export function ConnectionFields({
                 placeholder={
                   imageModel
                     ? draft.providerId === "custom"
-                      ? "model-id"
+                      ? // eslint-disable-next-line i18next/no-literal-string -- model ID placeholder
+                        "model-id"
                       : draft.providerId === "google"
-                        ? "gemini-3.1-flash-image"
+                        ? // eslint-disable-next-line i18next/no-literal-string -- model ID placeholder
+                          "gemini-3.1-flash-image"
                         : draft.providerId === "openrouter"
-                          ? "google/gemini-2.5-flash-image"
-                          : "gpt-image-1"
-                    : (provider?.modelPlaceholder ?? "model-id")
+                          ? // eslint-disable-next-line i18next/no-literal-string -- model ID placeholder
+                            "google/gemini-2.5-flash-image"
+                          : // eslint-disable-next-line i18next/no-literal-string -- model ID placeholder
+                            "gpt-image-1"
+                    : (provider?.modelPlaceholder ??
+                      // eslint-disable-next-line i18next/no-literal-string -- model ID placeholder
+                      "model-id")
                 }
                 required
                 value={draft.model}
@@ -535,7 +559,9 @@ export function ConnectionFields({
               ) : (
                 <RefreshCw />
               )}
-              {models.length > 0 ? "Refresh" : "Fetch"}
+              {models.length > 0
+                ? t("models.connection.refresh")
+                : t("models.connection.fetch")}
             </Button>
           </div>
 
@@ -543,11 +569,11 @@ export function ConnectionFields({
             {probing ? (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <Loader2 className={`size-3 ${motionClasses.spinner}`} />
-                Fetching available models
+                {t("models.connection.fetchingModels")}
               </span>
             ) : models.length > 0 ? (
               <span className="text-muted-foreground">
-                {models.length} model{models.length === 1 ? "" : "s"} fetched
+                {t("models.connection.modelsFetched", { count: models.length })}
               </span>
             ) : probeError ? (
               <span className="inline-flex items-center gap-1 text-destructive">
@@ -556,13 +582,13 @@ export function ConnectionFields({
               </span>
             ) : requiresKey && !draft.apiKey ? (
               <span className="text-muted-foreground">
-                Add an API key to fetch models.
+                {t("models.connection.addApiKeyToFetch")}
               </span>
             ) : (
               <span className="text-muted-foreground">
                 {autoFetchModels
-                  ? "Models will load automatically when ready."
-                  : "Refresh to load available models."}
+                  ? t("models.connection.autoFetchHint")
+                  : t("models.connection.manualFetchHint")}
               </span>
             )}
 
@@ -572,7 +598,7 @@ export function ConnectionFields({
                 className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 onClick={() => setModelMode("manual")}
               >
-                Enter manually
+                {t("models.connection.enterManually")}
               </button>
             )}
             {models.length > 0 && !showList && (
@@ -586,15 +612,14 @@ export function ConnectionFields({
                   }
                 }}
               >
-                Choose fetched model
+                {t("models.connection.chooseFetchedModel")}
               </button>
             )}
           </div>
 
           {currentModelIsManual && (
             <p className="text-xs leading-5 text-muted-foreground">
-              The current model id was not returned by the endpoint, so it is
-              being kept as a manual entry.
+              {t("models.connection.manualModelNotice")}
             </p>
           )}
         </div>

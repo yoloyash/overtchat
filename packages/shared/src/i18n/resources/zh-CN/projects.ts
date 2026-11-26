@@ -1,0 +1,143 @@
+import type { Translation } from "../../catalog";
+
+export const projects: Translation["projects"] = {
+  loading: "正在加载…",
+  settingsLabel: "项目设置",
+  nameInputLabel: "项目名称",
+  renameTitle: "重命名项目",
+  actionsLabel: "项目操作",
+  deleteProject: "删除项目",
+  actions: {
+    rename: "重命名",
+    delete: "删除",
+    deleting: "正在删除…",
+    cancel: "取消",
+    save: "保存",
+    saving: "正在保存…",
+    tryAgain: "重试",
+  },
+  deleteDialog: {
+    title: "删除项目？",
+    description: "<name>{{name}}</name> 将被删除。其中的对话会移至你的主列表。",
+  },
+  toast: {
+    renameError: "无法重命名项目",
+    deletedTitle: "项目已删除",
+    deletedDescription: "项目中的对话已移至你的主列表。",
+  },
+  errors: {
+    renameFallback: "项目名称未更改。",
+    deleteFallback: "无法删除项目。",
+  },
+  chats: {
+    heading: "对话",
+    untitled: "未命名",
+    filterPlaceholder: "筛选对话",
+    empty: {
+      title: "还没有对话",
+      description: "在上方发起对话。这里的对话共享此项目的指令和默认模型。",
+      noMatches: "没有匹配 <query>{{query}}</query> 的对话。",
+    },
+    renameInputLabel: "对话标题",
+    pinned: "已置顶",
+    responding: "正在回复…",
+    actionsLabel: "{{title}} 的操作",
+    removeFromProject: "从项目中移除",
+    deleteDialog: {
+      title: "删除对话？",
+      description: "<title>{{title}}</title> 将被永久删除。",
+    },
+    toast: {
+      deleted: "对话已删除",
+      renameError: "无法重命名对话",
+      removedTitle: "已从项目中移除",
+      removedDescription: "该对话已移至你的主列表。",
+      moveError: "无法移动对话",
+    },
+    errors: {
+      deleteFailed: "删除失败",
+      renameFallback: "对话标题未更改。",
+      moveFallback: "对话保留在原位置。",
+    },
+  },
+  files: {
+    sectionLabel: "项目文件",
+    title: "文件",
+    description: "模型在此项目的每个对话中都可以读取的参考资料。",
+    addFiles: "添加文件",
+    inputLabel: "要添加的项目文件",
+    loadError: "无法加载项目文件。",
+    listLabel: "文件",
+    pages_other: "{{count}} 页",
+    fromChat: "来自 <chatLink>{{chat}}</chatLink>",
+    fromUnnamedChat: "来自<chatLink>一个对话</chatLink>",
+    removeFileLabel: "从项目中移除 {{filename}}",
+    removeFromProject: "从项目中移除",
+    uploading: "正在上传…",
+    footer: "已添加 {{used}}/{{max}} 个文件。需要时，模型会使用文件工具读取和搜索这些文件。",
+    toast: {
+      limitTitle_other: "每个项目最多可保存 {{count}} 个文件",
+      limitPartial_other: "仅添加了所选的前 {{count}} 个文件。",
+      limitFull: "请先移除一个文件，再添加新文件。",
+      addError: "无法添加 {{filename}}",
+      removeError: "无法移除 {{filename}}",
+    },
+    errors: {
+      addFallback: "文件未添加。",
+      removeFallback: "文件仍在项目中。",
+    },
+  },
+  instructions: {
+    title: "指令",
+    description: "会添加到此项目的每个对话中。",
+    edit: "编辑指令",
+    add: "添加指令",
+    dialogTitle: "项目指令",
+    dialogDescription: "告诉模型在 {{name}} 中应如何回复：背景信息、语气或始终需要遵循的偏好。",
+    placeholder: "例如：始终用简洁的要点回复。假设读者是资深工程师。",
+    unsavedChanges: "有未保存的更改",
+    toast: {
+      saved: "指令已保存",
+      saveError: "无法保存指令",
+    },
+    errors: {
+      saveFallback: "项目指令未更改。",
+    },
+  },
+  model: {
+    title: "默认模型",
+    description: "此项目中的新对话默认使用此模型。",
+    accountDefault: "账号默认",
+    noModels: "未配置模型",
+    unavailable: "所选模型不可用，新对话将使用你的账号默认模型。",
+    toast: {
+      changeError: "无法更改默认模型",
+    },
+    errors: {
+      changeFallback: "请重试。",
+    },
+  },
+  saveToProject: {
+    inProject: "已在项目中",
+    saveToProject: "保存到项目",
+    inProjectTitle: "已在 {{project}} 中。再次保存可选择替换或同时保留。",
+    saveToProjectTitle: "保存到 {{project}}",
+    conflictDialog: {
+      title: "替换 {{filename}}？",
+      description:
+        "<project>{{project}}</project> 中已有同名文件。替换不会影响历史对话；同时保留会为新文件添加编号后缀。",
+      keepBoth: "同时保留",
+      replace: "替换",
+    },
+    toast: {
+      alreadyInProject: "已在 {{project}} 中",
+      savedToProject: "已保存到 {{project}}",
+      openProject: "打开项目",
+      saveError: "无法保存 {{filename}}",
+    },
+    errors: {
+      uploadFailed: "上传失败（{{status}}）",
+      saveFallback: "文件未添加到项目中。",
+    },
+  },
+};

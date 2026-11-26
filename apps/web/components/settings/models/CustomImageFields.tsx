@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -19,6 +20,7 @@ export function CustomImageFields({
   onChange: (value: Record<string, unknown>) => void;
   onError: (error: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const options = customImageOptions(value);
   const [extraText, setExtraText] = useState(() =>
     Object.keys(options.extraBody).length
@@ -28,17 +30,17 @@ export function CustomImageFields({
   const [error, setError] = useState("");
   return (
     <SettingsSection
-      title="Image API settings"
-      description="Connect an OpenAI-compatible Images API and configure generation and editing."
+      title={t("models.customImage.title")}
+      description={t("models.customImage.description")}
     >
       <SettingsRow
-        title="Generation size"
+        title={t("models.customImage.generationSizeTitle")}
         htmlFor="p-image-size"
-        description="Use a size supported by your backend, such as 512x512. Leave blank to use its default. Chat suggestions cannot override this size."
+        description={t("models.customImage.generationSizeDescription")}
       >
         <Input
           id="p-image-size"
-          placeholder="Backend default"
+          placeholder={t("models.customImage.generationSizePlaceholder")}
           value={options.size === "auto" ? "" : options.size}
           maxLength={64}
           onChange={(e) =>
@@ -47,9 +49,9 @@ export function CustomImageFields({
         />
       </SettingsRow>
       <SettingsRow
-        title="Response format"
+        title={t("models.customImage.responseFormatTitle")}
         htmlFor="p-image-response-format"
-        description="URL responses must contain an inline image data URL."
+        description={t("models.customImage.responseFormatDescription")}
       >
         <select
           id="p-image-response-format"
@@ -59,17 +61,21 @@ export function CustomImageFields({
             onChange({ ...options, responseFormat: e.target.value })
           }
         >
-          <option value="b64_json">Base64 (b64_json)</option>
-          <option value="url">Data URL (url)</option>
+          <option value="b64_json">
+            {t("models.customImage.responseFormatBase64")}
+          </option>
+          <option value="url">
+            {t("models.customImage.responseFormatUrl")}
+          </option>
         </select>
       </SettingsRow>
       <SettingsRow
-        title="Supports image editing"
-        description="Enable to edit uploaded or generated images. Requires a backend and model that support /images/edits."
+        title={t("models.customImage.supportsEditingTitle")}
+        description={t("models.customImage.supportsEditingDescription")}
         layout="toggle"
       >
         <Switch
-          aria-label="Supports image editing"
+          aria-label={t("models.customImage.supportsEditingTitle")}
           checked={options.supportsEditing}
           onCheckedChange={(supportsEditing) =>
             onChange({ ...options, supportsEditing })
@@ -78,13 +84,13 @@ export function CustomImageFields({
       </SettingsRow>
       {options.supportsEditing && (
         <SettingsRow
-          title="Editing size"
+          title={t("models.customImage.editingSizeTitle")}
           htmlFor="p-image-edit-size"
-          description="Override the generation size for edits, such as 512x512. Leave blank to use the generation size, or enter auto to use the backend default."
+          description={t("models.customImage.editingSizeDescription")}
         >
           <Input
             id="p-image-edit-size"
-            placeholder="Same as generation"
+            placeholder={t("models.customImage.editingSizePlaceholder")}
             value={options.editSize ?? ""}
             maxLength={64}
             onChange={(e) =>
@@ -97,17 +103,16 @@ export function CustomImageFields({
         </SettingsRow>
       )}
       <SettingsRow
-        title="Extra request parameters"
+        title={t("models.customImage.extraParamsTitle")}
         htmlFor="p-image-extra"
-        description={
-          'Optional JSON object, such as {"seed": 7}. Use this for backend-specific quality or sampling settings. Model, prompt, size, response format, and image count are managed separately.'
-        }
+        description={t("models.customImage.extraParamsDescription")}
       >
         <Textarea
           id="p-image-extra"
           className="font-mono text-xs"
           rows={5}
           value={extraText}
+          // eslint-disable-next-line i18next/no-literal-string -- JSON example placeholder
           placeholder={'{"seed": 7}'}
           onChange={(e) => {
             const text = e.target.value;
@@ -119,7 +124,8 @@ export function CustomImageFields({
               });
               if (!parsed.success)
                 throw new Error(
-                  parsed.error.issues[0]?.message ?? "Enter a JSON object.",
+                  parsed.error.issues[0]?.message ??
+                    t("models.customImage.invalidJsonObject"),
                 );
               onChange(parsed.data);
               setError("");
@@ -128,7 +134,7 @@ export function CustomImageFields({
               setError(
                 err instanceof Error
                   ? err.message
-                  : "Enter a valid JSON object.",
+                  : t("models.customImage.invalidValidJsonObject"),
               );
               onError(true);
             }

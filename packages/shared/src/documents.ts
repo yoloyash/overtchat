@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { UIMessage } from "ai";
 import type { ToolState } from "./tools";
 
@@ -13,13 +14,17 @@ export const DOCUMENT_TYPES = [
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
-export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  markdown: "Document",
-  code: "Code",
-  html: "Web page",
-  svg: "SVG image",
-  mermaid: "Diagram",
-};
+const DOCUMENT_TYPE_KEYS = {
+  markdown: "chat.documents.types.markdown",
+  code: "chat.documents.types.code",
+  html: "chat.documents.types.html",
+  svg: "chat.documents.types.svg",
+  mermaid: "chat.documents.types.mermaid",
+} as const;
+
+export function documentTypeLabel(type: DocumentType): string {
+  return i18n.t(DOCUMENT_TYPE_KEYS[type]);
+}
 
 /** Larger than any single model reply, small enough to render and replay. */
 export const MAX_DOCUMENT_LENGTH = 400_000;
@@ -189,7 +194,7 @@ export function documentView(
       versions: [],
       index: -1,
       draft: {
-        title: input.title?.trim() || "Untitled document",
+        title: input.title?.trim() || i18n.t("chat.documents.untitled"),
         type,
         ...(type === "code" && input.language ? { language: input.language } : {}),
         content: typeof input.content === "string" ? input.content : "",

@@ -19,7 +19,7 @@ import { WebView } from "react-native-webview";
 import type { UIMessage } from "ai";
 import {
   canExportToWord,
-  DOCUMENT_TYPE_LABELS,
+  documentTypeLabel,
   documentFilename,
   documentMediaType,
   documentView,
@@ -170,7 +170,7 @@ export function DocumentViewer({
                 {document.title}
               </Text>
               <Text numberOfLines={1} style={[styles.status, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-                {DOCUMENT_TYPE_LABELS[document.type]}
+                {documentTypeLabel(document.type)}
                 {document.type === "code" && document.language ? ` · ${document.language}` : ""} · {status}
               </Text>
             </View>

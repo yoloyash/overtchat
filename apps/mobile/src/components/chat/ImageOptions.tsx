@@ -1,6 +1,6 @@
 import {
   IMAGE_SIZES,
-  IMAGE_SIZE_LABELS,
+  imageSizeLabel,
   IMAGE_QUALITIES,
   type ImageGenerationOptions,
 } from "@overtchat/shared";
@@ -61,7 +61,7 @@ export function ImageOptions({
             <Pressable
               key={size}
               accessibilityRole="button"
-              accessibilityLabel={`Image size: ${IMAGE_SIZE_LABELS[size]}`}
+              accessibilityLabel={`Image size: ${imageSizeLabel(size)}`}
               accessibilityState={{ selected: value.size === size }}
               onPress={() => onChange({ ...value, size })}
               style={{
@@ -72,7 +72,7 @@ export function ImageOptions({
               }}
             >
               <Text style={{ color: colors.foreground }}>
-                {IMAGE_SIZE_LABELS[size]}
+                {imageSizeLabel(size)}
               </Text>
             </Pressable>
           ))}

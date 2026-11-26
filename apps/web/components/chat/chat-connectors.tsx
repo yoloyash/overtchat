@@ -13,7 +13,7 @@ export interface ChatConnector {
   /** Also the slash command that turns it on. */
   name: string;
   title: string;
-  description: string;
+  descriptionKey: "chat.connectors.gmailDescription" | "chat.connectors.calendarDescription";
   icon: ComponentType<{ className?: string }>;
   keywords: string[];
   /** Whether a conversation already has it on, which then stays. */
@@ -25,7 +25,7 @@ export const CHAT_CONNECTORS: readonly ChatConnector[] = [
     id: "gmail",
     name: "gmail",
     title: "Gmail",
-    description: "Use your mail in this chat",
+    descriptionKey: "chat.connectors.gmailDescription",
     icon: GmailLogo,
     keywords: ["mail", "email", "inbox"],
     usedIn: conversationUsesGmail,
@@ -34,7 +34,7 @@ export const CHAT_CONNECTORS: readonly ChatConnector[] = [
     id: "calendar",
     name: "calendar",
     title: "Google Calendar",
-    description: "Use your calendar in this chat",
+    descriptionKey: "chat.connectors.calendarDescription",
     icon: CalendarLogo,
     keywords: ["schedule", "events", "meeting", "agenda"],
     usedIn: conversationUsesCalendar,
@@ -42,7 +42,8 @@ export const CHAT_CONNECTORS: readonly ChatConnector[] = [
 ];
 
 /** One connector as the composer shows it for the open chat. */
-export interface ComposerConnector extends ChatConnector {
+export interface ComposerConnector extends Omit<ChatConnector, "descriptionKey"> {
+  description: string;
   /** Whether this chat's next message is offered its tools. */
   active: boolean;
   /** On in every chat by the user's setting, so nothing marks this one. */

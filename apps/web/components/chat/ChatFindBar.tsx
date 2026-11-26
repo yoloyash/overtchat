@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import { ChevronDown, ChevronUp, LoaderCircle, Search, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { CHAT_FIND_MAX_QUERY_LENGTH } from "@/lib/chat/find";
 import { motionClasses } from "@/lib/motion";
@@ -37,22 +38,23 @@ export function ChatFindBar({
   onRetryHistory: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const hasQuery = query.trim().length > 0;
   // "?" marks matches with none selected yet, e.g. ones that arrived in a
   // reply that finished after the search.
   const position = activeIndex >= 0 ? String(activeIndex + 1) : "?";
   let status = "";
   if (hasQuery) {
-    if (counting) status = total ? `${position}/…` : "Searching…";
-    else if (total === 0) status = "No results";
+    if (counting) status = total ? `${position}/…` : t("chat.find.searchingEllipsis");
+    else if (total === 0) status = t("chat.find.noResults");
     else status = `${position}/${total}`;
   }
-  const noResults = status === "No results";
+  const noResults = hasQuery && !counting && total === 0;
 
   return (
     <div
       role="search"
-      aria-label="Find in chat"
+      aria-label={t("chat.find.label")}
       aria-busy={pending || counting}
       className="absolute top-2 right-3 z-20 flex w-[min(24rem,calc(100%-1.5rem))] items-center gap-1 rounded-lg border bg-popover/95 py-1 pr-1 pl-2.5 text-popover-foreground shadow-md backdrop-blur"
     >
@@ -75,8 +77,8 @@ export function ChatFindBar({
           if (event.shiftKey) onPrevious();
           else onNext();
         }}
-        placeholder="Find in chat"
-        aria-label="Find in chat"
+        placeholder={t("chat.find.label")}
+        aria-label={t("chat.find.label")}
         spellCheck={false}
         autoComplete="off"
         className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -91,7 +93,7 @@ export function ChatFindBar({
         {pending && hasQuery ? (
           <LoaderCircle
             className={cn("size-3.5", motionClasses.spinner)}
-            aria-label="Searching"
+            aria-label={t("chat.find.searching")}
           />
         ) : (
           status
@@ -102,18 +104,18 @@ export function ChatFindBar({
           type="button"
           variant="ghost"
           size="xs"
-          title="Earlier messages could not be loaded, so they are not searched."
+          title={t("chat.find.incompleteHistoryTitle")}
           onClick={onRetryHistory}
         >
-          Retry
+          {t("chat.find.retry")}
         </Button>
       )}
       <Button
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Previous match"
-        title="Previous match (Shift+Enter)"
+        aria-label={t("chat.find.previousMatch")}
+        title={t("chat.find.previousMatchShortcut")}
         disabled={total === 0}
         onClick={onPrevious}
       >
@@ -123,8 +125,8 @@ export function ChatFindBar({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Next match"
-        title="Next match (Enter)"
+        aria-label={t("chat.find.nextMatch")}
+        title={t("chat.find.nextMatchShortcut")}
         disabled={total === 0}
         onClick={onNext}
       >
@@ -134,8 +136,8 @@ export function ChatFindBar({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Close find"
-        title="Close (Esc)"
+        aria-label={t("chat.find.closeFind")}
+        title={t("chat.find.closeShortcut")}
         onClick={onClose}
       >
         <X />

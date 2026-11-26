@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import {
   parseTaskSchedule,
   type ScheduledTask,
@@ -107,16 +108,16 @@ export function scheduleOfDraft(draft: ScheduledTaskDraft): TaskSchedule | null 
 
 /** What stops a draft from being saved, in words; null when nothing does. */
 export function taskDraftProblem(draft: ScheduledTaskDraft): string | null {
-  if (!draft.name.trim()) return "Give the task a name.";
-  if (!draft.prompt.trim()) return "Say what the task should do.";
-  if (!draft.modelConfigId) return "Choose a model.";
+  if (!draft.name.trim()) return i18n.t("scheduled.validation.missingName");
+  if (!draft.prompt.trim()) return i18n.t("scheduled.validation.missingPrompt");
+  if (!draft.modelConfigId) return i18n.t("scheduled.validation.missingModel");
   if (draft.frequency === "weekly" && draft.daysOfWeek.length === 0) {
-    return "Choose at least one day.";
+    return i18n.t("scheduled.validation.missingDay");
   }
   if (!scheduleOfDraft(draft)) {
     return draft.frequency === "once"
-      ? "Choose a date and a time."
-      : "Choose a time.";
+      ? i18n.t("scheduled.validation.missingDateAndTime")
+      : i18n.t("scheduled.validation.missingTime");
   }
   return null;
 }

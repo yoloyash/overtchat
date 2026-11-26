@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import { conversationUsesSkill } from "./skills";
 import type { ToolState } from "./tools";
 
@@ -310,19 +311,29 @@ function recipientLine(
   input: Record<string, unknown> | undefined,
 ): string {
   return [
-    ...(to ? [`To ${to}`] : []),
-    ...names(input?.cc).map((address) => `Cc ${address}`),
-    ...names(input?.bcc).map((address) => `Bcc ${address}`),
+    ...(to ? [i18n.t("chat.steps.gmail.to", { address: to })] : []),
+    ...names(input?.cc).map((address) =>
+      i18n.t("chat.steps.gmail.cc", { address }),
+    ),
+    ...names(input?.bcc).map((address) =>
+      i18n.t("chat.steps.gmail.bcc", { address }),
+    ),
   ].join(" · ");
 }
 
 /** What a card says about where its email is. */
-export const GMAIL_EMAIL_STATUS_LABELS: Record<GmailEmailDisplay["status"], string> = {
-  unsent: "Not sent",
-  replaced: "Replaced by a newer version",
-  draft: "Draft in Gmail, not sent",
-  sent: "Sent",
-};
+const GMAIL_EMAIL_STATUS_KEYS = {
+  unsent: "chat.steps.emailStatus.unsent",
+  replaced: "chat.steps.emailStatus.replaced",
+  draft: "chat.steps.emailStatus.draft",
+  sent: "chat.steps.emailStatus.sent",
+} as const;
+
+export function gmailEmailStatusLabel(
+  status: GmailEmailDisplay["status"],
+): string {
+  return i18n.t(GMAIL_EMAIL_STATUS_KEYS[status]);
+}
 
 /** What an email's card shows. */
 export function describeGmailEmail(
@@ -340,7 +351,7 @@ export function describeGmailEmail(
       id: part.toolCallId,
       status: "sent",
       source: "model",
-      subject: text(output?.subject) ?? "(no subject)",
+      subject: text(output?.subject) ?? i18n.t("chat.steps.gmail.noSubject"),
       recipients: recipientLine(to, input),
       body: typeof input?.body === "string" ? input.body.trim() : "",
       href:
@@ -363,7 +374,7 @@ export function describeGmailEmail(
           ? "replaced"
           : "unsent",
     source: composed ? "composed" : "draft",
-    subject: text(output?.subject) ?? "(no subject)",
+    subject: text(output?.subject) ?? i18n.t("chat.steps.gmail.noSubject"),
     recipients: recipientLine(to, input),
     body: body.trim(),
     content:
@@ -479,9 +490,29 @@ export function gmailSenderName(from: string): string {
   return name || from.replace(/[<>]/g, "").trim();
 }
 
-function count(total: number, noun: string, more = false): string {
-  if (total === 0) return `No ${noun}s`;
-  return `${total}${more ? "+" : ""} ${noun}${total === 1 && !more ? "" : "s"}`;
+function countGmailResults(total: number, more = false): string {
+  if (total === 0) return i18n.t("chat.steps.gmail.resultsZero");
+  if (more) return i18n.t("chat.steps.gmail.resultsMore", { count: total });
+  return i18n.t("chat.steps.gmail.results", { count: total });
+}
+
+function countGmailMessages(total: number): string {
+  if (total === 0) return i18n.t("chat.steps.gmail.messagesZero");
+  return i18n.t("chat.steps.gmail.messages", { count: total });
+}
+
+function countGmailPages(total: number): string {
+  return i18n.t("chat.steps.gmail.pages", { count: total });
+}
+
+function countGmailLabels(total: number): string {
+  if (total === 0) return i18n.t("chat.steps.gmail.labelsZero");
+  return i18n.t("chat.steps.gmail.labels", { count: total });
+}
+
+function countGmailConversations(total: number): string {
+  if (total === 0) return i18n.t("chat.steps.gmail.conversationsZero");
+  return i18n.t("chat.steps.gmail.conversations", { count: total });
 }
 
 function names(value: unknown): string[] {
@@ -491,25 +522,74 @@ function names(value: unknown): string[] {
 }
 
 /** What a change of labels did, in the words Gmail's own buttons use. */
-function sortingChanges(added: string[], removed: string[]): string[] {
-  const changes: string[] = [];
-  const system: Record<string, [added: string, removed: string]> = {
-    INBOX: ["moved to inbox", "archived"],
-    UNREAD: ["marked unread", "marked read"],
-    STARRED: ["starred", "unstarred"],
-    IMPORTANT: ["marked important", "marked not important"],
-    TRASH: ["moved to trash", "restored from trash"],
-    SPAM: ["marked as spam", "marked not spam"],
-  };
-  for (const [label, [whenAdded, whenRemoved]] of Object.entries(system)) {
-    if (removed.includes(label)) changes.push(whenRemoved);
-    if (added.includes(label)) changes.push(whenAdded);
+type SortChange = { inline: string; lead: string };
+
+function sortingChanges(added: string[], removed: string[]): SortChange[] {
+  const changes: SortChange[] = [];
+  const system = {
+    INBOX: [
+      "chat.steps.gmail.sortChanges.inboxAdded",
+      "chat.steps.gmail.sortChangesLead.inboxAdded",
+      "chat.steps.gmail.sortChanges.inboxRemoved",
+      "chat.steps.gmail.sortChangesLead.inboxRemoved",
+    ],
+    UNREAD: [
+      "chat.steps.gmail.sortChanges.unreadAdded",
+      "chat.steps.gmail.sortChangesLead.unreadAdded",
+      "chat.steps.gmail.sortChanges.unreadRemoved",
+      "chat.steps.gmail.sortChangesLead.unreadRemoved",
+    ],
+    STARRED: [
+      "chat.steps.gmail.sortChanges.starredAdded",
+      "chat.steps.gmail.sortChangesLead.starredAdded",
+      "chat.steps.gmail.sortChanges.starredRemoved",
+      "chat.steps.gmail.sortChangesLead.starredRemoved",
+    ],
+    IMPORTANT: [
+      "chat.steps.gmail.sortChanges.importantAdded",
+      "chat.steps.gmail.sortChangesLead.importantAdded",
+      "chat.steps.gmail.sortChanges.importantRemoved",
+      "chat.steps.gmail.sortChangesLead.importantRemoved",
+    ],
+    TRASH: [
+      "chat.steps.gmail.sortChanges.trashAdded",
+      "chat.steps.gmail.sortChangesLead.trashAdded",
+      "chat.steps.gmail.sortChanges.trashRemoved",
+      "chat.steps.gmail.sortChangesLead.trashRemoved",
+    ],
+    SPAM: [
+      "chat.steps.gmail.sortChanges.spamAdded",
+      "chat.steps.gmail.sortChangesLead.spamAdded",
+      "chat.steps.gmail.sortChanges.spamRemoved",
+      "chat.steps.gmail.sortChangesLead.spamRemoved",
+    ],
+  } as const;
+  for (const [
+    label,
+    [addedKey, addedLeadKey, removedKey, removedLeadKey],
+  ] of Object.entries(system)) {
+    if (removed.includes(label)) {
+      changes.push({ inline: i18n.t(removedKey), lead: i18n.t(removedLeadKey) });
+    }
+    if (added.includes(label)) {
+      changes.push({ inline: i18n.t(addedKey), lead: i18n.t(addedLeadKey) });
+    }
   }
   for (const label of added) {
-    if (!(label in system)) changes.push(`labeled ${label}`);
+    if (!(label in system)) {
+      changes.push({
+        inline: i18n.t("chat.steps.gmail.sortChanges.labeled", { label }),
+        lead: i18n.t("chat.steps.gmail.sortChangesLead.labeled", { label }),
+      });
+    }
   }
   for (const label of removed) {
-    if (!(label in system)) changes.push(`unlabeled ${label}`);
+    if (!(label in system)) {
+      changes.push({
+        inline: i18n.t("chat.steps.gmail.sortChanges.unlabeled", { label }),
+        lead: i18n.t("chat.steps.gmail.sortChangesLead.unlabeled", { label }),
+      });
+    }
   }
   return changes;
 }
@@ -561,7 +641,9 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
   const input = record(part.input);
   const output = status === "done" ? record(part.output) : undefined;
   const error =
-    status === "error" ? (text(part.errorText) ?? "Gmail request failed") : undefined;
+    status === "error"
+      ? (text(part.errorText) ?? i18n.t("chat.steps.gmail.requestFailed"))
+      : undefined;
 
   const account = text(output?.account);
 
@@ -570,14 +652,18 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
     return {
       action,
       status,
-      title: status === "running" ? "Searching Gmail" : "Searched Gmail",
+      title: i18n.t(
+        status === "running"
+          ? "chat.steps.gmail.titles.searchRunning"
+          : "chat.steps.gmail.titles.searchDone",
+      ),
       detail: text(input?.query),
       note: output
-        ? count(messages.length, "result", output.hasMore === true)
+        ? countGmailResults(messages.length, output.hasMore === true)
         : undefined,
       rows: messages.map((message) => ({
         sender: gmailSenderName(text(message.from) ?? ""),
-        subject: text(message.subject) ?? "(no subject)",
+        subject: text(message.subject) ?? i18n.t("chat.steps.gmail.noSubject"),
         date: text(message.date),
         unread: message.unread === true,
         href: gmailThreadUrl(account, text(message.threadId)),
@@ -592,9 +678,13 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
     return {
       action,
       status,
-      title: status === "running" ? "Reading email" : "Read email",
+      title: i18n.t(
+        status === "running"
+          ? "chat.steps.gmail.titles.readRunning"
+          : "chat.steps.gmail.titles.readDone",
+      ),
       detail: text(output?.subject),
-      note: output ? count(messages.length, "message") : undefined,
+      note: output ? countGmailMessages(messages.length) : undefined,
       rows: messages.map((message) => {
         const attachments = list(message.attachments).flatMap(
           (attachment) => text(attachment.filename) ?? [],
@@ -616,13 +706,17 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
     return {
       action,
       status,
-      title: status === "running" ? "Reading attachment" : "Read attachment",
+      title: i18n.t(
+        status === "running"
+          ? "chat.steps.gmail.titles.attachmentRunning"
+          : "chat.steps.gmail.titles.attachmentDone",
+      ),
       detail: text(output?.filename),
       note: output
         ? offset > 0
-          ? "Continued"
+          ? i18n.t("chat.steps.gmail.continued")
           : pages > 0
-            ? count(pages, "page")
+            ? countGmailPages(pages)
             : undefined
         : undefined,
       rows: [],
@@ -634,8 +728,12 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
     return {
       action,
       status,
-      title: status === "running" ? "Listing Gmail labels" : "Listed Gmail labels",
-      note: output ? count(list(output.labels).length, "label") : undefined,
+      title: i18n.t(
+        status === "running"
+          ? "chat.steps.gmail.titles.labelsRunning"
+          : "chat.steps.gmail.titles.labelsDone",
+      ),
+      note: output ? countGmailLabels(list(output.labels).length) : undefined,
       rows: [],
       error,
     };
@@ -644,18 +742,24 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
   if (action === "sort") {
     const changes = sortingChanges(names(output?.added), names(output?.removed));
     const threads = typeof output?.threads === "number" ? output.threads : 0;
-    const conversations = count(threads, "conversation");
-    const summary = changes.join(", ");
+    const conversations = countGmailConversations(threads);
     return {
       action,
       status,
       title:
         status !== "done"
-          ? "Sorting mail"
-          : `${conversations} ${changes.length === 1 ? changes[0] : "updated"}`,
+          ? i18n.t("chat.steps.gmail.titles.sortRunning")
+          : changes.length === 1
+            ? i18n.t("chat.steps.gmail.sortSingle", {
+                conversations,
+                change: changes[0].inline,
+              })
+            : i18n.t("chat.steps.gmail.sortUpdated", { conversations }),
       note:
         changes.length > 1
-          ? `${summary[0].toUpperCase()}${summary.slice(1)}`
+          ? [changes[0].lead, ...changes.slice(1).map((c) => c.inline)].join(
+              i18n.t("chat.steps.gmail.changeSep"),
+            )
           : undefined,
       rows: [],
       error,
@@ -666,44 +770,49 @@ export function describeGmailToolPart(part: GmailToolPart): GmailToolDisplay {
   return {
     action,
     status,
-    title:
+    title: i18n.t(
       action === "send"
         ? status === "running"
-          ? "Sending email"
-          : "Sent email"
+          ? "chat.steps.gmail.titles.sendRunning"
+          : "chat.steps.gmail.titles.sendDone"
         : action === "compose"
           ? status === "running"
-            ? "Writing email"
-            : "Wrote email"
+            ? "chat.steps.gmail.titles.composeRunning"
+            : "chat.steps.gmail.titles.composeDone"
           : status === "running"
-            ? "Writing draft"
-            : "Saved draft in Gmail",
+            ? "chat.steps.gmail.titles.draftRunning"
+            : "chat.steps.gmail.titles.draftDone",
+    ),
     detail: text(output?.subject) ?? text(input?.subject),
     rows: [],
     error,
   };
 }
 
-const ACTIVE_LABELS: Record<GmailToolDisplay["action"], string> = {
-  search: "Searching Gmail…",
-  read: "Reading email…",
-  attachment: "Reading attachment…",
-  labels: "Listing Gmail labels…",
-  sort: "Sorting mail…",
-  compose: "Writing email…",
-  send: "Sending email…",
-  draft: "Writing draft…",
-};
+const ACTIVE_LABEL_KEYS = {
+  search: "chat.steps.gmail.active.search",
+  read: "chat.steps.gmail.active.read",
+  attachment: "chat.steps.gmail.active.attachment",
+  labels: "chat.steps.gmail.active.labels",
+  sort: "chat.steps.gmail.active.sort",
+  compose: "chat.steps.gmail.active.compose",
+  send: "chat.steps.gmail.active.send",
+  draft: "chat.steps.gmail.active.draft",
+} as const;
 
 /** The activity timeline's one-line summary while or after a Gmail step runs. */
 export function gmailActivityLabel(part: GmailToolPart, active: boolean): string {
   const display = describeGmailToolPart(part);
   if (active) {
     return display.action === "search" && display.detail
-      ? `Searching Gmail for "${display.detail}"`
-      : ACTIVE_LABELS[display.action];
+      ? i18n.t("chat.steps.gmail.active.searchQuery", { query: display.detail })
+      : i18n.t(ACTIVE_LABEL_KEYS[display.action]);
   }
-  if (display.status === "error") return "Gmail request failed";
-  if (display.status === "running") return "Gmail request did not complete";
+  if (display.status === "error") {
+    return i18n.t("chat.steps.gmail.requestFailed");
+  }
+  if (display.status === "running") {
+    return i18n.t("chat.steps.gmail.requestIncomplete");
+  }
   return display.title;
 }

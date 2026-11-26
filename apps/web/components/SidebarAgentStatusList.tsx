@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
@@ -33,15 +34,20 @@ type StatusGroupKey = keyof AgentAttentionSections;
 
 const STATUS_GROUPS: {
   key: StatusGroupKey;
-  label: string;
+  labelKey:
+    | "sidebar.agents.statusGroups.needsInput"
+    | "sidebar.agents.statusGroups.failed"
+    | "sidebar.agents.statusGroups.ready"
+    | "sidebar.agents.statusGroups.working"
+    | "sidebar.agents.statusGroups.done";
   icon: React.ReactNode;
 }[] = [
   // Each header wears the mark its rows do.
-  { key: "needsInput", label: "Needs input", icon: <AgentSessionStatusIcon state="approval" /> },
-  { key: "failed", label: "Failed", icon: <AgentSessionStatusIcon state="failed" /> },
-  { key: "ready", label: "Ready to review", icon: <AgentSessionStatusIcon state="unread" /> },
-  { key: "working", label: "Working", icon: <AgentSessionStatusIcon state="working" /> },
-  { key: "done", label: "Done", icon: <AgentSessionStatusIcon state="idle" /> },
+  { key: "needsInput", labelKey: "sidebar.agents.statusGroups.needsInput", icon: <AgentSessionStatusIcon state="approval" /> },
+  { key: "failed", labelKey: "sidebar.agents.statusGroups.failed", icon: <AgentSessionStatusIcon state="failed" /> },
+  { key: "ready", labelKey: "sidebar.agents.statusGroups.ready", icon: <AgentSessionStatusIcon state="unread" /> },
+  { key: "working", labelKey: "sidebar.agents.statusGroups.working", icon: <AgentSessionStatusIcon state="working" /> },
+  { key: "done", labelKey: "sidebar.agents.statusGroups.done", icon: <AgentSessionStatusIcon state="idle" /> },
 ];
 
 /** Every agent session, grouped by what it needs from its owner. */
@@ -52,6 +58,7 @@ export function SidebarAgentStatusList({
   connections: AgentConnectionListItem[];
   providerFilter: AgentProviderId | null;
 }) {
+  const { t } = useTranslation();
   const sections = useMemo(
     () => agentAttentionSections(groupAgentWorkspaces(connections), providerFilter),
     [connections, providerFilter],
@@ -78,17 +85,17 @@ export function SidebarAgentStatusList({
   if (Object.values(sections).every((items) => items.length === 0)) {
     return (
       <p className="px-2 py-1.5 text-xs text-muted-foreground">
-        No sessions yet.
+        {t("sidebar.agents.noSessionsYet")}
       </p>
     );
   }
   return (
     <div className="flex flex-col gap-3 pb-1">
-      {STATUS_GROUPS.map(({ key, label, icon }) =>
+      {STATUS_GROUPS.map(({ key, labelKey, icon }) =>
         sections[key].length === 0 ? null : (
           <StatusGroup
             key={key}
-            label={label}
+            label={t(labelKey)}
             icon={icon}
             items={key === "done" ? done : sections[key]}
             now={now}

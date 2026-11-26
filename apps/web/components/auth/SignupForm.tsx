@@ -2,6 +2,7 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,7 @@ import { authClient } from "@/lib/auth/client";
 import { useResetAuthState } from "@/lib/queries/auth";
 
 export function SignupForm() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const resetAuthState = useResetAuthState();
   const [code, setCode] = useState(() => {
@@ -43,7 +45,7 @@ export function SignupForm() {
       },
     );
     if (error) {
-      setError(error.message ?? "Signup failed");
+      setError(error.message ?? t("auth.signup.failed"));
       setSubmitting(false);
       return;
     }
@@ -55,16 +57,16 @@ export function SignupForm() {
     <form onSubmit={onSubmit} className="space-y-5">
       <header>
         <h1 className="text-xl font-semibold tracking-tight">
-          Create the first account
+          {t("auth.signup.title")}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          This becomes the admin account. Signup closes after this.
+          {t("auth.signup.subtitle")}
         </p>
       </header>
 
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="setup-code">Setup code</Label>
+          <Label htmlFor="setup-code">{t("auth.signup.setupCode")}</Label>
           <Input
             id="setup-code"
             value={code}
@@ -75,12 +77,11 @@ export function SignupForm() {
             spellCheck={false}
           />
           <p className="text-xs text-muted-foreground">
-            Use the code from your installer, run overtchat status on the server, or
-            check the app container&apos;s logs.
+            {t("auth.signup.setupCodeHint")}
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="name">Name</Label>
+          <Label htmlFor="name">{t("auth.fields.name")}</Label>
           <Input
             id="name"
             type="text"
@@ -91,7 +92,7 @@ export function SignupForm() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{t("auth.fields.email")}</Label>
           <Input
             id="email"
             type="email"
@@ -102,7 +103,7 @@ export function SignupForm() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">{t("auth.fields.password")}</Label>
           <PasswordInput
             id="password"
             autoComplete="new-password"
@@ -111,14 +112,16 @@ export function SignupForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">At least 8 characters.</p>
+          <p className="text-xs text-muted-foreground">
+            {t("auth.signup.passwordHint")}
+          </p>
         </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={submitting} className="w-full">
-        {submitting ? "Creating…" : "Create account"}
+        {submitting ? t("auth.signup.submitting") : t("auth.signup.submit")}
       </Button>
     </form>
   );

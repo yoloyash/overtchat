@@ -2,6 +2,7 @@
 
 import { Settings2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -28,31 +29,25 @@ import { INTEGRATION_DISPLAY, integrationNames } from "./integration-display";
  * the user and the email's Send button; "Without asking" also gives a model a
  * tool that sends. The stored setting is a boolean (`sendWithoutAsking`).
  */
-const SENDING_OPTIONS = [
-  {
-    value: "ask",
-    label: <span className="whitespace-nowrap">Ask first</span>,
-  },
-  {
-    value: "without-asking",
-    label: <span className="whitespace-nowrap">Without asking</span>,
-  },
-] as const;
+const SENDING_VALUES = ["ask", "without-asking"] as const;
 
 export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useTranslation();
   const { data: integrations, isPending, error } = useIntegrations();
   const google = integrations?.filter(({ provider }) => provider === "google");
 
   return (
     <SettingsSection
-      title="Connectors"
-      description="Connect your own accounts so models can work with them in your chats. On demand tool access is recommended."
+      title={t("tools.connectors.title")}
+      description={t("tools.connectors.description")}
     >
       {isPending ? (
-        <SettingsNotice className="py-6">Loading connectors…</SettingsNotice>
+        <SettingsNotice className="py-6">
+          {t("tools.connectors.loading")}
+        </SettingsNotice>
       ) : error || !google?.length ? (
         <SettingsNotice tone="error" className="py-6">
-          {getErrorMessage(error, "Unable to load connectors.")}
+          {getErrorMessage(error, t("tools.connectors.loadError"))}
         </SettingsNotice>
       ) : (
         <GoogleAccount integrations={google} isAdmin={isAdmin} />
@@ -62,6 +57,7 @@ export function ConnectorsPanel({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function StatusPill({ needsReconnect }: { needsReconnect: boolean }) {
+  const { t } = useTranslation();
   return (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-card/60 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted-foreground">
       <span
@@ -72,7 +68,9 @@ function StatusPill({ needsReconnect }: { needsReconnect: boolean }) {
             : "size-1.5 rounded-full bg-emerald-500"
         }
       />
-      {needsReconnect ? "Sign-in ended" : "Connected"}
+      {needsReconnect
+        ? t("tools.connectors.status.signInEnded")
+        : t("tools.connectors.status.connected")}
     </span>
   );
 }
@@ -85,6 +83,7 @@ function GoogleAccount({
   integrations: Integration[];
   isAdmin: boolean;
 }) {
+  const { t } = useTranslation();
   const disconnect = useDisconnectIntegrationAccount("google");
   // What the sign-in dialog starts with, while it is open.
   const [connecting, setConnecting] = useState<IntegrationId[] | null>(null);
@@ -100,11 +99,14 @@ function GoogleAccount({
   async function onDisconnect() {
     try {
       await disconnect.mutateAsync();
-      toast.success({ title: "Google disconnected" });
+      toast.success({ title: t("tools.connectors.google.disconnectedTitle") });
     } catch (error) {
       toast.error({
-        title: "Failed to disconnect Google",
-        description: getErrorMessage(error, "The account is still connected."),
+        title: t("tools.connectors.google.disconnectErrorTitle"),
+        description: getErrorMessage(
+          error,
+          t("tools.connectors.google.disconnectErrorFallback"),
+        ),
       });
     }
   }
@@ -118,7 +120,8 @@ function GoogleAccount({
           </div>
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm font-medium">
-              Google
+              {/* eslint-disable-next-line i18next/no-literal-string -- provider name */}
+              {"Google"}
               {configured && account && (
                 <StatusPill needsReconnect={needsReconnect} />
               )}
@@ -126,13 +129,17 @@ function GoogleAccount({
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               {!configured
                 ? isAdmin
-                  ? "Set up Google access for this server before anyone can connect."
-                  : "Not set up on this server. Ask an administrator to set up Google access."
+                  ? t("tools.connectors.google.unconfiguredAdmin")
+                  : t("tools.connectors.google.unconfiguredUser")
                 : needsReconnect
-                  ? `Google ended access for ${account.accountEmail}. Reconnect to keep using it.`
+                  ? t("tools.connectors.google.needsReconnect", {
+                      email: account.accountEmail,
+                    })
                   : account
                     ? account.accountEmail
-                    : `Sign in once to connect ${integrationNames(all)}.`}
+                    : t("tools.connectors.google.signInOnce", {
+                        services: integrationNames(all),
+                      })}
             </p>
           </div>
         </div>
@@ -147,7 +154,9 @@ function GoogleAccount({
               disabled={disconnect.isPending}
               onClick={() => void onDisconnect()}
             >
-              {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+              {disconnect.isPending
+                ? t("tools.connectors.google.disconnecting")
+                : t("tools.connectors.google.disconnect")}
             </Button>
           )}
           {configured && account && !needsReconnect && all.length > 1 && (
@@ -157,7 +166,7 @@ function GoogleAccount({
               size="sm"
               onClick={() => setConnecting(coveredIds)}
             >
-              Change access
+              {t("tools.connectors.google.changeAccess")}
             </Button>
           )}
           {configured && (!account || needsReconnect) && (
@@ -166,7 +175,9 @@ function GoogleAccount({
               size="sm"
               onClick={() => setConnecting(account ? coveredIds : all)}
             >
-              {needsReconnect ? "Reconnect" : "Connect"}
+              {needsReconnect
+                ? t("tools.connectors.google.reconnect")
+                : t("tools.connectors.google.connect")}
             </Button>
           )}
           {isAdmin &&
@@ -175,15 +186,15 @@ function GoogleAccount({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Google access settings"
-                title="Google access settings"
+                aria-label={t("tools.connectors.google.accessSettings")}
+                title={t("tools.connectors.google.accessSettings")}
                 onClick={() => setSettingUp(true)}
               >
                 <Settings2 />
               </Button>
             ) : (
               <Button type="button" size="sm" onClick={() => setSettingUp(true)}>
-                Set up
+                {t("tools.connectors.google.setUp")}
               </Button>
             ))}
         </div>
@@ -224,13 +235,28 @@ function IntegrationRow({
   integration: Integration;
   onAdd?: () => void;
 }) {
-  const { name, Logo, description, toolAccess } =
-    INTEGRATION_DISPLAY[integration.id];
+  const { t } = useTranslation();
+  const { name, Logo } = INTEGRATION_DISPLAY[integration.id];
+  const description = t(
+    `tools.connectors.integrations.${integration.id}.description`,
+  );
+  const toolAccess = t(
+    `tools.connectors.integrations.${integration.id}.toolAccess`,
+  );
   const setSettings = useSetIntegrationSettings(integration.id);
   const { connection } = integration;
   const left = !connection && onAdd;
   const usable = connection?.status === "connected";
-
+  const sendingOptions = SENDING_VALUES.map((value) => ({
+    value,
+    label: (
+      <span className="whitespace-nowrap">
+        {value === "ask"
+          ? t("tools.connectors.row.askFirst")
+          : t("tools.connectors.row.withoutAsking")}
+      </span>
+    ),
+  }));
   async function onSettings(settings: {
     alwaysOn?: boolean;
     sendWithoutAsking?: boolean;
@@ -239,8 +265,11 @@ function IntegrationRow({
       await setSettings.mutateAsync(settings);
     } catch (error) {
       toast.error({
-        title: `Failed to change ${name}`,
-        description: getErrorMessage(error, "The setting was not saved."),
+        title: t("tools.connectors.row.updateErrorTitle", { name }),
+        description: getErrorMessage(
+          error,
+          t("tools.connectors.row.updateErrorFallback"),
+        ),
       });
     }
   }
@@ -256,7 +285,7 @@ function IntegrationRow({
           <p className="text-sm font-medium">{name}</p>
           <p className="text-xs leading-5 text-muted-foreground">
             {left
-              ? "Not part of this sign-in."
+              ? t("tools.connectors.row.notPartOfSignIn")
               : usable
                 ? toolAccess
                 : description}
@@ -265,7 +294,7 @@ function IntegrationRow({
       </div>
       {usable && (
         <ToolAccessChoice
-          label={`${name} tool access`}
+          label={t("tools.connectors.row.toolAccessLabel", { name })}
           alwaysOn={connection.alwaysOn}
           disabled={setSettings.isPending}
           onChange={(alwaysOn) => void onSettings({ alwaysOn })}
@@ -273,26 +302,28 @@ function IntegrationRow({
       )}
       {left && (
         <Button type="button" variant="outline" size="sm" onClick={onAdd}>
-          Add
+          {t("tools.connectors.row.add")}
         </Button>
       )}
       {usable && SENDING_INTEGRATION_IDS.includes(integration.id) && (
         <>
           <div className="min-w-0 pl-[26px]">
-            <p className="text-sm font-medium">Sending</p>
+            <p className="text-sm font-medium">
+              {t("tools.connectors.row.sendingTitle")}
+            </p>
             <p className="text-xs leading-5 text-muted-foreground">
               {connection.sendWithoutAsking
-                ? "A model can send email as you without asking. Mail it reads can try to trick it into sending."
-                : "A model writes an email and you send it."}
+                ? t("tools.connectors.row.sendingWithoutAskingDescription")
+                : t("tools.connectors.row.sendingAskFirstDescription")}
             </p>
           </div>
           <SettingsChoiceGroup
-            label={`${name} sending`}
+            label={t("tools.connectors.row.sendingLabel", { name })}
             value={connection.sendWithoutAsking ? "without-asking" : "ask"}
             onValueChange={(value) =>
               void onSettings({ sendWithoutAsking: value === "without-asking" })
             }
-            options={SENDING_OPTIONS}
+            options={sendingOptions}
             disabled={setSettings.isPending}
             className="w-auto auto-cols-auto"
           />

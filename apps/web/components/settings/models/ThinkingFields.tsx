@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import Editor from "react-simple-code-editor";
 import type {
   ModelReasoningControls,
@@ -46,6 +48,7 @@ export function ThinkingFields({
   onInvalidChange,
   checkTarget,
 }: Props) {
+  const { t } = useTranslation();
   // Remount the JSON editor whenever its value is replaced wholesale.
   const [editorKey, setEditorKey] = useState(0);
   function replace(next: ReasoningOverride | null) {
@@ -56,18 +59,18 @@ export function ThinkingFields({
 
   return (
     <SettingsSection
-      title="Thinking"
-      description="Thinking levels offered in chat and the request fields each level sends."
+      title={t("models.thinking.title")}
+      description={t("models.thinking.description")}
     >
       <SettingsRow
-        title="Levels"
+        title={t("models.thinking.levelsTitle")}
         htmlFor="p-thinking-mode"
         description={
           value
-            ? "Custom levels replace catalog and detected values."
+            ? t("models.thinking.levelsCustomDescription")
             : automatic
-              ? `Known levels: ${describeControls(automatic)}.`
-              : "No thinking levels are known for this model. Choose Custom to configure them."
+              ? describeControls(automatic)
+              : t("models.thinking.levelsUnknownDescription")
         }
       >
         <Select
@@ -83,11 +86,19 @@ export function ThinkingFields({
           }
         >
           <SelectTrigger id="p-thinking-mode">
-            <SelectValue>{value ? "Custom" : "Automatic"}</SelectValue>
+            <SelectValue>
+              {value
+                ? t("models.thinking.modeCustom")
+                : t("models.thinking.modeAutomatic")}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="automatic">Automatic</SelectItem>
-            <SelectItem value="custom">Custom</SelectItem>
+            <SelectItem value="automatic">
+              {t("models.thinking.modeAutomatic")}
+            </SelectItem>
+            <SelectItem value="custom">
+              {t("models.thinking.modeCustom")}
+            </SelectItem>
           </SelectContent>
         </Select>
       </SettingsRow>
@@ -118,6 +129,7 @@ function CustomThinkingFields({
   onReplace: (value: ReasoningOverride) => void;
   checkTarget?: CheckTarget;
 }) {
+  const { t } = useTranslation();
   const [text, setText] = useState(() =>
     JSON.stringify(value.requests, null, 2),
   );
@@ -180,8 +192,8 @@ function CustomThinkingFields({
   return (
     <>
       <SettingsRow
-        title="Presets"
-        description="Replace the request fields with a common convention."
+        title={t("models.thinking.presetsTitle")}
+        description={t("models.thinking.presetsDescription")}
         align="start"
       >
         <div className="flex flex-wrap gap-2">
@@ -191,19 +203,21 @@ function CustomThinkingFields({
               type="button"
               variant="outline"
               size="sm"
-              title={preset.description}
+              title={t(`models.thinking.presetDescriptions.${preset.name}`)}
               onClick={() => onReplace(preset.override)}
             >
-              {preset.name}
+              {preset.name === "None"
+                ? t("models.thinking.presetNone")
+                : preset.name}
             </Button>
           ))}
         </div>
       </SettingsRow>
       <SettingsRow
-        title="Request fields"
+        title={t("models.thinking.requestFieldsTitle")}
         align="start"
         htmlFor="p-thinking-requests"
-        description="One entry per level: on, off, minimal, low, medium, high, xhigh, or max. Each entry is merged into the request body; null removes a field. An empty object hides the thinking selector."
+        description={t("models.thinking.requestFieldsDescription")}
       >
         <div className="space-y-2">
           <div
@@ -225,7 +239,7 @@ function CustomThinkingFields({
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
-              aria-label="Thinking request fields JSON"
+              aria-label={t("models.thinking.requestFieldsAriaLabel")}
               aria-invalid={issue ? true : undefined}
               style={{
                 fontFamily:
@@ -242,9 +256,9 @@ function CustomThinkingFields({
         </div>
       </SettingsRow>
       <SettingsRow
-        title="Default level"
+        title={t("models.thinking.defaultLevelTitle")}
         htmlFor="p-thinking-default"
-        description="What the server does when no thinking field is sent. Chat marks it as the default."
+        description={t("models.thinking.defaultLevelDescription")}
       >
         <Select
           value={value.defaultLevel ?? ""}
@@ -262,7 +276,7 @@ function CustomThinkingFields({
             <SelectValue>
               {value.defaultLevel
                 ? levelLabel(value.defaultLevel)
-                : "Choose a level"}
+                : t("models.thinking.chooseLevel")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -276,9 +290,9 @@ function CustomThinkingFields({
       </SettingsRow>
       {checkTarget ? (
         <SettingsRow
-          title="Check"
+          title={t("models.thinking.checkTitle")}
           align="start"
-          description="Renders the prompt template for each level without generating a reply. Fields the server handles outside the template aren't reflected."
+          description={t("models.thinking.checkDescription")}
         >
           <div className="space-y-2">
             <Button
@@ -288,7 +302,9 @@ function CustomThinkingFields({
               onClick={() => void runCheck()}
               disabled={checking || Boolean(issue) || levels.length === 0}
             >
-              {checking ? "Checking…" : "Check with server"}
+              {checking
+                ? t("models.thinking.checking")
+                : t("models.thinking.checkWithServer")}
             </Button>
             {check ? (
               <p
@@ -310,7 +326,9 @@ function CustomThinkingFields({
                   onChange({ ...value, defaultLevel: suggestedDefault })
                 }
               >
-                Use {levelLabel(suggestedDefault)} as default
+                {t("models.thinking.useAsDefault", {
+                  level: levelLabel(suggestedDefault),
+                })}
               </Button>
             ) : null}
           </div>
@@ -330,7 +348,7 @@ function parseRequests(
     return error instanceof Error ? error.message : String(error);
   }
   if (!isRecord(parsed) || !Object.values(parsed).every(isRecord)) {
-    return "Must be a JSON object whose values are objects.";
+    return i18n.t("models.thinking.requestFieldsMustBeObject");
   }
   return parsed as ReasoningOverride["requests"];
 }
@@ -340,25 +358,37 @@ function describeControls(controls: ModelReasoningControls): string {
     ...(controls.toggle ? ["on", "off"] : []),
     ...(controls.efforts ?? []),
   ].map((level) => levelLabel(level as ModelReasoningLevel));
-  return `${levels.join(", ")} (default ${levelLabel(controls.defaultLevel)})`;
+  return i18n.t("models.thinking.levelsKnownDescription", {
+    levels: levels.join(", "),
+    defaultLevel: levelLabel(controls.defaultLevel),
+  });
 }
 
 function describeCheck(result: ThinkingCheckResult): string {
   if (result.status === "unavailable") {
-    return "This server has no template render endpoint, so the fields can't be checked without generating.";
+    return i18n.t("models.thinking.checkUnavailable");
   }
   const parts = [
     ...(result.failed.length
-      ? [`The server rejected the fields for ${listLevels(result.failed)}.`]
+      ? [
+          i18n.t("models.thinking.checkRejected", {
+            levels: listLevels(result.failed),
+          }),
+        ]
       : []),
     ...result.identical.map(
-      (group) => `${listLevels(group)} render the same prompt.`,
+      (group) =>
+        i18n.t("models.thinking.checkIdentical", {
+          levels: listLevels(group),
+        }),
     ),
   ];
-  if (parts.length === 0) parts.push("Each level renders a distinct prompt.");
+  if (parts.length === 0) parts.push(i18n.t("models.thinking.checkDistinct"));
   if (result.matchesDefault.length === 1) {
     parts.push(
-      `Without thinking fields, the server renders like ${levelLabel(result.matchesDefault[0])}.`,
+      i18n.t("models.thinking.checkMatchesDefault", {
+        level: levelLabel(result.matchesDefault[0]),
+      }),
     );
   }
   return parts.join(" ");
@@ -369,8 +399,7 @@ function listLevels(levels: ModelReasoningLevel[]): string {
 }
 
 function levelLabel(level: ModelReasoningLevel): string {
-  if (level === "xhigh") return "Extra high";
-  return level.charAt(0).toUpperCase() + level.slice(1);
+  return i18n.t(`models.thinking.levels.${level}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

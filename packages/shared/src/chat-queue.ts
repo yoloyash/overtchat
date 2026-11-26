@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { FileUIPart } from "ai";
 
 export interface QueuedChatMessage {
@@ -167,8 +168,7 @@ export class ChatMessageQueue {
       if (this.operation === operation)
         this.update({
           paused: true,
-          error:
-            "Could not stop the response. Your queued message is still here; try Send now again.",
+          error: i18n.t("chat.queue.stopFailed"),
         });
     } finally {
       if (this.operation === operation) {
@@ -218,8 +218,7 @@ export class ChatMessageQueue {
         if (this.operation === operation)
           this.update({
             paused: true,
-            error:
-              "Could not send the queued message. Check your connection and try again.",
+            error: i18n.t("chat.queue.sendFailed"),
           });
       })
       .finally(() => {

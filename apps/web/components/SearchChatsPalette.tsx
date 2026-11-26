@@ -3,9 +3,10 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import { Pencil, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { groupByDate, type DateBucket } from "@/lib/dateGroups";
+import { dateBucketLabel, groupByDate, type DateBucket } from "@/lib/dateGroups";
 import { useChats } from "@/lib/queries/chats";
 import { useChatsSearch, type SearchHit } from "@/lib/queries/search";
 import { motionClasses } from "@/lib/motion";
@@ -13,7 +14,7 @@ import { motionClasses } from "@/lib/motion";
 type Chat = { id: string; title: string | null; updatedAt: number };
 
 type Row =
-  | { kind: "label"; label: DateBucket | "Results" }
+  | { kind: "label"; bucket: DateBucket | "results" }
   | { kind: "new" }
   | { kind: "chat"; chat: Chat }
   | { kind: "hit"; hit: SearchHit };
@@ -41,6 +42,7 @@ export function SearchChatsPalette({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: allChats = [] } = useChats();
   const [query, setQuery] = useState("");
@@ -86,14 +88,14 @@ export function SearchChatsPalette({
     if (q.length < 2) {
       const groups = groupByDate(chats);
       for (const g of groups) {
-        out.push({ kind: "label", label: g.label });
+        out.push({ kind: "label", bucket: g.key });
         for (const c of g.items) out.push({ kind: "chat", chat: c });
       }
       return out;
     }
 
     if (hits && hits.length) {
-      out.push({ kind: "label", label: "Results" });
+      out.push({ kind: "label", bucket: "results" });
       for (const h of hits) out.push({ kind: "hit", hit: h });
     }
     return out;
@@ -158,7 +160,7 @@ export function SearchChatsPalette({
             motionClasses.palette,
           )}
         >
-          <Dialog.Title className="sr-only">Search chats</Dialog.Title>
+          <Dialog.Title className="sr-only">{t("sidebar.searchPalette.title")}</Dialog.Title>
           <div className="flex items-center gap-2 border-b px-3 py-2.5">
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <input
@@ -178,13 +180,13 @@ export function SearchChatsPalette({
                   if (row) activate(row);
                 }
               }}
-              placeholder="Search chats…"
+              placeholder={t("sidebar.searchPalette.placeholder")}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
             <button
               type="button"
               onClick={() => handleOpenChange(false)}
-              aria-label="Close"
+              aria-label={t("sidebar.searchPalette.close")}
               className="rounded p-1 text-muted-foreground motion-colors hover:bg-muted hover:text-foreground"
             >
               <X className="size-4" />
@@ -198,10 +200,12 @@ export function SearchChatsPalette({
               if (row.kind === "label") {
                 return (
                   <div
-                    key={`l-${row.label}-${i}`}
+                    key={`l-${row.bucket}-${i}`}
                     className="mt-2 mb-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase first:mt-1"
                   >
-                    {row.label}
+                    {row.bucket === "results"
+                      ? t("sidebar.searchPalette.results")
+                      : dateBucketLabel(row.bucket)}
                   </div>
                 );
               }
@@ -220,7 +224,7 @@ export function SearchChatsPalette({
                     )}
                   >
                     <Pencil className="size-4 shrink-0 text-muted-foreground" />
-                    <span>New chat</span>
+                    <span>{t("sidebar.searchPalette.newChat")}</span>
                   </button>
                 );
               }
@@ -238,7 +242,7 @@ export function SearchChatsPalette({
                     )}
                   >
                     <span className="truncate">
-                      {row.chat.title ?? "Untitled"}
+                      {row.chat.title ?? t("sidebar.searchPalette.untitled")}
                     </span>
                   </button>
                 );
@@ -256,7 +260,7 @@ export function SearchChatsPalette({
                   )}
                 >
                   <span className="truncate w-full">
-                    {row.hit.title ?? "Untitled"}
+                    {row.hit.title ?? t("sidebar.searchPalette.untitled")}
                   </span>
                   {row.hit.snippet && (
                     <span className="line-clamp-2 text-xs text-muted-foreground [&_mark]:bg-transparent [&_mark]:font-medium [&_mark]:text-foreground">
@@ -268,12 +272,12 @@ export function SearchChatsPalette({
             })}
             {showingResults && loading && (
               <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                Searching…
+                {t("sidebar.searchPalette.searching")}
               </p>
             )}
             {emptyResults && (
               <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                No chats match &ldquo;{q}&rdquo;
+                {t("sidebar.searchPalette.noMatches", { query: q })}
               </p>
             )}
           </div>

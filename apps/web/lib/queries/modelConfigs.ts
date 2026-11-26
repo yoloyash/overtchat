@@ -6,6 +6,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { i18n } from "@overtchat/shared/i18n";
 import { modelConfigKeys } from "@/lib/queries/keys";
 import type {
   AdminModelConfig,
@@ -123,7 +124,7 @@ export function useReorderModels() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.error ?? "Couldn't save model order");
+        throw new Error(body.error ?? i18n.t("models.toast.reorderFailed"));
       }
     },
     onSettled: () => qc.invalidateQueries({ queryKey: modelConfigKeys.all() }),

@@ -4,6 +4,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ export function ConnectGoogleDialog({
   initial: readonly IntegrationId[];
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const connect = useConnectIntegrationAccount("google");
   // Kept in the provider's own order, so the same choice is the same sign-in.
   const [selected, setSelected] = useState(() =>
@@ -90,18 +92,29 @@ export function ConnectGoogleDialog({
       );
       if (leftOut.length > 0) {
         toast.warning({
-          title: `${integrationNames(connected.map(({ id }) => id))} connected`,
-          description: `${integrationNames(leftOut)} was not allowed on Google's page. Change access to add it.`,
+          title: t("tools.connectors.connectGoogle.connectedTitle", {
+            services: integrationNames(connected.map(({ id }) => id)),
+          }),
+          description: t("tools.connectors.connectGoogle.partialDescription", {
+            services: integrationNames(leftOut),
+          }),
         });
       } else {
         toast.success({
-          title: `${integrationNames(selected)} connected`,
+          title: t("tools.connectors.connectGoogle.connectedTitle", {
+            services: integrationNames(selected),
+          }),
           description: connected[0]?.connection?.accountEmail,
         });
       }
       onClose();
     } catch (error) {
-      setError(getErrorMessage(error, "Could not connect Google. Try again."));
+      setError(
+        getErrorMessage(
+          error,
+          t("tools.connectors.connectGoogle.connectErrorFallback"),
+        ),
+      );
     }
   }
 
@@ -144,10 +157,10 @@ export function ConnectGoogleDialog({
         >
           <Dialog.Title className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
             <GoogleLogo className="size-5" />
-            Connect Google
+            {t("tools.connectors.connectGoogle.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Sign in with Google, then bring the result back here.
+            {t("tools.connectors.connectGoogle.description")}
           </Dialog.Description>
 
           <form
@@ -158,10 +171,16 @@ export function ConnectGoogleDialog({
             className="mt-5 space-y-5"
           >
             {choosing && (
-              <Step number={1} title="Choose what to connect">
+              <Step
+                number={1}
+                title={t("tools.connectors.connectGoogle.chooseTitle")}
+              >
                 <ul className="mt-1 space-y-2">
                   {SERVICES.map((id) => {
-                    const { name, Logo, description } = INTEGRATION_DISPLAY[id];
+                    const { name, Logo } = INTEGRATION_DISPLAY[id];
+                    const description = t(
+                      `tools.connectors.integrations.${id}.description`,
+                    );
                     return (
                       <li key={id} className="flex items-start gap-2.5">
                         <Logo className="mt-1 size-4" />
@@ -188,23 +207,21 @@ export function ConnectGoogleDialog({
               </Step>
             )}
 
-            <Step number={first} title="Sign in with Google">
-              <p>
-                Allow access, ticking any checkbox Google shows. If Google says it
-                hasn&apos;t verified this app, continue anyway. If it says
-                access is blocked, an administrator needs to add your Google
-                address as a test user first.
-              </p>
+            <Step
+              number={first}
+              title={t("tools.connectors.connectGoogle.signInTitle")}
+            >
+              <p>{t("tools.connectors.connectGoogle.signInInstructions")}</p>
               {authorization.isError ? (
                 <SettingsNotice tone="error" className="mt-2">
                   {getErrorMessage(
                     authorization.error,
-                    "Could not start the sign-in. Try again.",
+                    t("tools.connectors.connectGoogle.startSignInError"),
                   )}
                 </SettingsNotice>
               ) : selected.length === 0 ? (
                 <SettingsNotice className="mt-2">
-                  Choose at least one thing to connect.
+                  {t("tools.connectors.connectGoogle.chooseAtLeastOne")}
                 </SettingsNotice>
               ) : (
                 <a
@@ -218,32 +235,38 @@ export function ConnectGoogleDialog({
                     !authorization.data && "pointer-events-none opacity-50",
                   )}
                 >
-                  <ExternalLink /> Open Google sign-in
+                  <ExternalLink />{" "}
+                  {t("tools.connectors.connectGoogle.openSignIn")}
                 </a>
               )}
             </Step>
 
             <Step
               number={first + 1}
-              title="Copy the address of the page you land on"
+              title={t("tools.connectors.connectGoogle.copyAddressTitle")}
             >
               <p>
-                Your browser will show a page that can&apos;t be reached. That
-                is expected. Copy its whole address, which starts with{" "}
-                <span className="font-mono text-foreground">
-                  http://localhost
-                </span>
-                .
+                <Trans
+                  i18nKey="tools.connectors.connectGoogle.copyAddressDescription"
+                  values={{ prefix: "http://localhost" }}
+                  components={{
+                    url: <span className="font-mono text-foreground" />,
+                  }}
+                />
               </p>
             </Step>
 
-            <Step number={first + 2} title="Paste it here">
+            <Step
+              number={first + 2}
+              title={t("tools.connectors.connectGoogle.pasteTitle")}
+            >
               <Label htmlFor="google-redirect-url" className="sr-only">
-                Address from your browser
+                {t("tools.connectors.connectGoogle.pasteLabel")}
               </Label>
               <Input
                 id="google-redirect-url"
                 className="mt-1 font-mono"
+                // eslint-disable-next-line i18next/no-literal-string -- example redirect URL
                 placeholder="http://localhost:1/?state=…&code=…"
                 autoComplete="off"
                 spellCheck={false}
@@ -272,7 +295,7 @@ export function ConnectGoogleDialog({
                 disabled={connect.isPending || authorization.isFetching}
                 onClick={startAgain}
               >
-                Start again
+                {t("tools.connectors.connectGoogle.startAgain")}
               </Button>
               <div className="flex gap-2">
                 <Button
@@ -282,7 +305,7 @@ export function ConnectGoogleDialog({
                   disabled={connect.isPending}
                   onClick={onClose}
                 >
-                  Cancel
+                  {t("tools.connectors.connectGoogle.cancel")}
                 </Button>
                 <Button
                   type="submit"
@@ -293,7 +316,9 @@ export function ConnectGoogleDialog({
                     !redirectUrl.trim()
                   }
                 >
-                  {connect.isPending ? "Connecting…" : "Connect"}
+                  {connect.isPending
+                    ? t("tools.connectors.connectGoogle.connecting")
+                    : t("tools.connectors.connectGoogle.connect")}
                 </Button>
               </div>
             </SettingsActions>

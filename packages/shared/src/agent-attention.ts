@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type {
   AgentConnectionListItem,
   AgentProviderId,
@@ -44,14 +45,17 @@ export function agentSessionNeedsOwner(state: AgentSessionState): boolean {
 }
 
 /** How a state is announced; idle says nothing. */
-export const AGENT_SESSION_STATE_LABELS: Record<AgentSessionState, string> = {
-  approval: "Needs approval",
-  question: "Has a question",
-  failed: "Failed",
-  working: "Working",
-  unread: "Finished",
-  idle: "",
-};
+const SESSION_STATE_KEYS = {
+  approval: "agents.sessionState.approval",
+  question: "agents.sessionState.question",
+  failed: "agents.sessionState.failed",
+  working: "agents.sessionState.working",
+  unread: "agents.sessionState.unread",
+} as const;
+
+export function agentSessionStateLabel(state: AgentSessionState): string {
+  return state === "idle" ? "" : i18n.t(SESSION_STATE_KEYS[state]);
+}
 
 /** The most recent time anything happened in the session. */
 export function agentSessionActivityAt(session: AgentSessionListItem): number {
@@ -110,18 +114,31 @@ export type AgentAttentionSectionsOf<G extends AgentAttentionGroup> = {
 
 export type AgentAttentionSectionKey = keyof AgentAttentionSectionsOf<AgentAttentionGroup>;
 
-/** Each status group with its label and the state its rows wear. */
+/** Each status group and the state its rows wear. */
 export const AGENT_ATTENTION_SECTIONS: readonly {
   key: AgentAttentionSectionKey;
-  label: string;
   state: AgentSessionState;
 }[] = [
-  { key: "needsInput", label: "Needs input", state: "approval" },
-  { key: "failed", label: "Failed", state: "failed" },
-  { key: "ready", label: "Ready to review", state: "unread" },
-  { key: "working", label: "Working", state: "working" },
-  { key: "done", label: "Done", state: "idle" },
+  { key: "needsInput", state: "approval" },
+  { key: "failed", state: "failed" },
+  { key: "ready", state: "unread" },
+  { key: "working", state: "working" },
+  { key: "done", state: "idle" },
 ];
+
+const SECTION_LABEL_KEYS = {
+  needsInput: "sidebar.agents.statusGroups.needsInput",
+  failed: "sidebar.agents.statusGroups.failed",
+  ready: "sidebar.agents.statusGroups.ready",
+  working: "sidebar.agents.statusGroups.working",
+  done: "sidebar.agents.statusGroups.done",
+} as const;
+
+export function agentAttentionSectionLabel(
+  key: AgentAttentionSectionKey,
+): string {
+  return i18n.t(SECTION_LABEL_KEYS[key]);
+}
 
 /** Every session filed by what it needs from its owner, newest first. */
 export function agentAttentionSections<G extends AgentAttentionGroup>(
@@ -213,12 +230,18 @@ export function agentSessionCanToggleRead(
 /** A compact running time such as "45s", "12m" or "1h 5m". */
 export function formatAgentWorkingTime(elapsedMs: number): string {
   const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) {
+    return i18n.t("agents.activity.elapsedSeconds", { seconds });
+  }
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) {
+    return i18n.t("agents.activity.elapsedMinutes", { minutes });
+  }
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
-  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+  return remainder
+    ? i18n.t("agents.activity.elapsedHoursMinutes", { hours, minutes: remainder })
+    : i18n.t("agents.activity.elapsedHours", { hours });
 }
 
 const MINUTE_MS = 60_000;
@@ -228,11 +251,19 @@ const DAY_MS = 24 * HOUR_MS;
 /** A compact age for list rows, such as "now", "5m", "3h", "2d" or "Oct 4". */
 export function formatAgentSessionAge(timestamp: number, now: number): string {
   const elapsed = Math.max(0, now - timestamp);
-  if (elapsed < MINUTE_MS) return "now";
-  if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)}m`;
-  if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)}h`;
-  if (elapsed < 7 * DAY_MS) return `${Math.floor(elapsed / DAY_MS)}d`;
-  if (elapsed < 5 * 7 * DAY_MS) return `${Math.floor(elapsed / (7 * DAY_MS))}w`;
+  if (elapsed < MINUTE_MS) return i18n.t("agents.age.now");
+  if (elapsed < HOUR_MS) {
+    return i18n.t("agents.age.minutes", { count: Math.floor(elapsed / MINUTE_MS) });
+  }
+  if (elapsed < DAY_MS) {
+    return i18n.t("agents.age.hours", { count: Math.floor(elapsed / HOUR_MS) });
+  }
+  if (elapsed < 7 * DAY_MS) {
+    return i18n.t("agents.age.days", { count: Math.floor(elapsed / DAY_MS) });
+  }
+  if (elapsed < 5 * 7 * DAY_MS) {
+    return i18n.t("agents.age.weeks", { count: Math.floor(elapsed / (7 * DAY_MS)) });
+  }
   const sameYear =
     new Date(timestamp).getFullYear() === new Date(now).getFullYear();
   return new Date(timestamp).toLocaleDateString(undefined, {

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, X } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ export function ErrorNotice({
   onDismiss?: () => void;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       role="alert"
@@ -38,7 +40,12 @@ export function ErrorNotice({
         <div className="space-y-1 break-words [overflow-wrap:anywhere]">
           {title && <p className="font-medium text-foreground">{title}</p>}
           <p className="text-foreground">
-            {typeof message === "string" ? message : getErrorMessage(message, fallback)}
+            {typeof message === "string"
+              ? message
+              : getErrorMessage(
+                  message,
+                  fallback ?? t("app.ui.errorNotice.genericFallback"),
+                )}
           </p>
         </div>
         {actions && (
@@ -48,7 +55,7 @@ export function ErrorNotice({
       {onDismiss && (
         <button
           type="button"
-          aria-label="Dismiss error"
+          aria-label={t("app.ui.errorNotice.dismiss")}
           onClick={onDismiss}
           className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >

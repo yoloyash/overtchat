@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "@base-ui/react/tooltip";
+import { useTranslation } from "react-i18next";
 import type { ActivityTotals } from "@/lib/activity/types";
 import { cn } from "@/lib/utils";
-import { formatCompact, formatExact } from "./activity-format";
+import { formatCompact, formatExact, formatUtcDate, formatUtcMonth } from "./activity-format";
 
 const HEAT_CLASSES = [
   "bg-muted",
@@ -23,6 +24,7 @@ export function ActivityHeatmap({
   throughDate: string;
   name: string;
 }) {
+  const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [focusedDay, setFocusedDay] = useState(364);
   const [activeDay, setActiveDay] = useState<number | null>(null);
@@ -49,7 +51,7 @@ export function ActivityHeatmap({
     <Tooltip.Provider delay={100}>
       <div ref={scrollRef} className="mt-5 overflow-x-auto pb-2">
         <div className="min-w-[636px]">
-          <div role="grid" aria-label={`${name} token activity over the past year`} className="grid gap-1">
+          <div role="grid" aria-label={t("activity.heatmap.gridLabel", { name })} className="grid gap-1">
             {Array.from({ length: 7 }, (_, weekday) => (
               <div key={weekday} role="row" className="grid gap-1" style={columns}>
                 {Array.from({ length: weeks }, (_, week) => {
@@ -59,9 +61,7 @@ export function ActivityHeatmap({
                   const tokens = entry.usage?.totalTokens ?? 0;
                   const responses = entry.usage?.generations ?? 0;
                   const level = tokens > 0 ? Math.min(4, Math.ceil((tokens / maxTokens) * 4)) : 0;
-                  const dateLabel = new Intl.DateTimeFormat(undefined, {
-                    month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
-                  }).format(entry.day);
+                  const dateLabel = formatUtcDate(entry.day);
                   return (
                     <Tooltip.Root
                       key={week}
@@ -71,7 +71,11 @@ export function ActivityHeatmap({
                       <Tooltip.Trigger
                         role="gridcell"
                         data-day-index={index}
-                        aria-label={`${dateLabel}: ${formatExact(tokens)} chat tokens, ${formatExact(responses)} responses`}
+                        aria-label={t("activity.heatmap.dayLabel", {
+                          date: dateLabel,
+                          tokens: formatExact(tokens),
+                          responses: formatExact(responses),
+                        })}
                         tabIndex={focusedDay === index ? 0 : -1}
                         closeOnClick={false}
                         onClick={() => setActiveDay(index)}
@@ -92,8 +96,18 @@ export function ActivityHeatmap({
                       <Tooltip.Portal>
                         <Tooltip.Positioner side="top" sideOffset={8} className="z-50">
                           <Tooltip.Popup role="tooltip" className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
-                            <p className="font-medium">{formatCompact(tokens)} tokens on {dateLabel}</p>
-                            <p className="mt-1 text-muted-foreground">{formatExact(responses)} {responses === 1 ? "response" : "responses"}</p>
+                            <p className="font-medium">
+                              {t("activity.heatmap.tooltipTokens", {
+                                tokens: formatCompact(tokens),
+                                date: dateLabel,
+                              })}
+                            </p>
+                            <p className="mt-1 text-muted-foreground">
+                              {t("activity.heatmap.tooltipResponses", {
+                                count: responses,
+                                formatted: formatExact(responses),
+                              })}
+                            </p>
                           </Tooltip.Popup>
                         </Tooltip.Positioner>
                       </Tooltip.Portal>
@@ -112,7 +126,7 @@ export function ActivityHeatmap({
               if (week > weeks - 2) return null;
               return (
                 <span key={date} className="whitespace-nowrap" style={{ gridColumn: `${week + 1} / span ${Math.min(3, weeks - week)}` }}>
-                  {new Intl.DateTimeFormat(undefined, { month: "short", timeZone: "UTC" }).format(day)}
+                  {formatUtcMonth(day)}
                 </span>
               );
             })}

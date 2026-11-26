@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { VoiceCapability, ImageCapability } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { apiUrl } from "@/lib/api-url";
 
 interface PublicCapabilitiesResponse {
@@ -21,7 +22,7 @@ export function usePublicCapabilities() {
     queryKey: ["capabilities", "public"],
     queryFn: async () => {
       const response = await fetch(apiUrl("/api/capabilities"), { cache: "no-store" });
-      if (!response.ok) throw new Error("Could not load server capabilities.");
+      if (!response.ok) throw new Error(i18n.t("services.errors.loadCapabilitiesFailed"));
       return (await response.json()) as PublicCapabilitiesResponse;
     },
     staleTime: 30_000,

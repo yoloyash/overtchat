@@ -6,6 +6,7 @@ import {
   type GmailEmailContent,
   type GmailEmailDisplay,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   queryOptions,
   useMutation,
@@ -27,7 +28,7 @@ async function responseError(response: Response): Promise<Error> {
   return apiError(
     response.status,
     body,
-    "Could not complete the request. Please try again.",
+    i18n.t("common.errors.requestFailed"),
   );
 }
 

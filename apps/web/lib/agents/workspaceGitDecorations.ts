@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import type { AgentWorkspaceGitFile } from "@overtchat/agent-bridge";
 
 export type AgentWorkspaceGitDecorationKind =
@@ -12,7 +13,9 @@ export type AgentWorkspaceGitDecoration = {
 export const ignoredGitDecoration: AgentWorkspaceGitDecoration = {
   kind: "ignored",
   code: "",
-  label: "Ignored",
+  get label() {
+    return i18n.t("agents.workspace.gitStatus.ignored");
+  },
 };
 
 const decorationPriority: Record<AgentWorkspaceGitDecorationKind, number> = {
@@ -36,21 +39,45 @@ export function agentWorkspaceGitFileDecoration(
     (file.indexStatus === "A" && file.worktreeStatus === "A") ||
     (file.indexStatus === "D" && file.worktreeStatus === "D");
   if (conflicted) {
-    return { kind: "conflicted", code: "!", label: "Conflicted" };
+    return {
+      kind: "conflicted",
+      code: "!",
+      label: i18n.t("agents.workspace.gitStatus.conflicted"),
+    };
   }
   if (hasStatus(file, "D")) {
-    return { kind: "deleted", code: "D", label: "Deleted" };
+    return {
+      kind: "deleted",
+      code: "D",
+      label: i18n.t("agents.workspace.gitStatus.deleted"),
+    };
   }
   if (hasStatus(file, "R") || hasStatus(file, "C")) {
-    return { kind: "renamed", code: "R", label: "Renamed" };
+    return {
+      kind: "renamed",
+      code: "R",
+      label: i18n.t("agents.workspace.gitStatus.renamed"),
+    };
   }
   if (file.worktreeStatus === "?") {
-    return { kind: "added", code: "U", label: "Untracked" };
+    return {
+      kind: "added",
+      code: "U",
+      label: i18n.t("agents.workspace.gitStatus.untracked"),
+    };
   }
   if (hasStatus(file, "A")) {
-    return { kind: "added", code: "A", label: "Added" };
+    return {
+      kind: "added",
+      code: "A",
+      label: i18n.t("agents.workspace.gitStatus.added"),
+    };
   }
-  return { kind: "modified", code: "M", label: "Modified" };
+  return {
+    kind: "modified",
+    code: "M",
+    label: i18n.t("agents.workspace.gitStatus.modified"),
+  };
 }
 
 function normalizedPath(value: string): string {

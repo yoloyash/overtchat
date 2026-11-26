@@ -3,6 +3,7 @@
 import { ArrowLeft, Globe2, Plus } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
@@ -43,6 +44,7 @@ function values(items: string[]): ValueRow[] {
 }
 
 export function McpServerEditor({ server }: { server?: McpServer }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const createServer = useCreateMcpServer();
   const updateServer = useUpdateMcpServer();
@@ -136,7 +138,8 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
     });
     if (parsed.success) return parsed.data;
     setError(
-      parsed.error.issues[0]?.message ?? "Check the server configuration.",
+      parsed.error.issues[0]?.message ??
+        t("tools.mcp.editor.validationFallback"),
     );
     return null;
   }
@@ -153,12 +156,14 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
         await createServer.mutateAsync(input);
       }
       toast.success({
-        title: server ? "MCP server updated" : "MCP server added",
+        title: server
+          ? t("tools.mcp.editor.updatedTitle")
+          : t("tools.mcp.editor.addedTitle"),
         description: input.name,
       });
       void navigate({ to: "/settings/tools" });
     } catch (cause) {
-      setError(getErrorMessage(cause, "Failed to save MCP server"));
+      setError(getErrorMessage(cause, t("tools.mcp.editor.saveErrorFallback")));
     }
   }
 
@@ -171,12 +176,16 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               render={<Link to="/settings/tools" />}
               variant="ghost"
               size="icon-sm"
-              aria-label="Back to tools"
+              aria-label={t("tools.mcp.editor.backToTools")}
             >
               <ArrowLeft />
             </Button>
           }
-          title={server ? "Edit MCP server" : "Add MCP server"}
+          title={
+            server
+              ? t("tools.mcp.editor.editTitle")
+              : t("tools.mcp.editor.addTitle")
+          }
           description={
             <a
               href="https://modelcontextprotocol.io/docs"
@@ -184,30 +193,31 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               rel="noreferrer"
               className="inline-flex items-center gap-1 hover:text-foreground"
             >
-              MCP documentation <Globe2 className="size-3.5" />
+              {t("tools.mcp.editor.documentation")}{" "}
+              <Globe2 className="size-3.5" />
             </a>
           }
         />
 
         <SettingsSection
-          title="Connection"
-          description="Name this server and choose how OvertChat connects to it."
+          title={t("tools.mcp.editor.connectionTitle")}
+          description={t("tools.mcp.editor.connectionDescription")}
         >
-          <Field label="Name" htmlFor="mcp-name">
+          <Field label={t("tools.mcp.editor.nameLabel")} htmlFor="mcp-name">
             <Input
               id="mcp-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="MCP server name"
+              placeholder={t("tools.mcp.editor.namePlaceholder")}
               autoComplete="off"
             />
           </Field>
           <SettingsRow
-            title="Transport"
-            description="Run a local process or connect to an HTTP server."
+            title={t("tools.mcp.editor.transportTitle")}
+            description={t("tools.mcp.editor.transportDescription")}
           >
             <SettingsChoiceGroup
-              label="Transport"
+              label={t("tools.mcp.editor.transportTitle")}
               value={transport}
               onValueChange={(next) => setTransport(next as "stdio" | "http")}
               options={[
@@ -220,14 +230,18 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
 
         {transport === "stdio" ? (
           <SettingsSection
-            title="Local process"
-            description="Configure the command and environment used to start this server."
+            title={t("tools.mcp.editor.localProcessTitle")}
+            description={t("tools.mcp.editor.localProcessDescription")}
           >
-            <Field label="Command to launch" htmlFor="mcp-command">
+            <Field
+              label={t("tools.mcp.editor.commandLabel")}
+              htmlFor="mcp-command"
+            >
               <Input
                 id="mcp-command"
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
+                // eslint-disable-next-line i18next/no-literal-string -- example command
                 placeholder="npx"
                 autoComplete="off"
                 className="font-mono"
@@ -235,35 +249,49 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
             </Field>
 
             <RepeatableValues
-              label="Arguments"
+              label={t("tools.mcp.editor.argumentsLabel")}
               rows={args}
+              // eslint-disable-next-line i18next/no-literal-string -- example CLI argument
               placeholder="-y"
-              addLabel="Add argument"
+              addLabel={t("tools.mcp.editor.addArgument")}
+              valueLabel={(index) =>
+                t("tools.mcp.editor.argumentValueLabel", { index })
+              }
+              removeLabel={t("tools.mcp.editor.removeArgumentRow")}
               onChange={setArgs}
             />
 
             <RepeatablePairs
-              label="Environment variables"
+              label={t("tools.mcp.editor.envVarsLabel")}
               rows={environment}
-              keyPlaceholder="Key"
-              valuePlaceholder="Value"
-              addLabel="Add environment variable"
+              keyPlaceholder={t("tools.mcp.editor.keyPlaceholder")}
+              valuePlaceholder={t("tools.mcp.editor.valuePlaceholder")}
+              addLabel={t("tools.mcp.editor.addEnvVar")}
+              removeLabel={t("tools.mcp.editor.removeEnvVarRow")}
               onChange={setEnvironment}
             />
 
             <RepeatableValues
-              label="Environment variable passthrough"
+              label={t("tools.mcp.editor.envPassthroughLabel")}
               rows={passthrough}
               placeholder="VARIABLE_NAME"
-              addLabel="Add variable"
+              addLabel={t("tools.mcp.editor.addVariable")}
+              valueLabel={(index) =>
+                t("tools.mcp.editor.passthroughValueLabel", { index })
+              }
+              removeLabel={t("tools.mcp.editor.removePassthroughRow")}
               onChange={setPassthrough}
             />
 
-            <Field label="Working directory" htmlFor="mcp-cwd">
+            <Field
+              label={t("tools.mcp.editor.workingDirectoryLabel")}
+              htmlFor="mcp-cwd"
+            >
               <Input
                 id="mcp-cwd"
                 value={cwd}
                 onChange={(event) => setCwd(event.target.value)}
+                // eslint-disable-next-line i18next/no-literal-string -- example directory path
                 placeholder="/app"
                 autoComplete="off"
                 className="font-mono"
@@ -272,14 +300,18 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
           </SettingsSection>
         ) : (
           <SettingsSection
-            title="HTTP connection"
-            description="Configure the server address and optional authentication."
+            title={t("tools.mcp.editor.httpConnectionTitle")}
+            description={t("tools.mcp.editor.httpConnectionDescription")}
           >
-            <Field label="Server URL" htmlFor="mcp-url">
+            <Field
+              label={t("tools.mcp.editor.serverUrlLabel")}
+              htmlFor="mcp-url"
+            >
               <Input
                 id="mcp-url"
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
+                // eslint-disable-next-line i18next/no-literal-string -- example URL
                 placeholder="https://example.com/mcp"
                 autoComplete="off"
                 className="font-mono"
@@ -287,25 +319,27 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
             </Field>
 
             <RepeatablePairs
-              label="HTTP headers"
+              label={t("tools.mcp.editor.httpHeadersLabel")}
               rows={headers}
-              keyPlaceholder="Header"
-              valuePlaceholder="Value"
-              addLabel="Add header"
+              keyPlaceholder={t("tools.mcp.editor.headerPlaceholder")}
+              valuePlaceholder={t("tools.mcp.editor.valuePlaceholder")}
+              addLabel={t("tools.mcp.editor.addHeader")}
+              removeLabel={t("tools.mcp.editor.removeHttpHeaderRow")}
               onChange={setHeaders}
             />
 
             <RepeatablePairs
-              label="Environment variable HTTP headers"
+              label={t("tools.mcp.editor.envHeadersLabel")}
               rows={envHeaders}
-              keyPlaceholder="Header"
-              valuePlaceholder="Environment variable"
-              addLabel="Add environment header"
+              keyPlaceholder={t("tools.mcp.editor.headerPlaceholder")}
+              valuePlaceholder={t("tools.mcp.editor.envVarPlaceholder")}
+              addLabel={t("tools.mcp.editor.addEnvHeader")}
+              removeLabel={t("tools.mcp.editor.removeEnvHeaderRow")}
               onChange={setEnvHeaders}
             />
 
             <Field
-              label="Bearer token environment variable"
+              label={t("tools.mcp.editor.bearerTokenEnvVarLabel")}
               htmlFor="mcp-bearer-env"
             >
               <Input
@@ -324,10 +358,14 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
 
         <SettingsActions>
           <Button variant="outline" render={<Link to="/settings/tools" />}>
-            Cancel
+            {t("tools.mcp.editor.cancel")}
           </Button>
           <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : server ? "Save changes" : "Add server"}
+            {saving
+              ? t("tools.mcp.editor.saving")
+              : server
+                ? t("tools.mcp.editor.saveChanges")
+                : t("tools.mcp.editor.addServer")}
           </Button>
         </SettingsActions>
       </form>
@@ -356,12 +394,16 @@ function RepeatableValues({
   rows,
   placeholder,
   addLabel,
+  valueLabel,
+  removeLabel,
   onChange,
 }: {
   label: string;
   rows: ValueRow[];
   placeholder: string;
   addLabel: string;
+  valueLabel: (index: number) => string;
+  removeLabel: string;
   onChange(rows: ValueRow[]): void;
 }) {
   return (
@@ -371,7 +413,7 @@ function RepeatableValues({
           <div key={row.id} className="flex items-center gap-2">
             <Input
               value={row.value}
-              aria-label={`${label} value ${index + 1}`}
+              aria-label={valueLabel(index + 1)}
               onChange={(event) =>
                 onChange(
                   rows.map((item) =>
@@ -386,7 +428,7 @@ function RepeatableValues({
               className="font-mono"
             />
             <RemoveButton
-              label={`Remove ${label.toLowerCase()} row`}
+              label={removeLabel}
               disabled={rows.length === 1 && row.value === ""}
               onClick={() =>
                 onChange(rows.filter((item) => item.id !== row.id))

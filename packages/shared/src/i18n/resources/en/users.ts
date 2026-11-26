@@ -1,0 +1,105 @@
+export const users = {
+  page: {
+    title: "Users",
+    description: "Manage who can sign in to this server.",
+    addUser: "Add user",
+  },
+  list: {
+    title: "People",
+    configured_one: "{{count}} user configured.",
+    configured_other: "{{count}} users configured.",
+    columns: {
+      name: "Name",
+      email: "Email",
+      role: "Role",
+      twoFactor: "Two-factor",
+      created: "Created",
+      actions: "Actions",
+    },
+    roleForLabel: "Role for {{email}}",
+    twoFactorOn: "On",
+    twoFactorOff: "Off",
+    currentUser: "Current user",
+    resetPassword: "Reset password",
+    resetTwoFactor: "Reset two-factor",
+    delete: "Delete",
+  },
+  roles: {
+    user: "User",
+    admin: "Admin",
+  },
+  toast: {
+    deletedTitle: "User deleted",
+    deleteErrorFallback: "Failed to delete user.",
+    adminGrantedTitle: "Administrator access granted",
+    adminRemovedTitle: "Administrator access removed",
+    roleChangeErrorFallback: "The role could not be changed.",
+    createdTitle: "User created",
+    createErrorFallback: "Failed to create user",
+    passwordResetTitle: "Password reset",
+    passwordResetDescription: "{{email}} has been signed out on all devices.",
+    twoFactorResetTitle: "Two-factor reset",
+    twoFactorResetDescription:
+      "{{email}} can sign in with their password and set it up again.",
+  },
+  roleDialog: {
+    grantTitle: "Grant administrator access?",
+    removeTitle: "Remove administrator access?",
+    grantDescription:
+      "<email>{{email}}</email> will be able to manage users, models, and agent workspaces, including running code and opening SSH connections from this server. They will be signed out on all devices.",
+    removeDescription:
+      "<email>{{email}}</email> will lose administrator features. Their active agent runs will stop. They will be signed out on all devices.",
+    cancel: "Cancel",
+    updating: "Updating…",
+    makeAdmin: "Make admin",
+    makeUser: "Make user",
+  },
+  deleteDialog: {
+    title: "Delete user?",
+    description:
+      "<email>{{email}}</email> will no longer be able to sign in. Existing chats and projects are not deleted.",
+    cancel: "Cancel",
+    deleting: "Deleting…",
+    delete: "Delete",
+  },
+  addDialog: {
+    title: "Add user",
+    ssoDescription: "They sign in with {{provider}}, using this email address.",
+    passwordDescription:
+      "Share the password with them out-of-band. They can change it later.",
+    nameLabel: "Name",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    roleLabel: "Role",
+    cancel: "Cancel",
+    creating: "Creating…",
+    create: "Create",
+  },
+  resetPasswordDialog: {
+    title: "Reset password",
+    description:
+      "Set a replacement password for {{email}}. They will be signed out on all devices. Share the password privately; they can change it in Security settings.",
+    currentPasswordLabel: "Your current password",
+    replacementPasswordLabel: "Replacement password",
+    confirmPasswordLabel: "Confirm replacement password",
+    mismatchError: "The replacement passwords do not match.",
+    errorFallback: "Failed to reset password.",
+    networkError:
+      "Could not reset the password. Check your connection and try again.",
+    cancel: "Cancel",
+    resetting: "Resetting…",
+    submit: "Reset password",
+  },
+  resetTwoFactorDialog: {
+    title: "Reset two-factor",
+    description:
+      "Remove {{email}}'s authenticator and backup codes, for example after they lose their phone. They will be signed out on all devices and can set two-factor up again in Security settings.",
+    currentPasswordLabel: "Your current password",
+    errorFallback: "Failed to reset two-factor.",
+    networkError:
+      "Could not reset two-factor. Check your connection and try again.",
+    cancel: "Cancel",
+    resetting: "Resetting…",
+    submit: "Reset two-factor",
+  },
+} as const;

@@ -8,6 +8,27 @@ import { translatedCopy } from "../../eslint.i18n.mjs";
 const TRANSLATED = [
   "components/settings/general/**",
   "components/I18nProvider.tsx",
+  "components/scheduled/**",
+  "components/auth/**",
+  "components/projects/**",
+  "components/activity/**",
+  "components/library/**",
+  "components/settings/*.tsx",
+  "components/settings/account/**",
+  "components/settings/data/**",
+  "components/settings/personalization/**",
+  "components/settings/profile/**",
+  "components/settings/models/**",
+  "components/settings/services/**",
+  "components/settings/connections/**",
+  "components/settings/tools/**",
+  "components/settings/users/**",
+  "components/*.{ts,tsx}",
+  "components/ui/**",
+  "spa/**",
+  "lib/useDesktopUpdate.ts",
+  "components/agents/**",
+  "components/chat/**",
 ];
 
 const eslintConfig = defineConfig([

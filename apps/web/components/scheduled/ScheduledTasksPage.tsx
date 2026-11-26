@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
+import { Trans, useTranslation } from "react-i18next";
 import {
   CalendarClock,
   Check,
@@ -22,7 +23,6 @@ import {
   describeTaskSchedule,
   formatScheduledRunTime,
   formatUpdatedAt,
-  SCHEDULED_TASK_RUN_LABELS,
   scheduledTaskIsCompleted,
   type ScheduledTask,
   type ScheduledTaskRun,
@@ -102,30 +102,31 @@ function RunChatLink({
 }
 
 function TaskRuns({ task }: { task: ScheduledTask }) {
+  const { t } = useTranslation();
   const runs = useScheduledTaskRuns(task.id);
   if (runs.isPending) {
     return (
       <p role="status" className="py-2 text-xs text-muted-foreground">
-        Loading runs…
+        {t("scheduled.runs.loading")}
       </p>
     );
   }
   if (runs.isError) {
     return (
       <p role="alert" className="py-2 text-xs text-muted-foreground">
-        Could not load the runs.
+        {t("scheduled.runs.loadError")}
       </p>
     );
   }
   if (runs.data.length === 0) {
     return (
       <p className="py-2 text-xs text-muted-foreground">
-        This task has not run yet.
+        {t("scheduled.runs.empty")}
       </p>
     );
   }
   return (
-    <ul aria-label={`Runs of ${task.name}`} className="space-y-0.5">
+    <ul aria-label={t("scheduled.runs.listLabel", { name: task.name })} className="space-y-0.5">
       {runs.data.map((run) => (
         <li key={run.id} className="flex items-start gap-2 py-1 text-xs">
           <span className="mt-0.5">
@@ -137,15 +138,18 @@ function TaskRuns({ task }: { task: ScheduledTask }) {
                 {formatScheduledRunTime(run.startedAt, task.timeZone)}
               </RunChatLink>
               <span className="text-muted-foreground">
-                {SCHEDULED_TASK_RUN_LABELS[run.status]}
-                {run.trigger === "manual" && " · Run by hand"}
+                {run.trigger === "manual"
+                  ? t("scheduled.runs.statusManual", {
+                      status: t(`scheduled.runs.status.${run.status}`),
+                    })
+                  : t(`scheduled.runs.status.${run.status}`)}
                 {run.chatId && !run.seen && run.status !== "running" && (
                   <span className="ml-1.5 inline-flex items-center gap-1 text-green-700 dark:text-green-500">
                     <span
                       aria-hidden="true"
                       className="size-1.5 rounded-full bg-green-600 dark:bg-green-500"
                     />
-                    New
+                    {t("scheduled.runs.new")}
                   </span>
                 )}
               </span>
@@ -161,8 +165,15 @@ function TaskRuns({ task }: { task: ScheduledTask }) {
 }
 
 function TaskStatus({ task }: { task: ScheduledTask }) {
+  const { t } = useTranslation();
   if (task.enabled && task.nextRunAt) {
-    return <span>Next run {formatScheduledRunTime(task.nextRunAt, task.timeZone)}</span>;
+    return (
+      <span>
+        {t("scheduled.status.nextRun", {
+          time: formatScheduledRunTime(task.nextRunAt, task.timeZone),
+        })}
+      </span>
+    );
   }
   if (task.pausedReason) {
     return (
@@ -171,7 +182,13 @@ function TaskStatus({ task }: { task: ScheduledTask }) {
       </span>
     );
   }
-  return <span>{scheduledTaskIsCompleted(task) ? "Completed" : "Paused"}</span>;
+  return (
+    <span>
+      {scheduledTaskIsCompleted(task)
+        ? t("scheduled.status.completed")
+        : t("scheduled.status.paused")}
+    </span>
+  );
 }
 
 function TaskRow({
@@ -185,6 +202,7 @@ function TaskRow({
   projectName: string | undefined;
   onEdit: () => void;
 }) {
+  const { t } = useTranslation();
   const updateTask = useUpdateScheduledTask();
   const runTask = useRunScheduledTask();
   const deleteTask = useDeleteScheduledTask();
@@ -199,8 +217,10 @@ function TaskRow({
       {
         onError: (error) =>
           toast.error({
-            title: enabled ? "Could not turn the task on" : "Could not pause the task",
-            description: getErrorMessage(error, "Try again."),
+            title: enabled
+              ? t("scheduled.toast.enableError")
+              : t("scheduled.toast.pauseError"),
+            description: getErrorMessage(error, t("scheduled.errors.tryAgain")),
           }),
       },
     );
@@ -210,13 +230,15 @@ function TaskRow({
     runTask.mutate(task.id, {
       onSuccess: () =>
         toast.success({
-          title: "Running now",
-          description: `${task.name} will open a new chat when it finishes.`,
+          title: t("scheduled.toast.runningTitle"),
+          description: t("scheduled.toast.runningDescription", {
+            name: task.name,
+          }),
         }),
       onError: (error) =>
         toast.error({
-          title: "Could not run the task",
-          description: getErrorMessage(error, "Try again."),
+          title: t("scheduled.toast.runError"),
+          description: getErrorMessage(error, t("scheduled.errors.tryAgain")),
         }),
     });
   }
@@ -233,17 +255,21 @@ function TaskRow({
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">{task.name}</h2>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {describeTaskSchedule(task.schedule)}
-            {modelLabel
-              ? ` · ${modelLabel}`
-              : task.modelConfigId === null
-                ? " · Model removed"
-                : ""}
-            {projectName ? ` · ${projectName}` : ""}
+            {[
+              describeTaskSchedule(task.schedule),
+              modelLabel
+                ? modelLabel
+                : task.modelConfigId === null
+                  ? t("scheduled.task.modelRemoved")
+                  : null,
+              projectName,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
         <Switch
-          aria-label={`${task.name} is on`}
+          aria-label={t("scheduled.task.enabledLabel", { name: task.name })}
           checked={task.enabled}
           disabled={updateTask.isPending}
           onCheckedChange={setEnabled}
@@ -251,7 +277,7 @@ function TaskRow({
         />
         <Menu.Root>
           <Menu.Trigger
-            aria-label={`Actions for ${task.name}`}
+            aria-label={t("scheduled.task.actionsLabel", { name: task.name })}
             className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground motion-colors hover:bg-accent hover:text-foreground max-md:size-9"
           >
             <MoreHorizontal className="size-4" />
@@ -269,16 +295,16 @@ function TaskRow({
                   disabled={running || runTask.isPending}
                   className={itemClass}
                 >
-                  <Play className="size-3.5" /> Run now
+                  <Play className="size-3.5" /> {t("scheduled.actions.runNow")}
                 </Menu.Item>
                 <Menu.Item onClick={onEdit} className={itemClass}>
-                  <Pencil className="size-3.5" /> Edit
+                  <Pencil className="size-3.5" /> {t("scheduled.actions.edit")}
                 </Menu.Item>
                 <Menu.Item
                   onClick={() => setDeleteOpen(true)}
                   className={cn(itemClass, "text-destructive data-[highlighted]:text-destructive")}
                 >
-                  <Trash2 className="size-3.5" /> Delete
+                  <Trash2 className="size-3.5" /> {t("scheduled.actions.delete")}
                 </Menu.Item>
               </Menu.Popup>
             </Menu.Positioner>
@@ -293,8 +319,12 @@ function TaskRow({
             <RunStatusIcon status={lastRun.status} />
             <RunChatLink run={lastRun}>
               {lastRun.status === "running"
-                ? "Running now"
-                : `${SCHEDULED_TASK_RUN_LABELS[lastRun.status]} ${formatUpdatedAt(lastRun.startedAt).toLowerCase()}`}
+                ? t("scheduled.runs.runningNow")
+                : t(`scheduled.runs.lastRun.${lastRun.status}`, {
+                    time: formatUpdatedAt(lastRun.startedAt, undefined, {
+                      inline: true,
+                    }),
+                  })}
             </RunChatLink>
           </span>
         )}
@@ -310,7 +340,7 @@ function TaskRow({
           aria-hidden="true"
           className={cn("size-3 motion-transform", historyOpen && "rotate-90")}
         />
-        Runs
+        {t("scheduled.runs.toggle")}
       </button>
       {historyOpen && (
         <div className="mt-1 border-t pt-2">
@@ -335,11 +365,16 @@ function TaskRow({
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Delete task?
+              {t("scheduled.deleteDialog.title")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{task.name}</span>{" "}
-              will stop running. The chats it wrote are kept.
+              <Trans
+                i18nKey="scheduled.deleteDialog.description"
+                values={{ name: task.name }}
+                components={{
+                  name: <span className="font-medium text-foreground" />,
+                }}
+              />
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
               <AlertDialog.Close
@@ -347,7 +382,7 @@ function TaskRow({
                   <Button variant="ghost" size="sm" disabled={deleteTask.isPending} />
                 }
               >
-                Cancel
+                {t("scheduled.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -357,17 +392,25 @@ function TaskRow({
                   deleteTask.mutate(task.id, {
                     onSuccess: () => {
                       setDeleteOpen(false);
-                      toast.success({ title: "Task deleted", description: task.name });
+                      toast.success({
+                        title: t("scheduled.toast.deletedTitle"),
+                        description: task.name,
+                      });
                     },
                     onError: (error) =>
                       toast.error({
-                        title: "Could not delete the task",
-                        description: getErrorMessage(error, "Try again."),
+                        title: t("scheduled.toast.deleteError"),
+                        description: getErrorMessage(
+                          error,
+                          t("scheduled.errors.tryAgain"),
+                        ),
                       }),
                   })
                 }
               >
-                {deleteTask.isPending ? "Deleting…" : "Delete"}
+                {deleteTask.isPending
+                  ? t("scheduled.actions.deleting")
+                  : t("scheduled.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -379,6 +422,7 @@ function TaskRow({
 
 /** The list of a person's scheduled tasks, with their runs. */
 export function ScheduledTasksPage() {
+  const { t } = useTranslation();
   const tasks = useScheduledTasks();
   const { data: models } = useModelConfigs();
   const { data: projects } = useProjects();
@@ -389,15 +433,16 @@ export function ScheduledTasksPage() {
     <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
       <div className="flex items-start justify-between gap-4 px-4 pb-4 pt-6 sm:px-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Scheduled</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {t("scheduled.page.title")}
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Tasks run by themselves at the times you set. Each run opens a new
-            chat.
+            {t("scheduled.page.description")}
           </p>
         </div>
         {list.length > 0 && (
           <Button size="sm" className="shrink-0" onClick={() => setEditing("new")}>
-            <Plus /> New task
+            <Plus /> {t("scheduled.actions.newTask")}
           </Button>
         )}
       </div>
@@ -407,31 +452,30 @@ export function ScheduledTasksPage() {
       >
         {tasks.isPending ? (
           <p role="status" className="py-12 text-center text-sm text-muted-foreground">
-            Loading tasks…
+            {t("scheduled.page.loading")}
           </p>
         ) : tasks.isError ? (
           <div role="alert" className="space-y-3 py-12 text-center">
             <p className="text-sm text-muted-foreground">
-              Could not load your scheduled tasks.
+              {t("scheduled.page.loadError")}
             </p>
             <Button variant="outline" onClick={() => void tasks.refetch()}>
-              Try again
+              {t("scheduled.actions.tryAgain")}
             </Button>
           </div>
         ) : list.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <CalendarClock aria-hidden="true" className="size-8 text-muted-foreground" />
-            <p className="font-medium">No scheduled tasks yet</p>
+            <p className="font-medium">{t("scheduled.empty.title")}</p>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Create one here, or ask in any chat: “Every weekday at 8, send me
-              a news briefing.”
+              {t("scheduled.empty.description")}
             </p>
             <Button size="sm" className="mt-1" onClick={() => setEditing("new")}>
-              <Plus /> New task
+              <Plus /> {t("scheduled.actions.newTask")}
             </Button>
           </div>
         ) : (
-          <ul aria-label="Scheduled tasks" className="space-y-2">
+          <ul aria-label={t("scheduled.page.listLabel")} className="space-y-2">
             {list.map((task) => (
               <TaskRow
                 key={task.id}

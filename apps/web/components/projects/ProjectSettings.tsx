@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import { resolveChatModelId } from "@overtchat/shared";
 import { Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -58,20 +59,21 @@ export function ProjectInstructionsCard({
 }: {
   project: ProjectListItem;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const instructions = project.instructions?.trim() ?? "";
 
   return (
     <SettingsCard
-      title="Instructions"
-      description="Added to every chat in this project."
+      title={t("projects.instructions.title")}
+      description={t("projects.instructions.description")}
       action={
         instructions ? (
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Edit instructions"
-            title="Edit instructions"
+            aria-label={t("projects.instructions.edit")}
+            title={t("projects.instructions.edit")}
             onClick={() => setEditing(true)}
           >
             <Pencil />
@@ -94,7 +96,7 @@ export function ProjectInstructionsCard({
           className="w-full"
           onClick={() => setEditing(true)}
         >
-          <Plus /> Add instructions
+          <Plus /> {t("projects.instructions.add")}
         </Button>
       )}
       <InstructionsDialog
@@ -115,6 +117,7 @@ function InstructionsDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const updateMut = useUpdateProject(project.id);
   const saved = project.instructions ?? "";
   const [draft, setDraft] = useState(saved);
@@ -130,14 +133,14 @@ function InstructionsDialog({
       {
         onSuccess: () => {
           onClose();
-          toast.success("Instructions saved");
+          toast.success(t("projects.instructions.toast.saved"));
         },
         onError: (err) => {
           toast.error({
-            title: "Failed to save instructions",
+            title: t("projects.instructions.toast.saveError"),
             description: getErrorMessage(
               err,
-              "The project instructions were not changed.",
+              t("projects.instructions.errors.saveFallback"),
             ),
           });
         },
@@ -164,11 +167,10 @@ function InstructionsDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Project instructions
+            {t("projects.instructions.dialogTitle")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Tell the model how to respond in {project.name}: context, tone,
-            or preferences it should always follow.
+            {t("projects.instructions.dialogDescription", { name: project.name })}
           </Dialog.Description>
           <form
             className="mt-5 flex min-h-0 flex-1 flex-col"
@@ -179,7 +181,7 @@ function InstructionsDialog({
           >
             <Textarea
               autoFocus
-              aria-label="Instructions"
+              aria-label={t("projects.instructions.title")}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
@@ -188,12 +190,12 @@ function InstructionsDialog({
                   save();
                 }
               }}
-              placeholder="e.g. Always respond in concise bullet points. Assume the reader is a senior engineer."
+              placeholder={t("projects.instructions.placeholder")}
               className="field-sizing-fixed min-h-64 flex-1 resize-none leading-relaxed"
             />
             <div className="mt-4 flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground max-sm:hidden">
-                {dirty ? "Unsaved changes" : " "}
+                {dirty ? t("projects.instructions.unsavedChanges") : " "}
               </span>
               <div className="ml-auto flex gap-2">
                 <Button
@@ -203,14 +205,16 @@ function InstructionsDialog({
                   disabled={updateMut.isPending}
                   onClick={onClose}
                 >
-                  Cancel
+                  {t("projects.actions.cancel")}
                 </Button>
                 <Button
                   type="submit"
                   size="sm"
                   disabled={!dirty || updateMut.isPending}
                 >
-                  {updateMut.isPending ? "Saving…" : "Save"}
+                  {updateMut.isPending
+                    ? t("projects.actions.saving")
+                    : t("projects.actions.save")}
                 </Button>
               </div>
             </div>
@@ -229,6 +233,7 @@ export function ProjectModelCard({
   /** Receives the model new chats now start with. */
   onDefaultModelChange?: (modelId: string) => void;
 }) {
+  const { t } = useTranslation();
   const { data: models, isError } = useModelConfigs();
   const preferences = useModelPreferences();
   const updateMut = useUpdateProject(project.id);
@@ -261,8 +266,8 @@ export function ProjectModelCard({
         },
         onError: (err) => {
           toast.error({
-            title: "Failed to change the default model",
-            description: getErrorMessage(err, "Please try again."),
+            title: t("projects.model.toast.changeError"),
+            description: getErrorMessage(err, t("projects.model.errors.changeFallback")),
           });
         },
       },
@@ -271,15 +276,15 @@ export function ProjectModelCard({
 
   return (
     <SettingsCard
-      title="Default model"
-      description="New chats in this project start with this model."
+      title={t("projects.model.title")}
+      description={t("projects.model.description")}
     >
       <Select
         value={value}
         onValueChange={(next) => select(next as string)}
         disabled={!models || isError || updateMut.isPending}
       >
-        <SelectTrigger aria-label="Default model" className="w-full">
+        <SelectTrigger aria-label={t("projects.model.title")} className="w-full">
           <SelectValue>
             {projectDefault ? (
               <>
@@ -293,7 +298,7 @@ export function ProjectModelCard({
               </>
             ) : (
               <span className="truncate">
-                {models ? "Account default" : "Loading…"}
+                {models ? t("projects.model.accountDefault") : t("projects.loading")}
                 {accountDefault && (
                   <span className="text-muted-foreground">
                     {" "}
@@ -307,9 +312,9 @@ export function ProjectModelCard({
         <SelectContent className="max-h-80 min-w-60">
           <SelectItem value={ACCOUNT_DEFAULT}>
             <span className="flex min-w-0 flex-col">
-              <span>Account default</span>
+              <span>{t("projects.model.accountDefault")}</span>
               <span className="truncate text-xs text-muted-foreground">
-                {accountDefault?.label ?? "No models configured"}
+                {accountDefault?.label ?? t("projects.model.noModels")}
               </span>
             </span>
           </SelectItem>
@@ -327,8 +332,7 @@ export function ProjectModelCard({
       </Select>
       {unavailable && (
         <p className="mt-2 text-xs text-muted-foreground">
-          The selected model is unavailable, so new chats use your account
-          default.
+          {t("projects.model.unavailable")}
         </p>
       )}
     </SettingsCard>

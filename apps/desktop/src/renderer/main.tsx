@@ -5,6 +5,7 @@ import { createHashHistory } from "@tanstack/react-router";
 import { DesktopWindowControls } from "@/components/DesktopWindowControls";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { AppError } from "@/components/AppError";
+import { I18nProvider } from "@/components/I18nProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ACCENT_STORAGE_KEY, applyAccent } from "@/lib/accent";
 import { setApiOrigin } from "@/lib/api-url";
@@ -49,9 +50,12 @@ function render(children: ReactNode): void {
   root.render(
     <StrictMode>
       <ThemeProvider>
-        {children}
-        {/* Electron applies native drag exclusions in DOM order, not z-index order. */}
-        <DesktopWindowControls />
+        {/* The window controls sit outside the app, so translations start here. */}
+        <I18nProvider>
+          {children}
+          {/* Electron applies native drag exclusions in DOM order, not z-index order. */}
+          <DesktopWindowControls />
+        </I18nProvider>
       </ThemeProvider>
     </StrictMode>,
   );
