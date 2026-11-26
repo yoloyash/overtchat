@@ -97,9 +97,12 @@ test("the saved language is validated", () => {
 
 test("dates and numbers use the active language, in the device's regional form", () => {
   assert.equal(resolveFormatLocale("en", ["en-GB", "zh-CN"]), "en-GB");
-  assert.equal(resolveFormatLocale("zh-CN", ["en-US"]), "zh-CN");
+  // Chinese always names its script: Android formats a bare "zh-CN" in English.
+  assert.equal(resolveFormatLocale("zh-CN", ["en-US"]), "zh-Hans-CN");
   assert.equal(resolveFormatLocale("zh-CN", ["en-US", "zh-Hans-SG"]), "zh-Hans-SG");
-  assert.equal(resolveFormatLocale("zh-CN", ["zh_CN"]), "zh-CN");
+  assert.equal(resolveFormatLocale("zh-CN", ["zh_CN"]), "zh-Hans-CN");
+  assert.equal(resolveFormatLocale("zh-CN", ["zh"]), "zh-Hans");
+  assert.equal(resolveFormatLocale("zh-CN", ["zh-SG"]), "zh-Hans-SG");
   assert.equal(resolveFormatLocale("en", ["zh-TW"]), "en");
   assert.equal(resolveFormatLocale("en", []), "en");
 });

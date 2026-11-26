@@ -28,7 +28,7 @@ export default function AgentsLayout() {
         name="index"
         options={{
           title: t("agents.mobile.newSession.title"),
-          headerLeft: () => <DrawerToggleButton tintColor={colors.foreground} />,
+          headerLeft: () => <DrawerToggleButton tintColor={colors.foreground} accessibilityLabel={t("sidebar.mobile.openMenu")} />,
         }}
       />
       <Stack.Screen name="history" options={{ title: t("agents.history.title") }} />

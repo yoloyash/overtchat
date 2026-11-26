@@ -51,6 +51,19 @@ export function resolveSupportedLocale(
 }
 
 /**
+ * A Chinese tag with its script spelled out: "zh-CN" becomes "zh-Hans-CN".
+ * Android's JavaScript engine formats "zh-CN" dates in English, and only
+ * understands the form that names the script.
+ */
+function withScript(tag: string): string {
+  const parts = tag.replaceAll("_", "-").split("-");
+  if (parts[0]?.toLowerCase() !== "zh" || parts.some((part) => /^han[st]$/i.test(part))) {
+    return parts.join("-");
+  }
+  return ["zh", "Hans", ...parts.slice(1)].join("-");
+}
+
+/**
  * The locale for dates, times and numbers. It is the active language, in the
  * device's own regional form when the device lists that language (so English
  * on a British phone keeps British dates), and never another language: a
@@ -61,5 +74,5 @@ export function resolveFormatLocale(
   systemLocales: readonly string[],
 ): string {
   const own = systemLocales.find((tag) => matchSystemLocale(tag) === active);
-  return own ? own.replaceAll("_", "-") : active;
+  return withScript(own ?? active);
 }

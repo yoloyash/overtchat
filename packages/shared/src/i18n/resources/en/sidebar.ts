@@ -136,6 +136,8 @@ export const sidebar = {
     },
   },
   mobile: {
+    openMenu: "Show navigation menu",
+    closeMenu: "Close navigation menu",
     refreshChatsError: "Couldn't refresh chats",
     createProjectError: "Couldn't create project",
     loadChatsError: "Couldn't load chats",

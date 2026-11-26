@@ -134,6 +134,8 @@ export const sidebar: Translation["sidebar"] = {
     },
   },
   mobile: {
+    openMenu: "显示导航菜单",
+    closeMenu: "关闭导航菜单",
     refreshChatsError: "无法刷新对话",
     createProjectError: "无法创建项目",
     loadChatsError: "无法加载对话",
