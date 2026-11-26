@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 import type { ServerProblem } from "../shared/ipc";
 import { hostOf, shell } from "./shell";
 
-function describe(host: string, problem: ServerProblem): { title: string; message: string } {
+function describe(host: string, problem: ServerProblem, t: TFunction): { title: string; message: string } {
+  const version = problem.kind === "unreachable" ? undefined : problem.version;
   switch (problem.kind) {
     case "unreachable":
-      return { title: `Can't reach ${host}`, message: problem.message };
+      return { title: t("app.desktopShell.problem.unreachableTitle", { host }), message: problem.message };
     case "server-outdated":
       return {
-        title: `${host} needs an update`,
-        message: `It runs ${problem.version ? `OvertChat ${problem.version}` : "an older OvertChat"}, which this app can't use. Update the server, then try again.`,
+        title: t("app.desktopShell.problem.serverOutdatedTitle", { host }),
+        message: version
+          ? t("app.desktopShell.problem.serverOutdatedVersion", { version })
+          : t("app.desktopShell.problem.serverOutdatedUnknown"),
       };
     case "app-outdated":
       return {
-        title: "This app needs an update",
-        message: `${host} runs ${problem.version ? `OvertChat ${problem.version}` : "a newer OvertChat"}, which is newer than this app supports. Update the desktop app.`,
+        title: t("app.desktopShell.problem.appOutdatedTitle"),
+        message: version
+          ? t("app.desktopShell.problem.appOutdatedVersion", { host, version })
+          : t("app.desktopShell.problem.appOutdatedUnknown", { host }),
       };
   }
 }
@@ -29,6 +36,7 @@ export function ServerProblemScreen({
   origin: string;
   problem: ServerProblem;
 }) {
+  const { t } = useTranslation();
   const host = hostOf(origin);
   const [problem, setProblem] = useState(initialProblem);
   const [checking, setChecking] = useState(false);
@@ -43,11 +51,11 @@ export function ServerProblemScreen({
       }
       setProblem(server.problem);
     } catch {
-      setProblem({ kind: "unreachable", message: "Couldn't check the server. Try again or change the address." });
+      setProblem({ kind: "unreachable", message: t("app.desktopShell.problem.checkFailed") });
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [t]);
 
   // A server that was offline is often back when the network is.
   useEffect(() => {
@@ -57,7 +65,7 @@ export function ServerProblemScreen({
     return () => window.removeEventListener("online", onOnline);
   }, [problem.kind, retry]);
 
-  const { title, message } = describe(host, problem);
+  const { title, message } = describe(host, problem, t);
 
   return (
     <section className="space-y-5" aria-live="polite">
@@ -70,10 +78,10 @@ export function ServerProblemScreen({
           <DesktopUpdateAction alwaysVisible />
         )}
         <Button disabled={checking} onClick={() => void retry()} className="w-full">
-          {checking ? "Checking…" : "Try again"}
+          {checking ? t("app.desktopShell.problem.checking") : t("app.desktopShell.problem.tryAgain")}
         </Button>
         <Button variant="outline" onClick={() => void shell.changeServer()} className="w-full">
-          Change server
+          {t("app.desktopShell.problem.changeServer")}
         </Button>
       </div>
     </section>
