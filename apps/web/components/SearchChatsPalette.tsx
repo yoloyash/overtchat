@@ -86,7 +86,7 @@ export function SearchChatsPalette({
     const out: Row[] = [{ kind: "new" }];
 
     if (q.length < 2) {
-      const groups = groupByDate(chats);
+      const groups = groupByDate(chats, t);
       for (const g of groups) {
         out.push({ kind: "label", bucket: g.key });
         for (const c of g.items) out.push({ kind: "chat", chat: c });
@@ -99,7 +99,7 @@ export function SearchChatsPalette({
       for (const h of hits) out.push({ kind: "hit", hit: h });
     }
     return out;
-  }, [chats, q, hits]);
+  }, [chats, q, hits, t]);
 
   const selectableIndexes = useMemo(
     () =>
@@ -205,7 +205,7 @@ export function SearchChatsPalette({
                   >
                     {row.bucket === "results"
                       ? t("sidebar.searchPalette.results")
-                      : dateBucketLabel(row.bucket)}
+                      : dateBucketLabel(row.bucket, t)}
                   </div>
                 );
               }

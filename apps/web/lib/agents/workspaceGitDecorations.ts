@@ -1,4 +1,4 @@
-import { i18n } from "@overtchat/shared/i18n";
+import type { TFunction } from "i18next";
 import type { AgentWorkspaceGitFile } from "@overtchat/agent-bridge";
 
 export type AgentWorkspaceGitDecorationKind =
@@ -10,13 +10,13 @@ export type AgentWorkspaceGitDecoration = {
   label: string;
 };
 
-export const ignoredGitDecoration: AgentWorkspaceGitDecoration = {
-  kind: "ignored",
-  code: "",
-  get label() {
-    return i18n.t("agents.workspace.gitStatus.ignored");
-  },
-};
+export function ignoredGitDecoration(t: TFunction): AgentWorkspaceGitDecoration {
+  return {
+    kind: "ignored",
+    code: "",
+    label: t("agents.workspace.gitStatus.ignored"),
+  };
+}
 
 const decorationPriority: Record<AgentWorkspaceGitDecorationKind, number> = {
   ignored: 0,
@@ -33,6 +33,7 @@ function hasStatus(file: AgentWorkspaceGitFile, status: string): boolean {
 
 export function agentWorkspaceGitFileDecoration(
   file: AgentWorkspaceGitFile,
+  t: TFunction,
 ): AgentWorkspaceGitDecoration {
   const conflicted =
     hasStatus(file, "U") ||
@@ -42,41 +43,41 @@ export function agentWorkspaceGitFileDecoration(
     return {
       kind: "conflicted",
       code: "!",
-      label: i18n.t("agents.workspace.gitStatus.conflicted"),
+      label: t("agents.workspace.gitStatus.conflicted"),
     };
   }
   if (hasStatus(file, "D")) {
     return {
       kind: "deleted",
       code: "D",
-      label: i18n.t("agents.workspace.gitStatus.deleted"),
+      label: t("agents.workspace.gitStatus.deleted"),
     };
   }
   if (hasStatus(file, "R") || hasStatus(file, "C")) {
     return {
       kind: "renamed",
       code: "R",
-      label: i18n.t("agents.workspace.gitStatus.renamed"),
+      label: t("agents.workspace.gitStatus.renamed"),
     };
   }
   if (file.worktreeStatus === "?") {
     return {
       kind: "added",
       code: "U",
-      label: i18n.t("agents.workspace.gitStatus.untracked"),
+      label: t("agents.workspace.gitStatus.untracked"),
     };
   }
   if (hasStatus(file, "A")) {
     return {
       kind: "added",
       code: "A",
-      label: i18n.t("agents.workspace.gitStatus.added"),
+      label: t("agents.workspace.gitStatus.added"),
     };
   }
   return {
     kind: "modified",
     code: "M",
-    label: i18n.t("agents.workspace.gitStatus.modified"),
+    label: t("agents.workspace.gitStatus.modified"),
   };
 }
 
@@ -105,12 +106,13 @@ function setStrongestDecoration(
 
 export function agentWorkspaceGitDecorationMap(
   files: AgentWorkspaceGitFile[],
+  t: TFunction,
 ): Map<string, AgentWorkspaceGitDecoration> {
   const decorations = new Map<string, AgentWorkspaceGitDecoration>();
   for (const file of files) {
     const path = normalizedPath(file.path);
     if (!path) continue;
-    const decoration = agentWorkspaceGitFileDecoration(file);
+    const decoration = agentWorkspaceGitFileDecoration(file, t);
     setStrongestDecoration(decorations, path, decoration);
     let parent = parentPath(path);
     while (parent) {

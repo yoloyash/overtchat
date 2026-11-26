@@ -222,7 +222,8 @@ describe("agent attention sections", () => {
 
 describe("recent agent setups", () => {
   it("orders setups by their latest activity, then list order", () => {
-    const setups = recentAgentSetups([
+    const setups = recentAgentSetups(
+      [
       connection("codex", [
         { id: "codex-empty", name: "empty", sessions: [] },
         { id: "codex-app", name: "app", sessions: [session("a", { modifiedAt: 10 })] },
@@ -235,7 +236,9 @@ describe("recent agent setups", () => {
         ],
         { transport: "ssh", sshAlias: "home-server", name: "home-server" },
       ),
-    ]);
+      ],
+      i18n.t,
+    );
     expect(
       setups.map(({ workspaceId, provider, hostLabel, activityAt }) => [workspaceId, provider, hostLabel, activityAt]),
     ).toEqual([
@@ -244,7 +247,7 @@ describe("recent agent setups", () => {
       ["codex-empty", "codex", "This machine", 0],
       ["claude-empty", "claude", "home-server", 0],
     ]);
-    expect(recentAgentSetups([])).toEqual([]);
+    expect(recentAgentSetups([], i18n.t)).toEqual([]);
   });
 });
 
@@ -320,14 +323,18 @@ describe("agent session search", () => {
     ),
   ]);
   const search = (overrides: Partial<Parameters<typeof searchAgentSessions>[1]>) =>
-    searchAgentSessions(groups, {
-      query: "",
-      host: null,
-      workspace: null,
-      provider: null,
-      sort: "activity",
-      ...overrides,
-    }).map((entry) => entry.item.session.id);
+    searchAgentSessions(
+      groups,
+      {
+        query: "",
+        host: null,
+        workspace: null,
+        provider: null,
+        sort: "activity",
+        ...overrides,
+      },
+      i18n.t,
+    ).map((entry) => entry.item.session.id);
 
   it("lists every session by latest activity, or by creation", () => {
     expect(search({})).toEqual(["docs", "flaky", "pagination"]);
@@ -351,11 +358,11 @@ describe("agent session search", () => {
   });
 
   it("offers only the machines, folders and agents that have sessions", () => {
-    expect(agentSessionHosts(groups)).toEqual(["This machine", "home-server"]);
-    expect(agentSessionWorkspaces(groups, null)).toEqual(["api", "app"]);
-    expect(agentSessionWorkspaces(groups, "home-server")).toEqual(["api"]);
-    expect(agentSessionProviders(groups, null, null)).toEqual(["claude", "codex"]);
-    expect(agentSessionProviders(groups, "This machine", null)).toEqual(["codex"]);
-    expect(agentSessionProviders(groups, null, "api")).toEqual(["claude"]);
+    expect(agentSessionHosts(groups, i18n.t)).toEqual(["This machine", "home-server"]);
+    expect(agentSessionWorkspaces(groups, null, i18n.t)).toEqual(["api", "app"]);
+    expect(agentSessionWorkspaces(groups, "home-server", i18n.t)).toEqual(["api"]);
+    expect(agentSessionProviders(groups, null, null, i18n.t)).toEqual(["claude", "codex"]);
+    expect(agentSessionProviders(groups, "This machine", null, i18n.t)).toEqual(["codex"]);
+    expect(agentSessionProviders(groups, null, "api", i18n.t)).toEqual(["claude"]);
   });
 });

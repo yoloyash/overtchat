@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { parseHTML } from "linkedom";
 import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import { describe, expect, it } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   codeExecutionFileIndex,
   codeFileLinkName,
@@ -41,25 +43,27 @@ const files = codeExecutionFileIndex([{ parts: [run([chart]), { type: "text" }] 
 function render(markdown: string) {
   return parseHTML(
     renderToStaticMarkup(
-      <CodeFilesProvider value={files}>
-        <Streamdown
-          mode="static"
-          remarkPlugins={[...Object.values(defaultRemarkPlugins), codeFileLinks]}
-          allowedTags={CODE_FILE_ALLOWED_TAGS}
-          components={{
-            [CODE_FILE_TAG]: (props: Record<string, unknown>) => (
-              <CodeFileLink
-                filename={props.filename as string | undefined}
-                embed={props.embed as string | undefined}
-              >
-                {props.children as React.ReactNode}
-              </CodeFileLink>
-            ),
-          }}
-        >
-          {markdown}
-        </Streamdown>
-      </CodeFilesProvider>,
+      <I18nextProvider i18n={i18n}>
+        <CodeFilesProvider value={files}>
+          <Streamdown
+            mode="static"
+            remarkPlugins={[...Object.values(defaultRemarkPlugins), codeFileLinks]}
+            allowedTags={CODE_FILE_ALLOWED_TAGS}
+            components={{
+              [CODE_FILE_TAG]: (props: Record<string, unknown>) => (
+                <CodeFileLink
+                  filename={props.filename as string | undefined}
+                  embed={props.embed as string | undefined}
+                >
+                  {props.children as React.ReactNode}
+                </CodeFileLink>
+              ),
+            }}
+          >
+            {markdown}
+          </Streamdown>
+        </CodeFilesProvider>
+      </I18nextProvider>,
     ),
   ).document;
 }

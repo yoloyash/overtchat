@@ -463,7 +463,7 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{label}</div>
         <div className="text-xs text-muted-foreground">
-          {humanMediaLabel(part.mediaType)}
+          {humanMediaLabel(part.mediaType, t)}
         </div>
       </div>
     </a>

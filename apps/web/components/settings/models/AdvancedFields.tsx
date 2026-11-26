@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import Editor from "react-simple-code-editor";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,12 @@ import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import { cn } from "@/lib/utils";
 import { SettingsRow, SettingsSection } from "../SettingsRows";
 
-function parseProviderOptions(text: string): string | null {
+function parseProviderOptions(text: string, t: TFunction): string | null {
   if (!text.trim()) return null;
   try {
     const parsed = JSON.parse(text);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return i18n.t("models.advanced.providerOptionsMustBeObject");
+      return t("models.advanced.providerOptionsMustBeObject");
     }
     return null;
   } catch (e) {
@@ -68,7 +68,7 @@ export function AdvancedFields({
 }: AdvancedFieldsProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(Boolean(defaultOpen));
-  const providerOptionsError = parseProviderOptions(providerOptionsText);
+  const providerOptionsError = parseProviderOptions(providerOptionsText, t);
 
   function handleProviderOptionsBlur() {
     if (!providerOptionsText.trim() || providerOptionsError) return;
@@ -177,7 +177,7 @@ export function AdvancedFields({
                   onValueChange={(next) =>
                     onProviderOptionsTextChange(
                       next,
-                      parseProviderOptions(next),
+                      parseProviderOptions(next, t),
                     )
                   }
                   highlight={(code) => code}

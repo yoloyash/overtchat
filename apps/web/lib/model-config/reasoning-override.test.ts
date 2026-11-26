@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import { ModelConfigSchema } from "./schema";
 import {
   REASONING_OVERRIDE_PRESETS,
@@ -56,7 +57,7 @@ describe("thinking overrides", () => {
     ],
     [{ defaultLevel: "on", requests: { ultra: {} } }, 'Unknown thinking level "ultra"'],
   ])("rejects %j", (override, message) => {
-    expect(reasoningOverrideIssue(override)).toContain(message);
+    expect(reasoningOverrideIssue(override, i18n.t)).toContain(message);
     const result = ModelConfigSchema.safeParse({
       ...base,
       reasoningOverride: override,

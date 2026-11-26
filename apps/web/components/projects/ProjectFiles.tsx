@@ -173,7 +173,7 @@ export function ProjectFilesCard({
                 >
                   <span className="block truncate text-sm">{file.filename}</span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {humanMediaLabel(file.mediaType)} · {formatSize(file.size)}
+                    {humanMediaLabel(file.mediaType, t)} · {formatSize(file.size, t)}
                     {file.pageCount
                       ? ` · ${t("projects.files.pages", { count: file.pageCount })}`
                       : ""}

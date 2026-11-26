@@ -72,7 +72,7 @@ export function MessageTime({
   const locale = useFormatLocale();
   const now = useNow(60_000);
   const date = new Date(at);
-  const formattedDate = date.toLocaleString(undefined, {
+  const formattedDate = date.toLocaleString(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   });

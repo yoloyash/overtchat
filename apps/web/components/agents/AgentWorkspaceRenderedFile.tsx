@@ -8,6 +8,7 @@ import {
   DelimitedTable,
   HtmlFilePreview,
 } from "@/components/chat/FilePreviewBodies";
+import { i18n } from "@overtchat/shared/i18n";
 import { svgPreviewSource } from "@/lib/chat/code-preview";
 import {
   MESSAGE_MARKDOWN_PLUGINS,
@@ -102,7 +103,7 @@ export function AgentWorkspaceImage({
 function svgImageSource(content: string): string | null {
   try {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-      svgPreviewSource(content),
+      svgPreviewSource(content, i18n.t),
     )}`;
   } catch {
     return null;

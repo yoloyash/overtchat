@@ -2,8 +2,8 @@
 
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -136,8 +136,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     pairs(existing?.headers ?? {}, false),
   );
   const { headers, error: headersError } = useMemo(
-    () => modelHeadersFromRows(headerRows),
-    [headerRows],
+    () => modelHeadersFromRows(headerRows, t),
+    [headerRows, t],
   );
   const [providerOptionsText, setProviderOptionsText] = useState(() =>
     existing?.providerOptions
@@ -530,7 +530,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             <>
               <SettingsRow
                 title={t("models.editor.toolCallingTitle")}
-                description={toolCallingDescription(capabilitiesHint)}
+                description={toolCallingDescription(capabilitiesHint, t)}
                 align="center"
                 controlAlign="end"
                 layout="toggle"
@@ -844,12 +844,13 @@ function parsePricingDraft(pricing: ModelPricingDraft): ModelPricing | null {
 
 function toolCallingDescription(
   capabilities: ModelCapabilities | null | undefined,
+  t: TFunction,
 ): string {
   if (capabilities?.toolCalling === true) {
-    return i18n.t("models.editor.toolCallingSupported");
+    return t("models.editor.toolCallingSupported");
   }
   if (capabilities?.toolCalling === false) {
-    return i18n.t("models.editor.toolCallingUnsupported");
+    return t("models.editor.toolCallingUnsupported");
   }
-  return i18n.t("models.editor.toolCallingUnknown");
+  return t("models.editor.toolCallingUnknown");
 }

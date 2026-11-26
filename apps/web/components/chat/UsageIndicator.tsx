@@ -3,6 +3,7 @@
 import { Popover } from "@base-ui/react/popover";
 import { CircleDollarSign } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { combinePricedUsage } from "@overtchat/shared/usage";
 import {
   getContextMeterValues,
@@ -85,6 +86,7 @@ function CostSection({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const partial = getCostCoverage(usage) === "partial";
   const cost = formatNanoUsd(usage.totalCostNanoUsd);
   return (
@@ -104,18 +106,18 @@ function CostSection({
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2">
-        <DetailRow label={t("chat.usage.input")} value={formatInteger(usage.inputTokens)} />
-        <DetailRow label={t("chat.usage.output")} value={formatInteger(usage.outputTokens)} />
+        <DetailRow label={t("chat.usage.input")} value={formatInteger(usage.inputTokens, locale)} />
+        <DetailRow label={t("chat.usage.output")} value={formatInteger(usage.outputTokens, locale)} />
         {usage.cacheReadTokens > 0 ? (
           <DetailRow
             label={t("chat.usage.cacheRead")}
-            value={formatInteger(usage.cacheReadTokens)}
+            value={formatInteger(usage.cacheReadTokens, locale)}
           />
         ) : null}
         {usage.cacheWriteTokens > 0 ? (
           <DetailRow
             label={t("chat.usage.cacheWrite")}
-            value={formatInteger(usage.cacheWriteTokens)}
+            value={formatInteger(usage.cacheWriteTokens, locale)}
           />
         ) : null}
       </div>
@@ -132,6 +134,7 @@ export function UsageIndicator({
   className,
 }: UsageIndicatorProps) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const contextUnavailable = contextUsage?.usedTokens === null;
   const context = contextUsage
     ? getContextMeterValues(
@@ -268,12 +271,12 @@ export function UsageIndicator({
                     <div className="mt-2 flex items-center justify-between gap-4 text-muted-foreground">
                       <span>
                         {t("chat.usage.tokensUsed", {
-                          count: formatInteger(context.usedTokens),
+                          count: formatInteger(context.usedTokens, locale),
                         })}
                       </span>
                       <span>
                         {t("chat.usage.tokensRemaining", {
-                          count: formatInteger(context.remainingTokens ?? 0),
+                          count: formatInteger(context.remainingTokens ?? 0, locale),
                         })}
                       </span>
                     </div>
@@ -286,7 +289,7 @@ export function UsageIndicator({
                       <>
                         <span>
                           {t("chat.usage.tokensCount", {
-                            count: formatInteger(context.usedTokens),
+                            count: formatInteger(context.usedTokens, locale),
                           })}
                         </span>
                         <span>{t("chat.usage.limitUnknown")}</span>
@@ -301,7 +304,7 @@ export function UsageIndicator({
               <CostSection
                 title={t("chat.usage.session")}
                 summary={t("chat.usage.tokensCount", {
-                  count: formatInteger(session.totalTokens),
+                  count: formatInteger(session.totalTokens, locale),
                 })}
                 usage={session}
                 className={cn(context && "mt-4 border-t pt-4")}
@@ -313,7 +316,7 @@ export function UsageIndicator({
                 title={t("chat.usage.images")}
                 summary={t("chat.usage.imageCount", {
                   count: images.generations,
-                  formattedCount: formatInteger(images.generations),
+                  formattedCount: formatInteger(images.generations, locale),
                 })}
                 usage={images}
                 className={cn((context || session) && "mt-4 border-t pt-4")}

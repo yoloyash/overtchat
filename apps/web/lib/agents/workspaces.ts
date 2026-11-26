@@ -1,4 +1,4 @@
-import { i18n } from "@overtchat/shared/i18n";
+import type { TFunction } from "i18next";
 import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
@@ -39,8 +39,9 @@ export type AgentWorkspaceProviderTarget = {
 /** How a machine is named everywhere: its SSH alias, else its name. */
 export function agentHostLabel(
   host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
+  t: TFunction,
 ): string {
-  return host.sshAlias || host.name || i18n.t("connections.hosts.thisServer");
+  return host.sshAlias || host.name || t("connections.hosts.thisServer");
 }
 
 export function agentTargetKey(target: AgentDiscoveryTarget): string {

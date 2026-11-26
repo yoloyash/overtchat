@@ -4,6 +4,7 @@ import { Popover } from "@base-ui/react/popover";
 import { ListChecks, Pause, Play, Target, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import type { AgentGoal } from "@overtchat/agent-bridge";
 import { Button } from "@/components/ui/button";
 import type { AgentTaskListSnapshot } from "@/lib/agents/presentation";
@@ -212,15 +213,16 @@ function TaskContext({ snapshot }: { snapshot: AgentTaskListSnapshot }) {
 
 function GoalUsage({ goal }: { goal: AgentGoal }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const usage =
     goal.tokenBudget !== null
       ? t("agents.context.tokensBudget", {
-          used: goal.tokensUsed.toLocaleString(),
-          budget: goal.tokenBudget.toLocaleString(),
+          used: goal.tokensUsed.toLocaleString(locale),
+          budget: goal.tokenBudget.toLocaleString(locale),
         })
       : goal.tokensUsed > 0
         ? t("agents.context.tokensUsed", {
-            used: goal.tokensUsed.toLocaleString(),
+            used: goal.tokensUsed.toLocaleString(locale),
           })
         : null;
   const elapsed = formatGoalElapsed(goal.timeUsedSeconds, t);

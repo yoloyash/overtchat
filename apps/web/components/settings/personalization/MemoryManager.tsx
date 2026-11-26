@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Brain, Pencil, Plus, Search } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
@@ -26,6 +27,7 @@ export function MemoryManager({
   usage: PersonalizationSnapshot["contextUsage"];
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const clearMemories = useClearMemories();
   const [memoryDialog, setMemoryDialog] = useState<
     Memory | null | undefined
@@ -47,8 +49,8 @@ export function MemoryManager({
     ),
   );
   const usageTitle = t("personalization.memories.usageTooltip", {
-    bytes: usage.bytes.toLocaleString(),
-    limit: usage.limit.toLocaleString(),
+    bytes: usage.bytes.toLocaleString(locale),
+    limit: usage.limit.toLocaleString(locale),
     entries: usage.entries,
     entryLimit: usage.entryLimit,
   });
@@ -150,6 +152,7 @@ export function MemoryManager({
 
 function MemoryCard({ memory, onEdit }: { memory: Memory; onEdit: () => void }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   return (
     <article className="group/memory flex items-start gap-3 py-4">
       <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -164,7 +167,7 @@ function MemoryCard({ memory, onEdit }: { memory: Memory; onEdit: () => void }) 
           <span aria-hidden="true">·</span>
           <time dateTime={memory.updatedAt}>
             {t("personalization.memories.updated", {
-              date: new Date(memory.updatedAt).toLocaleDateString(),
+              date: new Date(memory.updatedAt).toLocaleDateString(locale),
             })}
           </time>
         </div>

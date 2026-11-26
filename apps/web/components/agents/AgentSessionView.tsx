@@ -651,7 +651,7 @@ export function AgentSessionView({
           accepting={supportsImages}
           kind="images"
           onFiles={(files) => composerRef.current?.addFiles(files)}
-          {...agentImageDropLabels(providerLabel)}
+          {...agentImageDropLabels(providerLabel, t)}
         >
           <AgentSessionHeader
             provider={provider}

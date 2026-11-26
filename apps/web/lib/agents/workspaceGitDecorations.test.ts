@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentWorkspaceGitFile } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   agentWorkspaceGitDecorationMap,
   agentWorkspaceGitFileDecoration,
@@ -16,37 +17,37 @@ function file(
 describe("agent workspace Git decorations", () => {
   it("maps porcelain status combinations to familiar editor decorations", () => {
     expect(
-      agentWorkspaceGitFileDecoration(file("new.ts", null, "?")),
+      agentWorkspaceGitFileDecoration(file("new.ts", null, "?"), i18n.t),
     ).toMatchObject({
       kind: "added",
       code: "U",
     });
     expect(
-      agentWorkspaceGitFileDecoration(file("staged.ts", "A", null)),
+      agentWorkspaceGitFileDecoration(file("staged.ts", "A", null), i18n.t),
     ).toMatchObject({
       kind: "added",
       code: "A",
     });
     expect(
-      agentWorkspaceGitFileDecoration(file("changed.ts", null, "M")),
+      agentWorkspaceGitFileDecoration(file("changed.ts", null, "M"), i18n.t),
     ).toMatchObject({
       kind: "modified",
       code: "M",
     });
     expect(
-      agentWorkspaceGitFileDecoration(file("gone.ts", "D", null)),
+      agentWorkspaceGitFileDecoration(file("gone.ts", "D", null), i18n.t),
     ).toMatchObject({
       kind: "deleted",
       code: "D",
     });
     expect(
-      agentWorkspaceGitFileDecoration(file("moved.ts", "R", null)),
+      agentWorkspaceGitFileDecoration(file("moved.ts", "R", null), i18n.t),
     ).toMatchObject({
       kind: "renamed",
       code: "R",
     });
     expect(
-      agentWorkspaceGitFileDecoration(file("conflict.ts", "U", "U")),
+      agentWorkspaceGitFileDecoration(file("conflict.ts", "U", "U"), i18n.t),
     ).toMatchObject({
       kind: "conflicted",
       code: "!",
@@ -54,11 +55,14 @@ describe("agent workspace Git decorations", () => {
   });
 
   it("decorates parent directories with their strongest descendant status", () => {
-    const decorations = agentWorkspaceGitDecorationMap([
-      file("src/new.ts", null, "?"),
-      file("src/components/changed.tsx", null, "M"),
-      file("src/components/conflict.tsx", "U", "U"),
-    ]);
+    const decorations = agentWorkspaceGitDecorationMap(
+      [
+        file("src/new.ts", null, "?"),
+        file("src/components/changed.tsx", null, "M"),
+        file("src/components/conflict.tsx", "U", "U"),
+      ],
+      i18n.t,
+    );
 
     expect(decorations.get("src/new.ts")?.kind).toBe("added");
     expect(decorations.get("src/components/changed.tsx")?.kind).toBe(

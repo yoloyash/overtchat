@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   BookOpen,
   Brain,
@@ -547,6 +548,7 @@ function ResultRow({ result }: { result: WebSearchResult }) {
 
 function FetchStep({ part }: { part: FetchUrlPart }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
   const running = !isToolSettled(part);
@@ -613,7 +615,7 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
       {page && (
         <span className="shrink-0 text-muted-foreground">
           {t("chat.activity.wordCount", {
-            count: page.wordCount.toLocaleString(),
+            count: page.wordCount.toLocaleString(locale),
           })}
         </span>
       )}
@@ -648,6 +650,7 @@ function ReadFileStep({ part }: { part: ReadFilePart }) {
 
 function SearchFilesStep({ part }: { part: SearchFilesPart }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const query = part.input?.query?.trim();
   const output = part.output;
   return (
@@ -662,7 +665,7 @@ function SearchFilesStep({ part }: { part: SearchFilesPart }) {
               ? t("chat.activity.noMatches")
               : t("chat.activity.matches", {
                   count: output.totalMatches,
-                  formattedCount: output.totalMatches.toLocaleString(),
+                  formattedCount: output.totalMatches.toLocaleString(locale),
                 })}
           </span>
         )}

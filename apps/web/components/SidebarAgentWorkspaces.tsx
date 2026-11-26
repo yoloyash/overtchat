@@ -492,7 +492,7 @@ function WorkspaceNode({
                 ? "pr-14 max-md:pr-[5.5rem]"
                 : "pr-7 max-md:pr-11",
           )}
-          title={`${group.path} · ${agentHostLabel(group.host)}`}
+          title={`${group.path} · ${agentHostLabel(group.host, t)}`}
         >
           <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
             <ChevronRight
@@ -512,8 +512,8 @@ function WorkspaceNode({
               {!open && urgentState !== "idle" && (
                 <span
                   role="status"
-                  aria-label={t("sidebar.agents.statusInWorkspace", { status: agentSessionStateLabel(urgentState), name: group.name })}
-                  title={agentSessionStateLabel(urgentState)}
+                  aria-label={t("sidebar.agents.statusInWorkspace", { status: agentSessionStateLabel(urgentState, t), name: group.name })}
+                  title={agentSessionStateLabel(urgentState, t)}
                   className="flex shrink-0 items-center"
                 >
                   <AgentSessionStatusIcon state={urgentState} />
@@ -526,9 +526,9 @@ function WorkspaceNode({
                   "truncate",
                   gitStatus?.isGit && "max-w-[45%]",
                 )}
-                title={agentHostLabel(group.host)}
+                title={agentHostLabel(group.host, t)}
               >
-                {agentHostLabel(group.host)}
+                {agentHostLabel(group.host, t)}
               </span>
               {gitStatus?.isGit && (
                 <span aria-hidden="true" className="text-muted-foreground/50">
@@ -674,7 +674,7 @@ function WorkspaceNode({
             if (!next) onExpandedChange(true);
           }}
           targets={sessionTargets}
-          machineLabel={agentHostLabel(group.host)}
+          machineLabel={agentHostLabel(group.host, t)}
         />
       )}
     </li>

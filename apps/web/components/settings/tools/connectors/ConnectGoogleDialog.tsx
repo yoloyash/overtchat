@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,7 @@ export function ConnectGoogleDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const connect = useConnectIntegrationAccount("google");
   // Kept in the provider's own order, so the same choice is the same sign-in.
   const [selected, setSelected] = useState(() =>
@@ -93,16 +95,16 @@ export function ConnectGoogleDialog({
       if (leftOut.length > 0) {
         toast.warning({
           title: t("tools.connectors.connectGoogle.connectedTitle", {
-            services: integrationNames(connected.map(({ id }) => id)),
+            services: integrationNames(connected.map(({ id }) => id), locale),
           }),
           description: t("tools.connectors.connectGoogle.partialDescription", {
-            services: integrationNames(leftOut),
+            services: integrationNames(leftOut, locale),
           }),
         });
       } else {
         toast.success({
           title: t("tools.connectors.connectGoogle.connectedTitle", {
-            services: integrationNames(selected),
+            services: integrationNames(selected, locale),
           }),
           description: connected[0]?.connection?.accountEmail,
         });

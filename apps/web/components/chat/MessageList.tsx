@@ -3,6 +3,7 @@
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import {
@@ -383,6 +384,7 @@ function InferenceActivityIndicator({
   activity: InferenceActivity;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const details: string[] = [];
   let label: string;
 
@@ -398,19 +400,19 @@ function InferenceActivityIndicator({
       details.push(
         cachedTokens > 0
           ? t("chat.inference.tokensProgressNew", {
-              completed: formatInteger(activity.completedTokens),
-              total: formatInteger(activity.totalTokens),
+              completed: formatInteger(activity.completedTokens, locale),
+              total: formatInteger(activity.totalTokens, locale),
             })
           : t("chat.inference.tokensProgress", {
-              completed: formatInteger(activity.completedTokens),
-              total: formatInteger(activity.totalTokens),
+              completed: formatInteger(activity.completedTokens, locale),
+              total: formatInteger(activity.totalTokens, locale),
             }),
       );
     }
     if (cachedTokens > 0) {
       details.push(
         t("chat.inference.cachedTokens", {
-          count: formatInteger(cachedTokens),
+          count: formatInteger(cachedTokens, locale),
         }),
       );
     }
@@ -418,13 +420,13 @@ function InferenceActivityIndicator({
     label = t("chat.inference.generating");
     details.push(
       t("chat.inference.generatedTokens", {
-        count: formatInteger(activity.completedTokens),
+        count: formatInteger(activity.completedTokens, locale),
       }),
     );
   }
 
   if (activity.tokensPerSecond !== undefined) {
-    details.push(formatTps(activity.tokensPerSecond));
+    details.push(formatTps(activity.tokensPerSecond, t));
   }
 
   const description = [label, ...details].join(" · ");
@@ -476,7 +478,7 @@ function ChatErrorBubble({
 }) {
   const { t } = useTranslation();
   return (
-    <ErrorNotice message={chatErrorMessage(error)} actions={
+    <ErrorNotice message={chatErrorMessage(error, t)} actions={
       <Button variant="outline" size="sm" onClick={onReconnect}>
         <RotateCcw /> {t("chat.messages.reconnect")}
       </Button>

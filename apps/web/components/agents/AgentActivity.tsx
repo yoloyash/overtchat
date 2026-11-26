@@ -28,7 +28,6 @@ import {
 } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import { useFormatLocale } from "@/components/I18nProvider";
 import { ThinkingContent } from "@/components/chat/ThinkingContent";
 import {
@@ -60,29 +59,29 @@ export type AgentRunActivity =
   | "compacting"
   | "reconnecting";
 
-export function formatAgentElapsed(milliseconds: number): string {
+export function formatAgentElapsed(milliseconds: number, t: TFunction): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
   if (seconds < 60) {
-    return i18n.t("agents.activity.elapsedSeconds", { seconds });
+    return t("agents.activity.elapsedSeconds", { seconds });
   }
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   if (minutes < 60) {
-    return i18n.t("agents.activity.elapsedMinutesSeconds", {
+    return t("agents.activity.elapsedMinutesSeconds", {
       minutes,
       seconds: remainingSeconds,
     });
   }
   const hours = Math.floor(minutes / 60);
-  return i18n.t("agents.activity.elapsedHoursMinutes", {
+  return t("agents.activity.elapsedHoursMinutes", {
     hours,
     minutes: minutes % 60,
   });
 }
 
 function useElapsed(startedAt: number | null): string | null {
+  const { t } = useTranslation();
   const [now, setNow] = useState(Date.now);
-
   useEffect(() => {
     if (startedAt === null) return;
     const tick = () => setNow(Date.now());
@@ -96,7 +95,7 @@ function useElapsed(startedAt: number | null): string | null {
 
   return startedAt === null
     ? null
-    : formatAgentElapsed(Math.max(0, now - startedAt));
+    : formatAgentElapsed(Math.max(0, now - startedAt), t);
 }
 
 export function AgentRunIndicator({

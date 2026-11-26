@@ -629,7 +629,7 @@ function AgentTurnFooter({
       {item.durationMs !== null && (
         <span className="ml-1 tabular-nums">
           {t("agents.messages.workedFor", {
-            duration: formatAgentElapsed(item.durationMs),
+            duration: formatAgentElapsed(item.durationMs, t),
           })}
         </span>
       )}

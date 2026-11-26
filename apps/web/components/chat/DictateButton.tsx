@@ -98,7 +98,7 @@ export function DictateError({
   return (
     <ErrorNotice
       className="mb-2"
-      message={dictationErrorMessage(error, isAdmin)}
+      message={dictationErrorMessage(error, isAdmin, t)}
       onDismiss={onDismiss}
       actions={
         <>

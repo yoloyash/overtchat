@@ -2,6 +2,7 @@ import { act, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import { useDictation, type Dictation } from "./useDictation";
 import { dictationErrorMessage } from "./chat/message";
 
@@ -83,8 +84,8 @@ it.each([
     expect(releaseMicrophone).toHaveBeenCalledOnce();
     expect(result).not.toHaveBeenCalled();
     expect(dictation.error).not.toBeNull();
-    expect(dictationErrorMessage(dictation.error!, true)).toContain(message);
-    expect(dictationErrorMessage(dictation.error!, true)).not.toContain(
+    expect(dictationErrorMessage(dictation.error!, true, i18n.t)).toContain(message);
+    expect(dictationErrorMessage(dictation.error!, true, i18n.t)).not.toContain(
       "overtchat setup",
     );
     await act(async () => dictation.clearError());
@@ -96,7 +97,7 @@ it("does not display an HTML proxy error", async () => {
   await record(
     new Response("<html>Bad gateway: private endpoint</html>", { status: 502 }),
   );
-  expect(dictationErrorMessage(dictation.error!, true)).toContain(
+  expect(dictationErrorMessage(dictation.error!, true, i18n.t)).toContain(
     "temporarily unavailable",
   );
 });
@@ -104,7 +105,7 @@ it("does not display an HTML proxy error", async () => {
 it("distinguishes malformed success from an empty transcript", async () => {
   await record(Response.json({ text: 123 }));
   expect(dictation.error?.kind).toBe("other");
-  expect(dictationErrorMessage(dictation.error!, true)).toContain(
+  expect(dictationErrorMessage(dictation.error!, true, i18n.t)).toContain(
     "invalid response",
   );
   await record(Response.json({ text: " " }));

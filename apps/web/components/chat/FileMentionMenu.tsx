@@ -67,7 +67,7 @@ export function FileMentionMenu({
             disabled={false}
             icon={<CategoryIcon category={file.category} className="size-4" />}
             title={file.filename}
-            description={`${humanMediaLabel(file.mediaType)} · ${formatSize(file.size)}${
+            description={`${humanMediaLabel(file.mediaType, t)} · ${formatSize(file.size, t)}${
               file.pageCount ? ` · ${t("chat.files.pages", { count: file.pageCount })}` : ""
             }`}
             onActivate={() => onSelect(file)}

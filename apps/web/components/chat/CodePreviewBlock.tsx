@@ -65,7 +65,7 @@ export function CodePreviewBlock({
     const loader = new Image();
     async function loadImage() {
       url = URL.createObjectURL(
-        new Blob([svgPreviewSource(code, isIncomplete)], {
+        new Blob([svgPreviewSource(code, t, isIncomplete)], {
           type: "image/svg+xml",
         }),
       );
@@ -103,7 +103,7 @@ export function CodePreviewBlock({
       cancelAnimationFrame(frame);
       if (url && !published) URL.revokeObjectURL(url);
     };
-  }, [code, isSvg, isIncomplete, tooLarge]);
+  }, [code, isSvg, isIncomplete, tooLarge, t]);
 
   function download() {
     const url = URL.createObjectURL(

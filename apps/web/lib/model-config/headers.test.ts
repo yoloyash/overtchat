@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import { ModelHeadersSchema, modelHeadersFromRows } from "./headers";
 import { ModelConfigSchema, ModelDiscoverySchema } from "./schema";
 
@@ -69,25 +70,31 @@ describe("model request headers", () => {
 
   it("reads editor rows, ignoring unnamed ones", () => {
     expect(
-      modelHeadersFromRows([
-        { key: " X-A ", value: " 1 " },
-        { key: "", value: "left over" },
-      ]),
+      modelHeadersFromRows(
+        [
+          { key: " X-A ", value: " 1 " },
+          { key: "", value: "left over" },
+        ],
+        i18n.t,
+      ),
     ).toEqual({ headers: { "X-A": "1" } });
-    expect(modelHeadersFromRows([])).toEqual({ headers: null });
+    expect(modelHeadersFromRows([], i18n.t)).toEqual({ headers: null });
   });
 
   it("reports a name entered twice and other invalid rows", () => {
     expect(
-      modelHeadersFromRows([
-        { key: "X-A", value: "1" },
-        { key: "x-a", value: "2" },
-      ]),
+      modelHeadersFromRows(
+        [
+          { key: "X-A", value: "1" },
+          { key: "x-a", value: "2" },
+        ],
+        i18n.t,
+      ),
     ).toEqual({
       headers: null,
       error: "The x-a request header is listed twice",
     });
-    expect(modelHeadersFromRows([{ key: "X-A", value: "" }])).toEqual({
+    expect(modelHeadersFromRows([{ key: "X-A", value: "" }], i18n.t)).toEqual({
       headers: null,
       error: "The X-A request header needs a value",
     });

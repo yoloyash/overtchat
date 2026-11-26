@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import type { VoiceCapability } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,7 @@ const PROVIDERS: Record<AdminServerCapability["id"], ProviderOption[]> = {
 function providerOptionLabel(
   capabilityId: AdminServerCapability["id"],
   providerValue: string,
+  t: TFunction,
 ): string {
   switch (capabilityId) {
     case "search":
@@ -85,7 +86,7 @@ function providerOptionLabel(
         providerValue === "searxng" ||
         providerValue === "disabled"
       ) {
-        return i18n.t(`services.capabilities.search.providers.${providerValue}`);
+        return t(`services.capabilities.search.providers.${providerValue}`);
       }
       return providerValue;
     case "tts":
@@ -94,7 +95,7 @@ function providerOptionLabel(
         providerValue === "openai-compatible" ||
         providerValue === "disabled"
       ) {
-        return i18n.t(`services.capabilities.tts.providers.${providerValue}`);
+        return t(`services.capabilities.tts.providers.${providerValue}`);
       }
       return providerValue;
     case "stt":
@@ -103,7 +104,7 @@ function providerOptionLabel(
         providerValue === "openai-compatible" ||
         providerValue === "disabled"
       ) {
-        return i18n.t(`services.capabilities.stt.providers.${providerValue}`);
+        return t(`services.capabilities.stt.providers.${providerValue}`);
       }
       return providerValue;
   }
@@ -117,38 +118,39 @@ interface VoiceServicePresentation {
 
 export function voiceServicePresentation(
   voice: VoiceCapability,
+  t: TFunction,
 ): VoiceServicePresentation {
   if (voice.available) {
     return {
-      label: i18n.t("services.voice.configuredLabel"),
-      description: i18n.t("services.voice.configuredDescription"),
+      label: t("services.voice.configuredLabel"),
+      description: t("services.voice.configuredDescription"),
       configured: true,
     };
   }
   switch (voice.unavailableReason) {
     case "not-installed":
       return {
-        label: i18n.t("services.voice.notInstalledLabel"),
-        description: i18n.t("services.voice.notInstalledDescription"),
+        label: t("services.voice.notInstalledLabel"),
+        description: t("services.voice.notInstalledDescription"),
         configured: false,
       };
     case "stt-unavailable":
       return {
-        label: i18n.t("services.voice.needsSttLabel"),
-        description: i18n.t("services.voice.needsSttDescription"),
+        label: t("services.voice.needsSttLabel"),
+        description: t("services.voice.needsSttDescription"),
         configured: false,
       };
     case "tts-unavailable":
       return {
-        label: i18n.t("services.voice.needsTtsLabel"),
-        description: i18n.t("services.voice.needsTtsDescription"),
+        label: t("services.voice.needsTtsLabel"),
+        description: t("services.voice.needsTtsDescription"),
         configured: false,
       };
     case "not-configured":
     default:
       return {
-        label: i18n.t("services.voice.incompleteSetupLabel"),
-        description: i18n.t("services.voice.incompleteSetupDescription"),
+        label: t("services.voice.incompleteSetupLabel"),
+        description: t("services.voice.incompleteSetupDescription"),
         configured: false,
       };
   }
@@ -206,7 +208,7 @@ function CapabilitySection({
   const bundledMissing = !draft.bundledInstalled;
   const bundledProvider = PROVIDERS[draft.id].find((provider) => provider.bundled);
   const bundledProviderLabel = bundledProvider
-    ? providerOptionLabel(draft.id, bundledProvider.value)
+    ? providerOptionLabel(draft.id, bundledProvider.value, t)
     : "";
   return (
     <SettingsSection
@@ -280,7 +282,7 @@ function CapabilitySection({
               {PROVIDERS[draft.id].some(
                 (provider) => provider.value === draft.provider,
               )
-                ? providerOptionLabel(draft.id, draft.provider)
+                ? providerOptionLabel(draft.id, draft.provider, t)
                 : undefined}
             </SelectValue>
           </SelectTrigger>
@@ -293,9 +295,9 @@ function CapabilitySection({
               >
                 {provider.bundled && bundledMissing
                   ? t("services.fields.providerOptionNotInstalled", {
-                      provider: providerOptionLabel(draft.id, provider.value),
+                      provider: providerOptionLabel(draft.id, provider.value, t),
                     })
-                  : providerOptionLabel(draft.id, provider.value)}
+                  : providerOptionLabel(draft.id, provider.value, t)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -463,7 +465,7 @@ export function ServicesPanel() {
   const { t } = useTranslation();
   const { data, isPending, error } = useServerCapabilities();
   const capabilities = data?.capabilities ?? [];
-  const voiceStatus = data?.voice ? voiceServicePresentation(data.voice) : null;
+  const voiceStatus = data?.voice ? voiceServicePresentation(data.voice, t) : null;
 
   return (
     <SettingsPage>

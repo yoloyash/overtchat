@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import { i18n } from "@overtchat/shared/i18n";
 import { CalendarLogo } from "@/components/CalendarLogo";
 import { GmailLogo } from "@/components/GmailLogo";
 import type { IntegrationId } from "@/lib/integrations/schema";
@@ -23,8 +22,11 @@ export const INTEGRATION_DISPLAY: Record<
 };
 
 /** "Gmail", "Gmail and Google Calendar". */
-export function integrationNames(ids: readonly IntegrationId[]): string {
-  return new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(
+export function integrationNames(
+  ids: readonly IntegrationId[],
+  locale: string,
+): string {
+  return new Intl.ListFormat(locale, { type: "conjunction" }).format(
     ids.map((id) => INTEGRATION_DISPLAY[id].name),
   );
 }

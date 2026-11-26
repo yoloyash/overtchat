@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { cn } from "@/lib/utils";
 import { formatCompact, formatExact } from "./activity-format";
 
@@ -16,6 +17,7 @@ export function ActivityMetric({
   inline?: boolean;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   return (
     <div className={cn(
       "min-w-0 px-4 py-5 sm:px-5",
@@ -28,7 +30,7 @@ export function ActivityMetric({
       </dt>
       <dd
         className={cn("tracking-tight tabular-nums", inline ? "text-xl font-medium" : "mt-2 text-2xl font-semibold")}
-        title={value === undefined ? undefined : formatExact(value)}
+        title={value === undefined ? undefined : formatExact(value, locale)}
       >
         {pending ? (
           <span
@@ -38,7 +40,7 @@ export function ActivityMetric({
         ) : value === undefined ? (
           "—"
         ) : (
-          formatCompact(value)
+          formatCompact(value, locale)
         )}
       </dd>
     </div>

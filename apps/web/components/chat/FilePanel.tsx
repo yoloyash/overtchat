@@ -57,8 +57,8 @@ export function FilePanel({
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">{file.name}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {humanMediaLabel(file.mediaType)}
-            {file.size !== undefined && ` · ${formatSize(file.size)}`}
+            {humanMediaLabel(file.mediaType, t)}
+            {file.size !== undefined && ` · ${formatSize(file.size, t)}`}
           </p>
         </div>
         {rendered && (

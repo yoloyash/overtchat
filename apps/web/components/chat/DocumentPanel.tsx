@@ -454,7 +454,7 @@ function SvgPreview({ source }: { source: string }) {
   const { t } = useTranslation();
   const prepared = useMemo((): { svg?: string; error?: PreviewError } => {
     try {
-      return { svg: svgPreviewSource(source) };
+      return { svg: svgPreviewSource(source, t) };
     } catch (error) {
       return {
         error:
@@ -463,7 +463,7 @@ function SvgPreview({ source }: { source: string }) {
             : { kind: "svgRenderFailed" },
       };
     }
-  }, [source]);
+  }, [source, t]);
   const loaded = useImage(prepared.svg ?? null);
   if (prepared.error) return <PreviewStatus error={prepared.error} />;
   if (!loaded?.image) return <PreviewStatus error={loaded?.error} />;

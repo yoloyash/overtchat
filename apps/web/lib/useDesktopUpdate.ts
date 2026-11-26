@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { i18n } from "@overtchat/shared/i18n";
+import type { TFunction } from "i18next";
 import type { DesktopUpdateState } from "@overtchat/shared/desktop";
 import { desktopBridge } from "@/lib/desktop";
 
@@ -26,16 +26,19 @@ export function useDesktopUpdate(): DesktopUpdateState | null {
   return state;
 }
 
-export function desktopUpdateLabel(state: DesktopUpdateState | null): string {
+export function desktopUpdateLabel(
+  state: DesktopUpdateState | null,
+  t: TFunction,
+): string {
   switch (state?.status) {
-    case "checking": return i18n.t("app.desktopUpdate.checking");
-    case "available": return i18n.t("app.desktopUpdate.available");
-    case "downloading": return i18n.t("app.desktopUpdate.downloading", { percent: state.downloadPercent ?? 0 });
-    case "ready": return i18n.t("app.desktopUpdate.ready");
-    case "installing": return i18n.t("app.desktopUpdate.installing");
-    case "error": return i18n.t("app.desktopUpdate.error");
-    case "blocked": return i18n.t("app.desktopUpdate.blocked");
-    case "unsupported": return i18n.t("app.desktopUpdate.unsupported");
-    default: return i18n.t("app.desktopUpdate.check");
+    case "checking": return t("app.desktopUpdate.checking");
+    case "available": return t("app.desktopUpdate.available");
+    case "downloading": return t("app.desktopUpdate.downloading", { percent: state.downloadPercent ?? 0 });
+    case "ready": return t("app.desktopUpdate.ready");
+    case "installing": return t("app.desktopUpdate.installing");
+    case "error": return t("app.desktopUpdate.error");
+    case "blocked": return t("app.desktopUpdate.blocked");
+    case "unsupported": return t("app.desktopUpdate.unsupported");
+    default: return t("app.desktopUpdate.check");
   }
 }

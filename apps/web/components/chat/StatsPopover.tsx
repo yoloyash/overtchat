@@ -3,6 +3,7 @@
 import { Popover } from "@base-ui/react/popover";
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   formatDuration,
   formatInteger,
@@ -22,6 +23,7 @@ interface StatsRow {
 
 export function StatsPopover({ stats }: { stats: MessageStats }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const candidateRows: Array<StatsRow | null> = [
     stats.providerLabel !== undefined
       ? {
@@ -43,49 +45,49 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
       ? {
           id: "contextTokens",
           label: t("chat.stats.contextTokens"),
-          value: formatInteger(stats.contextTokens),
+          value: formatInteger(stats.contextTokens, locale),
         }
       : null,
     stats.uncachedInputTokens !== undefined
       ? {
           id: "uncachedInput",
           label: t("chat.stats.uncachedInput"),
-          value: formatInteger(stats.uncachedInputTokens),
+          value: formatInteger(stats.uncachedInputTokens, locale),
         }
       : null,
     stats.cacheReadTokens !== undefined
       ? {
           id: "cacheRead",
           label: t("chat.usage.cacheRead"),
-          value: formatInteger(stats.cacheReadTokens),
+          value: formatInteger(stats.cacheReadTokens, locale),
         }
       : null,
     stats.cacheWriteTokens !== undefined
       ? {
           id: "cacheWrite",
           label: t("chat.usage.cacheWrite"),
-          value: formatInteger(stats.cacheWriteTokens),
+          value: formatInteger(stats.cacheWriteTokens, locale),
         }
       : null,
     stats.responseTokens !== undefined
       ? {
           id: "responseTokens",
           label: t("chat.stats.responseTokens"),
-          value: formatInteger(stats.responseTokens),
+          value: formatInteger(stats.responseTokens, locale),
         }
       : null,
     stats.totalTokens !== undefined
       ? {
           id: "totalTokens",
           label: t("chat.stats.totalTokens"),
-          value: formatInteger(stats.totalTokens),
+          value: formatInteger(stats.totalTokens, locale),
         }
       : null,
     stats.ttftMs !== undefined
-      ? { id: "ttft", label: t("chat.stats.ttft"), value: formatDuration(stats.ttftMs) }
+      ? { id: "ttft", label: t("chat.stats.ttft"), value: formatDuration(stats.ttftMs, t) }
       : null,
     stats.tps !== undefined
-      ? { id: "tps", label: t("chat.stats.tps"), value: formatTps(stats.tps) }
+      ? { id: "tps", label: t("chat.stats.tps"), value: formatTps(stats.tps, t) }
       : null,
     stats.finishReason !== undefined
       ? {
