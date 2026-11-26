@@ -589,7 +589,7 @@ function WorkspaceHeader({
             ]}
           >
             {t("sidebar.mobile.agents.workspaceMeta", {
-              host: agentHostLabel(group.host),
+              host: agentHostLabel(group.host, t),
               count,
             })}
           </Text>

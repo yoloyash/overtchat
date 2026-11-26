@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
+import type { TFunction } from "i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { AgentAttentionCounts } from "@overtchat/shared/agent-attention";
@@ -17,14 +17,17 @@ const MODES: {
 ];
 
 /** How the Agents half announces what waits there while Chat is shown. */
-export function agentsToggleBadgeLabel(counts: AgentAttentionCounts): string {
+export function agentsToggleBadgeLabel(
+  counts: AgentAttentionCounts,
+  t: TFunction,
+): string {
   if (counts.needsYou > 0) {
-    return i18n.t("sidebar.mobile.mode.badgeNeedsYou", {
+    return t("sidebar.mobile.mode.badgeNeedsYou", {
       count: counts.needsYou,
     });
   }
   if (counts.unread > 0) {
-    return i18n.t("sidebar.mobile.mode.badgeUnread", {
+    return t("sidebar.mobile.mode.badgeUnread", {
       count: counts.unread,
     });
   }

@@ -62,9 +62,7 @@ export default function LoginScreen() {
   const authClient = getAuthClient();
   const session = authClient.useSession();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
-  const serverNotice = unexpectedSessionMessage(session.error)
-    ? t("auth.mobile.unexpectedSessionResponse")
-    : null;
+  const serverNotice = unexpectedSessionMessage(session.error, t);
   const signInMethods = useSignInMethods();
   // A server that can't be asked gets the password form, as before.
   const methods = signInMethods.isPending

@@ -100,10 +100,10 @@ export function agentSessionRowLabel(
   const { item, group, state } = entry;
   const stateLabel = agentSessionStateLabel(state, t);
   const params = {
-    title: agentSessionRowTitle(entry),
+    title: agentSessionRowTitle(entry, t),
     provider: agentProviderMetadata(item.provider).label,
     workspace: group.name,
-    host: agentHostLabel(group.host),
+    host: agentHostLabel(group.host, t),
   };
   return stateLabel
     ? t("agents.mobile.navigation.sessionRowLabelWithState", {
@@ -180,7 +180,7 @@ export function AgentSessionRow({
               },
             ]}
           >
-            {agentSessionRowTitle(entry)}
+            {agentSessionRowTitle(entry, t)}
           </Text>
           <Text
             style={[
@@ -200,7 +200,7 @@ export function AgentSessionRow({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {agentSessionRowMeta(entry, context)}
+            {agentSessionRowMeta(entry, context, t)}
           </Text>
         </View>
         {!!detail && (

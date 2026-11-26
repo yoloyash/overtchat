@@ -1,5 +1,4 @@
 import type { TFunction } from "i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import type { AgentTranscriptItem } from "@overtchat/shared/agent-presentation";
 
 function sameValue(a: unknown, b: unknown, depth: number): boolean {
@@ -57,7 +56,7 @@ export function createTranscriptStabilizer() {
 
 export function formatAgentElapsed(
   milliseconds: number,
-  t: TFunction = i18n.t.bind(i18n),
+  t: TFunction,
 ): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
   if (seconds < 60) return t("agents.activity.elapsedSeconds", { seconds });

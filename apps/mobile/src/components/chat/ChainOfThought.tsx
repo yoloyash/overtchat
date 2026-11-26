@@ -871,6 +871,7 @@ function ResultRow({
 function FetchStep({ part }: { part: FetchUrlPart }) {
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const cookie = useAuthCookie();
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
@@ -982,19 +983,19 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          {t("chat.activity.wordCount", { count: page.wordCount.toLocaleString() })}
+          {t("chat.activity.wordCount", { count: page.wordCount.toLocaleString(locale) })}
         </Text>
       ) : null}
     </Pressable>
   );
 }
 
-function gmailShortDate(iso: string | undefined): string {
+function gmailShortDate(iso: string | undefined, locale: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
     ? ""
-    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    : date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 /**
@@ -1004,6 +1005,7 @@ function gmailShortDate(iso: string | undefined): string {
 function GmailStep({ part }: { part: GmailToolPart }) {
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [showAll, setShowAll] = useLayoutState(false);
   const display = describeGmailToolPart(part, t);
   const visible = showAll
@@ -1098,7 +1100,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
                 {row.subject ?? row.attachments?.join(", ")}
               </Text>
               <Text style={[styles.metaText, muted]}>
-                {gmailShortDate(row.date)}
+                {gmailShortDate(row.date, locale)}
               </Text>
             </View>
           ))}

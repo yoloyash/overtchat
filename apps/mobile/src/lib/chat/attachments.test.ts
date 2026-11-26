@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 
 vi.mock("@/lib/api", () => ({}));
 
@@ -17,7 +18,7 @@ it("names common file types for people", () => {
       "text/csv",
       "application/x-unknown",
       undefined,
-    ].map(humanMediaLabel),
+    ].map((mediaType) => humanMediaLabel(mediaType, i18n.t)),
   ).toEqual([
     "PowerPoint presentation",
     "JSON",

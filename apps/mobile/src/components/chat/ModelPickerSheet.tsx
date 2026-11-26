@@ -12,7 +12,6 @@ import type {
   ModelReasoningLevel,
   PublicModelConfig,
 } from "@overtchat/shared";
-import { i18n } from "@overtchat/shared/i18n";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -560,7 +559,7 @@ const REASONING_LABEL_KEYS = {
 
 export function reasoningLabel(
   level: ChatReasoningLevel,
-  t: TFunction = i18n.t,
+  t: TFunction,
 ): string {
   return t(REASONING_LABEL_KEYS[level]);
 }
