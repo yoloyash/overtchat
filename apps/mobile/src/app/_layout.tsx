@@ -47,7 +47,7 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { I18nProvider } from "@/components/I18nProvider";
+import { I18nProvider, LanguageBoundary } from "@/components/I18nProvider";
 import { getAuthClient } from "@/lib/auth/client";
 import { LAUNCH_SESSION_WAIT_MS, sessionKnown } from "@/lib/auth/launch";
 import { useServerUrl } from "@/lib/server-url";
@@ -131,7 +131,9 @@ function RootLayout() {
           <SafeAreaProvider>
             <BottomSheetModalProvider>
               <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-              <AuthRoutes backgroundColor={colors.background} />
+              <LanguageBoundary>
+                <AuthRoutes backgroundColor={colors.background} />
+              </LanguageBoundary>
             </BottomSheetModalProvider>
           </SafeAreaProvider>
         </KeyboardProvider>
