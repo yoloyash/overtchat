@@ -20,6 +20,10 @@ if (Platform.OS !== "web") {
   installIfMissing("structuredClone", structuredClone);
   installIfMissing("TextEncoderStream", TextEncoderStream);
   installIfMissing("TextDecoderStream", TextDecoderStream);
+
+  // Hermes has no Intl.PluralRules, which translations use to pick "1 file"
+  // or "2 files". Installs only when it is missing.
+  require("intl-pluralrules");
 }
 
 export {};

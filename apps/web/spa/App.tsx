@@ -1,6 +1,7 @@
 import "@/lib/random-uuid-fallback";
 import { useEffect, useState } from "react";
 import { RouterProvider, type RouterHistory } from "@tanstack/react-router";
+import { I18nProvider, LanguageBoundary } from "@/components/I18nProvider";
 import { QueryProvider } from "@/components/QueryProvider";
 import { ToastProvider } from "@/components/ui/toast";
 import { installStrayFileDropGuard } from "@/lib/chat/file-drop";
@@ -15,10 +16,14 @@ export function App({ history }: { history?: RouterHistory }) {
   // A file dropped outside a drop zone would otherwise open in place of the app.
   useEffect(() => installStrayFileDropGuard(window), []);
   return (
-    <QueryProvider>
-      <ToastProvider>
-        <RouterProvider router={router} />
-      </ToastProvider>
-    </QueryProvider>
+    <I18nProvider>
+      <QueryProvider>
+        <ToastProvider>
+          <LanguageBoundary>
+            <RouterProvider router={router} />
+          </LanguageBoundary>
+        </ToastProvider>
+      </QueryProvider>
+    </I18nProvider>
   );
 }

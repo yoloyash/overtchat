@@ -1117,6 +1117,92 @@ navigation, and status-bar appearance follow the palette once the app renders.
 Validate release splash behavior with a release build, since Expo development
 clients do not reproduce all native splash properties.
 
+## Translations
+
+Interface text for the web, desktop and mobile clients lives in one catalog,
+`packages/shared/src/i18n/resources`: `en/` is the source, with one file per
+product surface, and each other language is a directory of the same files and
+shape. `@overtchat/shared/i18n` exports the
+single i18next instance, the supported languages, and how a device's language
+list maps to one of them. The choice is a device preference like the theme:
+"System" by default, saved in browser storage on web and desktop and in
+SecureStore on mobile.
+
+What is translated is the text a client owns: labels, buttons, empty states,
+confirmations, toasts, and accessibility labels. These stay as they are:
+
+- Product, provider, model and font names, code, commands, file paths, URLs,
+  and key names.
+- What a person or an agent wrote, and anything a server or connector
+  authored: API error messages, agent and tool output, push notification text.
+- Everything a model reads: system prompts, tool descriptions and tool
+  results. The server never changes the instance's language, so a shared
+  helper it calls returns English.
+
+Writing text:
+
+- In a component or hook, `const { t } = useTranslation()` and `t("key")`.
+  Outside React (a toast raised from a store, a pure helper), call `i18n.t()`
+  at the moment the text is needed. Never translate at module load: a constant
+  table holds ids or keys, and the component that draws it calls `t()`.
+- A language change redraws the app from scratch below `LanguageBoundary`
+  (the router on web, the routes on mobile), keeping the current page. So a
+  helper's label, a `useMemo`, or the React Compiler's cache on mobile cannot
+  show the old language; new code does not need to list the language as a
+  dependency.
+- Name keys for the product surface and the meaning, not the component:
+  `settings.appearance.theme.title`. Web and mobile share a key when the text
+  and meaning are the same; a different meaning gets its own key even when the
+  English matches.
+- One sentence is one string, with `{{variables}}` inside it. Do not join
+  translated pieces, add an "s", or change the case of a translated string in
+  code; word order, plurals and case differ by language.
+- A count uses `key_one` and `key_other` and passes `count`. Each language
+  file carries the plural forms its own grammar has, which the catalog test
+  checks against `Intl.PluralRules`. Hermes has no `Intl.PluralRules`, so
+  `apps/mobile/src/polyfills.js` installs one; without it every count reads as
+  plural.
+- Markup inside a sentence uses `<Trans>` with named tags, never HTML in a
+  string.
+- Dates, times and numbers keep using the device's regional format
+  (`toLocaleDateString(undefined, …)`); only the words around them are keys.
+
+Moving existing text into the catalog must not change the English by a
+character: the browser specs find elements by it, and passing unchanged is the
+proof. Move a whole screen or cluster of neighboring labels together, add its
+path to `TRANSLATED` in that client's `eslint.config.mjs`, and add every new
+key to every language file in the same change. In a listed path, text written
+straight into JSX, a visible prop, a toast or an alert is a lint error. The
+rule cannot see text in a constant table or a helper's return value, so read
+those by hand. For text that correctly stays English, disable the rule on that
+line with the reason.
+
+```sh
+npm run i18n:untranslated                       # what is left, per directory
+npm run i18n:untranslated -- apps/web/components/chat   # each finding in a path
+npm run test -w packages/shared --
+npm run lint -w apps/web -- && npm run lint -w apps/mobile --
+npm run typecheck
+E2E_PORT=4827 npm run test:e2e -w apps/web -- settings.spec.ts
+```
+
+The shared tests fail when a language is missing a key or has one English
+lacks, drops a variable or tag, leaves a string empty, or copies more than a
+few strings from English; the typecheck catches a mistyped key and a language
+file of the wrong shape. Neither can judge a translation, so a new or changed
+language needs a reader of it, and a check of the changed screens in that
+language for clipped or overflowing text.
+
+To add a language: add its tag to `SUPPORTED_LOCALES` and its own name to
+`LOCALE_NATIVE_NAMES` in `locales.ts`, map its system tags in
+`matchSystemLocale`, add the resource directory and register it in
+`LOCALE_RESOURCES`, and extend the locale tests. A right-to-left language also
+needs the layout work that has not been done.
+
+On native clients, also change the language in Appearance and confirm the
+screen updates at once and after a restart, and that "System" follows the
+device language.
+
 ## Mobile validation
 
 For settings changes, run the mobile typecheck and focused tests. Shared settings

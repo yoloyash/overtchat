@@ -21,6 +21,8 @@ export default defineConfig({
   reporter: isCI ? [["line"], ["html", { open: "never" }]] : "line",
   use: {
     baseURL,
+    // Specs find elements by their English text, whatever the machine's language.
+    locale: "en-US",
     // The one-time two-factor prompt would cover pages in unrelated tests.
     storageState: { cookies: [], origins: promptedOrigins() },
     trace: "retain-on-failure",

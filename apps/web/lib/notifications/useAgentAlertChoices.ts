@@ -11,10 +11,6 @@ import {
 /** Whether this page may show system notifications; `unsupported` when it never can. */
 export type NotificationAccess = NotificationPermission | "unsupported";
 
-/** What to do about a browser that will not let this site notify. */
-export const AGENT_ALERT_BLOCKED =
-  "Allow notifications for this site in your browser or system settings, then turn this on again.";
-
 const ACCESS_EVENT = "overtchat:notification-access";
 
 function notificationAccess(): NotificationAccess {

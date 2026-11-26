@@ -2,22 +2,24 @@
 
 import { Radio } from "@base-ui/react/radio";
 import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ACCENT_OPTIONS, DEFAULT_ACCENT_ID, resolveAccentId } from "@overtchat/shared";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { ACCENT_STORAGE_KEY } from "@/lib/accent";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 
 export function AccentPicker() {
+  const { t } = useTranslation();
   const [accent, setAccent] = useLocalStorage(ACCENT_STORAGE_KEY, DEFAULT_ACCENT_ID);
   return (
     <div className="@container/accent w-full">
       <RadioGroup
-        aria-label="Accent color"
+        aria-label={t("settings.appearance.accent.title")}
         value={resolveAccentId(accent)}
         onValueChange={(value) => setAccent(resolveAccentId(value))}
         className="grid w-full grid-cols-2 gap-2 @xs/accent:grid-cols-4"
       >
-        {ACCENT_OPTIONS.map(({ id, label, swatch }) => (
+        {ACCENT_OPTIONS.map(({ id, swatch }) => (
           <Radio.Root
             key={id}
             value={id}
@@ -31,7 +33,7 @@ export function AccentPicker() {
               className="size-5 rounded-full"
               style={{ backgroundColor: swatch }}
             />
-            {label}
+            {t(`accent.${id}`)}
           </Radio.Root>
         ))}
       </RadioGroup>

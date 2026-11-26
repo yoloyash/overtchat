@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { ACCENT_OPTIONS } from "@overtchat/shared";
 import { accentSwatchesRgb } from "@overtchat/shared/theme.rn";
@@ -5,13 +6,14 @@ import { setAccentPref, useAccentPref } from "@/lib/accentPref";
 import { useTheme } from "@/lib/theme";
 
 export function AccentPicker() {
+  const { t } = useTranslation();
   const accent = useAccentPref();
   const { colors, fonts, radii } = useTheme();
   const { fontScale } = useWindowDimensions();
   return (
     <View
       accessibilityRole="radiogroup"
-      accessibilityLabel="Accent color"
+      accessibilityLabel={t("settings.appearance.accent.title")}
       style={{
         flexDirection: "row",
         flexWrap: "wrap",
@@ -19,8 +21,9 @@ export function AccentPicker() {
         paddingBottom: 12,
       }}
     >
-      {ACCENT_OPTIONS.map(({ id, label }) => {
+      {ACCENT_OPTIONS.map(({ id }) => {
         const selected = accent === id;
+        const label = t(`accent.${id}`);
         return (
           <View key={id} style={{ width: fontScale > 1.3 ? "50%" : "25%", padding: 4 }}>
             <Pressable

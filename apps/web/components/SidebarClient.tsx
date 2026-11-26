@@ -2,6 +2,7 @@
 
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
@@ -396,6 +397,7 @@ function AgentSessionList({
     previousOrganizing.current = organizing;
     (organizing ? doneRef : optionsRef).current?.focus();
   }, [organizing]);
+  const { t } = useTranslation();
   const { closeMobile, drawerRef } = useSidebar();
   const [providerFilter, setProviderFilter] = useState<AgentProviderId | null>(
     null,
@@ -462,25 +464,30 @@ function AgentSessionList({
       const synced = result.created + result.refreshed;
       if (synced === 0) {
         toast.error({
-          title: "Sessions could not be refreshed",
+          title: t("agents.refresh.failedTitle"),
           description: result.failures[0]?.message,
         });
       } else if (result.failures.length > 0) {
         toast.warning({
-          title: "Sessions refreshed with some errors",
-          description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced; ${result.failures.length} failed.`,
+          title: t("agents.refresh.partialTitle"),
+          description: t("agents.refresh.syncedWithFailures", {
+            count: synced,
+            failed: result.failures.length,
+          }),
         });
       } else {
         toast.success({
-          title: "Sessions refreshed",
-          description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced.`,
+          title: t("agents.refresh.successTitle"),
+          description: t("agents.refresh.synced", { count: synced }),
         });
       }
     } catch (error) {
       toast.error({
-        title: "Sessions could not be refreshed",
+        title: t("agents.refresh.failedTitle"),
         description:
-          error instanceof Error ? error.message : "Refresh failed.",
+          error instanceof Error
+            ? error.message
+            : t("agents.refresh.failedFallback"),
       });
     }
   }

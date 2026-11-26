@@ -23,7 +23,8 @@
     "./provider-catalog": "./src/provider-catalog.ts",
     "./admin-settings": "./src/admin-settings.ts",
     "./message-stats": "./src/message-stats.ts",
-    "./usage": "./src/usage.ts"
+    "./usage": "./src/usage.ts",
+    "./i18n": "./src/i18n/index.ts"
   },
   "scripts": {
     "theme:generate": "tsx scripts/generate-theme-css.ts",
@@ -31,8 +32,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@overtchat/agent-bridge": "*",
     "ai": "^7.0.84",
-    "@overtchat/agent-bridge": "*"
+    "i18next": "^27.2.9"
   },
   "devDependencies": {
     "@types/culori": "^4.0.0",
