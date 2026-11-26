@@ -1145,6 +1145,11 @@ Writing text:
   Outside React (a toast raised from a store, a pure helper), call `i18n.t()`
   at the moment the text is needed. Never translate at module load: a constant
   table holds ids or keys, and the component that draws it calls `t()`.
+- A language change redraws the app from scratch below `LanguageBoundary`
+  (the router on web, the routes on mobile), keeping the current page. So a
+  helper's label, a `useMemo`, or the React Compiler's cache on mobile cannot
+  show the old language; new code does not need to list the language as a
+  dependency.
 - Name keys for the product surface and the meaning, not the component:
   `settings.appearance.theme.title`. Web and mobile share a key when the text
   and meaning are the same; a different meaning gets its own key even when the
