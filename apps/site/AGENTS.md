@@ -11,6 +11,11 @@ avoid unauthenticated API rate limits.
 
 - `app/page.tsx` is the marketing homepage. `lib/home-sections.ts` defines its
   section IDs and ordering for both the page and `components/SectionRail.tsx`.
+- `app/home.css` holds the homepage-only visuals and motion. The hero is a
+  scripted chat demo: `lib/hero-scenarios.ts` owns its conversations and
+  computes every figure, `components/HeroDemo.tsx` plays them. Demo components
+  must render a complete, readable state on the server and honor
+  `prefers-reduced-motion`; `components/HomeEffects.tsx` only adds motion on top.
 - `app/releases/page.tsx` renders the build-time release log.
   `lib/releases.server.ts` fetches GitHub Releases, while `lib/releases.ts`
   validates, classifies, and orders the returned data.
@@ -40,7 +45,7 @@ installer, or redirect changes require their focused tests as well.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

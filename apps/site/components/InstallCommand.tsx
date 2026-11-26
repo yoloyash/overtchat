@@ -1,12 +1,12 @@
 import { CopyButton } from "@/components/CopyButton";
 
-const commands = {
+export const INSTALL_COMMANDS = {
   unix: "curl -fsSL https://overtchat.com/install | sh",
   windows: "irm https://overtchat.com/install.ps1 | iex",
 };
 
-export function InstallCommand({ platform = "unix" }: { platform?: keyof typeof commands }) {
-  const command = commands[platform];
+export function InstallCommand({ platform = "unix" }: { platform?: keyof typeof INSTALL_COMMANDS }) {
+  const command = INSTALL_COMMANDS[platform];
   return (
     <div className="code-window">
       <div className="code-window-header">
