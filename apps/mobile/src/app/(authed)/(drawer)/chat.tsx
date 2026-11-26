@@ -179,7 +179,7 @@ function ChatGate({
               },
             ]}
           >
-            {t("app.error.tryAgain")}
+            {t("common.actions.tryAgain")}
           </Text>
         </Pressable>
       </View>
@@ -953,7 +953,7 @@ function ChatSurface({
                 ? t("chat.composer.loadingModelPlaceholder")
                 : configured
                   ? t("chat.empty.title")
-                  : t("app.modelPicker.noModels")}
+                  : t("chat.mobile.noModelsTitle")}
           </Text>
           {!configured && !modelsError && !modelLoading && (
             <Text

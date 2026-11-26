@@ -105,7 +105,7 @@ export function VoiceControls({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {t("chat.voice.sending")}
+            {t("common.states.sending")}
           </Text>
         </View>
       ) : null}

@@ -205,7 +205,7 @@ function InstructionsDialog({
                   disabled={updateMut.isPending}
                   onClick={onClose}
                 >
-                  {t("projects.actions.cancel")}
+                  {t("common.actions.cancel")}
                 </Button>
                 <Button
                   type="submit"
@@ -213,8 +213,8 @@ function InstructionsDialog({
                   disabled={!dirty || updateMut.isPending}
                 >
                   {updateMut.isPending
-                    ? t("projects.actions.saving")
-                    : t("projects.actions.save")}
+                    ? t("common.states.saving")
+                    : t("common.actions.save")}
                 </Button>
               </div>
             </div>
@@ -298,7 +298,7 @@ export function ProjectModelCard({
               </>
             ) : (
               <span className="truncate">
-                {models ? t("projects.model.accountDefault") : t("projects.loading")}
+                {models ? t("projects.model.accountDefault") : t("common.states.loading")}
                 {accountDefault && (
                   <span className="text-muted-foreground">
                     {" "}

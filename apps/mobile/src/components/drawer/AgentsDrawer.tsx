@@ -381,8 +381,8 @@ export function AgentsDrawer({
                       ]}
                     >
                       {entry.expanded
-                        ? t("agents.common.showLess")
-                        : t("agents.common.showCountMore", {
+                        ? t("common.actions.showLess")
+                        : t("common.actions.showCountMore", {
                             count: entry.hidden,
                           })}
                     </Text>
@@ -476,8 +476,8 @@ function GroupHeader({
       accessibilityRole="button"
       accessibilityLabel={
         collapsed
-          ? t("sidebar.agents.expandWorkspace", { name: label })
-          : t("sidebar.agents.collapseWorkspace", { name: label })
+          ? t("sidebar.mobile.agents.expandGroup", { name: label })
+          : t("sidebar.mobile.agents.collapseGroup", { name: label })
       }
       accessibilityState={{ expanded: !collapsed }}
       onPress={onToggle}

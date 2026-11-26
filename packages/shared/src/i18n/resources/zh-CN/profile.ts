@@ -22,7 +22,6 @@ export const profile: Translation["profile"] = {
     description: "选填。请使用图片的直接链接。",
   },
   updated: "个人资料已更新",
-  saving: "正在保存…",
   save: "保存个人资料",
   errors: {
     nameRequired: "必须填写显示名称。",

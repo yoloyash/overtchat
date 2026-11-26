@@ -293,7 +293,7 @@ function WorkspaceTabs({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                aria-label={t("agents.activity.openFilePath", {
+                aria-label={t("agents.files.openFilePath", {
                   path: file.path,
                 })}
                 title={gitDecoratedTitle(file.path, decoration, t)}
@@ -550,7 +550,7 @@ function WorkspaceDirectory({
             variant="outline"
             onClick={() => void directory.refetch()}
           >
-            {t("agents.common.retry")}
+            {t("common.actions.retry")}
           </Button>
         }
       />
@@ -874,8 +874,8 @@ function WorkspaceFilePreview({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label={t("agents.common.copy")}
-                title={t("agents.common.copy")}
+                aria-label={t("common.actions.copy")}
+                title={t("common.actions.copy")}
               />
             }
           >
@@ -947,7 +947,7 @@ function WorkspaceFilePreview({
               actions={
                 decoration?.kind !== "deleted" && (
                   <Button size="sm" variant="outline" onClick={() => onView("preview")}>
-                    {t("agents.activity.openFile")}
+                    {t("agents.files.openFile")}
                   </Button>
                 )
               }

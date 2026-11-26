@@ -6,7 +6,6 @@ export const chat = {
     temporaryHint: "Messages won't be saved to your history.",
   },
   header: {
-    untitled: "Untitled",
     temporaryBadge: "Temporary",
     enableTemporary: "Enable temporary chat",
     disableTemporary: "Disable temporary chat",
@@ -58,12 +57,10 @@ export const chat = {
     unavailable: {
       searchDisabled: "Web search is disabled in Settings → Tools",
       searchModel: "Web search is unavailable for this model",
-      searchVoice:
-        "End voice to require a web search. Voice can still search automatically.",
+      searchVoice: "End voice to require a web search. Voice can still search automatically.",
       openuiModel: "Interactive UI is unavailable for this model",
       openuiVoice: "End voice to request an interactive UI.",
-      connectorReconnect:
-        "Reconnect {{connector}} in Settings → Tools → Connectors",
+      connectorReconnect: "Reconnect {{connector}} in Settings → Tools → Connectors",
       connectorModel: "{{connector}} is unavailable for this model",
       connectorAlwaysAvailable: "Always available",
       connectorOnForChat: "On for this chat",
@@ -147,17 +144,13 @@ export const chat = {
     cancelEdit: "Cancel edit",
     stopFailed:
       "Could not stop the response. Your queued message is still here; try Send now again.",
-    sendFailed:
-      "Could not send the queued message. Check your connection and try again.",
+    sendFailed: "Could not send the queued message. Check your connection and try again.",
   },
   find: {
     label: "Find in chat",
     searching: "Searching",
-    searchingEllipsis: "Searching…",
     noResults: "No results",
-    incompleteHistoryTitle:
-      "Earlier messages could not be loaded, so they are not searched.",
-    retry: "Retry",
+    incompleteHistoryTitle: "Earlier messages could not be loaded, so they are not searched.",
     previousMatch: "Previous match",
     previousMatchShortcut: "Previous match (Shift+Enter)",
     nextMatch: "Next match",
@@ -176,16 +169,9 @@ export const chat = {
     loadingMore: "Loading messages…",
     showMoreMessages: "Show more messages",
     reply: "Reply",
-    edit: "Edit",
-    showLess: "Show less",
-    showMore: "Show more",
     regenerate: "Regenerate",
     continueResponse: "Continue response",
     editMessage: "Edit message",
-    cancel: "Cancel",
-    send: "Send",
-    copy: "Copy",
-    copied: "Copied",
     copyFailedTitle: "Failed to copy",
     copyFailedDescription: "Clipboard access was denied by the browser.",
     speak: "Speak",
@@ -214,7 +200,6 @@ export const chat = {
     thought: "Thought",
     thoughts: "Thoughts",
     thoughtForSeconds: "Thought for {{duration}}s",
-    working: "Working…",
     running: "Running",
     failed: "Failed",
     done: "Done",
@@ -223,7 +208,6 @@ export const chat = {
     outputTruncated: "Output (truncated)",
     errors: "Errors",
     errorsTruncated: "Errors (truncated)",
-    searchingEllipsis: "Searching…",
     results_one: "{{count}} result",
     results_other: "{{count}} results",
     answer: "answer",
@@ -238,13 +222,13 @@ export const chat = {
     noMatches: "no matches",
     matches_one: "{{formattedCount}} match",
     matches_other: "{{formattedCount}} matches",
-    searchingQuery: 'Searching "{{query}}"',
+    searchingQuery: "Searching \"{{query}}\"",
     searchingWeb: "Searching the web…",
     readingDomain: "Reading {{domain}}",
     readingPage: "Reading page…",
     readingFile: "Reading file…",
     readingNamedFile: "Reading {{file}}",
-    searchingFilesQuery: 'Searching files for "{{query}}"',
+    searchingFilesQuery: "Searching files for \"{{query}}\"",
     runningCode: "Running code…",
     runningMcpServerTool: "Running {{server}} · {{tool}}",
     runningMcpTool: "Running MCP tool…",
@@ -313,7 +297,6 @@ export const chat = {
     empty: "Files you attach and files the assistant makes appear here.",
     outputs: "Outputs",
     uploads: "Uploads",
-    untitled: "Untitled",
     panelLabel: "File: {{name}}",
     resizePanel: "Resize panel",
     showPreview: "Show preview",
@@ -321,7 +304,6 @@ export const chat = {
     downloadFile: "Download file",
     downloadNamed: "Download {{name}}",
     openNamed: "Open {{name}}",
-    download: "Download",
     closeFile: "Close file",
     noPreview: "There is no preview for this file type.",
     loadFailed: "This file could not be loaded.",
@@ -347,11 +329,11 @@ export const chat = {
       zip: "ZIP archive",
       imageType: "{{type}} image",
     },
+    filesPanelLabel: "Files",
   },
   documents: {
     untitled: "Untitled document",
     writing: "Writing…",
-    updating: "Updating…",
     notSaved: "Not saved",
     stoppedBeforeSaved: "Stopped before it was saved",
     updateStopped: "Update stopped",
@@ -412,8 +394,7 @@ export const chat = {
     noDimensions: "The diagram has no usable dimensions.",
   },
   codePreview: {
-    tooLarge:
-      "This block is too large to preview. You can still copy or download its source.",
+    tooLarge: "This block is too large to preview. You can still copy or download its source.",
     svgNoDimensions: "This SVG has no usable dimensions.",
     svgPreviewFailed: "Unable to preview this SVG.",
     renderingSvg: "Rendering SVG",
@@ -432,16 +413,14 @@ export const chat = {
     svgFullscreenInstructions: "Drag to pan. Scroll or pinch to zoom.",
     htmlFullscreenInstructions: "Interactive preview of the generated HTML page.",
     htmlPreviewTitle: "HTML preview",
-    svgRenderError:
-      "This SVG could not be rendered. Its source is still available.",
+    svgRenderError: "This SVG could not be rendered. Its source is still available.",
   },
   openui: {
     unavailable: "Interactive UI is unavailable.",
     building: "Building interactive UI…",
     interrupted: "Interactive UI generation was interrupted.",
     loading: "Loading interactive UI…",
-    renderFailed:
-      "Interactive UI could not be rendered. The readable answer is shown below.",
+    renderFailed: "Interactive UI could not be rendered. The readable answer is shown below.",
     partialRenderFailed:
       "Some interactive content could not be rendered. The readable answer is shown below.",
     unavailableInClient: "Interactive UI is unavailable in this client.",
@@ -466,8 +445,7 @@ export const chat = {
     editOrReference: "Edit / Use as reference",
     detailsSummary: "{{model}} · Image details",
     requestedFormat: "Requested format: {{format}}",
-    requestedFormatWithQuality:
-      "Requested format: {{format}} · Quality: {{quality}}",
+    requestedFormatWithQuality: "Requested format: {{format}} · Quality: {{quality}}",
     auto: "Auto",
     sizes: {
       auto: "Auto",
@@ -496,8 +474,7 @@ export const chat = {
     percentUsed: "{{percentage}}% used",
     tokensUsed: "{{count}} used",
     tokensRemaining: "{{count}} remaining",
-    contextUnavailableDetail:
-      "Context usage unavailable. Waiting for a reading from the agent.",
+    contextUnavailableDetail: "Context usage unavailable. Waiting for a reading from the agent.",
     tokensCount: "{{count}} tokens",
     limitUnknown: "Limit unknown",
     session: "Session",
@@ -535,8 +512,7 @@ export const chat = {
       closed: "Ended",
       listening: "Listening",
     },
-    permissionDenied:
-      "Microphone access was denied. Allow it in your browser and try again.",
+    permissionDenied: "Microphone access was denied. Allow it in your browser and try again.",
     httpsRequired: "Microphone access requires HTTPS for non-local addresses.",
     startFailed: "The voice session could not start.",
     endFailed: "Could not end the voice session.",
@@ -545,9 +521,7 @@ export const chat = {
     startRequestFailed: "Could not start voice.",
     historyConnectFailed: "Could not connect voice history.",
     connectionEnded: "The voice connection ended. End voice and reconnect.",
-    notConfirmedSent:
-      "Not confirmed sent. Check the conversation before sending again.",
-    sending: "Sending…",
+    notConfirmedSent: "Not confirmed sent. Check the conversation before sending again.",
     endAndRetry: "End the session and try again",
     subtitleMuted: "{{model}} · Microphone muted",
     subtitleActive: "{{model}} · Realtime voice",
@@ -561,10 +535,8 @@ export const chat = {
     transcribing: "Transcribing",
     start: "Dictate",
     recordAgain: "Record again",
-    speechSettings: "Speech settings",
     errors: {
-      permission:
-        "Microphone access denied. Allow it in your browser settings to dictate.",
+      permission: "Microphone access denied. Allow it in your browser settings to dictate.",
       insecureContext:
         "Microphone access requires HTTPS on this address. Open OvertChat over HTTPS, or use localhost on the computer running the server.",
       unsupported: "Your browser doesn't support audio recording.",
@@ -575,32 +547,28 @@ export const chat = {
       notConfigured: "Dictation hasn't been set up on this server.",
       notConfiguredNonAdmin:
         "Dictation hasn't been set up on this server. Ask an administrator to enable it.",
-      unreachable:
-        "Couldn't reach the transcription service. Try again shortly.",
+      unreachable: "Couldn't reach the transcription service. Try again shortly.",
       timeout: "The transcription service took too long to respond. Try again.",
       providerAuth:
         "The transcription service rejected the server's credentials. Ask an administrator to check the speech settings.",
       rateLimited: "The transcription service is busy. Try again shortly.",
-      invalidResponse:
-        "The transcription service returned an invalid response. Try again.",
-      unavailable:
-        "The transcription service is temporarily unavailable. Try again shortly.",
+      invalidResponse: "The transcription service returned an invalid response. Try again.",
+      unavailable: "The transcription service is temporarily unavailable. Try again shortly.",
       transcribeFailed: "Couldn't transcribe this recording. Please try again.",
     },
   },
   speech: {
     retryPlayback: "Retry playback",
-    loading: "Loading…",
     streaming: "Streaming…",
     closePlayer: "Close player",
     playbackFailed: "Playback failed.",
     startPlaybackFailed: "Couldn't start playback.",
     playFailed: "Couldn't play speech. Please try again.",
     audioBufferError: "Audio buffer error.",
+    settings: "Speech settings",
   },
   share: {
     title: "Share chat",
-    close: "Close",
     description:
       "Anyone with the link can read this conversation, including its attachments, reasoning, and tool results. New messages and edits stay private until you update the link. Deleting this chat also removes its link.",
     linkAria: "Shared chat link",
@@ -610,7 +578,6 @@ export const chat = {
     previewSummary: "Preview current conversation",
     loadingPreview: "Loading preview…",
     unshare: "Unshare",
-    saving: "Saving…",
     updateLink: "Update link",
     createLink: "Create link",
   },
@@ -623,7 +590,6 @@ export const chat = {
     gmailEmail: "Gmail email",
     sent: "Sent",
     saveToGmail: "Save to Gmail",
-    send: "Send",
     showAll: "Show all",
     sendEmailFailed: "Could not send the email.",
     saveEmailFailed: "Could not save the email in Gmail.",
@@ -713,7 +679,7 @@ export const chat = {
       },
       active: {
         search: "Searching Gmail…",
-        searchQuery: 'Searching Gmail for "{{query}}"',
+        searchQuery: "Searching Gmail for \"{{query}}\"",
         read: "Reading email…",
         attachment: "Reading attachment…",
         labels: "Listing Gmail labels…",
@@ -763,8 +729,6 @@ export const chat = {
       denied: "The memory change was denied.",
       updateFailed: "The memory could not be updated.",
       status: {
-        updating: "Updating…",
-        removing: "Removing…",
         failed: "Failed",
         notFound: "Not found",
         incomplete: "Did not complete",
@@ -815,9 +779,11 @@ export const chat = {
       photos: "Photos",
       searchThisMessage: "Search this message",
       renderInteractiveUI: "Render interactive UI for this message",
+      files: "Files",
     },
     attachment: {
       preview: "Preview {{name}}",
+      closePreview: "Close preview",
     },
     composer: {
       messagePlaceholder: "Message…",
@@ -830,8 +796,7 @@ export const chat = {
     dictation: {
       start: "Start dictation",
       startFailed: "Couldn't start recording. Please try again.",
-      permission:
-        "Microphone access denied. Allow it in your device settings to dictate.",
+      permission: "Microphone access denied. Allow it in your device settings to dictate.",
       unsupported: "Audio recording isn't supported on this device.",
     },
     speech: {
@@ -844,24 +809,18 @@ export const chat = {
       requiresUpdateSentence: "Live voice requires an updated mobile app.",
       endBeforePlayback: "End live voice before playing a message.",
       keepOpen: "Keep OvertChat open to use live voice.",
-      allowMicrophone:
-        "Allow microphone access in Settings to start live voice.",
-      audioInterrupted:
-        "Voice ended because audio was interrupted. Start voice again when ready.",
+      allowMicrophone: "Allow microphone access in Settings to start live voice.",
+      audioInterrupted: "Voice ended because audio was interrupted. Start voice again when ready.",
       initAudioFailed: "Could not initialize voice audio.",
-      microphoneInUse:
-        "The microphone is in use. Try again when other audio has finished.",
+      microphoneInUse: "The microphone is in use. Try again when other audio has finished.",
       ending: "Ending",
-      endingError:
-        "Could not finish ending voice. Check your connection and tap End again.",
+      endingError: "Could not finish ending voice. Check your connection and tap End again.",
       startFailed:
         "Could not start voice. Check your connection and voice services, then try again.",
       conflict:
         "This chat already has an active response or voice call. Finish it before starting voice.",
-      disconnected:
-        "Voice disconnected or audio was interrupted. Start voice again when ready.",
-      lostConnection:
-        "Voice lost its connection. Start voice again when you are connected.",
+      disconnected: "Voice disconnected or audio was interrupted. Start voice again when ready.",
+      lostConnection: "Voice lost its connection. Start voice again when you are connected.",
       responseFailed: "The voice response failed. Please try speaking again.",
       messageNotConfirmed:
         "Your message was not confirmed. Check the conversation before trying again.",
@@ -902,6 +861,9 @@ export const chat = {
     messages: {
       regenerateResponse: "Regenerate response",
       loadingSpeech: "Loading speech",
+      copyMessage: "Copy message",
+      stopReading: "Stop reading",
+      readAloud: "Read aloud",
     },
     stats: {
       outputTokens: "{{count}} output",
@@ -911,18 +873,18 @@ export const chat = {
       sending: "Sending queued message",
     },
     modelPicker: {
-      setAsDefaultHint:
-        "Use {{model}} for new chats on all your devices",
+      setAsDefaultHint: "Use {{model}} for new chats on all your devices",
       thinkingLevel: "Thinking level: {{level}}",
       clearSearch: "Clear model search",
       loading: "Loading models…",
       noModelsHint: "An admin can add one in Settings → Models on the web.",
-      noMatches: 'No models match "{{query}}"',
+      noMatches: "No models match \"{{query}}\"",
       noMatchesHint: "Try a model, provider, or endpoint name.",
+      reasoningDefault: "Default",
+      backToModels: "Back to models",
     },
     openui: {
-      unavailableFallback:
-        "Interactive UI is unavailable. The readable answer is shown below.",
+      unavailableFallback: "Interactive UI is unavailable. The readable answer is shown below.",
       showInteractiveView: "Show interactive view",
       loading: "Loading interactive UI",
     },
@@ -942,6 +904,7 @@ export const chat = {
       partialPricingNote:
         "{{priced}} of {{total}} generations have pricing. Missing prices are excluded.",
       empty: "No usage has been recorded for this chat yet.",
+      contextWindow: "Context window",
     },
     actions: {
       renamed: "Renamed",
@@ -952,6 +915,14 @@ export const chat = {
       moveFailed: "Couldn't move chat",
       deleteFailed: "Couldn't delete chat",
       deleteDialogNamed: "{{name}} will be permanently deleted.",
+      renamePlaceholder: "Chat title",
+      deletedTitle: "Chat deleted",
+      deleteDialogTitle: "Delete chat?",
+      deleteDialogUnnamed: "This chat will be permanently deleted.",
+    },
+    noModelsTitle: "No models configured",
+    header: {
+      actionsLabel: "Chat actions",
     },
   },
 } as const;

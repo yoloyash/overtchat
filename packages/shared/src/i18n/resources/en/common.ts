@@ -1,4 +1,45 @@
 export const common = {
+  actions: {
+    add: "Add",
+    back: "Back",
+    cancel: "Cancel",
+    clearSearch: "Clear search",
+    close: "Close",
+    continue: "Continue",
+    copy: "Copy",
+    create: "Create",
+    delete: "Delete",
+    dismiss: "Dismiss",
+    done: "Done",
+    download: "Download",
+    edit: "Edit",
+    notNow: "Not now",
+    open: "Open",
+    remove: "Remove",
+    rename: "Rename",
+    retry: "Retry",
+    save: "Save",
+    saveChanges: "Save changes",
+    send: "Send",
+    showCountMore: "Show {{count}} more",
+    showLess: "Show less",
+    showMore: "Show more",
+    tryAgain: "Try again",
+  },
+  states: {
+    copied: "Copied",
+    creating: "Creating…",
+    deleting: "Deleting…",
+    loading: "Loading…",
+    removing: "Removing…",
+    saving: "Saving…",
+    searching: "Searching…",
+    sending: "Sending…",
+    untitled: "Untitled",
+    updating: "Updating…",
+    uploading: "Uploading…",
+    working: "Working…",
+  },
   relativeTime: {
     justNow: "Just now",
     justNowInline: "just now",
@@ -18,43 +59,28 @@ export const common = {
       stt: {
         disabled: "Dictation is turned off on this server.",
         notConfigured: "Dictation hasn't been set up on this server.",
-        unreachable:
-          "Couldn't reach the transcription service. Try again shortly.",
+        unreachable: "Couldn't reach the transcription service. Try again shortly.",
         timeout: "The transcription service took too long to respond. Try again.",
         providerAuth:
           "The transcription service rejected the server's credentials. Ask an administrator to check the speech settings.",
         rateLimited: "The transcription service is busy. Try again shortly.",
-        invalidResponse:
-          "The transcription service returned an invalid response. Try again.",
-        unavailable:
-          "The transcription service is temporarily unavailable. Try again shortly.",
+        invalidResponse: "The transcription service returned an invalid response. Try again.",
+        unavailable: "The transcription service is temporarily unavailable. Try again shortly.",
       },
       tts: {
         disabled: "Read aloud is turned off on this server.",
         notConfigured: "Read aloud hasn't been set up on this server.",
-        unreachable:
-          "Couldn't reach the speech playback service. Try again shortly.",
-        timeout:
-          "The speech playback service took too long to respond. Try again.",
+        unreachable: "Couldn't reach the speech playback service. Try again shortly.",
+        timeout: "The speech playback service took too long to respond. Try again.",
         providerAuth:
           "The speech playback service rejected the server's credentials. Ask an administrator to check the speech settings.",
-        rateLimited:
-          "The speech playback service is busy. Try again shortly.",
-        invalidResponse:
-          "The speech playback service returned an invalid response. Try again.",
-        unavailable:
-          "The speech playback service is temporarily unavailable. Try again shortly.",
+        rateLimited: "The speech playback service is busy. Try again shortly.",
+        invalidResponse: "The speech playback service returned an invalid response. Try again.",
+        unavailable: "The speech playback service is temporarily unavailable. Try again shortly.",
       },
     },
   },
   mobile: {
-    actions: {
-      back: "Back",
-      cancel: "Cancel",
-      save: "Save",
-      close: "Close",
-      retry: "Retry",
-    },
     errors: {
       shareChangeFailed: "Could not change chat sharing.",
       sharePreviewFailed: "Could not preview this chat.",

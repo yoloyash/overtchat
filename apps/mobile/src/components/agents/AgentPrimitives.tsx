@@ -292,7 +292,7 @@ export function AgentNotice({
       {onDismiss && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("app.alertsIntro.dismiss")}
+          accessibilityLabel={t("common.actions.dismiss")}
           hitSlop={10}
           onPress={onDismiss}
           style={{ padding: 2 }}
@@ -321,7 +321,7 @@ export function AgentFeedback({
       {!!error && (
         <ErrorNotice
           message={error}
-          action={retry ? { label: t("agents.common.retry"), onPress: retry } : undefined}
+          action={retry ? { label: t("common.actions.retry"), onPress: retry } : undefined}
         />
       )}
     </View>
@@ -435,7 +435,7 @@ export function AgentSheet({
         </View>
         {closeLabel === undefined ? (
           <AgentButton
-            label={t("agents.common.done")}
+            label={t("common.actions.done")}
             onPress={() => ref.current?.dismiss()}
           />
         ) : (

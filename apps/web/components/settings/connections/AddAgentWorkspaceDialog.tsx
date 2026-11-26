@@ -292,12 +292,12 @@ export function AddAgentWorkspaceDialog({
               >
                 <TransportChoice
                   value="local"
-                  label={t("connections.dialog.thisServer")}
+                  label={t("connections.hosts.thisServer")}
                   icon={Server}
                 />
                 <TransportChoice
                   value="ssh"
-                  label={t("connections.dialog.sshHost")}
+                  label={t("connections.hosts.sshHost")}
                   icon={Wifi}
                 />
               </RadioGroup>
@@ -556,7 +556,7 @@ export function AddAgentWorkspaceDialog({
                     onOpenChange(false);
                   }}
                 >
-                  {t("connections.dialog.cancel")}
+                  {t("common.actions.cancel")}
                 </Button>
                 <Button
                   type="submit"

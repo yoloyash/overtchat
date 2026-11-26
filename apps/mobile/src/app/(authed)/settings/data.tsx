@@ -56,7 +56,7 @@ export default function Data() {
       t("data.mobile.import.confirmTitle"),
       t("data.mobile.import.confirmMessage", { name: selected.name }),
       [
-        { text: t("agents.common.cancel"), style: "cancel" },
+        { text: t("common.actions.cancel"), style: "cancel" },
         {
           text: t("data.import.title"),
           onPress: () =>
@@ -115,7 +115,7 @@ export default function Data() {
         <Row
           title={
             action.busy
-              ? t("chat.activity.working")
+              ? t("common.states.working")
               : t("data.mobile.export.action")
           }
           icon="download-outline"

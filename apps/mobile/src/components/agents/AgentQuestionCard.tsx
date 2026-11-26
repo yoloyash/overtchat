@@ -290,7 +290,7 @@ export function AgentQuestionCard({
           accessibilityLabel={
             typeof request.dismissLabel === "string"
               ? request.dismissLabel
-              : t("agents.questions.dismiss")
+              : t("common.actions.dismiss")
           }
           accessibilityState={{ disabled: pending }}
           disabled={pending}
@@ -304,7 +304,7 @@ export function AgentQuestionCard({
           <Text style={[typography, { color: colors.mutedForeground }]}>
             {typeof request.dismissLabel === "string"
               ? request.dismissLabel
-              : t("agents.questions.dismiss")}
+              : t("common.actions.dismiss")}
           </Text>
         </Pressable>
         <Pressable

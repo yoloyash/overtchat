@@ -26,7 +26,7 @@ export default function SettingsLayout() {
           headerLeft: (props) => (
             <HeaderBackButton
               {...props}
-              label={t("settings.mobile.common.back")}
+              label={t("common.actions.back")}
               tintColor={colors.foreground}
               onPress={() => router.back()}
             />

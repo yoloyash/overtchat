@@ -216,7 +216,7 @@ export function showNotificationIntro(scope: NotificationScope) {
     i18n.t("app.mobile.notifications.introTitle"),
     i18n.t("app.mobile.notifications.introBody"),
     [
-      { text: i18n.t("app.alertsIntro.notNow"), style: "cancel" },
+      { text: i18n.t("common.actions.notNow"), style: "cancel" },
       {
         text: i18n.t("app.alertsIntro.enable"),
         onPress: () => {

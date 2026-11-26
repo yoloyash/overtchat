@@ -99,7 +99,7 @@ export function MiniSpeechPlayer({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {loading ? t("chat.speech.loading") : t("chat.speech.streaming")}
+            {loading ? t("common.states.loading") : t("chat.speech.streaming")}
           </Text>
         )}
 

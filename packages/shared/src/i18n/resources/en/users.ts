@@ -22,7 +22,6 @@ export const users = {
     currentUser: "Current user",
     resetPassword: "Reset password",
     resetTwoFactor: "Reset two-factor",
-    delete: "Delete",
   },
   roles: {
     user: "User",
@@ -39,8 +38,7 @@ export const users = {
     passwordResetTitle: "Password reset",
     passwordResetDescription: "{{email}} has been signed out on all devices.",
     twoFactorResetTitle: "Two-factor reset",
-    twoFactorResetDescription:
-      "{{email}} can sign in with their password and set it up again.",
+    twoFactorResetDescription: "{{email}} can sign in with their password and set it up again.",
   },
   roleDialog: {
     grantTitle: "Grant administrator access?",
@@ -49,8 +47,6 @@ export const users = {
       "<email>{{email}}</email> will be able to manage users, models, and agent workspaces, including running code and opening SSH connections from this server. They will be signed out on all devices.",
     removeDescription:
       "<email>{{email}}</email> will lose administrator features. Their active agent runs will stop. They will be signed out on all devices.",
-    cancel: "Cancel",
-    updating: "Updating…",
     makeAdmin: "Make admin",
     makeUser: "Make user",
   },
@@ -58,15 +54,15 @@ export const users = {
     title: "Delete user?",
     description:
       "<email>{{email}}</email> will no longer be able to sign in. Existing chats and projects are not deleted.",
-    deleting: "Deleting…",
   },
   addDialog: {
     ssoDescription: "They sign in with {{provider}}, using this email address.",
-    passwordDescription:
-      "Share the password with them out-of-band. They can change it later.",
+    passwordDescription: "Share the password with them out-of-band. They can change it later.",
     passwordLabel: "Password",
-    creating: "Creating…",
-    create: "Create",
+    nameLabel: "Name",
+    emailLabel: "Email",
+    roleLabel: "Role",
+    roleAriaLabel: "Role",
   },
   resetPasswordDialog: {
     description:
@@ -76,16 +72,20 @@ export const users = {
     confirmPasswordLabel: "Confirm replacement password",
     mismatchError: "The replacement passwords do not match.",
     errorFallback: "Failed to reset password.",
-    networkError:
-      "Could not reset the password. Check your connection and try again.",
+    networkError: "Could not reset the password. Check your connection and try again.",
     resetting: "Resetting…",
+    title: "Reset password",
+    submit: "Reset password",
   },
   resetTwoFactorDialog: {
     description:
       "Remove {{email}}'s authenticator and backup codes, for example after they lose their phone. They will be signed out on all devices and can set two-factor up again in Security settings.",
     errorFallback: "Failed to reset two-factor.",
-    networkError:
-      "Could not reset two-factor. Check your connection and try again.",
+    networkError: "Could not reset two-factor. Check your connection and try again.",
+    title: "Reset two-factor",
+    submit: "Reset two-factor",
+    currentPasswordLabel: "Your current password",
+    resetting: "Resetting…",
   },
   mobile: {
     roles: {
@@ -101,6 +101,9 @@ export const users = {
       notFound: "User no longer exists.",
       roleSelfAdmin: "Administrator · You",
       selfPasswordHint: "Change your own password in Security settings.",
+      accountSection: "Account",
+      createdLabel: "Created",
+      roleLabel: "Role",
     },
     create: {
       passwordDescription:
@@ -113,6 +116,7 @@ export const users = {
         invalidPasswordLength: "Use an initial password of 8–128 characters.",
         createFailed: "Couldn’t create user.",
       },
+      created: "User created",
     },
     roleDialog: {
       grantMessage:
@@ -130,6 +134,7 @@ export const users = {
         invalidLength: "Use a password of 8–128 characters.",
         mismatch: "Replacement passwords do not match.",
         failed: "Couldn’t reset password.",
+        currentRequired: "Enter your current password.",
       },
     },
     deleteDialog: {

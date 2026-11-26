@@ -9,19 +9,6 @@ export const agents: Translation["agents"] = {
     synced_other: "已同步 {{count}} 个智能体工作区。",
     syncedWithFailures_other: "已同步 {{count}} 个智能体工作区；{{failed}} 个失败。",
   },
-  common: {
-    cancel: "取消",
-    save: "保存",
-    done: "完成",
-    retry: "重试",
-    remove: "移除",
-    loading: "正在加载…",
-    copy: "复制",
-    copied: "已复制",
-    showMore: "展开更多",
-    showLess: "收起",
-    showCountMore: "再显示 {{count}} 项",
-  },
   sessionState: {
     approval: "等待批准",
     question: "等待回答",
@@ -33,9 +20,6 @@ export const agents: Translation["agents"] = {
     markUnread: "标记为未读",
     markSessionRead: "将 {{title}} 标记为已读",
     markSessionUnread: "将 {{title}} 标记为未读",
-  },
-  alerts: {
-    open: "打开",
   },
   approval: {
     sendingResponse: "正在发送回复",
@@ -63,7 +47,6 @@ export const agents: Translation["agents"] = {
     noFields: "智能体未提供任何回答字段。",
     otherPlaceholder: "其他（输入你的回答）",
     answerPlaceholder: "输入你的回答",
-    dismiss: "忽略",
     submit: "提交",
     next: "下一步",
     choicesFor: "{{label}} 的选项",
@@ -90,19 +73,16 @@ export const agents: Translation["agents"] = {
     checkedOutIn: "已检出到 {{path}}",
     uncommittedChanges_other: "{{count}} 处未提交更改",
     stashPromptDescription: "暂存这些更改以切换到 {{target}}。",
-    stashPromptDescriptionWithBranch:
-      "暂存这些更改以切换到 {{target}}。切回 {{current}} 时将自动恢复。",
+    stashPromptDescriptionWithBranch: "暂存这些更改以切换到 {{target}}。切回 {{current}} 时将自动恢复。",
     stashAndSwitch: "暂存更改并切换",
     agentRunningTitle: "有智能体正在此仓库中运行",
     agentRunningDescription: "请等待本轮结束后再切换分支，或先停止智能体。",
     switchedTitle: "已切换到 {{branch}}",
     switchErrorTitle: "无法切换分支",
-    stashedOnBranch:
-      "你在 {{branch}} 上的未提交更改已暂存。切回 {{branch}} 即可恢复。",
+    stashedOnBranch: "你在 {{branch}} 上的未提交更改已暂存。切回 {{branch}} 即可恢复。",
     stashed: "你的未提交更改已暂存。",
     restored: "已恢复你在此分支上的未提交更改。",
-    keptStash:
-      "由于该分支有新的提交，之前在 {{branch}} 上暂存的更改保留在 {{stash}} 中。",
+    keptStash: "由于该分支有新的提交，之前在 {{branch}} 上暂存的更改保留在 {{stash}} 中。",
     ahead: "领先 {{count}} 个提交",
     behind: "落后 {{count}} 个提交",
     changedFiles_other: "{{count}} 个已更改文件",
@@ -113,19 +93,16 @@ export const agents: Translation["agents"] = {
   },
   worktreeDialog: {
     title: "新建工作树",
-    description:
-      "在单独的文件夹中检出 <workspace>{{workspace}}</workspace> 的新分支，避免其中的智能体影响当前检出目录。",
+    description: "在单独的文件夹中检出 <workspace>{{workspace}}</workspace> 的新分支，避免其中的智能体影响当前检出目录。",
     startFrom: "基于分支",
     notGitRepo: "此工作区不是 Git 仓库。",
     newBranch: "新分支",
-    creating: "正在创建…",
     create: "创建工作树",
     createdTitle: "已创建工作树 {{name}}",
     createdDescription: "{{branch}} 已检出到 {{path}}。",
   },
   worktreeRemoval: {
-    description:
-      "<name>{{name}}</name> 及其智能体对话将从 OvertChat 中移除，且该工作树文件夹会从主机删除。",
+    description: "<name>{{name}}</name> 及其智能体对话将从 OvertChat 中移除，且该工作树文件夹会从主机删除。",
     descriptionWithBranch:
       "<name>{{name}}</name> 及其智能体对话将从 OvertChat 中移除，且该工作树文件夹会从主机删除。其中的提交会保留在 <branch>{{branch}}</branch> 分支上。",
     checking: "正在检查未提交的更改…",
@@ -153,12 +130,10 @@ export const agents: Translation["agents"] = {
   },
   newSession: {
     chooseAgent: "选择智能体",
-    dialogDescription:
-      "在 <workspace>{{workspace}}</workspace><sep> · </sep>{{machine}} 中新建会话",
+    dialogDescription: "在 <workspace>{{workspace}}</workspace><sep> · </sep>{{machine}} 中新建会话",
     startProviderSession: "启动 {{provider}} 会话",
     pageTitle: "新建 {{provider}} 会话 · {{workspace}}",
     heading: "新建 {{provider}} 会话",
-    providerAgent: "{{provider}} 智能体",
     modelDefaultsErrorTitle: "无法加载默认模型配置",
     modelDefaultsErrorFallback: "无法加载默认模型配置。",
     catalogUnavailable: "{{provider}} 目录不可用。",
@@ -172,7 +147,6 @@ export const agents: Translation["agents"] = {
   history: {
     title: "历史记录",
     searchPlaceholder: "搜索会话",
-    clearSearch: "清除搜索",
     allMachines: "全部机器",
     allWorkspaces: "全部工作区",
     allAgents: "全部智能体",
@@ -187,6 +161,7 @@ export const agents: Translation["agents"] = {
     noMatches: "没有匹配的会话。",
     clearFilters: "清除筛选",
     lastTurnFailed: "上一轮运行失败。",
+    searchLabel: "搜索会话",
   },
   session: {
     newSession: "新会话",
@@ -231,6 +206,7 @@ export const agents: Translation["agents"] = {
     goalPaused: "目标已暂停",
     goalResumed: "目标已恢复",
     goalCleared: "目标已清除",
+    providerAgent: "{{provider}} 智能体",
   },
   dialogs: {
     renameDescription: "这会更新原生 {{provider}} 会话名称。",
@@ -267,7 +243,6 @@ export const agents: Translation["agents"] = {
     durationMinutes: "{{minutes}} 分钟",
     needsInput: "{{provider}} 需要你的输入",
     openAuthPage: "打开授权页面",
-    continueAction: "继续",
   },
   context: {
     goal: "目标",
@@ -343,8 +318,7 @@ export const agents: Translation["agents"] = {
     permissions: "权限",
     permissionsSelected: "权限：{{mode}}",
     enableModeTitle: "启用 {{mode}}？",
-    enableModeFallback:
-      "{{provider}} 将可以在没有沙箱限制和批准提示的情况下运行命令和修改文件。",
+    enableModeFallback: "{{provider}} 将可以在没有沙箱限制和批准提示的情况下运行命令和修改文件。",
     enableModeConfirm: "启用 {{mode}}",
     modelAndEffortSelected: "模型与思考强度：{{model}}，{{effort}}",
     modelSelected: "模型：{{model}}",
@@ -369,11 +343,9 @@ export const agents: Translation["agents"] = {
       default: "默认",
     },
     imageDropOverlayTitle: "拖放图片以附加",
-    imageDropOverlayDescription:
-      "支持向 {{provider}} 发送 PNG、JPEG、GIF 或 WebP 图片。其他文件请通过路径提及。",
+    imageDropOverlayDescription: "支持向 {{provider}} 发送 PNG、JPEG、GIF 或 WebP 图片。其他文件请通过路径提及。",
     imageDropRefusedTitle: "此模型不支持图片",
-    imageDropRefusedDescription:
-      "请选择支持图片输入的 {{provider}} 模型后再附加图片。",
+    imageDropRefusedDescription: "请选择支持图片输入的 {{provider}} 模型后再附加图片。",
   },
   activity: {
     elapsedSeconds: "{{seconds}} 秒",
@@ -415,8 +387,6 @@ export const agents: Translation["agents"] = {
     toolStepAriaWithSummary: "{{label}}：{{summary}}，{{status}}",
     prompt: "提示词",
     activityHeading: "动态",
-    openFilePath: "打开 {{path}}",
-    openFile: "打开文件",
     commandCancelled: "命令已取消。",
     exitedWithCode: "退出码 {{code}}。",
     commandExitedWithCode: "命令已退出，退出码 {{code}}。",
@@ -566,8 +536,7 @@ export const agents: Translation["agents"] = {
     wrongSessionOpened: "主机连接器打开了其他会话。",
     invalidSessionSync: "主机连接器返回了无效的会话同步数据。",
     invalidHistoryPage: "无效的智能体历史记录页。",
-    connectionLostWhileSending:
-      "发送时连接断开，命令结果未知。重试前请先检查会话；保持内容不变重试将复用同一命令标识。",
+    connectionLostWhileSending: "发送时连接断开，命令结果未知。重试前请先检查会话；保持内容不变重试将复用同一命令标识。",
     noAccountUsage: "主机连接器未返回账号用量。",
   },
   terminal: {
@@ -665,8 +634,7 @@ export const agents: Translation["agents"] = {
       workspaceUnavailableDrawer: "此工作区已不可用，请从侧边栏选择其他工作区。",
       workspaceUnavailableSync: "此工作区已不可用，请返回智能体连接并同步。",
       startSessionFailed: "无法启动会话。",
-      startSessionFailedHint:
-        "{{message}} 如果连接曾断开，请在重试前检查会话列表。",
+      startSessionFailedHint: "{{message}} 如果连接曾断开，请在重试前检查会话列表。",
       firstMessageUnconfirmed: "无法确认第一条消息是否已发送。你的草稿已保存在对话中。",
       noModelsAvailable: "此智能体没有可用的模型。",
     },
@@ -702,6 +670,10 @@ export const agents: Translation["agents"] = {
       uploadingImage: "正在上传图片",
       previewImage: "预览 {{label}}",
       deliveryUnknown: "发送状态未知——重新发送前请检查对话",
+      queueMessage: "加入队列",
+      recordAgain: "重新录音",
+      stopDictation: "停止语音输入",
+      transcribing: "正在转写",
     },
     connection: {
       reconnecting: "正在重新连接到智能体…",
@@ -718,16 +690,19 @@ export const agents: Translation["agents"] = {
       noLimit: "智能体尚未报告上下文上限。",
       notReported: "智能体尚未报告上下文用量。",
       stale: "显示上次报告的用量。重新连接后将恢复更新。",
+      percentUsed: "已使用 {{percentage}}%",
     },
     controls: {
-      enableModeFallback:
-        "智能体将可以在没有沙箱限制和批准提示的情况下运行命令和修改文件。",
+      enableModeFallback: "智能体将可以在没有沙箱限制和批准提示的情况下运行命令和修改文件。",
       enable: "启用",
       chooseModel: "选择模型",
       reasoningEffort: "思考强度",
       agentSettings: "智能体设置",
       planOn: "开",
       planOff: "关",
+      modelUnavailable: "不可用",
+      searchModelsLabel: "搜索模型",
+      searchModelsPlaceholder: "搜索模型",
     },
     fork: {
       buttonLabel: "创建分支对话",
@@ -753,12 +728,10 @@ export const agents: Translation["agents"] = {
       copySectionLabel: "复制 {{label}}",
       copiedSectionLabel: "已复制 {{label}}",
       longPressActions: "长按查看消息操作",
-      sending: "正在发送…",
     },
     navigation: {
       sessionRowLabel: "{{title}}，{{provider}}，{{workspace}} · {{host}}",
-      sessionRowLabelWithState:
-        "{{state}}：{{title}}，{{provider}}，{{workspace}} · {{host}}",
+      sessionRowLabelWithState: "{{state}}：{{title}}，{{provider}}，{{workspace}} · {{host}}",
       gitUnavailable: "Git 不可用",
       uncommittedChanges: "未提交的更改",
     },
@@ -781,8 +754,7 @@ export const agents: Translation["agents"] = {
       alreadyDelivered: "已送达",
       sendAgainEllipsis: "重新发送…",
       sendAsNewTitle: "作为新消息发送？",
-      sendAsNewDescription:
-        "仅在你已确认对话中未收到该消息时再重新发送，否则可能会发送两次。",
+      sendAsNewDescription: "仅在你已确认对话中未收到该消息时再重新发送，否则可能会发送两次。",
       sendAgain: "重新发送",
       usageWindow: "{{label}} · 已使用 {{percent}}%",
       usageCredits: "额度：{{value}}",
@@ -862,6 +834,7 @@ export const agents: Translation["agents"] = {
       folder: "文件夹",
       searchFolder: "搜索文件夹",
       searchSortBy: "搜索排序方式",
+      filterByAgent: "按智能体筛选",
     },
     newSession: {
       loadingWorkspaces: "正在加载工作区",
@@ -872,6 +845,7 @@ export const agents: Translation["agents"] = {
       chatHistoryAttachedIn: "已附加对话历史 · {{workspace}}",
       changeWorkspace: "更换工作区",
       removeHistory: "移除历史记录",
+      title: "新建智能体",
     },
     workspace: {
       searchPlaceholder: "搜索此工作区中的会话",
@@ -882,5 +856,9 @@ export const agents: Translation["agents"] = {
       tryAnotherSearch: "请尝试其他搜索词。",
       startFirstSessionHint: "点击“新会话”；发送前可以更换智能体。",
     },
+  },
+  files: {
+    openFile: "打开文件",
+    openFilePath: "打开 {{path}}",
   },
 };

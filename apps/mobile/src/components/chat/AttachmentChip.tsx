@@ -143,7 +143,7 @@ export function AttachmentChip({
                 onPress={() => setPreviewOpen(false)}
                 hitSlop={12}
                 accessibilityRole="button"
-                accessibilityLabel={t("chat.codePreview.closePreview")}
+                accessibilityLabel={t("chat.mobile.attachment.closePreview")}
                 style={({ pressed }) => [
                   styles.viewerClose,
                   { opacity: pressed ? 0.7 : 1 },

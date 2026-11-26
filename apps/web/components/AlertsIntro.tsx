@@ -64,7 +64,7 @@ export function AlertsIntro({ agents }: { agents: boolean }) {
 
   return (
     <section
-      aria-label={t("settings.alerts.title")}
+      aria-label={t("app.alertsIntro.ariaLabel")}
       className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-2 text-sm"
     >
       <Bell className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -77,7 +77,7 @@ export function AlertsIntro({ agents }: { agents: boolean }) {
       </p>
       <div className="ml-auto flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="sm" onClick={() => setAnswered(true)}>
-          {blocked ? t("app.alertsIntro.dismiss") : t("app.alertsIntro.notNow")}
+          {blocked ? t("common.actions.dismiss") : t("common.actions.notNow")}
         </Button>
         {!blocked && (
           <Button size="sm" onClick={() => void enable()}>

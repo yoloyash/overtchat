@@ -402,7 +402,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
           secondary
           title={
             action.busy
-              ? t("chat.activity.working")
+              ? t("common.states.working")
               : t("models.connectionTester.testConnection")
           }
           disabled={busy}
@@ -427,7 +427,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
           created
             ? t("models.toast.created")
             : busy
-              ? t("models.editor.saving")
+              ? t("common.states.saving")
               : t("models.mobile.editor.save")
         }
         disabled={busy || created}
@@ -474,9 +474,9 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
                 t("models.deleteDialog.title"),
                 t("models.mobile.editor.deleteMessage", { label: model.label }),
                 [
-                  { text: t("models.deleteDialog.cancel"), style: "cancel" },
+                  { text: t("common.actions.cancel"), style: "cancel" },
                   {
-                    text: t("models.item.delete"),
+                    text: t("common.actions.delete"),
                     style: "destructive",
                     onPress: () =>
                       void action.run(async () => {

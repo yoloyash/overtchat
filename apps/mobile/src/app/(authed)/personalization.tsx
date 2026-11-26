@@ -182,7 +182,7 @@ function LoadError({
               },
             ]}
           >
-            {t("common.mobile.actions.retry")}
+            {t("common.actions.retry")}
           </Text>
         </Pressable>
         <Pressable

@@ -170,7 +170,7 @@ export const ModelPickerSheet = forwardRef<
           {panel === "thinking" ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("models.editor.backLabel")}
+              accessibilityLabel={t("chat.mobile.modelPicker.backToModels")}
               onPress={() => setPanel("models")}
               style={({ pressed }) => [
                 styles.backButton,
@@ -238,7 +238,7 @@ export const ModelPickerSheet = forwardRef<
                   },
                   {
                     onError: (error) =>
-                      Alert.alert(t("models.editor.errors.saveDefaultModelFailed"), error.message),
+                      Alert.alert(t("models.preferences.saveDefaultFailed"), error.message),
                   },
                 )
               }
@@ -383,8 +383,8 @@ export const ModelPickerSheet = forwardRef<
             <BottomSheetTextInput
               value={search}
               onChangeText={setSearch}
-              placeholder={t("app.modelPicker.searchModels")}
-              accessibilityLabel={t("app.modelPicker.searchModels")}
+              placeholder={t("app.modelPicker.searchPlaceholder")}
+              accessibilityLabel={t("app.modelPicker.searchInputLabel")}
               autoFocus={searchExpanded}
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
@@ -547,7 +547,7 @@ export function reasoningOptionsForControls(
 }
 
 const REASONING_LABEL_KEYS = {
-  default: "app.modelPicker.defaultBadge",
+  default: "chat.mobile.modelPicker.reasoningDefault",
   off: "models.thinking.levels.off",
   on: "models.thinking.levels.on",
   minimal: "models.thinking.levels.minimal",

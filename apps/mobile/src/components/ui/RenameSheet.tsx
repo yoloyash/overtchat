@@ -115,7 +115,7 @@ export const RenameSheet = forwardRef<
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("common.mobile.actions.cancel")}
+            accessibilityLabel={t("common.actions.cancel")}
             onPress={dismiss}
             style={({ pressed }) => [
               styles.button,
@@ -133,12 +133,12 @@ export const RenameSheet = forwardRef<
                 { color: colors.foreground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              {t("common.mobile.actions.cancel")}
+              {t("common.actions.cancel")}
             </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("common.mobile.actions.save")}
+            accessibilityLabel={t("common.actions.save")}
             disabled={!canSave}
             onPress={save}
             style={({ pressed }) => [
@@ -160,7 +160,7 @@ export const RenameSheet = forwardRef<
                 },
               ]}
             >
-              {t("common.mobile.actions.save")}
+              {t("common.actions.save")}
             </Text>
           </Pressable>
         </View>

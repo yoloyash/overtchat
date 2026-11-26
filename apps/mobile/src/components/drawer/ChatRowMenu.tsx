@@ -20,9 +20,9 @@ type ChatRowActionLabelKey =
   | "sidebar.chat.pin"
   | "sidebar.chat.unpin"
   | "sidebar.mobile.chatMenu.share"
-  | "sidebar.chat.rename"
+  | "common.actions.rename"
   | "sidebar.mobile.chatMenu.moveToProject"
-  | "sidebar.chat.delete";
+  | "common.actions.delete";
 
 const ACTION_META: Record<
   ChatRowAction,
@@ -35,9 +35,9 @@ const ACTION_META: Record<
   pin: { labelKey: "sidebar.chat.pin", icon: "bookmark" },
   unpin: { labelKey: "sidebar.chat.unpin", icon: "bookmark" },
   share: { labelKey: "sidebar.mobile.chatMenu.share", icon: "share" },
-  rename: { labelKey: "sidebar.chat.rename", icon: "edit-3" },
+  rename: { labelKey: "common.actions.rename", icon: "edit-3" },
   move: { labelKey: "sidebar.mobile.chatMenu.moveToProject", icon: "folder" },
-  delete: { labelKey: "sidebar.chat.delete", icon: "trash-2", destructive: true },
+  delete: { labelKey: "common.actions.delete", icon: "trash-2", destructive: true },
 };
 
 /**

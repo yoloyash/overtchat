@@ -73,7 +73,7 @@ export function GoogleAccessDialog({ onClose }: { onClose: () => void }) {
             <GoogleAccessForm client={client} onClose={onClose} />
           ) : (
             <SettingsNotice className="mt-5">
-              {t("tools.connectors.googleAccess.loading")}
+              {t("common.states.loading")}
             </SettingsNotice>
           )}
         </Dialog.Popup>
@@ -149,7 +149,7 @@ function GoogleAccessForm({
             disabled={busy}
             onClick={() => setConfirmingRemoval(false)}
           >
-            {t("tools.connectors.connectGoogle.cancel")}
+            {t("common.actions.cancel")}
           </Button>
           <Button
             type="button"
@@ -159,8 +159,8 @@ function GoogleAccessForm({
             onClick={() => void onRemove()}
           >
             {remove.isPending
-              ? t("tools.connectors.googleAccess.removing")
-              : t("tools.connectors.googleAccess.remove")}
+              ? t("common.states.removing")
+              : t("common.actions.remove")}
           </Button>
         </SettingsActions>
       </div>
@@ -220,7 +220,7 @@ function GoogleAccessForm({
               setConfirmingRemoval(true);
             }}
           >
-            {t("tools.connectors.googleAccess.remove")}
+            {t("common.actions.remove")}
           </Button>
         ) : (
           <span />
@@ -233,12 +233,12 @@ function GoogleAccessForm({
             disabled={busy}
             onClick={onClose}
           >
-            {t("tools.connectors.connectGoogle.cancel")}
+            {t("common.actions.cancel")}
           </Button>
           <Button type="submit" size="sm" disabled={busy}>
             {save.isPending
-              ? t("tools.connectors.googleAccess.saving")
-              : t("tools.connectors.googleAccess.save")}
+              ? t("common.states.saving")
+              : t("common.actions.save")}
           </Button>
         </div>
       </SettingsActions>

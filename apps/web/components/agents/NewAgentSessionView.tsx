@@ -280,7 +280,7 @@ export function NewAgentSessionView({
       <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
         <SidebarToggle />
         <div
-          aria-label={t("agents.newSession.providerAgent", {
+          aria-label={t("agents.session.providerAgent", {
             provider: providerMetadata.label,
           })}
           className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium"
@@ -358,7 +358,7 @@ export function NewAgentSessionView({
                   disabled={catalog.isFetching}
                   onClick={() => void catalog.refetch()}
                 >
-                  <RefreshCw /> {t("agents.common.retry")}
+                  <RefreshCw /> {t("common.actions.retry")}
                 </Button>
               }
             />
@@ -377,7 +377,7 @@ export function NewAgentSessionView({
                     );
                 }}
               >
-                {t("agents.common.remove")}
+                {t("common.actions.remove")}
               </Button>
             </div>
           )}

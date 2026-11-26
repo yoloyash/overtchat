@@ -117,7 +117,7 @@ function ProjectNode({
           to="/"
           search={{ projectId: project.id }}
           onClick={closeMobile}
-          aria-label={t("sidebar.projects.newChatIn", { name: project.name })}
+          aria-label={t("projects.actions.newChatIn", { name: project.name })}
           className={cn(
             "mr-0.5 rounded p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:p-2",
             motionClasses.hoverReveal,
@@ -245,10 +245,10 @@ export function CreateProjectDialog({
                   onClose();
                 }}
               >
-                {t("sidebar.chat.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending}>
-                {pending ? t("sidebar.projects.createDialog.creating") : t("sidebar.projects.createDialog.create")}
+                {pending ? t("common.states.creating") : t("common.actions.create")}
               </Button>
             </div>
           </form>

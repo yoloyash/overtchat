@@ -38,7 +38,7 @@ export function ChatHeaderMenu({
       <Pressable
         ref={menu.anchorRef}
         accessibilityRole="button"
-        accessibilityLabel={t("sidebar.chat.actionsLabel")}
+        accessibilityLabel={t("chat.mobile.header.actionsLabel")}
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={menu.open}

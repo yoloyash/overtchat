@@ -272,7 +272,7 @@ export const RealtimeVoiceSession = forwardRef<
         <div key={item.id} className="border-b px-4 py-2 text-sm" role="status">
           <p className="whitespace-pre-wrap">{item.text}</p>
           <p className="text-xs text-muted-foreground">
-            {item.failed ? t("chat.voice.notConfirmedSent") : t("chat.voice.sending")}
+            {item.failed ? t("chat.voice.notConfirmedSent") : t("common.states.sending")}
           </p>
         </div>
       ))}

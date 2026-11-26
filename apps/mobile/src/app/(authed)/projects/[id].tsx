@@ -158,7 +158,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerShadowVisible: false,
-          headerBackTitle: t("common.mobile.actions.back"),
+          headerBackTitle: t("common.actions.back"),
           headerRight: () =>
             project ? (
               <Pressable
@@ -197,7 +197,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
           <View style={styles.menu}>
             <MenuItem
               icon="pencil-outline"
-              label={t("projects.actions.rename")}
+              label={t("common.actions.rename")}
               onPress={() => {
                 menu.close();
                 startRename();
@@ -314,7 +314,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("sidebar.projects.newChatIn", {
+              accessibilityLabel={t("projects.actions.newChatIn", {
                 name: project.name,
               })}
               onPress={handleNewChat}
@@ -334,7 +334,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                 ]}
               >
-                {t("sidebar.projects.newChatIn", { name: project.name })}
+                {t("projects.actions.newChatIn", { name: project.name })}
               </Text>
               <View
                 style={[styles.newChatIcon, { backgroundColor: colors.primary }]}
@@ -436,7 +436,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                             { color: colors.foreground, fontFamily: fonts.sansMedium },
                           ]}
                         >
-                          {c.title?.trim() || t("projects.chats.untitled")}
+                          {c.title?.trim() || t("common.states.untitled")}
                         </Text>
                         <Text
                           style={[
@@ -487,7 +487,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
             ? t("projects.mobile.deleteDialogMessage", { name: project.name })
             : ""
         }
-        confirmLabel={t("projects.actions.delete")}
+        confirmLabel={t("common.actions.delete")}
         destructive
         onConfirm={confirmDelete}
       />

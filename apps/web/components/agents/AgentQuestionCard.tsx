@@ -226,7 +226,7 @@ export function AgentQuestionCard({
           <X className="size-3.5" />
           {typeof request.dismissLabel === "string"
             ? request.dismissLabel
-            : t("agents.questions.dismiss")}
+            : t("common.actions.dismiss")}
         </button>
         <button
           type="submit"

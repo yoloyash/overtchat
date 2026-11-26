@@ -42,7 +42,7 @@ export function AgentSessionHeaderTitle({
         accessible
         accessibilityLabel={
           provider
-            ? t("agents.newSession.providerAgent", {
+            ? t("agents.session.providerAgent", {
                 provider: agentProviderMetadata(provider).label,
               })
             : t("agents.setup.agent")

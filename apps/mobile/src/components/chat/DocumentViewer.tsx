@@ -129,7 +129,7 @@ export function DocumentViewer({
     Alert.alert(t("chat.mobile.documents.saveTitle"), undefined, [
       { text: "Markdown (.md)", onPress: () => void save("source") },
       { text: "Word (.docx)", onPress: () => void save("docx") },
-      { text: t("chat.messages.cancel"), style: "cancel" },
+      { text: t("common.actions.cancel"), style: "cancel" },
     ]);
   }
 

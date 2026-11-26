@@ -57,7 +57,7 @@ function ServiceList() {
               <SettingsStatus
                 label={
                   item.provider === "disabled"
-                    ? t("services.capabilities.search.providers.disabled")
+                    ? t("services.mobile.status.disabled")
                     : item.configured
                       ? t("services.voice.configuredLabel")
                       : t("services.mobile.status.needsSetup")

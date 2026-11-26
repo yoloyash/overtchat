@@ -18,25 +18,21 @@ export const connections: Translation["connections"] = {
     pairAgain: "重新配对",
     removeConnector: "移除主机连接器",
     uninstalledTitle: "OvertChat 主机",
-    uninstalledDescription:
-      "尚未安装。请在此服务器上运行 overtchat setup，或在另一台电脑上配对主机连接器。",
+    uninstalledDescription: "尚未安装。请在此服务器上运行 overtchat setup，或在另一台电脑上配对主机连接器。",
     pairConnector: "配对主机连接器",
     pairingErrorFallback: "无法创建配对码。",
     upgradeAvailable: "主机连接器 {{version}} 已发布",
-    upgradeDescription:
-      "在连接器主机上运行此命令。它会更新二进制文件并重启服务，不会更改现有配对或设置。",
+    upgradeDescription: "在连接器主机上运行此命令。它会更新二进制文件并重启服务，不会更改现有配对或设置。",
     upgradeCommandLabel: "主机连接器升级命令",
     copyUpgradeCommand: "复制主机连接器升级命令",
     installTitle: "安装主机连接器",
-    installDescription:
-      "在装有编程智能体和项目的电脑终端中运行此命令。它可以与服务器不是同一台电脑。",
+    installDescription: "在装有编程智能体和项目的电脑终端中运行此命令。它可以与服务器不是同一台电脑。",
     installCommandLabel: "主机连接器安装命令",
     copyInstallCommand: "复制主机连接器命令",
     waitingForConnection: "正在等待连接…",
     infoLabel: "关于主机连接器",
     infoTitle: "主机连接器",
-    infoDescription:
-      "让 OvertChat 使用其所在电脑（此服务器或你自己的电脑）上的智能体程序、项目和 SSH 主机。它只会主动向 OvertChat 发起出站连接。",
+    infoDescription: "让 OvertChat 使用其所在电脑（此服务器或你自己的电脑）上的智能体程序、项目和 SSH 主机。它只会主动向 OvertChat 发起出站连接。",
     viewInstallerSource: "查看安装脚本源码",
   },
   workspaces: {
@@ -61,8 +57,7 @@ export const connections: Translation["connections"] = {
     workspaceRemoved: "工作区已移除",
     detachErrorFallback: "无法移除此项。",
     workspaceAddedWithErrorsTitle: "工作区已添加，但部分智能体出错",
-    workspaceAddedWithErrorsDescription_other:
-      "已连接 {{count}} 个智能体；{{failed}} 个失败。",
+    workspaceAddedWithErrorsDescription_other: "已连接 {{count}} 个智能体；{{failed}} 个失败。",
     workspaceAddedTitle: "已添加智能体工作区",
     workspaceAddedDescription_other: "已发现并同步 {{count}} 个智能体。",
   },
@@ -70,19 +65,14 @@ export const connections: Translation["connections"] = {
     removeWorktreeTitle: "移除工作树？",
     removeWorkspaceTitle: "移除工作区？",
     removeConnectorTitle: "移除主机连接器？",
-    connectorDescription:
-      "<name>{{name}}</name> 及其使用的所有智能体都将从 OvertChat 中移除。文件和原生智能体会话会保留在各自机器上。",
-    workspaceDescription:
-      "<name>{{name}}</name> 及其智能体对话将从 OvertChat 中移除。文件和原生智能体会话会保留在主机上。",
-    remove: "移除",
+    connectorDescription: "<name>{{name}}</name> 及其使用的所有智能体都将从 OvertChat 中移除。文件和原生智能体会话会保留在各自机器上。",
+    workspaceDescription: "<name>{{name}}</name> 及其智能体对话将从 OvertChat 中移除。文件和原生智能体会话会保留在主机上。",
   },
   dialog: {
     description: "选择一个项目目录。系统会自动发现可用的智能体及其对话。",
     machineTitle: "机器",
     machineDescription: "项目所在的位置",
     machineGroupLabel: "工作区机器",
-    thisServer: "此服务器",
-    sshHost: "SSH 主机",
     sshConfigBack: "SSH 配置",
     sshAliasLabel: "SSH 别名",
     useHost: "使用主机",
@@ -99,7 +89,6 @@ export const connections: Translation["connections"] = {
     useAutomaticDetection: "使用自动检测",
     alreadyAttached: "该目录已在智能体工作区中。",
     chooseFolderPrompt: "选择项目文件夹",
-    cancel: "取消",
     validation: {
       invalidSshAlias: "请输入有效的 SSH 主机别名。",
       missingMachine: "请先选择一台机器。",
@@ -174,6 +163,12 @@ export const connections: Translation["connections"] = {
       noWorkspacesDetail: "请在网页端设置中添加工作区以开始使用此智能体。",
       manageOnWebTitle: "在网页端管理",
       manageOnWebDetail: "编辑工作区、SSH 设置，或移除此连接。",
+      testConnection: "测试连接",
+      workspacesTitle: "工作区",
     },
+  },
+  hosts: {
+    sshHost: "SSH 主机",
+    thisServer: "此服务器",
   },
 };

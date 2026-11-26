@@ -91,7 +91,7 @@ export default function SignInRequestScreen() {
               </Text>
               <Pressable accessibilityRole="button" hitSlop={8} onPress={close}>
                 <Text style={[styles.link, { color: colors.primary, fontFamily: fonts.sansMedium }]}>
-                  {t("common.mobile.actions.close")}
+                  {t("common.actions.close")}
                 </Text>
               </Pressable>
             </>

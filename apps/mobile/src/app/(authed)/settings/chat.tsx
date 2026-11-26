@@ -69,7 +69,7 @@ export default function ChatSettings() {
       </Section>
       <Section
         title={t("tools.builtIn.title")}
-        description={t("settings.appearance.display.description")}
+        description={t("tools.mobile.savedOnDevice")}
       >
         <Toggle
           title={t("tools.builtIn.webSearch.title")}
@@ -113,7 +113,7 @@ export default function ChatSettings() {
       </Section>
       {mutation.error && <Label error>{mutation.error.message}</Label>}
       {session.data?.user.role === "admin" && (
-        <Section title={t("settings.nav.groups.administration")}>
+        <Section title={t("tools.mobile.administrationTitle")}>
           <WebRow
             title={t("tools.mcp.manage.title")}
             path="/settings/tools"

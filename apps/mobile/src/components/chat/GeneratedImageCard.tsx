@@ -104,7 +104,7 @@ export function GeneratedImageCard({
                 style={{ paddingVertical: 8 }}
               >
                 <Text style={{ color: colors.primary }}>
-                  {saving ? t("chat.share.saving") : t("chat.files.download")}
+                  {saving ? t("common.states.saving") : t("common.actions.download")}
                 </Text>
               </Pressable>
               {onReference && (

@@ -533,7 +533,7 @@ export function ConnectionsPanel({
                   <Button variant="ghost" size="sm" disabled={detaching} />
                 }
               >
-                {t("connections.dialog.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -544,7 +544,7 @@ export function ConnectionsPanel({
                 {detaching && (
                   <Loader2 className="animate-spin motion-reduce:animate-none" />
                 )}
-                {t("connections.detachDialog.remove")}
+                {t("common.actions.remove")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -622,7 +622,7 @@ function WorkspaceGroupRow({
   const HostIcon = group.host.transport === "local" ? Server : Wifi;
   const hostDetail =
     group.host.transport === "local"
-      ? t("connections.dialog.thisServer")
+      ? t("connections.hosts.thisServer")
       : `ssh ${group.host.sshAlias}`;
   const sessionCount = group.sessions.length;
   const providerSnapshot = useAgentProviderSnapshot(

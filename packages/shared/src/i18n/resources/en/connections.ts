@@ -1,8 +1,7 @@
 export const connections = {
   page: {
     title: "Agents",
-    description:
-      "Run coding agents in project folders on this server or over SSH.",
+    description: "Run coding agents in project folders on this server or over SSH.",
     supportedAgentsLabel: "Supported agents: {{providers}}.",
     addWorkspace: "Add workspace",
   },
@@ -64,10 +63,8 @@ export const connections = {
     workspaceRemoved: "Workspace removed",
     detachErrorFallback: "The item could not be detached.",
     workspaceAddedWithErrorsTitle: "Workspace added with some agent errors",
-    workspaceAddedWithErrorsDescription_one:
-      "{{count}} agent connected; {{failed}} failed.",
-    workspaceAddedWithErrorsDescription_other:
-      "{{count}} agents connected; {{failed}} failed.",
+    workspaceAddedWithErrorsDescription_one: "{{count}} agent connected; {{failed}} failed.",
+    workspaceAddedWithErrorsDescription_other: "{{count}} agents connected; {{failed}} failed.",
     workspaceAddedTitle: "Agent workspace added",
     workspaceAddedDescription_one: "{{count}} agent discovered and synced.",
     workspaceAddedDescription_other: "{{count}} agents discovered and synced.",
@@ -80,7 +77,6 @@ export const connections = {
       "<name>{{name}}</name> and every agent that uses it will be removed from OvertChat. Files and native agent sessions remain on their machines.",
     workspaceDescription:
       "<name>{{name}}</name> and its agent chats will be removed from OvertChat. Files and native agent sessions remain on the host.",
-    remove: "Remove",
   },
   dialog: {
     description:
@@ -88,8 +84,6 @@ export const connections = {
     machineTitle: "Machine",
     machineDescription: "Where the project is located",
     machineGroupLabel: "Workspace machine",
-    thisServer: "This server",
-    sshHost: "SSH host",
     sshConfigBack: "SSH config",
     sshAliasLabel: "SSH alias",
     useHost: "Use host",
@@ -107,7 +101,6 @@ export const connections = {
     useAutomaticDetection: "Use automatic detection",
     alreadyAttached: "That directory is already in Agent workspaces.",
     chooseFolderPrompt: "Choose a project folder",
-    cancel: "Cancel",
     validation: {
       invalidSshAlias: "Enter a valid SSH host alias.",
       missingMachine: "Choose a machine first.",
@@ -152,18 +145,15 @@ export const connections = {
       noAgentsTitle: "No agents connected",
       noAgentsDetail: "Add an agent and workspace from the web setup.",
       emptyTitle: "Connect your computer",
-      emptyDetail:
-        "Pair a Host Connector to use the coding agents installed on your computer.",
+      emptyDetail: "Pair a Host Connector to use the coding agents installed on your computer.",
     },
     setup: {
       title: "Setup",
       creatingCommand: "Creating command…",
       pairComputer: "Pair a computer",
-      pairComputerDetail:
-        "Create a command to run on the computer you want to connect.",
+      pairComputerDetail: "Create a command to run on the computer you want to connect.",
       manageOnWebTitle: "Manage agents & workspaces",
-      manageOnWebDetail:
-        "Add or remove connections and configure SSH in your browser.",
+      manageOnWebDetail: "Add or remove connections and configure SSH in your browser.",
     },
     pairing: {
       title: "Pairing command",
@@ -184,11 +174,15 @@ export const connections = {
       testHealthy: "{{name}} connection healthy",
       workspacesDescription: "Folders this agent can work in.",
       noWorkspacesTitle: "No workspaces yet",
-      noWorkspacesDetail:
-        "Add a workspace from web settings to start using this agent.",
+      noWorkspacesDetail: "Add a workspace from web settings to start using this agent.",
       manageOnWebTitle: "Manage on web",
-      manageOnWebDetail:
-        "Edit workspaces, SSH setup, or remove this connection.",
+      manageOnWebDetail: "Edit workspaces, SSH setup, or remove this connection.",
+      testConnection: "Test connection",
+      workspacesTitle: "Workspaces",
     },
+  },
+  hosts: {
+    sshHost: "SSH host",
+    thisServer: "This server",
   },
 } as const;

@@ -156,7 +156,7 @@ export default function AgentHistoryScreen() {
           active={provider !== null}
           icon="terminal-outline"
           onPress={() => setPicker("provider")}
-          accessibilityLabel={t("sidebar.agents.filterByAgent")}
+          accessibilityLabel={t("agents.mobile.history.filterByAgent")}
         />
         <FilterPill
           label={

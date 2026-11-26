@@ -118,7 +118,7 @@ export function ServerQrScanner({
                       setError(null);
                     }}
                   >
-                    <Text style={textStyle}>{t("app.error.tryAgain")}</Text>
+                    <Text style={textStyle}>{t("common.actions.tryAgain")}</Text>
                   </Pressable>
                 ) : permission && !permission.granted ? (
                   <Pressable
@@ -156,7 +156,7 @@ export function ServerQrScanner({
             style={buttonStyle}
             onPress={onClose}
           >
-            <Text style={textStyle}>{t("common.mobile.actions.cancel")}</Text>
+            <Text style={textStyle}>{t("common.actions.cancel")}</Text>
           </Pressable>
         </View>
       </SafeAreaView>

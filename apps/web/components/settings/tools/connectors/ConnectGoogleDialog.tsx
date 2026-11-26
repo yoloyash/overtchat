@@ -305,7 +305,7 @@ export function ConnectGoogleDialog({
                   disabled={connect.isPending}
                   onClick={onClose}
                 >
-                  {t("tools.connectors.connectGoogle.cancel")}
+                  {t("common.actions.cancel")}
                 </Button>
                 <Button
                   type="submit"

@@ -77,7 +77,7 @@ export function TwoFactorPrompt() {
           </Dialog.Description>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={close}>
-              {t("auth.twoFactor.prompt.notNow")}
+              {t("common.actions.notNow")}
             </Button>
             <Button
               type="button"

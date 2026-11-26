@@ -187,7 +187,7 @@ export function PersonalizationProfile({
                 },
               ]}
             >
-              {t("personalization.profile.save")}
+              {t("common.actions.save")}
             </Text>
           )}
         </Pressable>

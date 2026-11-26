@@ -1,8 +1,7 @@
 export const scheduled = {
   page: {
     title: "Scheduled",
-    description:
-      "Tasks run by themselves at the times you set. Each run opens a new chat.",
+    description: "Tasks run by themselves at the times you set. Each run opens a new chat.",
     loading: "Loading tasks…",
     loadError: "Could not load your scheduled tasks.",
     listLabel: "Scheduled tasks",
@@ -14,12 +13,7 @@ export const scheduled = {
   },
   actions: {
     newTask: "New task",
-    tryAgain: "Try again",
     runNow: "Run now",
-    edit: "Edit",
-    delete: "Delete",
-    deleting: "Deleting…",
-    cancel: "Cancel",
   },
   task: {
     modelRemoved: "Model removed",
@@ -56,8 +50,7 @@ export const scheduled = {
   },
   deleteDialog: {
     title: "Delete task?",
-    description:
-      "<name>{{name}}</name> will stop running. The chats it wrote are kept.",
+    description: "<name>{{name}}</name> will stop running. The chats it wrote are kept.",
   },
   toast: {
     enableError: "Could not turn the task on",
@@ -77,7 +70,6 @@ export const scheduled = {
   alerts: {
     failed: "A scheduled task failed",
     finished: "A scheduled task finished",
-    open: "Open",
   },
   frequency: {
     once: "Once",
@@ -115,8 +107,7 @@ export const scheduled = {
     instructions: "Instructions",
     instructionsPlaceholder:
       "Search for today's top technology news and summarize the five most important stories.",
-    instructionsHint:
-      "Each run starts fresh, so say everything it needs to know.",
+    instructionsHint: "Each run starts fresh, so say everything it needs to know.",
     repeats: "Repeats",
     minutePastHour: "Minute past the hour",
     time: "Time",
@@ -136,8 +127,6 @@ export const scheduled = {
     projectHint: "Runs start in the project, with its instructions and files.",
     webSearch: "Web search",
     webSearchHint: "Let runs search the web and read pages.",
-    saving: "Saving…",
-    save: "Save",
     schedule: "Schedule",
   },
   validation: {
@@ -192,8 +181,7 @@ export const scheduled = {
     usePhoneTimeZone: "Tap to use this phone's time zone, {{timeZone}}.",
     backToTasks: "Back to tasks",
     deleteTask: "Delete task",
-    deleteDialogMessage:
-      "{{name}} will stop running. The chats it wrote are kept.",
+    deleteDialogMessage: "{{name}} will stop running. The chats it wrote are kept.",
     searchMinutePastHour: "Search minute past the hour",
     searchTime: "Search time",
     searchDate: "Search date",

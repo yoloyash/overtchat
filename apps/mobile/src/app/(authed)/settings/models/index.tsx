@@ -88,7 +88,7 @@ function ModelList() {
         <>
           {!reordering && (
             <SearchField
-              label={t("models.page.searchPlaceholder")}
+              label={t("models.page.searchLabel")}
               value={search}
               onChangeText={setSearch}
             />
@@ -141,7 +141,7 @@ function ModelList() {
                   }}
                 >
                   {reordering
-                    ? t("agents.common.done")
+                    ? t("common.actions.done")
                     : t("models.mobile.list.reorder")}
                 </Text>
               </Pressable>
@@ -233,7 +233,7 @@ function ModelList() {
               )}
               {!models.length && (
                 <Row
-                  title={t("app.modelPicker.noModels")}
+                  title={t("models.mobile.list.emptyTitle")}
                   detail={t("models.mobile.list.emptyDetail")}
                 />
               )}

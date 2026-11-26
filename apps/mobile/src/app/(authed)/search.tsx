@@ -64,7 +64,7 @@ export default function SearchScreen() {
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerShadowVisible: false,
-          headerBackTitle: t("common.mobile.actions.back"),
+          headerBackTitle: t("common.actions.back"),
         }}
       />
       <SafeAreaView
@@ -99,7 +99,7 @@ export default function SearchScreen() {
         {query.length > 0 && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("agents.history.clearSearch")}
+            accessibilityLabel={t("common.actions.clearSearch")}
             onPress={() => setQuery("")}
             hitSlop={8}
           >
@@ -199,7 +199,7 @@ function SearchRow({
           { color: colors.foreground, fontFamily: fonts.sansSemiBold },
         ]}
       >
-        {hit.title?.trim() || t("sidebar.chat.untitled")}
+        {hit.title?.trim() || t("common.states.untitled")}
       </Text>
       {segments.length > 0 && (
         <Text

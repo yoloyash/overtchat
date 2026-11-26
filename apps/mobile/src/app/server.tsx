@@ -201,7 +201,7 @@ export default function ServerScreen() {
                 {isLoading
                   ? t("app.mobile.server.connecting")
                   : status.kind === "error"
-                    ? t("common.mobile.actions.retry")
+                    ? t("common.actions.retry")
                     : t("app.mobile.server.connect")}
               </Text>
             </Pressable>

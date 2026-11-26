@@ -34,7 +34,7 @@ function ReconnectingFeedback({ retry }: { retry: () => void }) {
         icon="cloud-offline-outline"
         warning
         message={t("agents.mobile.connection.reconnecting")}
-        actions={[{ label: t("agents.common.retry"), onPress: retry }]}
+        actions={[{ label: t("common.actions.retry"), onPress: retry }]}
       />
     </View>
   );

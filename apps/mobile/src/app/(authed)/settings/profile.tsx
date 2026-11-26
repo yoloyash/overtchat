@@ -77,7 +77,7 @@ function ProfileForm({
       </Section>
       {action.error && <Label error>{action.error}</Label>}
       <Action
-        title={action.busy ? t("profile.saving") : t("profile.save")}
+        title={action.busy ? t("common.states.saving") : t("profile.save")}
         disabled={action.busy || !dirty}
         onPress={() =>
           void action.run(async () => {

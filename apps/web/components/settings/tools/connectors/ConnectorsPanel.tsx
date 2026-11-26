@@ -302,7 +302,7 @@ function IntegrationRow({
       )}
       {left && (
         <Button type="button" variant="outline" size="sm" onClick={onAdd}>
-          {t("tools.connectors.row.add")}
+          {t("common.actions.add")}
         </Button>
       )}
       {usable && SENDING_INTEGRATION_IDS.includes(integration.id) && (

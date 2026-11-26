@@ -5,10 +5,8 @@ export const account: Translation["account"] = {
   signedInAs: "当前登录账号：<email>{{email}}</email>。",
   sso: {
     title: "登录",
-    descriptionWithProvider:
-      "你通过 {{provider}} 登录。你的密码和登录保护均在那里管理。",
-    descriptionDefault:
-      "你通过身份提供方登录。你的密码和登录保护均在那里管理。",
+    descriptionWithProvider: "你通过 {{provider}} 登录。你的密码和登录保护均在那里管理。",
+    descriptionDefault: "你通过身份提供方登录。你的密码和登录保护均在那里管理。",
   },
   password: {
     title: "密码",
@@ -17,22 +15,18 @@ export const account: Translation["account"] = {
     newLabel: "新密码",
     newDescription: "至少使用 8 个字符。",
     updated: "密码已更新",
-    saving: "正在保存…",
     submit: "更改密码",
     changeFailed: "更改密码失败",
   },
   twoFactor: {
     title: "双重验证",
     descriptionRequired: "此服务器上的管理员必须启用双重验证。",
-    descriptionRecommended:
-      "建议开启。登录时除密码外，还需输入身份验证器应用生成的验证码。",
+    descriptionRecommended: "建议开启。登录时除密码外，还需输入身份验证器应用生成的验证码。",
     statusTitle: "状态",
-    loading: "正在加载…",
     loadError: "无法加载双重验证状态。",
     backupCodesIntro: "旧的备用恢复码已失效。请将这些备用恢复码妥善保存在安全的地方。",
     authenticatorTitle: "身份验证器应用",
-    enabledDescription:
-      "已开启。在新设备登录时，你也可以从已登录的设备批准登录。请妥善保存备用恢复码，以防设备丢失。",
+    enabledDescription: "已开启。在新设备登录时，你也可以从已登录的设备批准登录。请妥善保存备用恢复码，以防设备丢失。",
     newBackupCodes: "重新生成备用恢复码",
     turnOff: "关闭",
     enabledToast: "已开启双重验证",
@@ -41,7 +35,6 @@ export const account: Translation["account"] = {
     disabledToast: "已关闭双重验证",
     confirm: {
       passwordLabel: "你的密码",
-      cancel: "取消",
       backupCodes: {
         title: "重新生成备用恢复码",
         description: "当前的备用恢复码将会失效。",
@@ -51,8 +44,7 @@ export const account: Translation["account"] = {
       },
       disable: {
         title: "关闭双重验证",
-        description:
-          "登录时将只需输入密码。你的身份验证器条目和备用恢复码都将失效。",
+        description: "登录时将只需输入密码。你的身份验证器条目和备用恢复码都将失效。",
         submit: "关闭",
         pending: "正在关闭…",
         error: "无法关闭双重验证。",
@@ -80,5 +72,6 @@ export const account: Translation["account"] = {
       manageTitle: "管理双重验证",
       manageDetail: "在浏览器中配置或关闭身份验证器应用。",
     },
+    emailLabel: "邮箱",
   },
 };

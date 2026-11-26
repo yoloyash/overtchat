@@ -27,7 +27,7 @@ export default function AgentsLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: t("agents.history.newAgent"),
+          title: t("agents.mobile.newSession.title"),
           headerLeft: () => <DrawerToggleButton tintColor={colors.foreground} />,
         }}
       />

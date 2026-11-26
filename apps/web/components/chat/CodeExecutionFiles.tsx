@@ -145,7 +145,7 @@ function CodeFileImage({ file }: { file: CodeExecutionFile }) {
           download={file.name}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 no-underline hover:bg-accent hover:text-foreground"
         >
-          <Download className="size-3.5" /> {t("chat.files.download")}
+          <Download className="size-3.5" /> {t("common.actions.download")}
         </a>
       </span>
     </span>

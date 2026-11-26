@@ -108,7 +108,7 @@ export function AddUserDialog({
 
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="new-name">{t("users.list.columns.name")}</Label>
+              <Label htmlFor="new-name">{t("users.addDialog.nameLabel")}</Label>
               <Input
                 id="new-name"
                 type="text"
@@ -122,7 +122,7 @@ export function AddUserDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-email">
-                {t("users.list.columns.email")}
+                {t("users.addDialog.emailLabel")}
               </Label>
               <Input
                 id="new-email"
@@ -154,7 +154,7 @@ export function AddUserDialog({
               </div>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="new-role">{t("users.list.columns.role")}</Label>
+              <Label htmlFor="new-role">{t("users.addDialog.roleLabel")}</Label>
               <Select
                 value={role}
                 onValueChange={(next) => {
@@ -164,7 +164,7 @@ export function AddUserDialog({
               >
                 <SelectTrigger
                   id="new-role"
-                  aria-label={t("users.list.columns.role")}
+                  aria-label={t("users.addDialog.roleAriaLabel")}
                   className="w-full"
                 >
                   <SelectValue>{t(`users.roles.${role}`)}</SelectValue>
@@ -187,12 +187,12 @@ export function AddUserDialog({
                 size="sm"
                 onClick={() => onOpenChange(false)}
               >
-                {t("users.roleDialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting
-                  ? t("users.addDialog.creating")
-                  : t("users.addDialog.create")}
+                  ? t("common.states.creating")
+                  : t("common.actions.create")}
               </Button>
             </SettingsActions>
           </form>

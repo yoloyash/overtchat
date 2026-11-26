@@ -338,9 +338,9 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
           created
             ? t("scheduled.toast.createdTitle")
             : action.busy
-              ? t("scheduled.form.saving")
+              ? t("common.states.saving")
               : task
-                ? t("scheduled.form.save")
+                ? t("common.actions.save")
                 : t("scheduled.form.schedule")
         }
         disabled={action.busy || created}
@@ -359,9 +359,9 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
               t("scheduled.deleteDialog.title"),
               t("scheduled.mobile.deleteDialogMessage", { name: task.name }),
               [
-                { text: t("scheduled.actions.cancel"), style: "cancel" },
+                { text: t("common.actions.cancel"), style: "cancel" },
                 {
-                  text: t("scheduled.actions.delete"),
+                  text: t("common.actions.delete"),
                   style: "destructive",
                   onPress: () =>
                     void action.run(async () => {

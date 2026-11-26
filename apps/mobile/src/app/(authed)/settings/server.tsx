@@ -25,7 +25,7 @@ export default function Server() {
       </Section>
       <Section description={t("settings.mobile.server.changeDescription")}>
         <Row
-          title={t("app.error.changeServer")}
+          title={t("settings.mobile.server.changeServer")}
           icon="swap-horizontal-outline"
           disabled={action.busy}
           onPress={() =>
@@ -33,9 +33,9 @@ export default function Server() {
               t("settings.mobile.server.confirmTitle"),
               t("settings.mobile.server.confirmMessage"),
               [
-                { text: t("auth.actions.cancel"), style: "cancel" },
+                { text: t("common.actions.cancel"), style: "cancel" },
                 {
-                  text: t("auth.twoFactor.setup.continue"),
+                  text: t("common.actions.continue"),
                   onPress: () =>
                     void action.run(async () => {
                       await getAuthCookie()

@@ -103,10 +103,10 @@ export function AgentSessionHeader({
       <SidebarToggle />
       <div
         data-testid="agent-provider-identity"
-        aria-label={t("agents.newSession.providerAgent", {
+        aria-label={t("agents.session.providerAgent", {
           provider: providerMetadata.label,
         })}
-        title={t("agents.newSession.providerAgent", {
+        title={t("agents.session.providerAgent", {
           provider: providerMetadata.label,
         })}
         className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium"

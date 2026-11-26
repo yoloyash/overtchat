@@ -92,15 +92,15 @@ export function McpServersPanel() {
       >
         {isPending ? (
           <SettingsNotice className="py-6">
-            {t("tools.mcp.available.loading")}
+            {t("tools.mcp.loading")}
           </SettingsNotice>
         ) : error ? (
           <SettingsNotice tone="error" className="py-6">
-            {getErrorMessage(error, t("tools.mcp.available.loadError"))}
+            {getErrorMessage(error, t("tools.mcp.loadError"))}
           </SettingsNotice>
         ) : servers.length === 0 ? (
           <SettingsEmptyState
-            title={t("tools.mcp.available.emptyTitle")}
+            title={t("tools.mcp.emptyTitle")}
             description={t("tools.mcp.manage.emptyDescription")}
           />
         ) : (
@@ -183,7 +183,7 @@ export function McpServersPanel() {
                   variant="outline"
                   size="sm"
                 >
-                  <Pencil /> {t("tools.mcp.manage.edit")}
+                  <Pencil /> {t("common.actions.edit")}
                 </Button>
                 <Button
                   type="button"
@@ -195,7 +195,7 @@ export function McpServersPanel() {
                     setPendingDelete(server);
                   }}
                 >
-                  <Trash2 /> {t("tools.mcp.manage.delete")}
+                  <Trash2 /> {t("common.actions.delete")}
                 </Button>
               </div>
             </div>
@@ -246,7 +246,7 @@ export function McpServersPanel() {
                 disabled={deleteServer.isPending}
                 onClick={() => setPendingDelete(null)}
               >
-                {t("tools.connectors.connectGoogle.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -255,8 +255,8 @@ export function McpServersPanel() {
                 onClick={() => void confirmDelete()}
               >
                 {deleteServer.isPending
-                  ? t("tools.mcp.manage.deleting")
-                  : t("tools.mcp.manage.delete")}
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

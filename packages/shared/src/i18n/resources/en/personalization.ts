@@ -1,7 +1,6 @@
 export const personalization = {
   title: "Personalization",
-  description:
-    "Tell OvertChat about you and manage what it remembers between chats.",
+  description: "Tell OvertChat about you and manage what it remembers between chats.",
   loading: "Loading personalization…",
   loadError: "Unable to load personalization.",
   profile: {
@@ -25,8 +24,6 @@ export const personalization = {
       description: "Interests, values, or preferences to keep in mind.",
     },
     optionalPlaceholder: "Optional",
-    save: "Save",
-    saving: "Saving…",
     savedToast: "Personalization saved",
     saveError: "Failed to save personalization.",
   },
@@ -41,15 +38,13 @@ export const personalization = {
     add: "Add memory",
     searchPlaceholder: "Search memories",
     emptyTitle: "Nothing remembered yet",
-    emptyDescription:
-      "Ask OvertChat to remember something, or add it manually.",
+    emptyDescription: "Ask OvertChat to remember something, or add it manually.",
     noMatches: "No memories match <query>{{query}}</query>.",
     updated: "Updated {{date}}",
     editAriaLabel: "Edit {{key}}",
     editTitle: "Edit memory",
     dialog: {
-      description:
-        "Saved memories are included in future chats when personalization is on.",
+      description: "Saved memories are included in future chats when personalization is on.",
       valueLabel: "What should OvertChat remember?",
       valueAriaLabel: "Memory value",
       valuePlaceholder: "Prefer concise answers.",
@@ -57,8 +52,6 @@ export const personalization = {
       keyAriaLabel: "Memory key",
       keyHint:
         "Used to update this memory later. Start with a letter and use lowercase letters, numbers, or underscores.",
-      cancel: "Cancel",
-      saveChanges: "Save changes",
       updatedToast: "Memory updated",
       addedToast: "Memory added",
       updateError: "Failed to update memory.",
@@ -68,10 +61,7 @@ export const personalization = {
       ariaLabel: "Delete {{key}}",
       buttonTitle: "Delete memory",
       title: "Delete this memory?",
-      description:
-        "OvertChat will no longer include it in future conversations.",
-      deleting: "Deleting…",
-      confirm: "Delete",
+      description: "OvertChat will no longer include it in future conversations.",
       deletedToast: "Memory deleted",
       error: "Failed to delete memory.",
     },
@@ -83,6 +73,7 @@ export const personalization = {
       clearing: "Clearing…",
       error: "Failed to clear memories.",
     },
+    searchLabel: "Search memories",
   },
   mobile: {
     openOnWeb: "Open on web",
@@ -100,14 +91,11 @@ export const personalization = {
       clearError: "Couldn't clear memories",
       usageAccessibility:
         "{{percent}}% used, {{bytes}} of {{limit}} context bytes, {{entries}} of {{entryLimit}} memories",
-      usageDetail:
-        "{{bytes}} of {{limit}} bytes · {{entries}} of {{entryLimit}} memories",
+      usageDetail: "{{bytes}} of {{limit}} bytes · {{entries}} of {{entryLimit}} memories",
       clearAllLabel: "Clear all memories",
-      addShort: "Add",
       noMatches: "No memories match “{{query}}”.",
       saveError: "Couldn't save memory.",
-      keyHint:
-        "Start with a letter and use lowercase letters, numbers, or underscores.",
+      keyHint: "Start with a letter and use lowercase letters, numbers, or underscores.",
     },
   },
 } as const;

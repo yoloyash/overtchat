@@ -280,7 +280,7 @@ export function NewAgentWorktreeDialog({
                   />
                 }
               >
-                {t("agents.common.cancel")}
+                {t("common.actions.cancel")}
               </Dialog.Close>
               <Button
                 type="submit"
@@ -288,7 +288,7 @@ export function NewAgentWorktreeDialog({
                 disabled={!selected || !name || create.isPending}
               >
                 {create.isPending
-                  ? t("agents.worktreeDialog.creating")
+                  ? t("common.states.creating")
                   : t("agents.worktreeDialog.create")}
               </Button>
             </div>

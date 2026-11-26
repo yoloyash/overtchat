@@ -244,7 +244,7 @@ export function ModelsPanel() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("models.page.searchPlaceholder")}
               className="pl-8"
-              aria-label={t("models.page.searchPlaceholder")}
+              aria-label={t("models.page.searchLabel")}
             />
           </div>
           <p className="text-xs text-muted-foreground">
@@ -400,7 +400,7 @@ export function ModelsPanel() {
                         title={t("models.item.editLabel", { label: m.label })}
                       >
                         <Pencil data-icon="inline-start" />
-                        {t("models.item.edit")}
+                        {t("common.actions.edit")}
                       </Button>
                       <Button
                         type="button"
@@ -417,7 +417,7 @@ export function ModelsPanel() {
                         className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >
                         <Trash2 data-icon="inline-start" />
-                        {t("models.item.delete")}
+                        {t("common.actions.delete")}
                       </Button>
                     </div>
                   </div>
@@ -478,7 +478,7 @@ export function ModelsPanel() {
                 disabled={deleteMut.isPending}
                 onClick={() => setPendingDelete(null)}
               >
-                {t("models.deleteDialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -487,8 +487,8 @@ export function ModelsPanel() {
                 onClick={confirmDelete}
               >
                 {deleteMut.isPending
-                  ? t("models.deleteDialog.deleting")
-                  : t("models.item.delete")}
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -501,7 +501,7 @@ export function ModelsPanel() {
 /** The desktop app can list providers that its bundled catalog predates. */
 function providerLabel(model: AdminModelConfig): string {
   if (model.providerId === "custom") {
-    return i18n.t("models.page.providerCustom");
+    return i18n.t("models.providers.custom");
   }
   return (
     findProvider(model.providerId)?.label ??

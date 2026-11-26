@@ -10,17 +10,11 @@ export const scheduled: Translation["scheduled"] = {
   },
   empty: {
     title: "暂无定时任务",
-    description:
-      "在这里创建一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
+    description: "在这里创建一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
   },
   actions: {
     newTask: "新建任务",
-    tryAgain: "重试",
     runNow: "立即运行",
-    edit: "编辑",
-    delete: "删除",
-    deleting: "正在删除…",
-    cancel: "取消",
   },
   task: {
     modelRemoved: "模型已移除",
@@ -77,7 +71,6 @@ export const scheduled: Translation["scheduled"] = {
   alerts: {
     failed: "定时任务运行失败",
     finished: "定时任务已完成",
-    open: "打开",
   },
   frequency: {
     once: "仅一次",
@@ -133,8 +126,6 @@ export const scheduled: Translation["scheduled"] = {
     projectHint: "每次运行都会在该项目中启动，并使用其指令和文件。",
     webSearch: "联网搜索",
     webSearchHint: "允许运行任务时搜索网络并读取网页。",
-    saving: "正在保存…",
-    save: "保存",
     schedule: "创建任务",
   },
   validation: {
@@ -179,8 +170,7 @@ export const scheduled: Translation["scheduled"] = {
     deleted: "已删除定时任务",
   },
   mobile: {
-    emptyDescription:
-      "在这里添加一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
+    emptyDescription: "在这里添加一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
     runOnScheduleLabel: "按计划运行 {{name}}",
     notFound: "此任务已不存在。",
     whenSection: "运行时间",

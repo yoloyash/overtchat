@@ -77,7 +77,7 @@ export function ResetTwoFactorDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {t("users.list.resetTwoFactor")}
+            {t("users.resetTwoFactorDialog.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {t("users.resetTwoFactorDialog.description", {
@@ -87,7 +87,7 @@ export function ResetTwoFactorDialog({
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="reset-two-factor-password">
-                {t("users.resetPasswordDialog.currentPasswordLabel")}
+                {t("users.resetTwoFactorDialog.currentPasswordLabel")}
               </Label>
               <PasswordInput
                 id="reset-two-factor-password"
@@ -107,12 +107,12 @@ export function ResetTwoFactorDialog({
                 disabled={submitting}
                 onClick={onClose}
               >
-                {t("users.roleDialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting
-                  ? t("users.resetPasswordDialog.resetting")
-                  : t("users.list.resetTwoFactor")}
+                  ? t("users.resetTwoFactorDialog.resetting")
+                  : t("users.resetTwoFactorDialog.submit")}
               </Button>
             </SettingsActions>
           </form>

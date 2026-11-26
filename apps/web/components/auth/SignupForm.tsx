@@ -121,7 +121,7 @@ export function SignupForm() {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={submitting} className="w-full">
-        {submitting ? t("auth.signup.submitting") : t("auth.signup.submit")}
+        {submitting ? t("common.states.creating") : t("auth.signup.submit")}
       </Button>
     </form>
   );

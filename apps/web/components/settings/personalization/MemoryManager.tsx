@@ -94,7 +94,7 @@ export function MemoryManager({
                 value={memoryQuery}
                 onChange={(event) => setMemoryQuery(event.target.value)}
                 placeholder={t("personalization.memories.searchPlaceholder")}
-                aria-label={t("personalization.memories.searchPlaceholder")}
+                aria-label={t("personalization.memories.searchLabel")}
                 className="pl-8"
               />
             </div>

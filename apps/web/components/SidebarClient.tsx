@@ -507,7 +507,7 @@ function AgentSessionList({
               ref={doneRef}
               onClick={() => setOrganizing(false)}
             >
-              {t("sidebar.agents.done")}
+              {t("common.actions.done")}
             </Button>
           ) : (
             <span className="flex items-center gap-0.5">

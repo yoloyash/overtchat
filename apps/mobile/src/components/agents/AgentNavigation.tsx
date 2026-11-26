@@ -34,6 +34,7 @@ export function AgentSearch({
 }) {
   const { t } = useTranslation();
   const resolvedPlaceholder = placeholder ?? t("agents.history.searchPlaceholder");
+  const resolvedLabel = placeholder ?? t("agents.history.searchLabel");
   const { colors, fonts } = useTheme();
   return (
     <View
@@ -54,7 +55,7 @@ export function AgentSearch({
         color={colors.mutedForeground}
       />
       <TextInput
-        accessibilityLabel={resolvedPlaceholder}
+        accessibilityLabel={resolvedLabel}
         placeholder={resolvedPlaceholder}
         placeholderTextColor={colors.mutedForeground}
         value={value}
@@ -75,7 +76,7 @@ export function AgentSearch({
       {!!value && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("agents.history.clearSearch")}
+          accessibilityLabel={t("common.actions.clearSearch")}
           onPress={() => onChangeText("")}
           hitSlop={10}
           style={{ padding: 8 }}

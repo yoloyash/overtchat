@@ -244,7 +244,7 @@ export function ChatArea({
     ?.title?.trim();
   const headerTitle = temporary
     ? t("chat.empty.temporaryTitle")
-    : persistedTitle || (isNew ? null : t("chat.header.untitled"));
+    : persistedTitle || (isNew ? null : t("common.states.untitled"));
   const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
     () =>
       initialQuery?.trim()

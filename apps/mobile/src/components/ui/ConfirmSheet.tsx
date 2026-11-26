@@ -35,7 +35,7 @@ export const ConfirmSheet = forwardRef<
 ) {
   const { colors, radii, fonts } = useTheme();
   const { t } = useTranslation();
-  const resolvedCancelLabel = cancelLabel ?? t("common.mobile.actions.cancel");
+  const resolvedCancelLabel = cancelLabel ?? t("common.actions.cancel");
   const insets = useSafeAreaInsets();
 
   const renderBackdrop = useCallback(

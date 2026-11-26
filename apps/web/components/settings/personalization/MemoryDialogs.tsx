@@ -139,13 +139,13 @@ export function MemoryDialog({
                 size="sm"
                 onClick={() => onOpenChange(false)}
               >
-                {t("personalization.memories.dialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending || !changed}>
                 {pending
-                  ? t("personalization.profile.saving")
+                  ? t("common.states.saving")
                   : memory
-                    ? t("personalization.memories.dialog.saveChanges")
+                    ? t("common.actions.saveChanges")
                     : t("personalization.memories.add")}
               </Button>
             </SettingsActions>
@@ -199,7 +199,7 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
           )}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Close render={<Button variant="ghost" />}>
-              {t("personalization.memories.dialog.cancel")}
+              {t("common.actions.cancel")}
             </AlertDialog.Close>
             <Button
               variant="destructive"
@@ -223,8 +223,8 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
               }}
             >
               {deleteMemory.isPending
-                ? t("personalization.memories.deleteDialog.deleting")
-                : t("personalization.memories.deleteDialog.confirm")}
+                ? t("common.states.deleting")
+                : t("common.actions.delete")}
             </Button>
           </div>
         </AlertDialog.Popup>
@@ -271,7 +271,7 @@ export function ClearMemoriesButton({
           )}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Close render={<Button variant="ghost" />}>
-              {t("personalization.memories.dialog.cancel")}
+              {t("common.actions.cancel")}
             </AlertDialog.Close>
             <Button
               variant="destructive"

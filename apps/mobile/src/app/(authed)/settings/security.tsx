@@ -33,7 +33,7 @@ export default function Security() {
     return (
       <SettingsPage title={t("account.title")}>
         <Section>
-          <Row title={t("auth.fields.email")} detail={session.data?.user.email} />
+          <Row title={t("account.mobile.emailLabel")} detail={session.data?.user.email} />
         </Section>
         <Section
           title={t("account.sso.title")}
@@ -47,7 +47,7 @@ export default function Security() {
   return (
     <SettingsPage title={t("account.title")}>
       <Section>
-        <Row title={t("auth.fields.email")} detail={session.data?.user.email} />
+        <Row title={t("account.mobile.emailLabel")} detail={session.data?.user.email} />
       </Section>
       <Section
         title={t("account.password.submit")}
@@ -83,7 +83,7 @@ export default function Security() {
       <Action
         title={
           action.busy
-            ? t("account.password.saving")
+            ? t("common.states.saving")
             : t("account.password.submit")
         }
         disabled={action.busy}

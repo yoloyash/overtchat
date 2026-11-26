@@ -40,7 +40,7 @@ export function ProjectHome({
   if (!project) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        {t("projects.loading")}
+        {t("common.states.loading")}
       </div>
     );
   }
@@ -186,7 +186,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
               >
                 <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>{t("projects.actions.rename")}</span>
+                <span>{t("common.actions.rename")}</span>
               </Menu.Item>
               <Menu.Item
                 onClick={() => {
@@ -247,7 +247,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
                   />
                 }
               >
-                {t("projects.actions.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -256,8 +256,8 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
                 onClick={confirmDelete}
               >
                 {deleteMut.isPending
-                  ? t("projects.actions.deleting")
-                  : t("projects.actions.delete")}
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

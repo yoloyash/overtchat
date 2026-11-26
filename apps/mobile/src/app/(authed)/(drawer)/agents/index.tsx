@@ -91,7 +91,7 @@ export default function NewAgentScreen() {
     if (connections.isPending) {
       return (
         <View style={[styles.centered, { backgroundColor: colors.background }]}>
-          <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
+          <Stack.Screen options={{ title: t("agents.mobile.newSession.title") }} />
           <ActivityIndicator
             accessibilityLabel={t("agents.mobile.newSession.loadingWorkspaces")}
             color={colors.mutedForeground}
@@ -102,7 +102,7 @@ export default function NewAgentScreen() {
     if (connections.error) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
+          <Stack.Screen options={{ title: t("agents.mobile.newSession.title") }} />
           <AgentFeedback
             error={connections.error.message}
             retry={() => void connections.refetch()}
@@ -113,7 +113,7 @@ export default function NewAgentScreen() {
     if (requested) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
+          <Stack.Screen options={{ title: t("agents.mobile.newSession.title") }} />
           <AgentFeedback
             error={t("agents.mobile.errors.workspaceUnavailableDrawer")}
           />
@@ -122,7 +122,7 @@ export default function NewAgentScreen() {
     }
     return (
       <View style={[styles.centered, { backgroundColor: colors.background, gap: 12, padding: 24 }]}>
-        <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
+        <Stack.Screen options={{ title: t("agents.mobile.newSession.title") }} />
         <Ionicons name="folder-open-outline" size={32} color={colors.mutedForeground} />
         <AgentText title>{t("agents.mobile.newSession.emptyTitle")}</AgentText>
         <AgentText muted>
@@ -330,7 +330,7 @@ function NewAgent({
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
-      <Stack.Screen options={{ title: t("agents.history.newAgent") }} />
+      <Stack.Screen options={{ title: t("agents.mobile.newSession.title") }} />
       <View style={styles.hero}>
         <AgentProviderIcon provider={provider} size={40} />
         <AgentText title>
@@ -378,7 +378,7 @@ function NewAgent({
             }
             action={
               catalog.error
-                ? { label: t("agents.common.retry"), onPress: () => void catalog.refetch() }
+                ? { label: t("common.actions.retry"), onPress: () => void catalog.refetch() }
                 : undefined
             }
           />

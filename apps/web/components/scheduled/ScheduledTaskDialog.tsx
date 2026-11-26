@@ -499,13 +499,13 @@ export function ScheduledTaskDialog({
                   disabled={pending}
                   onClick={onClose}
                 >
-                  {t("scheduled.actions.cancel")}
+                  {t("common.actions.cancel")}
                 </Button>
                 <Button type="submit" size="sm" disabled={pending}>
                   {pending
-                    ? t("scheduled.form.saving")
+                    ? t("common.states.saving")
                     : task
-                      ? t("scheduled.form.save")
+                      ? t("common.actions.save")
                       : t("scheduled.form.schedule")}
                 </Button>
               </div>

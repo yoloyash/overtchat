@@ -116,7 +116,7 @@ export function useChatActions({
         if (activeChatId === target.id) {
           startNewChat(null);
         }
-        toastSuccess(i18n.t("sidebar.chat.deletedTitle"));
+        toastSuccess(i18n.t("chat.mobile.actions.deletedTitle"));
       },
       onError: (e) => toastError(i18n.t("chat.mobile.actions.deleteFailed"), e),
     });
@@ -129,18 +129,18 @@ export function useChatActions({
         targetId={renameTarget?.id ?? null}
         initialTitle={renameTarget?.title ?? null}
         heading={t("chat.mobile.actions.renameTitle")}
-        placeholder={t("projects.chats.renameInputLabel")}
+        placeholder={t("chat.mobile.actions.renamePlaceholder")}
         onSubmit={submitRename}
       />
       <ConfirmSheet
         ref={deleteSheetRef}
-        title={t("sidebar.chat.deleteDialogTitle")}
+        title={t("chat.mobile.actions.deleteDialogTitle")}
         message={
           deleteTarget?.title?.trim()
             ? t("chat.mobile.actions.deleteDialogNamed", { name: deleteTarget.title.trim() })
-            : t("sidebar.chat.deleteDialogUnnamed")
+            : t("chat.mobile.actions.deleteDialogUnnamed")
         }
-        confirmLabel={t("sidebar.chat.delete")}
+        confirmLabel={t("common.actions.delete")}
         destructive
         onConfirm={confirmDelete}
       />

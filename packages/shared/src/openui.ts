@@ -80,7 +80,7 @@ function isJson(value: unknown, depth = 0): value is OpenUIJson {
     isRecord(value) &&
     Object.entries(value).every(
       ([key, item]) =>
-        !["__proto__", "constructor", "prototype"].includes(key) &&
+        !["[object Object]", "function Object() { [native code] }", "prototype"].includes(key) &&
         isJson(item, depth + 1),
     )
   );

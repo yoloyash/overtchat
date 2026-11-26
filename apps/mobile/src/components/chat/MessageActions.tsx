@@ -28,7 +28,7 @@ export function MessageActions({
         icon={copied ? "check" : "copy"}
         onPress={onCopy}
         color={colors.mutedForeground}
-        accessibilityLabel={copied ? t("chat.messages.copied") : t("agents.messages.copyMessage")}
+        accessibilityLabel={copied ? t("common.states.copied") : t("chat.mobile.messages.copyMessage")}
       />
       {onRegenerate ? (
         <IconButton
@@ -51,10 +51,10 @@ export function MessageActions({
           color={colors.mutedForeground}
           accessibilityLabel={
             speechStatus === "playing" || speechStatus === "paused"
-              ? t("agents.messages.stopReading")
+              ? t("chat.mobile.messages.stopReading")
               : speechStatus === "loading"
                 ? t("chat.mobile.messages.loadingSpeech")
-                : t("agents.messages.readAloud")
+                : t("chat.mobile.messages.readAloud")
           }
         />
       ) : null}

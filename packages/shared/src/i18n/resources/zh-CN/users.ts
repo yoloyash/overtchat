@@ -23,7 +23,6 @@ export const users: Translation["users"] = {
     currentUser: "当前用户",
     resetPassword: "重置密码",
     resetTwoFactor: "重置双重验证",
-    delete: "删除",
   },
   roles: {
     user: "普通用户",
@@ -47,29 +46,25 @@ export const users: Translation["users"] = {
     removeTitle: "移除管理员权限？",
     grantDescription:
       "<email>{{email}}</email> 将可以管理用户、模型和智能体工作区，包括在此服务器上运行代码和建立 SSH 连接。该用户将在所有设备上退出登录。",
-    removeDescription:
-      "<email>{{email}}</email> 将失去管理员功能。该用户正在运行的智能体任务将会停止，并将在所有设备上退出登录。",
-    cancel: "取消",
-    updating: "正在更新…",
+    removeDescription: "<email>{{email}}</email> 将失去管理员功能。该用户正在运行的智能体任务将会停止，并将在所有设备上退出登录。",
     makeAdmin: "设为管理员",
     makeUser: "设为普通用户",
   },
   deleteDialog: {
     title: "删除用户？",
-    description:
-      "<email>{{email}}</email> 将无法再登录。已有的对话和项目不会被删除。",
-    deleting: "正在删除…",
+    description: "<email>{{email}}</email> 将无法再登录。已有的对话和项目不会被删除。",
   },
   addDialog: {
     ssoDescription: "该用户将使用此邮箱通过 {{provider}} 登录。",
     passwordDescription: "请通过其他安全渠道将密码告知对方，之后可自行修改。",
     passwordLabel: "密码",
-    creating: "正在创建…",
-    create: "创建",
+    nameLabel: "姓名",
+    emailLabel: "邮箱",
+    roleLabel: "角色",
+    roleAriaLabel: "角色",
   },
   resetPasswordDialog: {
-    description:
-      "为 {{email}} 设置替换密码。该用户将在所有设备上退出登录。请私下告知对方该密码，之后可在安全设置中修改。",
+    description: "为 {{email}} 设置替换密码。该用户将在所有设备上退出登录。请私下告知对方该密码，之后可在安全设置中修改。",
     currentPasswordLabel: "你的当前密码",
     replacementPasswordLabel: "替换密码",
     confirmPasswordLabel: "确认替换密码",
@@ -77,12 +72,17 @@ export const users: Translation["users"] = {
     errorFallback: "无法重置密码。",
     networkError: "无法重置密码。请检查网络连接后重试。",
     resetting: "正在重置…",
+    title: "重置密码",
+    submit: "重置密码",
   },
   resetTwoFactorDialog: {
-    description:
-      "移除 {{email}} 的身份验证器和备用恢复码（例如在手机丢失后）。该用户将在所有设备上退出登录，并可在安全设置中重新配置双重验证。",
+    description: "移除 {{email}} 的身份验证器和备用恢复码（例如在手机丢失后）。该用户将在所有设备上退出登录，并可在安全设置中重新配置双重验证。",
     errorFallback: "无法重置双重验证。",
     networkError: "无法重置双重验证。请检查网络连接后重试。",
+    title: "重置双重验证",
+    submit: "重置双重验证",
+    currentPasswordLabel: "你的当前密码",
+    resetting: "正在重置…",
   },
   mobile: {
     roles: {
@@ -98,6 +98,9 @@ export const users: Translation["users"] = {
       notFound: "该用户已不存在。",
       roleSelfAdmin: "管理员 · 当前账号",
       selfPasswordHint: "请在安全设置中更改你自己的密码。",
+      accountSection: "账号",
+      createdLabel: "创建时间",
+      roleLabel: "角色",
     },
     create: {
       passwordDescription: "请私下告知初始密码，该用户可在安全设置中修改。",
@@ -109,12 +112,11 @@ export const users: Translation["users"] = {
         invalidPasswordLength: "初始密码请使用 8–128 个字符。",
         createFailed: "无法创建用户。",
       },
+      created: "已创建用户",
     },
     roleDialog: {
-      grantMessage:
-        "{{email}} 将可以管理此服务器、用户和编程智能体，并将在所有设备上退出登录。",
-      removeMessage:
-        "{{email}} 将失去管理员功能，其正在运行的智能体任务将会停止，且将在所有设备上退出登录。",
+      grantMessage: "{{email}} 将可以管理此服务器、用户和编程智能体，并将在所有设备上退出登录。",
+      removeMessage: "{{email}} 将失去管理员功能，其正在运行的智能体任务将会停止，且将在所有设备上退出登录。",
       confirm: "更改角色",
       updated: "角色已更新",
     },
@@ -125,6 +127,7 @@ export const users: Translation["users"] = {
         invalidLength: "密码请使用 8–128 个字符。",
         mismatch: "两次输入的替换密码不一致。",
         failed: "无法重置密码。",
+        currentRequired: "请输入当前密码。",
       },
     },
     deleteDialog: {

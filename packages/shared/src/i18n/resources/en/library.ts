@@ -7,16 +7,13 @@ export const library = {
     loading: "Loading library…",
     loadError: "Could not load your library.",
     refreshError: "Could not refresh your library.",
-    tryAgain: "Try again",
     emptySearchTitle: "No matching files",
     emptyTitle: "Your library is empty",
     emptySearchDescription: "Try another filename.",
-    emptyDescription:
-      "Files you attach to saved chats appear here, ready to use again.",
+    emptyDescription: "Files you attach to saved chats appear here, ready to use again.",
     filesLabel: "Library files",
     alreadyAttached: "Already attached",
     openFile: "Open {{filename}}",
-    loadingMore: "Loading…",
     loadMore: "Load more",
   },
   picker: {

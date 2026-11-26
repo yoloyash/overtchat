@@ -256,7 +256,7 @@ function ComposerView({
                     },
                   ]}
                 >
-                  {t("projects.files.uploading")}
+                  {t("common.states.uploading")}
                 </Text>
               </View>
             ) : null}

@@ -99,7 +99,7 @@ export function ConnectionFields({
   const provider = findProvider(draft.providerId);
   const providerName =
     provider?.id === "custom"
-      ? t("models.page.providerCustom")
+      ? t("models.providers.custom")
       : (provider?.label ?? providerLabel ?? draft.providerId);
   const requiresKey = provider?.requiresApiKey ?? false;
 
@@ -320,7 +320,7 @@ export function ConnectionFields({
                 {imageModel && id === "custom"
                   ? t("models.connection.customOpenAiCompatible")
                   : id === "custom"
-                    ? t("models.page.providerCustom")
+                    ? t("models.providers.custom")
                     : PROVIDERS[id].label}
               </SelectItem>
             ))}
@@ -495,8 +495,8 @@ export function ConnectionFields({
                 </ComboboxTrigger>
                 <ComboboxContent aria-label={t("models.connection.fetchedModelsLabel")}>
                   <ComboboxInput
-                    placeholder={t("models.page.searchPlaceholder")}
-                    aria-label={t("models.page.searchPlaceholder")}
+                    placeholder={t("models.connection.searchModelsPlaceholder")}
+                    aria-label={t("models.connection.searchModelsLabel")}
                   />
                   <ComboboxEmpty>
                     {t("models.connection.noMatchingModels")}

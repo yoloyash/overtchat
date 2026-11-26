@@ -645,7 +645,7 @@ function ProjectRow({
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("sidebar.projects.newChatIn", { name: project.name })}
+        accessibilityLabel={t("projects.actions.newChatIn", { name: project.name })}
         onPress={onNewChat}
         hitSlop={8}
         style={({ pressed }) => [
@@ -739,7 +739,7 @@ function ChatRow({
             },
           ]}
         >
-          {item.title?.trim() || t("sidebar.chat.untitled")}
+          {item.title?.trim() || t("common.states.untitled")}
         </Text>
         {item.pinned && (
           <Ionicons

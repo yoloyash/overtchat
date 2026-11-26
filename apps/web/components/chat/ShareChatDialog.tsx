@@ -85,7 +85,7 @@ export function ShareChatDialog({
             </Dialog.Title>
             <Dialog.Close
               render={
-                <Button variant="ghost" size="icon-sm" aria-label={t("chat.share.close")} />
+                <Button variant="ghost" size="icon-sm" aria-label={t("common.actions.close")} />
               }
             >
               <X />
@@ -104,7 +104,7 @@ export function ShareChatDialog({
                   onFocus={(e) => e.target.select()}
                 />
                 <Button onClick={() => void copy()}>
-                  {copied ? t("chat.messages.copied") : t("chat.share.copyLink")}
+                  {copied ? t("common.states.copied") : t("chat.share.copyLink")}
                 </Button>
               </div>
               <a
@@ -165,7 +165,7 @@ export function ShareChatDialog({
               }}
             >
               {change.isPending
-                ? t("chat.share.saving")
+                ? t("common.states.saving")
                 : share
                   ? t("chat.share.updateLink")
                   : t("chat.share.createLink")}

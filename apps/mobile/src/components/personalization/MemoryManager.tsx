@@ -168,7 +168,7 @@ export function MemoryManager({
                   },
                 ]}
               >
-                {t("personalization.mobile.memories.addShort")}
+                {t("common.actions.add")}
               </Text>
             </Pressable>
           </View>
@@ -217,7 +217,7 @@ export function MemoryManager({
               style={styles.searchIcon}
             />
             <TextInput
-              accessibilityLabel={t("personalization.memories.searchPlaceholder")}
+              accessibilityLabel={t("personalization.memories.searchLabel")}
               value={memoryQuery}
               onChangeText={setMemoryQuery}
               placeholder={t("personalization.memories.searchPlaceholder")}
@@ -388,7 +388,7 @@ export function MemoryManager({
         ref={deleteSheetRef}
         title={t("personalization.memories.deleteDialog.title")}
         message={t("personalization.memories.deleteDialog.description")}
-        confirmLabel={t("personalization.memories.deleteDialog.confirm")}
+        confirmLabel={t("common.actions.delete")}
         destructive
         onConfirm={confirmDelete}
       />

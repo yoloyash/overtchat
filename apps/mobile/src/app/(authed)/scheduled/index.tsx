@@ -197,7 +197,7 @@ function TaskCard({
         />
         <Row
           icon="create-outline"
-          title={t("scheduled.actions.edit")}
+          title={t("common.actions.edit")}
           navigation
           onPress={() =>
             router.push({ pathname: "/scheduled/[id]", params: { id: task.id } })

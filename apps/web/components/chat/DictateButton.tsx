@@ -117,7 +117,7 @@ export function DictateError({
               to="/settings/services"
               className="text-xs underline underline-offset-4"
             >
-              {t("chat.dictation.speechSettings")}
+              {t("chat.speech.settings")}
             </Link>
           )}
         </>

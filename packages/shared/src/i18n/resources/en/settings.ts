@@ -72,8 +72,7 @@ export const settings = {
       description: "Shown while the window is in the background.",
       descriptionWithAgents:
         "Shown while the window is in the background. In front, agent alerts appear in the corner instead.",
-      unsupported:
-        "System notifications need a supported browser over HTTPS, or the desktop app.",
+      unsupported: "System notifications need a supported browser over HTTPS, or the desktop app.",
       blocked:
         "Allow notifications for this site in your browser or system settings, then turn this on again.",
     },
@@ -105,7 +104,6 @@ export const settings = {
   },
   mobile: {
     common: {
-      back: "Back",
       openInBrowser: "Open in browser",
     },
     unsaved: {
@@ -118,10 +116,8 @@ export const settings = {
       requestFailed: "Couldn’t complete the request.",
       openBrowserFailed: "Couldn’t open browser",
       adminRequired: "Administrator access is required.",
-      settingUnavailable:
-        "This setting is unavailable. Check your server version.",
-      serviceNotInstalled:
-        "This service is not installed. Run overtchat setup on the server.",
+      settingUnavailable: "This setting is unavailable. Check your server version.",
+      serviceNotInstalled: "This service is not installed. Run overtchat setup on the server.",
     },
     index: {
       yourProfile: "Your profile",
@@ -133,7 +129,6 @@ export const settings = {
       appGroup: "App",
       server: "Server",
       about: "About",
-      signingOut: "Signing out…",
       signOutFailed: "Couldn’t sign out.",
     },
     about: {
@@ -149,17 +144,15 @@ export const settings = {
       openInBrowser: "Open server in browser",
       changeDescription: "Changing servers signs you out on this device.",
       confirmTitle: "Change server?",
-      confirmMessage:
-        "You’ll be signed out on this device before choosing another server.",
+      confirmMessage: "You’ll be signed out on this device before choosing another server.",
+      changeServer: "Change server",
     },
     chat: {
       messagesDescription: "Display preferences for this device.",
-      expandActivityDetail:
-        "Open each reply's thinking and tool steps without a tap.",
+      expandActivityDetail: "Open each reply's thinking and tool steps without a tap.",
       messageStatsDetail: "Token counts and generation speed below responses.",
       contextMeterDetail: "Context-window ring in the chat header.",
-      sessionCostDetail:
-        "Recorded cost in the usage details, when pricing is available.",
+      sessionCostDetail: "Recorded cost in the usage details, when pricing is available.",
     },
     notifications: {
       responsesTitle: "Responses",
@@ -167,8 +160,7 @@ export const settings = {
       chatResponsesTitle: "Chat responses",
       chatResponsesDetail: "When a saved chat response is ready.",
       agentActivityTitle: "Agent activity",
-      agentActivityDetail:
-        "When an agent needs an approval or an answer, finishes, or fails.",
+      agentActivityDetail: "When an agent needs an approval or an answer, finishes, or fails.",
       signInRequestsTitle: "Sign-in requests",
       signInRequestsDetail:
         "Approve sign-ins to your account from this phone instead of typing a code.",
@@ -178,6 +170,7 @@ export const settings = {
         "Include chat text, agent session names, what agents ask or reply, and the browser or app signing in. Previews pass through Expo and Apple or Google and may appear on your lock screen.",
       phoneSettingsTitle: "Phone notification settings",
       phoneSettingsDetail: "Permission, sounds, and lock-screen visibility",
+      securityTitle: "Security",
     },
     appearance: {
       searchFont: "Search interface font",

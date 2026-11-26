@@ -86,8 +86,8 @@ export function ModelSearch({
               }
             }}
             onClick={(event) => event.stopPropagation()}
-            placeholder={t("app.modelPicker.searchModels")}
-            aria-label={t("app.modelPicker.searchModels")}
+            placeholder={t("app.modelPicker.searchPlaceholder")}
+            aria-label={t("app.modelPicker.searchInputLabel")}
             className="h-8 pl-7 text-xs md:text-xs"
           />
         </div>

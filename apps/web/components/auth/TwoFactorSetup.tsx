@@ -102,13 +102,13 @@ export function TwoFactorSetup({
         <div className="flex flex-wrap justify-end gap-2">
           {onCancel && (
             <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
-              {t("auth.actions.cancel")}
+              {t("common.actions.cancel")}
             </Button>
           )}
           <Button type="submit" size="sm" disabled={submitting}>
             {submitting
               ? t("auth.twoFactor.setup.checking")
-              : t("auth.twoFactor.setup.continue")}
+              : t("common.actions.continue")}
           </Button>
         </div>
       </form>
@@ -172,7 +172,7 @@ export function TwoFactorSetup({
         <div className="flex flex-wrap justify-end gap-2">
           {onCancel && (
             <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
-              {t("auth.actions.cancel")}
+              {t("common.actions.cancel")}
             </Button>
           )}
           <Button type="submit" size="sm" disabled={submitting}>
@@ -240,12 +240,12 @@ export function BackupCodes({
         >
           {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
           {copied
-            ? t("auth.twoFactor.backupCodes.copied")
-            : t("auth.twoFactor.backupCodes.copy")}
+            ? t("common.states.copied")
+            : t("common.actions.copy")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={download}>
           <Download aria-hidden />
-          {t("auth.twoFactor.backupCodes.download")}
+          {t("common.actions.download")}
         </Button>
         <Button type="button" size="sm" onClick={onDone}>
           {t("auth.twoFactor.backupCodes.saved")}

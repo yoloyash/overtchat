@@ -49,15 +49,15 @@ export function AvailableMcpServersPanel() {
     >
       {isPending ? (
         <SettingsNotice className="py-6">
-          {t("tools.mcp.available.loading")}
+          {t("tools.mcp.loading")}
         </SettingsNotice>
       ) : error ? (
         <SettingsNotice tone="error" className="py-6">
-          {getErrorMessage(error, t("tools.mcp.available.loadError"))}
+          {getErrorMessage(error, t("tools.mcp.loadError"))}
         </SettingsNotice>
       ) : servers.length === 0 ? (
         <SettingsEmptyState
-          title={t("tools.mcp.available.emptyTitle")}
+          title={t("tools.mcp.emptyTitle")}
           description={t("tools.mcp.available.emptyDescription")}
         />
       ) : (

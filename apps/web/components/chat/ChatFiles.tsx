@@ -73,7 +73,7 @@ export function ChatFilesPanel({
   const { outputs, uploads } = files;
   const count = outputs.length + uploads.length;
   return (
-    <SidePanel aria-label={t("chat.files.title")} data-files-panel="" variant="docked" onClose={onClose}>
+    <SidePanel aria-label={t("chat.files.filesPanelLabel")} data-files-panel="" variant="docked" onClose={onClose}>
       <SidePanelHeader>
         <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <Files className="size-4" />
@@ -116,7 +116,7 @@ export function ChatFilesPanel({
                 <Item
                   key={document.id}
                   icon={<Icon className="size-4" />}
-                  name={document.title || t("chat.files.untitled")}
+                  name={document.title || t("common.states.untitled")}
                   label={t(`chat.documents.types.${document.type}`)}
                   onOpen={() => onOpenDocument(document.toolCallId)}
                 />

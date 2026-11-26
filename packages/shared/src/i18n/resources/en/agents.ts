@@ -9,19 +9,6 @@ export const agents = {
     syncedWithFailures_one: "{{count}} agent workspace synced; {{failed}} failed.",
     syncedWithFailures_other: "{{count}} agent workspaces synced; {{failed}} failed.",
   },
-  common: {
-    cancel: "Cancel",
-    save: "Save",
-    done: "Done",
-    retry: "Retry",
-    remove: "Remove",
-    loading: "Loading…",
-    copy: "Copy",
-    copied: "Copied",
-    showMore: "Show more",
-    showLess: "Show less",
-    showCountMore: "Show {{count}} more",
-  },
   sessionState: {
     approval: "Needs approval",
     question: "Has a question",
@@ -33,9 +20,6 @@ export const agents = {
     markUnread: "Mark as unread",
     markSessionRead: "Mark {{title}} as read",
     markSessionUnread: "Mark {{title}} as unread",
-  },
-  alerts: {
-    open: "Open",
   },
   approval: {
     sendingResponse: "Sending response",
@@ -63,7 +47,6 @@ export const agents = {
     noFields: "The agent did not provide any answer fields.",
     otherPlaceholder: "Other (type your answer)",
     answerPlaceholder: "Type your answer",
-    dismiss: "Dismiss",
     submit: "Submit",
     next: "Next",
     choicesFor: "Choices for {{label}}",
@@ -96,8 +79,7 @@ export const agents = {
       "Stash them to switch to {{target}}. Switching back to {{current}} restores them.",
     stashAndSwitch: "Stash changes and switch",
     agentRunningTitle: "An agent is working in this repository",
-    agentRunningDescription:
-      "Switch branches after its turn ends, or stop it first.",
+    agentRunningDescription: "Switch branches after its turn ends, or stop it first.",
     switchedTitle: "Switched to {{branch}}",
     switchErrorTitle: "Could not switch branches",
     stashedOnBranch:
@@ -124,7 +106,6 @@ export const agents = {
     startFrom: "Start from",
     notGitRepo: "This workspace is not a Git repository.",
     newBranch: "New branch",
-    creating: "Creating…",
     create: "Create worktree",
     createdTitle: "Created worktree {{name}}",
     createdDescription: "{{branch}} is checked out in {{path}}.",
@@ -165,7 +146,6 @@ export const agents = {
     startProviderSession: "Start {{provider}} session",
     pageTitle: "New {{provider}} session · {{workspace}}",
     heading: "New {{provider}} session",
-    providerAgent: "{{provider}} agent",
     modelDefaultsErrorTitle: "Model defaults could not be loaded",
     modelDefaultsErrorFallback: "Model defaults could not be loaded.",
     catalogUnavailable: "The {{provider}} catalog is unavailable.",
@@ -180,7 +160,6 @@ export const agents = {
   history: {
     title: "History",
     searchPlaceholder: "Search sessions",
-    clearSearch: "Clear search",
     allMachines: "All machines",
     allWorkspaces: "All workspaces",
     allAgents: "All agents",
@@ -191,12 +170,12 @@ export const agents = {
     sessionCount_one: "{{count}} session",
     sessionCount_other: "{{count}} sessions",
     emptyTitle: "No agent sessions yet",
-    emptyDescription:
-      "Sessions you start or run on your machines are listed here.",
+    emptyDescription: "Sessions you start or run on your machines are listed here.",
     newAgent: "New agent",
     noMatches: "No sessions match.",
     clearFilters: "Clear filters",
     lastTurnFailed: "The last turn failed.",
+    searchLabel: "Search sessions",
   },
   session: {
     newSession: "New session",
@@ -241,13 +220,13 @@ export const agents = {
     goalPaused: "Goal paused",
     goalResumed: "Goal resumed",
     goalCleared: "Goal cleared",
+    providerAgent: "{{provider}} agent",
   },
   dialogs: {
     renameDescription: "This updates the native {{provider}} session name.",
     nameLabel: "Name",
     compactTitle: "Compact context?",
-    compactDescription:
-      "{{provider}} will summarize older context in this native session.",
+    compactDescription: "{{provider}} will summarize older context in this native session.",
     instructionsLabel: "Instructions <optional>(optional)</optional>",
     compactAction: "Compact",
     usageTitle: "{{provider}} usage",
@@ -265,10 +244,8 @@ export const agents = {
     longestStreak: "Longest streak",
     peakDailyTokens: "Peak daily tokens",
     streakDays: "{{value}} days",
-    noUsageDetails:
-      "{{provider}} did not return usage details for this account.",
-    sessionUsageDescription:
-      "Tokens, tool calls, and estimated cost for this session.",
+    noUsageDetails: "{{provider}} did not return usage details for this account.",
+    sessionUsageDescription: "Tokens, tool calls, and estimated cost for this session.",
     statsInput: "Input",
     statsOutput: "Output",
     statsCacheRead: "Cache read",
@@ -282,7 +259,6 @@ export const agents = {
     durationMinutes: "{{minutes}} min",
     needsInput: "{{provider}} needs your input",
     openAuthPage: "Open authorization page",
-    continueAction: "Continue",
   },
   context: {
     goal: "Goal",
@@ -390,8 +366,7 @@ export const agents = {
     imageDropOverlayDescription:
       "PNG, JPEG, GIF, or WebP for {{provider}}. Mention other files by path.",
     imageDropRefusedTitle: "This model does not accept images",
-    imageDropRefusedDescription:
-      "Pick a {{provider}} model with image input to attach one.",
+    imageDropRefusedDescription: "Pick a {{provider}} model with image input to attach one.",
   },
   activity: {
     elapsedSeconds: "{{seconds}}s",
@@ -433,8 +408,6 @@ export const agents = {
     toolStepAriaWithSummary: "{{label}}: {{summary}}, {{status}}",
     prompt: "Prompt",
     activityHeading: "Activity",
-    openFilePath: "Open {{path}}",
-    openFile: "Open file",
     commandCancelled: "Command cancelled.",
     exitedWithCode: "Exited with code {{code}}.",
     commandExitedWithCode: "Command exited with code {{code}}.",
@@ -568,8 +541,7 @@ export const agents = {
     status: "Status",
     cancelled: "Cancelled",
     outputLimit: "Output limit",
-    truncatedWithPath:
-      "Output was truncated by the agent. Full output on the host: {{path}}",
+    truncatedWithPath: "Output was truncated by the agent. Full output on the host: {{path}}",
     truncated: "Output was truncated by the agent.",
   },
   compaction: {
@@ -613,13 +585,11 @@ export const agents = {
     unavailable: "Unavailable",
     exited: "Exited ({{reason}})",
     unknownExit: "unknown",
-    inputCongested:
-      "Terminal input is congested. Reconnect before typing again.",
+    inputCongested: "Terminal input is congested. Reconnect before typing again.",
     unavailableStatus: "Terminal unavailable ({{status}}).",
     accessExpired: "Terminal access expired. Reopen the terminal to reconnect.",
     copyFailed: "Copy failed. Use your system copy shortcut.",
-    pasteUnavailable:
-      "Clipboard access is unavailable. Use your system paste shortcut.",
+    pasteUnavailable: "Clipboard access is unavailable. Use your system paste shortcut.",
     copySelection: "Copy selection",
     paste: "Paste",
     selectAll: "Select all",
@@ -670,14 +640,11 @@ export const agents = {
     changesUnavailable: "Changes cannot be shown",
     loadingFile: "Loading file…",
     fileNotPreviewable: "File cannot be previewed",
-    binaryDiff:
-      "This is a binary file, so its changes cannot be shown as text.",
-    modeOrRenameDiff:
-      "This file was renamed or changed mode; its lines are unchanged.",
+    binaryDiff: "This is a binary file, so its changes cannot be shown as text.",
+    modeOrRenameDiff: "This file was renamed or changed mode; its lines are unchanged.",
     noUncommittedChanges: "This file has no uncommitted changes.",
     diffTruncated: "This diff is long; only its first 512 KB is shown.",
-    svgRenderError:
-      "This SVG could not be rendered. Its source is still available.",
+    svgRenderError: "This SVG could not be rendered. Its source is still available.",
     loadingImage: "Loading image…",
     fileFallback: "Workspace file",
     gitStatus: {
@@ -746,6 +713,10 @@ export const agents = {
       uploadingImage: "Uploading image",
       previewImage: "Preview {{label}}",
       deliveryUnknown: "Delivery unknown — check the chat before resending",
+      queueMessage: "Queue message",
+      recordAgain: "Record again",
+      stopDictation: "Stop dictation",
+      transcribing: "Transcribing",
     },
     connection: {
       reconnecting: "Reconnecting to your agent…",
@@ -762,6 +733,7 @@ export const agents = {
       noLimit: "The agent hasn't reported a context limit.",
       notReported: "The agent hasn't reported context usage yet.",
       stale: "Last reported usage. Updates resume when connected.",
+      percentUsed: "{{percentage}}% used",
     },
     controls: {
       enableModeFallback:
@@ -772,6 +744,9 @@ export const agents = {
       agentSettings: "Agent settings",
       planOn: "On",
       planOff: "Off",
+      modelUnavailable: "Unavailable",
+      searchModelsLabel: "Search models",
+      searchModelsPlaceholder: "Search models",
     },
     fork: {
       buttonLabel: "Fork conversation",
@@ -786,8 +761,7 @@ export const agents = {
       noChangePreview: "The agent did not provide a change preview.",
       openAuthFailed: "Couldn't open the authorization page.",
       invalidAuthUrl: "The agent did not provide a valid authorization URL.",
-      webAppRequired:
-        "This interaction requires the web app. You can cancel it here.",
+      webAppRequired: "This interaction requires the web app. You can cancel it here.",
       submitResponse: "Submit response",
       cancelRequest: "Cancel request",
     },
@@ -798,12 +772,10 @@ export const agents = {
       copySectionLabel: "Copy {{label}}",
       copiedSectionLabel: "Copied {{label}}",
       longPressActions: "Long press for message actions",
-      sending: "Sending…",
     },
     navigation: {
       sessionRowLabel: "{{title}}, {{provider}}, {{workspace}} · {{host}}",
-      sessionRowLabelWithState:
-        "{{state}}: {{title}}, {{provider}}, {{workspace}} · {{host}}",
+      sessionRowLabelWithState: "{{state}}: {{title}}, {{provider}}, {{workspace}} · {{host}}",
       gitUnavailable: "Git unavailable",
       uncommittedChanges: "Uncommitted changes",
     },
@@ -816,16 +788,14 @@ export const agents = {
       namePlaceholder: "Session name",
       renamedToast: "Renamed",
       implementPlanTitle: "Implement this plan?",
-      implementPlanDescription:
-        "The agent will begin implementing the plan in this workspace.",
+      implementPlanDescription: "The agent will begin implementing the plan in this workspace.",
       implementPlanConfirm: "Implement",
       compactDescription:
         "The agent summarizes the conversation so far to free up context. This can't be undone.",
       retryInteractive: "Retry interactive session",
       waitingForResponse: "The agent is waiting for your response.",
       respond: "Respond",
-      deliveryNotConfirmed:
-        "Delivery not confirmed. Check the conversation before retrying.",
+      deliveryNotConfirmed: "Delivery not confirmed. Check the conversation before retrying.",
       alreadyDelivered: "Already delivered",
       sendAgainEllipsis: "Send again…",
       sendAsNewTitle: "Send as a new message?",
@@ -892,8 +862,7 @@ export const agents = {
       compactingContext: "Compacting context",
       loadingOlder: "Loading older messages",
       emptyTitle: "What would you like to work on?",
-      emptyDescription:
-        "Messages run in this workspace on your connected machine.",
+      emptyDescription: "Messages run in this workspace on your connected machine.",
       jumpToLatest: "Jump to latest",
       hideErrorDetails: "Hide error details",
       showErrorDetails: "Show error details",
@@ -907,11 +876,11 @@ export const agents = {
       noMatchesTitle: "No sessions match",
       noSessionsTitle: "No sessions yet",
       noMatchesDescription: "Try another search or widen the filters.",
-      noSessionsDescription:
-        "Sessions you start with an agent are listed here.",
+      noSessionsDescription: "Sessions you start with an agent are listed here.",
       folder: "Folder",
       searchFolder: "Search folder",
       searchSortBy: "Search sort by",
+      filterByAgent: "Filter by agent",
     },
     newSession: {
       loadingWorkspaces: "Loading workspaces",
@@ -923,6 +892,7 @@ export const agents = {
       chatHistoryAttachedIn: "Chat history attached · {{workspace}}",
       changeWorkspace: "Change workspace",
       removeHistory: "Remove history",
+      title: "New agent",
     },
     workspace: {
       searchPlaceholder: "Search sessions in this workspace",
@@ -933,8 +903,11 @@ export const agents = {
       noMatchingSessions: "No matching sessions",
       startFirstSession: "Start your first session",
       tryAnotherSearch: "Try another search.",
-      startFirstSessionHint:
-        "Use New session; the agent can be changed before sending.",
+      startFirstSessionHint: "Use New session; the agent can be changed before sending.",
     },
+  },
+  files: {
+    openFile: "Open file",
+    openFilePath: "Open {{path}}",
   },
 } as const;

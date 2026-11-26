@@ -325,7 +325,7 @@ export function AgentComposer({
             dictation.error.kind === "empty" || dictation.error.kind === "other" ||
             (dictation.error.kind === "stt_unavailable" &&
               !["speech_disabled", "speech_not_configured", "speech_provider_auth"].includes(dictation.error.code ?? ""))
-              ? { label: t("chat.dictation.recordAgain"), onPress: toggleMic }
+              ? { label: t("agents.mobile.composer.recordAgain"), onPress: toggleMic }
               : undefined
           }
         />
@@ -520,9 +520,9 @@ export function AgentComposer({
           <ControlButton
             label={
               dictation.status === "recording"
-                ? t("chat.dictation.stop")
+                ? t("agents.mobile.composer.stopDictation")
                 : dictation.status === "transcribing"
-                  ? t("chat.dictation.transcribing")
+                  ? t("agents.mobile.composer.transcribing")
                   : t("agents.mobile.composer.startDictation")
             }
             icon={dictation.status === "recording" ? "stop" : "mic"}
@@ -548,7 +548,7 @@ export function AgentComposer({
             <ControlButton
               label={
                 running
-                  ? t("chat.composer.queueMessage")
+                  ? t("agents.mobile.composer.queueMessage")
                   : t("agents.composer.sendMessage")
               }
               icon="arrow-up"

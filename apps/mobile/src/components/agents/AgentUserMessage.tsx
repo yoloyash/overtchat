@@ -85,7 +85,7 @@ export function AgentUserMessage({
         ? [
             {
               key: "copy",
-              label: t("agents.common.copy"),
+              label: t("common.actions.copy"),
               icon: "copy-outline" as const,
               onSelect: () =>
                 copy(body, t("agents.mobile.messages.copyMessageFailed")),
@@ -164,7 +164,7 @@ export function AgentUserMessage({
             }}
           >
             {sending
-              ? t("agents.mobile.messages.sending")
+              ? t("common.states.sending")
               : formatAgentMessageTime(timestamp!)}
           </Text>
         )}

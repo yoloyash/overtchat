@@ -91,7 +91,7 @@ export function AgentContextSheet({
         <ContextRing values={values} size={40} />
         <AgentText title>
           {values?.percentage !== undefined
-            ? t("chat.usage.percentUsed", { percentage: values.percentage })
+            ? t("agents.mobile.contextUsage.percentUsed", { percentage: values.percentage })
             : t("agents.mobile.contextUsage.unavailable")}
         </AgentText>
       </View>

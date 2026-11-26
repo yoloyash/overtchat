@@ -104,7 +104,7 @@ function ShareChatContent({
         <Text style={[styles.title, { color: colors.foreground }]}>
           {t("chat.share.title")}
         </Text>
-        {button(t("chat.share.close"), onClose)}
+        {button(t("common.actions.close"), onClose)}
       </View>
       <Text style={{ color: colors.mutedForeground }}>
         {t("chat.mobile.share.description")}
@@ -167,7 +167,7 @@ function ShareChatContent({
         {share &&
           button(t("chat.share.unshare"), () => change.mutate("DELETE"), change.isPending)}
         {button(
-          change.isPending ? t("chat.share.saving") : share ? t("chat.share.updateLink") : t("chat.share.createLink"),
+          change.isPending ? t("common.states.saving") : share ? t("chat.share.updateLink") : t("chat.share.createLink"),
           () => change.mutate(share ? "PUT" : "POST"),
           change.isPending ||
             current.isPending ||

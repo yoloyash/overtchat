@@ -137,7 +137,7 @@ export default function SettingsIndex() {
         <Row
           title={
             action.busy
-              ? t("settings.mobile.index.signingOut")
+              ? t("auth.actions.signingOut")
               : t("auth.actions.signOut")
           }
           icon="log-out-outline"

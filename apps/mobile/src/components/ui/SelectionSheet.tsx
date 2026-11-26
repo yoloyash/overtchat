@@ -164,7 +164,7 @@ export function SelectionSheet<T extends string>({
         {searchable && (
           <BottomSheetTextInput
             accessibilityLabel={
-              searchLabel ?? t("app.mobile.selectionSheet.searchPlaceholder")
+              searchLabel ?? t("app.mobile.selectionSheet.searchLabel")
             }
             placeholder={t("app.mobile.selectionSheet.searchPlaceholder")}
             placeholderTextColor={colors.mutedForeground}

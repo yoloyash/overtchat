@@ -150,7 +150,7 @@ export const ProjectInstructionsSheet = forwardRef<
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("projects.actions.cancel")}
+            accessibilityLabel={t("common.actions.cancel")}
             disabled={pending}
             onPress={() => sheetRef.current?.dismiss()}
             style={({ pressed }) => [
@@ -168,7 +168,7 @@ export const ProjectInstructionsSheet = forwardRef<
                 { color: colors.foreground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              {t("projects.actions.cancel")}
+              {t("common.actions.cancel")}
             </Text>
           </Pressable>
           <Pressable
@@ -198,7 +198,7 @@ export const ProjectInstructionsSheet = forwardRef<
                   },
                 ]}
               >
-                {t("projects.actions.save")}
+                {t("common.actions.save")}
               </Text>
             )}
           </Pressable>

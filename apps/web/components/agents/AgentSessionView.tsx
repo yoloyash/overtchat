@@ -711,7 +711,7 @@ export function AgentSessionView({
                           : undefined
                       }
                     />
-                    {t("agents.common.retry")}
+                    {t("common.actions.retry")}
                   </Button>
                 )}
               </div>

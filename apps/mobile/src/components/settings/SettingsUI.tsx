@@ -52,7 +52,7 @@ export function SettingsPage({
         options={{
           headerShown: true,
           title,
-          headerBackTitle: t("settings.mobile.common.back"),
+          headerBackTitle: t("common.actions.back"),
           headerTitleStyle: { fontFamily: fonts.serifSemiBold },
           headerShadowVisible: false,
           headerRight: action
@@ -432,7 +432,7 @@ export function SearchField({
       {!!value && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("agents.history.clearSearch")}
+          accessibilityLabel={t("common.actions.clearSearch")}
           onPress={() => onChangeText("")}
           style={{
             minWidth: 44,
@@ -511,7 +511,7 @@ export function QueryState({
       <Label error>{query.error.message}</Label>
       <Action
         secondary
-        title={t("agents.common.retry")}
+        title={t("common.actions.retry")}
         onPress={() => void query.refetch()}
       />
     </>

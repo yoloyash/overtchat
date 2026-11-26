@@ -218,7 +218,7 @@ function SaveButton({
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
               <AlertDialog.Close render={<Button variant="ghost" size="sm" />}>
-                {t("projects.actions.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button variant="outline" size="sm" onClick={() => void save("add")}>
                 {t("projects.saveToProject.conflictDialog.keepBoth")}

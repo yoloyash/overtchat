@@ -53,7 +53,7 @@ export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           ]}
         >
           <Text style={[styles.ctaText, { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold }]}>
-            {t("app.error.tryAgain")}
+            {t("common.actions.tryAgain")}
           </Text>
         </Pressable>
         {router.canGoBack() && (

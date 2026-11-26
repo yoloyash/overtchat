@@ -20,7 +20,6 @@ export const profile = {
     description: "Optional. Use a direct link to an image.",
   },
   updated: "Profile updated",
-  saving: "Saving…",
   save: "Save profile",
   errors: {
     nameRequired: "Display name is required.",

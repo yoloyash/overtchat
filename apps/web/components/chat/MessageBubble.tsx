@@ -185,7 +185,7 @@ export function MessageBubble({
           {sentAt !== null && <MessageTime at={sentAt} />}
           <CopyButton text={text} />
           {!readOnly && <ActionButton
-            label={t("chat.messages.edit")}
+            label={t("common.actions.edit")}
             onClick={() => setEditing(true)}
             icon={<Pencil className="size-3.5" />}
           />}
@@ -237,7 +237,7 @@ function UserQuote({ text }: { text: string }) {
           aria-expanded={expanded}
           onClick={() => setExpanded((current) => !current)}
         >
-          {expanded ? t("chat.messages.showLess") : t("chat.messages.showMore")}
+          {expanded ? t("common.actions.showLess") : t("common.actions.showMore")}
         </button>
       )}
     </blockquote>
@@ -571,7 +571,7 @@ function EditBubble({
             className="h-9 rounded-full px-4"
             onClick={onCancel}
           >
-            {t("chat.messages.cancel")}
+            {t("common.actions.cancel")}
           </Button>
           <Button
             type="submit"
@@ -579,7 +579,7 @@ function EditBubble({
             className="h-9 rounded-full px-5"
             disabled={!canSave}
           >
-            {t("chat.messages.send")}
+            {t("common.actions.send")}
           </Button>
         </div>
       </form>
@@ -592,7 +592,7 @@ function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <ActionButton
-      label={copied ? t("chat.messages.copied") : t("chat.messages.copy")}
+      label={copied ? t("common.states.copied") : t("common.actions.copy")}
       icon={
         copied ? (
           <Check className="size-3.5" />
@@ -634,7 +634,7 @@ function SpeakButton({
   const label = live
     ? t("chat.messages.stopSpeaking")
     : loading
-      ? t("chat.speech.loading")
+      ? t("common.states.loading")
       : t("chat.messages.speak");
   const icon = loading ? (
     <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />

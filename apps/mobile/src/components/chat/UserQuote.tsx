@@ -41,7 +41,7 @@ export function UserQuote({ text }: { text: string }) {
               { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
             ]}
           >
-            {expanded ? t("chat.messages.showLess") : t("chat.messages.showMore")}
+            {expanded ? t("common.actions.showLess") : t("common.actions.showMore")}
           </Text>
         </Pressable>
       ) : null}

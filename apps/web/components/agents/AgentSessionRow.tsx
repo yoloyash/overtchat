@@ -169,8 +169,8 @@ export function AgentSessionListToggle({
         </span>
         <span>
           {expanded
-            ? t("agents.common.showLess")
-            : t("agents.common.showCountMore", { count: hiddenCount })}
+            ? t("common.actions.showLess")
+            : t("common.actions.showCountMore", { count: hiddenCount })}
         </span>
       </button>
     </li>

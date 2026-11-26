@@ -82,7 +82,7 @@ export function EditBubble({
                 { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
               ]}
             >
-              {t("chat.messages.cancel")}
+              {t("common.actions.cancel")}
             </Text>
           </Pressable>
           <Pressable
@@ -105,7 +105,7 @@ export function EditBubble({
                 { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              {t("chat.messages.send")}
+              {t("common.actions.send")}
             </Text>
           </Pressable>
         </View>

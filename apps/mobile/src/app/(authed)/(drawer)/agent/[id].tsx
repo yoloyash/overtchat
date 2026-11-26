@@ -253,7 +253,7 @@ function AgentSession({
         t("agents.mobile.session.implementPlanTitle"),
         t("agents.mobile.session.implementPlanDescription"),
         [
-          { text: t("agents.common.cancel"), style: "cancel" },
+          { text: t("common.actions.cancel"), style: "cancel" },
           {
             text: t("agents.mobile.session.implementPlanConfirm"),
             onPress: () =>
@@ -279,7 +279,7 @@ function AgentSession({
       t("agents.dialogs.compactTitle"),
       t("agents.mobile.session.compactDescription"),
       [
-        { text: t("agents.common.cancel"), style: "cancel" },
+        { text: t("common.actions.cancel"), style: "cancel" },
         {
           text: t("agents.dialogs.compactAction"),
           onPress: () => void execute({ type: "compact" }),
@@ -498,7 +498,7 @@ function AgentSession({
                     t("agents.mobile.session.sendAsNewTitle"),
                     t("agents.mobile.session.sendAsNewDescription"),
                     [
-                      { text: t("agents.common.cancel"), style: "cancel" },
+                      { text: t("common.actions.cancel"), style: "cancel" },
                       {
                         text: t("agents.mobile.session.sendAgain"),
                         onPress: () => send(true),

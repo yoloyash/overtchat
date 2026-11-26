@@ -250,7 +250,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("personalization.memories.dialog.cancel")}
+              accessibilityLabel={t("common.actions.cancel")}
               onPress={() => sheetRef.current?.dismiss()}
               style={({ pressed }) => [
                 styles.button,
@@ -267,14 +267,14 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                   { color: colors.foreground, fontFamily: fonts.sansSemiBold },
                 ]}
               >
-                {t("personalization.memories.dialog.cancel")}
+                {t("common.actions.cancel")}
               </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={
                 memory
-                  ? t("personalization.memories.dialog.saveChanges")
+                  ? t("common.actions.saveChanges")
                   : t("personalization.memories.add")
               }
               disabled={!canSubmit}
@@ -305,7 +305,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                   ]}
                 >
                   {memory
-                    ? t("personalization.memories.dialog.saveChanges")
+                    ? t("common.actions.saveChanges")
                     : t("personalization.memories.add")}
                 </Text>
               )}

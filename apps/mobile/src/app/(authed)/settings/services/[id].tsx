@@ -98,7 +98,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
         ]),
     {
       value: "disabled",
-      label: t("services.capabilities.search.providers.disabled"),
+      label: t("services.mobile.status.disabled"),
     },
   ];
   return (
@@ -199,7 +199,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
           secondary
           title={
             action.busy
-              ? t("chat.activity.working")
+              ? t("common.states.working")
               : t("services.actions.testConnection")
           }
           disabled={action.busy}
@@ -218,7 +218,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
       <Action
         title={
           action.busy
-            ? t("services.actions.saving")
+            ? t("common.states.saving")
             : t("services.mobile.detail.save")
         }
         disabled={action.busy || !dirty}

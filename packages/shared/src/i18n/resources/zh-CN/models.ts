@@ -3,8 +3,7 @@ import type { Translation } from "../../catalog";
 export const models: Translation["models"] = {
   page: {
     title: "模型",
-    description:
-      "管理对话、图像和后台任务模型。同一时间只能启用一个图像模型。",
+    description: "管理对话、图像和后台任务模型。同一时间只能启用一个图像模型。",
     addModel: "添加模型",
     searchPlaceholder: "搜索模型",
     configuredCount: "已配置 {{count}} 个",
@@ -13,14 +12,13 @@ export const models: Translation["models"] = {
     noMatches: "没有匹配 <query>{{query}}</query> 的模型。",
     reorderClearSearch: "清除搜索以调整模型顺序。",
     reorderHint: "使用箭头为所有用户设置模型顺序。",
-    providerCustom: "自定义",
+    searchLabel: "搜索模型",
   },
   backgroundTasks: {
     title: "后台任务",
     description: "选择此服务器上轻量级模型任务的处理方式。",
     taskModelTitle: "任务模型",
-    taskModelDescription:
-      "用于生成对话标题。推荐使用速度快、成本低的非推理模型。",
+    taskModelDescription: "用于生成对话标题。推荐使用速度快、成本低的非推理模型。",
     sameAsChatModel: "与对话模型相同",
     notInChat: "未在对话中启用",
   },
@@ -35,18 +33,13 @@ export const models: Translation["models"] = {
     off: "关",
     disableLabel: "禁用 {{label}}",
     enableLabel: "启用 {{label}}",
-    edit: "编辑",
     editLabel: "编辑 {{label}}",
-    delete: "删除",
     deleteLabel: "删除 {{label}}",
   },
   deleteDialog: {
     title: "删除模型？",
     description: "<name>{{name}}</name> 将从对话中移除。现有对话中的消息会被保留。",
-    descriptionTaskModel:
-      "<name>{{name}}</name> 将从对话中移除。现有对话中的消息会被保留。后台任务将改回使用当前对话模型。",
-    cancel: "取消",
-    deleting: "正在删除…",
+    descriptionTaskModel: "<name>{{name}}</name> 将从对话中移除。现有对话中的消息会被保留。后台任务将改回使用当前对话模型。",
   },
   toast: {
     reorderFailed: "无法保存模型顺序",
@@ -75,8 +68,7 @@ export const models: Translation["models"] = {
     testConnection: "测试连接",
     connected: "已连接",
     elapsedMs: "{{elapsedMs}} 毫秒",
-    elapsedMsWithTokens:
-      "{{elapsedMs}} 毫秒 · 输入 {{inputTokens}} / 输出 {{outputTokens}}",
+    elapsedMsWithTokens: "{{elapsedMs}} 毫秒 · 输入 {{inputTokens}} / 输出 {{outputTokens}}",
   },
   editor: {
     editTitle: "编辑模型",
@@ -84,33 +76,27 @@ export const models: Translation["models"] = {
     backLabel: "返回模型列表",
     modelTypeSection: "模型类型",
     typeTitle: "类型",
-    typeDescription:
-      "对话模型用于处理对话。图像模型通过对话工具生成和编辑图片。",
+    typeDescription: "对话模型用于处理对话。图像模型通过对话工具生成和编辑图片。",
     typeChat: "对话",
     typeImage: "图像",
     connectionTitle: "连接",
     connectionDescription: "服务商、凭据、模型发现与连通性。",
     headersLabel: "请求头",
-    headersDescription:
-      "为需要的网关添加额外 HTTP 请求头。值中的 <code>{{placeholder}}</code> 会被替换为对话 ID。",
+    headersDescription: "为需要的网关添加额外 HTTP 请求头。值中的 <code>{{placeholder}}</code> 会被替换为对话 ID。",
     headersKeyPlaceholder: "请求头名称",
     headersValuePlaceholder: "值",
     headersAddLabel: "添加请求头",
     removeHeaderRow: "移除请求头行",
     toolCallingTitle: "工具调用",
-    toolCallingSupported:
-      "此模型或端点报告支持工具调用。请测试连接以验证所配置的模板和解析器。",
-    toolCallingUnsupported:
-      "此模型或端点报告不支持工具调用。仅在服务端配置额外添加了支持时才覆盖此项。",
-    toolCallingUnknown:
-      "允许使用联网搜索等工具。自定义服务器很少可靠地报告此能力，请使用测试连接验证服务端的模板和解析器。",
+    toolCallingSupported: "此模型或端点报告支持工具调用。请测试连接以验证所配置的模板和解析器。",
+    toolCallingUnsupported: "此模型或端点报告不支持工具调用。仅在服务端配置额外添加了支持时才覆盖此项。",
+    toolCallingUnknown: "允许使用联网搜索等工具。自定义服务器很少可靠地报告此能力，请使用测试连接验证服务端的模板和解析器。",
     toolCallingDisableLabel: "禁用工具调用",
     toolCallingEnableLabel: "启用工具调用",
     testConnectionWithTools: "使用当前连接设置发送简短请求并验证工具调用。",
     testConnectionTextOnly: "使用当前连接设置发送简短文本请求。",
     imageAvailabilityTitle: "图像可用性",
-    imageAvailabilityDescription:
-      "同一时间只能启用一个图像模型。启用此模型会自动关闭之前的图像模型。",
+    imageAvailabilityDescription: "同一时间只能启用一个图像模型。启用此模型会自动关闭之前的图像模型。",
     chatAvailabilityTitle: "对话可用性",
     chatAvailabilityDescription: "此模型在对话中向用户展示的方式。",
     displayNameTitle: "显示名称",
@@ -118,8 +104,7 @@ export const models: Translation["models"] = {
     displayNameChatDescription: "显示在对话的模型选择器中。",
     displayNamePlaceholder: "显示在选择器中",
     credentialsTitle: "凭据",
-    credentialsUserDescription:
-      "每位成员都可以在“成员”下设置自己的密钥和端点。未设置的成员将使用上方的连接。",
+    credentialsUserDescription: "每位成员都可以在“成员”下设置自己的密钥和端点。未设置的成员将使用上方的连接。",
     credentialsSharedDescription: "所有人均使用上方连接进行对话。",
     credentialsShared: "共享",
     credentialsUser: "每人独立",
@@ -131,15 +116,10 @@ export const models: Translation["models"] = {
     enableModelLabel: "启用模型",
     usageCostTitle: "用量费用",
     usageCostOpenRouter: "对话用量会按 OpenRouter 返回的费用记录每张图片。",
-    usageCostCustom:
-      "根据后端随每张图片返回的 token 用量估算图像费用。如果后端未返回用量，图像将不计费。",
-    usageCostDefault:
-      "在对话用量中估算图像费用。服务商会将图像按输出 token 计费，因此尺寸和画质已反映在计数中。",
+    usageCostCustom: "根据后端随每张图片返回的 token 用量估算图像费用。如果后端未返回用量，图像将不计费。",
+    usageCostDefault: "在对话用量中估算图像费用。服务商会将图像按输出 token 计费，因此尺寸和画质已反映在计数中。",
     usageCostOpenRouterNotice: "OpenRouter 图像模型无需填写费率。",
-    saving: "正在保存…",
-    saveChanges: "保存更改",
-    perUserSaveFirst:
-      "保存此模型后，即可在“成员”下为每位成员设置各自的密钥或端点。",
+    perUserSaveFirst: "保存此模型后，即可在“成员”下为每位成员设置各自的密钥或端点。",
     errors: {
       invalidProviderOptions: "服务商选项必须是有效的 JSON 对象：{{error}}",
       invalidJson: "无效的 JSON",
@@ -155,9 +135,8 @@ export const models: Translation["models"] = {
       missingHeaderValue: "请求头 {{name}} 需要填写值",
       headerValueTooLong: "请求头 {{name}} 的值过长",
       invalidHeaderValue: "请求头 {{name}} 的值包含 HTTP 请求头不支持的字符",
-      loadDefaultModelFailed: "无法加载默认模型",
-      saveDefaultModelFailed: "无法保存默认模型",
     },
+    testConnectionTitle: "测试连接",
   },
   connection: {
     providerTitle: "服务商",
@@ -177,8 +156,7 @@ export const models: Translation["models"] = {
       "模型 API 的基础 URL。如果 overtchat 运行在 Docker 中，请使用 host.docker.internal 代替 localhost。",
     endpointDescription: "模型 API 的基础 URL。",
     apiKeyTitle: "API 密钥",
-    apiKeyOptionalDescription:
-      "供“成员”下未设置个人密钥的所有人使用。如果要求每人自带密钥，请留空。",
+    apiKeyOptionalDescription: "供“成员”下未设置个人密钥的所有人使用。如果要求每人自带密钥，请留空。",
     apiKeyRequiredFor: "{{provider}} 需要填写此项。",
     apiKeyOptionalLocalDescription: "本地或自定义端点可留空。",
     apiKeyUnknownProvider: "输入 {{provider}} 所需的密钥（如有）。",
@@ -201,28 +179,27 @@ export const models: Translation["models"] = {
     enterManually: "手动输入",
     chooseFetchedModel: "选择已获取的模型",
     manualModelNotice: "端点未返回当前模型 ID，因此保留为手动输入。",
+    searchModelsPlaceholder: "搜索模型",
+    searchModelsLabel: "搜索模型",
   },
   customImage: {
     title: "图像 API 设置",
     description: "连接兼容 OpenAI 的 Images API，并配置生成与编辑选项。",
     generationSizeTitle: "生成尺寸",
-    generationSizeDescription:
-      "填写后端支持的尺寸，例如 512x512。留空以使用后端默认值。对话中的建议无法覆盖此尺寸。",
+    generationSizeDescription: "填写后端支持的尺寸，例如 512x512。留空以使用后端默认值。对话中的建议无法覆盖此尺寸。",
     generationSizePlaceholder: "后端默认",
     responseFormatTitle: "响应格式",
     responseFormatDescription: "URL 响应必须包含内联图像 data URL。",
     responseFormatBase64: "Base64 (b64_json)",
     responseFormatUrl: "Data URL (url)",
     supportsEditingTitle: "支持图像编辑",
-    supportsEditingDescription:
-      "启用后可编辑上传或生成的图像。需要后端和模型支持 /images/edits。",
+    supportsEditingDescription: "启用后可编辑上传或生成的图像。需要后端和模型支持 /images/edits。",
     editingSizeTitle: "编辑尺寸",
-    editingSizeDescription:
-      "为图像编辑覆盖生成尺寸，例如 512x512。留空以沿用生成尺寸，或输入 auto 使用后端默认值。",
+    editingSizeDescription: "为图像编辑覆盖生成尺寸，例如 512x512。留空以沿用生成尺寸，或输入 auto 使用后端默认值。",
     editingSizePlaceholder: "与生成尺寸相同",
     extraParamsTitle: "额外请求参数",
     extraParamsDescription:
-      '可选的 JSON 对象，例如 {"seed": 7}。用于设置后端专属的画质或采样参数。模型、提示词、尺寸、响应格式和图片数量由系统单独管理。',
+      "可选的 JSON 对象，例如 {\"seed\": 7}。用于设置后端专属的画质或采样参数。模型、提示词、尺寸、响应格式和图片数量由系统单独管理。",
     invalidJsonObject: "请输入一个 JSON 对象。",
     invalidValidJsonObject: "请输入有效的 JSON 对象。",
     reservedExtraParam: "额外图像参数中不能设置 {{key}}。",
@@ -234,8 +211,7 @@ export const models: Translation["models"] = {
     hide: "隐藏",
     show: "显示",
     contextWindowTitle: "上下文窗口",
-    contextWindowDescription:
-      "此模型可容纳的最大 token 数。较早的对话内容会自动摘要，为回复留出空间。留空则使用检测值或目录值。",
+    contextWindowDescription: "此模型可容纳的最大 token 数。较早的对话内容会自动摘要，为回复留出空间。留空则使用检测值或目录值。",
     contextWindowPlaceholder: "自动检测",
     systemPromptTitle: "系统提示词",
     systemPromptDescription: "在每次对话开始前发送的可选指令。",
@@ -247,8 +223,7 @@ export const models: Translation["models"] = {
     providerOptionsMustBeObject: "必须是 JSON 对象",
     pricing: {
       title: "费率",
-      description:
-        "每百万 token 的美元价格。除非启用自定义费率，否则自动使用目录费率。",
+      description: "每百万 token 的美元价格。除非启用自定义费率，否则自动使用目录费率。",
       customRates: "自定义费率",
       noCatalogPricing: "无目录费率",
       customPricingLabel: "自定义费率",
@@ -270,8 +245,7 @@ export const models: Translation["models"] = {
     levelsTitle: "等级",
     levelsCustomDescription: "自定义等级将覆盖目录和检测值。",
     levelsKnownDescription: "已知等级：{{levels}}（默认 {{defaultLevel}}）。",
-    levelsUnknownDescription:
-      "此模型暂无已知思考等级。选择“自定义”以手动配置。",
+    levelsUnknownDescription: "此模型暂无已知思考等级。选择“自定义”以手动配置。",
     modeAutomatic: "自动",
     modeCustom: "自定义",
     presetsTitle: "预设",
@@ -289,16 +263,13 @@ export const models: Translation["models"] = {
     requestFieldsAriaLabel: "思考请求字段 JSON",
     requestFieldsMustBeObject: "必须是每个值都为对象的 JSON 对象。",
     defaultLevelTitle: "默认等级",
-    defaultLevelDescription:
-      "未发送思考字段时服务器的默认行为。对话界面会将其标记为默认。",
+    defaultLevelDescription: "未发送思考字段时服务器的默认行为。对话界面会将其标记为默认。",
     chooseLevel: "选择等级",
     checkTitle: "检测",
-    checkDescription:
-      "渲染每个等级的提示词模板而不生成回复。服务器在模板之外处理的字段不会反映在此结果中。",
+    checkDescription: "渲染每个等级的提示词模板而不生成回复。服务器在模板之外处理的字段不会反映在此结果中。",
     checkWithServer: "向服务器检测",
     useAsDefault: "将“{{level}}”设为默认",
-    checkUnavailable:
-      "此服务器没有模板渲染端点，无法在不生成回复的情况下检测字段。",
+    checkUnavailable: "此服务器没有模板渲染端点，无法在不生成回复的情况下检测字段。",
     checkRejected: "服务器拒绝了以下等级的字段：{{levels}}。",
     checkIdentical: "{{levels}} 渲染出了相同的提示词。",
     checkDistinct: "每个等级都渲染出了不同的提示词。",
@@ -318,11 +289,11 @@ export const models: Translation["models"] = {
     missingDefaultLevel: "请选择服务器的默认思考等级。",
     defaultLevelNotConfigured: "默认思考等级必须是已配置的等级之一。",
     onOnlyDefaultWithEfforts: "已配置思考强度等级时，“on”仅作为默认等级提供。",
+    checking: "正在检测…",
   },
   userCredentials: {
     title: "成员",
-    description:
-      "每位成员都可以使用自己的密钥和端点进行对话。留空则使用模型自身的配置。",
+    description: "每位成员都可以使用自己的密钥和端点进行对话。留空则使用模型自身的配置。",
     loadError: "无法加载成员列表",
     loading: "正在加载成员…",
     removedTitle: "已改回使用模型自身的凭据",
@@ -337,9 +308,7 @@ export const models: Translation["models"] = {
     apiKeyPlaceholder: "留空以使用模型的密钥",
     endpointLabel: "{{who}} 的端点",
     endpointPlaceholder: "留空以使用 {{baseUrl}}",
-    save: "保存",
     saveLabel: "保存 {{who}} 的凭据",
-    remove: "移除",
     removeLabel: "移除 {{who}} 的凭据",
     change: "更改",
     changeLabel: "更改 {{who}} 的凭据",
@@ -374,6 +343,7 @@ export const models: Translation["models"] = {
       emptyDetail: "添加你的第一个对话或图像模型。",
       backgroundTasksDescription: "任务模型为此服务器上的所有人生成对话标题。",
       searchTaskModel: "搜索任务模型",
+      emptyTitle: "未配置模型",
     },
     editor: {
       notFound: "该模型已不存在。",
@@ -407,5 +377,12 @@ export const models: Translation["models"] = {
       deleteAction: "删除模型",
       deleteMessage: "{{label}} 将不再可用于新请求。现有对话会保留。",
     },
+  },
+  preferences: {
+    loadDefaultFailed: "无法加载默认模型",
+    saveDefaultFailed: "无法保存默认模型",
+  },
+  providers: {
+    custom: "自定义",
   },
 };

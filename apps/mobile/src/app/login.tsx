@@ -485,7 +485,7 @@ export default function LoginScreen() {
                     { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                   ]}
                 >
-                  {t("app.error.server", { origin: serverHost })}
+                  {t("auth.mobile.login.serverLabel", { origin: serverHost })}
                 </Text>
                 <Pressable
                   accessibilityRole="button"

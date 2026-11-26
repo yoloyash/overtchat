@@ -85,14 +85,14 @@ function CreateUser() {
       >
         <Field
           editable={!action.busy && !created}
-          label={t("users.list.columns.name")}
+          label={t("users.addDialog.nameLabel")}
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
         />
         <Field
           editable={!action.busy && !created}
-          label={t("users.list.columns.email")}
+          label={t("users.addDialog.emailLabel")}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -111,7 +111,7 @@ function CreateUser() {
         )}
         <Choice
           disabled={action.busy || created}
-          title={t("users.list.columns.role")}
+          title={t("users.addDialog.roleLabel")}
           value={role}
           onChange={setRole}
           options={roles}
@@ -121,9 +121,9 @@ function CreateUser() {
       <Action
         title={
           created
-            ? t("users.toast.createdTitle")
+            ? t("users.mobile.create.created")
             : action.busy
-              ? t("users.addDialog.creating")
+              ? t("common.states.creating")
               : t("users.mobile.create.submit")
         }
         disabled={action.busy || created}
@@ -187,24 +187,24 @@ function ManageUser({ user }: { user: SettingsUser }) {
   ] as const;
   return (
     <>
-      <Section title={t("settings.nav.groups.account")}>
+      <Section title={t("users.mobile.detail.accountSection")}>
         <Row
           title={user.name}
           detail={user.email}
           leading={<UserAvatar name={user.name} email={user.email} size={44} />}
         />
         <Row
-          title={t("users.list.columns.created")}
+          title={t("users.mobile.detail.createdLabel")}
           value={new Date(user.createdAt).toLocaleDateString()}
         />
         {self ? (
           <Row
-            title={t("users.list.columns.role")}
+            title={t("users.mobile.detail.roleLabel")}
             value={t("users.mobile.detail.roleSelfAdmin")}
           />
         ) : (
           <Choice
-            title={t("users.list.columns.role")}
+            title={t("users.mobile.detail.roleLabel")}
             value={user.role === "admin" ? "admin" : "user"}
             options={roles}
             disabled={action.busy}
@@ -222,7 +222,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
                       email: user.email,
                     }),
                 [
-                  { text: t("users.roleDialog.cancel"), style: "cancel" },
+                  { text: t("common.actions.cancel"), style: "cancel" },
                   {
                     text: t("users.mobile.roleDialog.confirm"),
                     onPress: () =>
@@ -261,7 +261,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
           {passwords && reset && (
             <>
               <Section
-                title={t("users.list.resetPassword")}
+                title={t("users.resetPasswordDialog.title")}
                 description={t("users.mobile.resetPassword.description")}
               >
                 <Field
@@ -292,7 +292,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
               <Action
                 title={
                   action.busy
-                    ? t("account.password.saving")
+                    ? t("common.states.saving")
                     : t("users.mobile.resetPassword.submit")
                 }
                 disabled={action.busy}
@@ -300,7 +300,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
                   void action.run(async () => {
                     if (!current)
                       throw new Error(
-                        t("account.mobile.password.errors.currentRequired"),
+                        t("users.mobile.resetPassword.errors.currentRequired"),
                       );
                     if (password.length < 8 || password.length > 128)
                       throw new Error(
@@ -347,9 +347,9 @@ function ManageUser({ user }: { user: SettingsUser }) {
                   t("users.deleteDialog.title"),
                   t("users.mobile.deleteDialog.message", { email: user.email }),
                   [
-                    { text: t("users.roleDialog.cancel"), style: "cancel" },
+                    { text: t("common.actions.cancel"), style: "cancel" },
                     {
-                      text: t("users.list.delete"),
+                      text: t("common.actions.delete"),
                       style: "destructive",
                       onPress: () =>
                         void action.run(async () => {

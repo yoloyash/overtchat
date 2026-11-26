@@ -39,7 +39,7 @@ export function agentSessionMenuSections(
   if (input.renameSupported)
     session.items.push({
       key: "rename",
-      label: t("sidebar.chat.rename"),
+      label: t("common.actions.rename"),
       icon: "pencil-outline",
       // Renaming is metadata, allowed mid-turn as on web.
       disabled: !input.ready || input.commandPending,

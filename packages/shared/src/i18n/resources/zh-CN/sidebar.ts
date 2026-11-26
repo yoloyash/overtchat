@@ -40,13 +40,10 @@ export const sidebar: Translation["sidebar"] = {
   },
   searchPalette: {
     placeholder: "搜索对话…",
-    close: "关闭",
     results: "搜索结果",
-    searching: "正在搜索…",
     noMatches: "没有匹配“{{query}}”的对话",
   },
   chat: {
-    untitled: "未命名",
     newResult: "新结果",
     scheduledTask: "定时任务",
     generatingFor: "正在为 {{title}} 生成回复",
@@ -55,13 +52,9 @@ export const sidebar: Translation["sidebar"] = {
     unpin: "取消置顶",
     pinChat: "置顶对话",
     unpinChat: "取消置顶对话",
-    rename: "重命名",
     moveTo: "移动到",
     noProject: "无项目",
     export: "导出",
-    delete: "删除",
-    deleting: "正在删除…",
-    cancel: "取消",
     deleteDialogTitle: "删除对话？",
     deleteDialogNamed: "<name>{{name}}</name> 将被永久删除。",
     deleteDialogUnnamed: "此对话将被永久删除。",
@@ -79,7 +72,6 @@ export const sidebar: Translation["sidebar"] = {
   projects: {
     collapse: "收起",
     expand: "展开",
-    newChatIn: "在 {{name}} 中新建对话",
     createDialog: {
       description: "为项目起个名字。创建后可以添加指令。",
       nameLabel: "名称",
@@ -87,8 +79,6 @@ export const sidebar: Translation["sidebar"] = {
       nameRequired: "请输入名称",
       createdTitle: "项目已创建",
       createError: "创建项目失败。",
-      create: "创建",
-      creating: "正在创建…",
     },
   },
   agents: {
@@ -98,7 +88,6 @@ export const sidebar: Translation["sidebar"] = {
     emptyWorkspaces: "连接文件夹以开始智能体会话。",
     addWorkspace: "添加工作区",
     addWorkspaceEllipsis: "添加工作区…",
-    done: "完成",
     listOptionsLabel: "智能体列表选项",
     listOptionsFilteredLabel: "智能体列表选项，已按 {{provider}} 筛选",
     listOptionsTitle: "列表选项",
@@ -125,10 +114,7 @@ export const sidebar: Translation["sidebar"] = {
     removeErrorFallback: "无法移除工作区。",
     removeWorktreeTitle: "移除工作树？",
     removeWorkspaceTitle: "移除工作区？",
-    removeWorkspaceDescription:
-      "<name>{{name}}</name> 及其智能体对话将从 OvertChat 中移除。文件和主机上的原生智能体会话将保留。",
-    remove: "移除",
-    removing: "正在移除…",
+    removeWorkspaceDescription: "<name>{{name}}</name> 及其智能体对话将从 OvertChat 中移除。文件和主机上的原生智能体会话将保留。",
     collapseWorkspace: "收起 {{name}}",
     expandWorkspace: "展开 {{name}}",
     statusInWorkspace: "{{name}}：{{status}}",
@@ -179,6 +165,8 @@ export const sidebar: Translation["sidebar"] = {
       workspaceLongPressHint: "长按打开工作区",
       workspaceMeta_other: "{{host}} · {{count}} 个会话",
       openWorkspace: "打开工作区",
+      expandGroup: "展开 {{name}}",
+      collapseGroup: "收起 {{name}}",
     },
     search: {
       title: "搜索",

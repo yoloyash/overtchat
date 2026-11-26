@@ -120,7 +120,7 @@ export function AccountMenu() {
           <span className="min-w-0 flex-1 text-left">
             {isPending || !session ? (
               <span className="block truncate text-sm font-medium text-muted-foreground">
-                {t("app.modelPicker.loading")}
+                {t("common.states.loading")}
               </span>
             ) : (
               <span className="block truncate text-sm font-medium">
@@ -162,7 +162,7 @@ export function AccountMenu() {
               )}
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium leading-tight">
-                  {session?.user.name ?? t("app.modelPicker.loading")}
+                  {session?.user.name ?? t("common.states.loading")}
                 </span>
                 {session && (
                   <span className="truncate text-xs leading-tight text-muted-foreground">
@@ -359,7 +359,7 @@ function AppUpdateDialog({
               }
               title={
                 copied
-                  ? t("app.accountMenu.updateDialog.copied")
+                  ? t("common.states.copied")
                   : t("app.accountMenu.updateDialog.copyCommand")
               }
             >
@@ -377,7 +377,7 @@ function AppUpdateDialog({
               {t("app.accountMenu.updateDialog.viewReleaseNotes")}
               <ExternalLink />
             </a>
-            <Dialog.Close render={<Button size="sm" />}>{t("app.accountMenu.updateDialog.close")}</Dialog.Close>
+            <Dialog.Close render={<Button size="sm" />}>{t("common.actions.close")}</Dialog.Close>
           </div>
         </Dialog.Popup>
       </Dialog.Portal>

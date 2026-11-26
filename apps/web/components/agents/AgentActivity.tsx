@@ -747,8 +747,8 @@ function ToolActivityStep({
         <button
           type="button"
           onClick={() => navigation.openFile({ path: filePath })}
-          aria-label={t("agents.activity.openFilePath", { path: filePath })}
-          title={t("agents.activity.openFile")}
+          aria-label={t("agents.files.openFilePath", { path: filePath })}
+          title={t("agents.files.openFile")}
           className={cn(
             "absolute top-0.5 flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 motion-colors hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/step:opacity-100 [@media(hover:none)]:opacity-100",
             status === "completed" ? "right-5" : "right-10",

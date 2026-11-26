@@ -29,7 +29,7 @@ export function chooseAgentMode(mode: AgentMode, apply: () => void) {
     i18n.t("agents.composer.enableModeTitle", { mode: mode.label }),
     mode.description || i18n.t("agents.mobile.controls.enableModeFallback"),
     [
-      { text: i18n.t("agents.common.cancel"), style: "cancel" },
+      { text: i18n.t("common.actions.cancel"), style: "cancel" },
       {
         text: i18n.t("agents.mobile.controls.enable"),
         style: "destructive",
@@ -122,7 +122,7 @@ export function AgentControls({
         <View style={{ gap: 6 }}>
           <AgentButton
             label={t("agents.composer.model")}
-            detail={model?.label ?? (modelId || t("agents.terminal.unavailable"))}
+            detail={model?.label ?? (modelId || t("agents.mobile.controls.modelUnavailable"))}
             leading={
               provider ? <AgentProviderIcon provider={provider} /> : undefined
             }
@@ -177,8 +177,8 @@ export function AgentControls({
       ) : panel === "models" ? (
         <>
           <AgentInput
-            accessibilityLabel={t("app.modelPicker.searchModels")}
-            placeholder={t("app.modelPicker.searchModels")}
+            accessibilityLabel={t("agents.mobile.controls.searchModelsLabel")}
+            placeholder={t("agents.mobile.controls.searchModelsPlaceholder")}
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}

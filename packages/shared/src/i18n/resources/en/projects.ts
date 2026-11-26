@@ -1,18 +1,12 @@
 export const projects = {
-  loading: "Loading…",
   settingsLabel: "Project settings",
   nameInputLabel: "Project name",
   renameTitle: "Rename project",
   actionsLabel: "Project actions",
   deleteProject: "Delete project",
   actions: {
-    rename: "Rename",
-    delete: "Delete",
-    deleting: "Deleting…",
-    cancel: "Cancel",
-    save: "Save",
-    saving: "Saving…",
-    tryAgain: "Try again",
+    newChatIn: "New chat in {{name}}",
+    removeFromProject: "Remove from project",
   },
   deleteDialog: {
     title: "Delete project?",
@@ -30,7 +24,6 @@ export const projects = {
   },
   chats: {
     heading: "Chats",
-    untitled: "Untitled",
     filterPlaceholder: "Filter chats",
     empty: {
       title: "No chats yet",
@@ -42,7 +35,6 @@ export const projects = {
     pinned: "Pinned",
     responding: "Responding…",
     actionsLabel: "Actions for {{title}}",
-    removeFromProject: "Remove from project",
     deleteDialog: {
       title: "Delete chat?",
       description: "<title>{{title}}</title> will be permanently deleted.",
@@ -72,7 +64,6 @@ export const projects = {
     fromChat: "from <chatLink>{{chat}}</chatLink>",
     fromUnnamedChat: "from <chatLink>a chat</chatLink>",
     removeFileLabel: "Remove {{filename}} from project",
-    uploading: "Uploading…",
     footer:
       "{{used}} of {{max}} files. The model reads and searches them with the file tools when a question needs them.",
     toast: {
@@ -88,6 +79,7 @@ export const projects = {
       addFallback: "The file was not added.",
       removeFallback: "The file is still in the project.",
     },
+    fallbackFile: "file",
   },
   instructions: {
     title: "Instructions",
@@ -113,8 +105,7 @@ export const projects = {
     description: "New chats in this project start with this model.",
     accountDefault: "Account default",
     noModels: "No models configured",
-    unavailable:
-      "The selected model is unavailable, so new chats use your account default.",
+    unavailable: "The selected model is unavailable, so new chats use your account default.",
     toast: {
       changeError: "Failed to change the default model",
     },
@@ -155,15 +146,13 @@ export const projects = {
     chatCount_one: "{{count}} chat",
     chatCount_other: "{{count}} chats",
     settingsHeading: "SETTINGS",
-    instructionsPlaceholderDetail:
-      "Add context the model should always follow",
+    instructionsPlaceholderDetail: "Add context the model should always follow",
     accountDefaultWithModel: "Account default · {{model}}",
     chatsHeading: "CHATS",
     chatsHeadingCount: "CHATS · {{count}}",
     emptyChatsDescription:
       "Chats here share this project's instructions, files, and default model.",
-    deleteDialogMessage:
-      "{{name}} will be deleted. Chats inside it will move to your main list.",
+    deleteDialogMessage: "{{name}} will be deleted. Chats inside it will move to your main list.",
     instructions: {
       saveError: "Couldn't save instructions",
       sheetSubtitle:
@@ -182,10 +171,8 @@ export const projects = {
       metaFromChat: " · from <chatLink>{{chat}}</chatLink>",
       metaFromUnnamedChat: " · from <chatLink>a chat</chatLink>",
       uploadingLabel: "Uploading {{name}}",
-      addFilesHint:
-        "Reference material the model can read in every chat here",
-      addFilesExistingDetail:
-        "The model reads and searches these when a question needs them.",
+      addFilesHint: "Reference material the model can read in every chat here",
+      addFilesExistingDetail: "The model reads and searches these when a question needs them.",
       removeConfirmTitle: "Remove from project?",
       removeConfirmMessage:
         "{{filename}} will no longer be available to chats in this project. Messages that attached it keep their copy.",

@@ -54,7 +54,7 @@ export default function Notifications() {
         />
       </Section>
       {twoFactor.data?.enabled ? (
-        <Section title={t("settings.nav.items.security")}>
+        <Section title={t("settings.mobile.notifications.securityTitle")}>
           <Toggle
             title={t("settings.mobile.notifications.signInRequestsTitle")}
             detail={t("settings.mobile.notifications.signInRequestsDetail")}

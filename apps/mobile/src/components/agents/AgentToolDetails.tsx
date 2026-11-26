@@ -363,7 +363,7 @@ function DetailSection({ section }: { section: ToolSection }) {
       </ScrollView>
       {more && (
         <AgentButton
-          label={t("agents.common.showMore")}
+          label={t("common.actions.showMore")}
           detail={t("agents.mobile.toolDetails.linesTotal", {
             formattedCount: lines.length.toLocaleString(),
           })}

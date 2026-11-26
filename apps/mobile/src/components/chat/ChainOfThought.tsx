@@ -760,7 +760,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
             { color: colors.foreground, fontFamily: fonts.sansMedium },
           ]}
         >
-          {query || t("chat.activity.searchingEllipsis")}
+          {query || t("common.states.searching")}
         </Text>
         {part.state === "output-available" ? (
           <Text
@@ -816,7 +816,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {showAll ? t("chat.messages.showLess") : t("agents.common.showCountMore", { count: hidden })}
+                {showAll ? t("common.actions.showLess") : t("common.actions.showCountMore", { count: hidden })}
               </Text>
             </Pressable>
           ) : null}
@@ -1115,7 +1115,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {showAll ? t("chat.messages.showLess") : t("agents.common.showCountMore", { count: hidden })}
+                {showAll ? t("common.actions.showLess") : t("common.actions.showCountMore", { count: hidden })}
               </Text>
             </Pressable>
           ) : null}
@@ -1241,7 +1241,7 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {showAll ? t("chat.messages.showLess") : t("agents.common.showCountMore", { count: hidden })}
+                {showAll ? t("common.actions.showLess") : t("common.actions.showCountMore", { count: hidden })}
               </Text>
             </Pressable>
           ) : null}
@@ -1488,7 +1488,7 @@ function Favicon({ domain }: { domain: string }) {
 }
 
 function activeLabel(last: ActivityPart | undefined, t: TFunction): string {
-  if (!last) return t("chat.activity.working");
+  if (!last) return t("common.states.working");
   if (last.type === "tool-web_search") {
     const query = last.input?.query?.trim();
     return query

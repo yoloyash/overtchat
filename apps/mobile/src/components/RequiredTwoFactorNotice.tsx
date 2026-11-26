@@ -67,7 +67,7 @@ export function RequiredTwoFactorNotice({ onCheckAgain }: { onCheckAgain: () => 
         <Pressable accessibilityRole="button" hitSlop={8} disabled={signingOut} onPress={signOut}>
           <Text style={[styles.link, { color: colors.mutedForeground, fontFamily: fonts.sansMedium }]}>
             {signingOut
-              ? t("auth.mobile.requiredTwoFactor.signingOut")
+              ? t("auth.actions.signingOut")
               : t("auth.actions.signOut")}
           </Text>
         </Pressable>

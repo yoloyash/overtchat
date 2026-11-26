@@ -1,20 +1,14 @@
 import type { Translation } from "../../catalog";
 
 export const projects: Translation["projects"] = {
-  loading: "正在加载…",
   settingsLabel: "项目设置",
   nameInputLabel: "项目名称",
   renameTitle: "重命名项目",
   actionsLabel: "项目操作",
   deleteProject: "删除项目",
   actions: {
-    rename: "重命名",
-    delete: "删除",
-    deleting: "正在删除…",
-    cancel: "取消",
-    save: "保存",
-    saving: "正在保存…",
-    tryAgain: "重试",
+    newChatIn: "在 {{name}} 中新建对话",
+    removeFromProject: "从项目中移除",
   },
   deleteDialog: {
     title: "删除项目？",
@@ -31,7 +25,6 @@ export const projects: Translation["projects"] = {
   },
   chats: {
     heading: "对话",
-    untitled: "未命名",
     filterPlaceholder: "筛选对话",
     empty: {
       title: "暂无对话",
@@ -42,7 +35,6 @@ export const projects: Translation["projects"] = {
     pinned: "已置顶",
     responding: "正在回复…",
     actionsLabel: "{{title}} 的操作",
-    removeFromProject: "从项目中移除",
     deleteDialog: {
       title: "删除对话？",
       description: "<title>{{title}}</title> 将被永久删除。",
@@ -71,7 +63,6 @@ export const projects: Translation["projects"] = {
     fromChat: "来自 <chatLink>{{chat}}</chatLink>",
     fromUnnamedChat: "来自<chatLink>一个对话</chatLink>",
     removeFileLabel: "从项目中移除 {{filename}}",
-    uploading: "正在上传…",
     footer: "已添加 {{used}}/{{max}} 个文件。需要时，模型会使用文件工具读取和搜索这些文件。",
     toast: {
       limitTitle_other: "每个项目最多可保存 {{count}} 个文件",
@@ -84,6 +75,7 @@ export const projects: Translation["projects"] = {
       addFallback: "文件未添加。",
       removeFallback: "文件仍在项目中。",
     },
+    fallbackFile: "文件",
   },
   instructions: {
     title: "指令",
@@ -122,8 +114,7 @@ export const projects: Translation["projects"] = {
     saveToProjectTitle: "保存到 {{project}}",
     conflictDialog: {
       title: "替换 {{filename}}？",
-      description:
-        "<project>{{project}}</project> 中已有同名文件。替换不会影响历史对话；同时保留会为新文件添加编号后缀。",
+      description: "<project>{{project}}</project> 中已有同名文件。替换不会影响历史对话；同时保留会为新文件添加编号后缀。",
       keepBoth: "同时保留",
       replace: "替换",
     },
@@ -155,8 +146,7 @@ export const projects: Translation["projects"] = {
     deleteDialogMessage: "{{name}} 将被删除。其中的对话会移至你的主列表。",
     instructions: {
       saveError: "无法保存指令",
-      sheetSubtitle:
-        "会添加到 {{name}} 的每个对话中：背景信息、语气或模型应始终遵循的偏好。",
+      sheetSubtitle: "会添加到 {{name}} 的每个对话中：背景信息、语气或模型应始终遵循的偏好。",
       saveLabel: "保存指令",
     },
     files: {
@@ -174,8 +164,7 @@ export const projects: Translation["projects"] = {
       addFilesHint: "模型在此项目的每个对话中都可以读取的参考资料",
       addFilesExistingDetail: "需要时，模型会读取和搜索这些文件。",
       removeConfirmTitle: "从项目中移除？",
-      removeConfirmMessage:
-        "{{filename}} 将不再可用于此项目中的对话。已附上该文件的消息仍会保留其副本。",
+      removeConfirmMessage: "{{filename}} 将不再可用于此项目中的对话。已附上该文件的消息仍会保留其副本。",
     },
   },
 };

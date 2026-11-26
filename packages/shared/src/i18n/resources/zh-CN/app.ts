@@ -23,7 +23,6 @@ export const app: Translation["app"] = {
     title: "无法加载 OvertChat",
     description: "请检查你的网络连接并确认服务器正在运行，然后重试。",
     server: "服务器：{{origin}}",
-    tryAgain: "重试",
     changeServer: "更换服务器",
     changingServer: "正在更换服务器…",
     changeServerError: "无法更换服务器。请重试或重启应用。",
@@ -45,14 +44,12 @@ export const app: Translation["app"] = {
     agents: {
       title: "智能体",
       emptyTitle: "在文件夹中启动智能体",
-      emptyDescription:
-        "在此服务器上或通过 SSH 添加文件夹，然后选择要在其中工作的编程智能体。",
+      emptyDescription: "在此服务器上或通过 SSH 添加文件夹，然后选择要在其中工作的编程智能体。",
       addWorkspace: "添加工作区",
     },
     library: {
       title: "资料库",
-      description:
-        "来自已保存对话的文件。可在任意对话中使用“从资料库添加”重复使用。",
+      description: "来自已保存对话的文件。可在任意对话中使用“从资料库添加”重复使用。",
     },
     activity: {
       title: "活动",
@@ -82,21 +79,17 @@ export const app: Translation["app"] = {
     logOutErrorTitle: "退出登录失败",
     logOutErrorFallback: "请稍后重试。",
     versionTooltip: "桌面端 v{{desktopVersion}}",
-    versionTooltipWithServer:
-      "桌面端 v{{desktopVersion}} · 服务端 v{{serverVersion}}",
+    versionTooltipWithServer: "桌面端 v{{desktopVersion}} · 服务端 v{{serverVersion}}",
     updateDialog: {
       descriptionCompose:
         "服务器 v{{version}} 已发布。如果你的 Compose 文件固定了应用镜像版本，请将其标签更改为 {{version}}，然后在 Compose 目录中运行以下命令（如使用 Podman，请改用 podman compose）。",
-      descriptionHost:
-        "服务器 v{{version}} 已发布。请在 OvertChat 主机上运行以下命令。",
+      descriptionHost: "服务器 v{{version}} 已发布。请在 OvertChat 主机上运行以下命令。",
       commandLabel: "OvertChat 更新命令",
       copyCommand: "复制更新命令",
       commandCopied: "已复制更新命令",
-      copied: "已复制",
       copyErrorTitle: "无法复制更新命令",
       copyErrorFallback: "请手动复制命令。",
       viewReleaseNotes: "查看更新日志",
-      close: "关闭",
     },
   },
   desktopUpdate: {
@@ -109,7 +102,6 @@ export const app: Translation["app"] = {
     blocked: "更新需要处理",
     unsupported: "查看更新选项",
     check: "检查更新",
-    retry: "重试",
     download: "下载更新",
     downloadsLink: "桌面端下载",
     unavailableTitle: "桌面更新不可用",
@@ -157,8 +149,7 @@ export const app: Translation["app"] = {
     title: "欢迎使用 overtchat",
     description: "只需几个简单步骤即可启动你的工作区。",
     firstModelTitle: "添加你的第一个模型",
-    firstModelDescription:
-      "支持 Anthropic、Google Gemini 或任意 OpenAI 兼容端点。",
+    firstModelDescription: "支持 Anthropic、Google Gemini 或任意 OpenAI 兼容端点。",
     addModel: "添加模型",
     addAnother: "再添加一个",
     inviteTitle: "邀请团队成员",
@@ -169,16 +160,13 @@ export const app: Translation["app"] = {
     skipForNow: "暂时跳过",
   },
   alertsIntro: {
-    blocked:
-      "你的浏览器阻止了此网站的通知。请在浏览器中允许通知，然后在设置中开启提醒。",
+    blocked: "你的浏览器阻止了此网站的通知。请在浏览器中允许通知，然后在设置中开启提醒。",
     promptWithAgents: "在智能体需要你或回复就绪时接收通知。",
     prompt: "在回复就绪时接收通知。",
-    dismiss: "忽略",
-    notNow: "暂不",
     enable: "开启通知",
+    ariaLabel: "提醒",
   },
   modelPicker: {
-    loading: "正在加载…",
     selectModel: "选择模型",
     noModels: "未配置模型",
     triggerWithThinking: "{{label}}，思考 {{level}}",
@@ -205,6 +193,8 @@ export const app: Translation["app"] = {
     closeModelSearch: "关闭模型搜索",
     closeSearch: "关闭搜索",
     searchModels: "搜索模型",
+    searchPlaceholder: "搜索模型",
+    searchInputLabel: "搜索模型",
   },
   mobile: {
     welcome: {
@@ -231,19 +221,15 @@ export const app: Translation["app"] = {
       instructions: "在网页端打开“账号菜单 → 获取移动应用 → 连接手机”。",
       footer: "扫描即可连接并登录。",
       checkingPermission: "正在检查相机权限…",
-      permissionPrompt:
-        "允许访问相机以扫描服务器二维码。你也可以返回手动输入地址。",
+      permissionPrompt: "允许访问相机以扫描服务器二维码。你也可以返回手动输入地址。",
       allowCamera: "允许使用相机",
       openSettings: "打开设置",
       errors: {
         checkPermission: "无法检查相机权限。请重试或手动输入服务器地址。",
-        notServerAddress:
-          "此二维码不是服务器地址。请在网页端的移动应用弹窗中打开“连接手机”并扫描该二维码。",
-        localOnly:
-          "此地址仅在服务器本机可用。请运行 overtchat setup 并选择“On my home network”，然后打开显示的网络地址重新扫描。",
+        notServerAddress: "此二维码不是服务器地址。请在网页端的移动应用弹窗中打开“连接手机”并扫描该二维码。",
+        localOnly: "此地址仅在服务器本机可用。请运行 overtchat setup 并选择“On my home network”，然后打开显示的网络地址重新扫描。",
         cameraMount: "无法启动相机。请重试或手动输入服务器地址。",
-        openPermissions:
-          "无法打开相机权限设置。请在设备设置中开启相机权限，或手动输入地址。",
+        openPermissions: "无法打开相机权限设置。请在设备设置中开启相机权限，或手动输入地址。",
       },
     },
     errorBoundary: {
@@ -255,6 +241,7 @@ export const app: Translation["app"] = {
       closeLabel: "关闭 {{title}}",
       searchPlaceholder: "搜索",
       noMatches: "没有匹配的选项",
+      searchLabel: "搜索",
     },
     notifications: {
       serverUpdateRequired: "请更新你的 OvertChat 服务器以开启通知。",
@@ -268,8 +255,7 @@ export const app: Translation["app"] = {
       notConfigured: "此应用版本未配置推送通知。",
       registerFailed: "无法注册推送通知。请检查网络连接及应用的推送配置。",
       introTitle: "结果就绪时及时提醒",
-      introBody:
-        "在回复就绪、智能体需要你或完成任务，或有人登录你的账号时接收通知。",
+      introBody: "在回复就绪、智能体需要你或完成任务，或有人登录你的账号时接收通知。",
       enableFailedTitle: "无法开启通知",
       enableFailedFallback: "请在“设置 → 通知”中重试。",
       updateFailed: "无法更新通知设置。",

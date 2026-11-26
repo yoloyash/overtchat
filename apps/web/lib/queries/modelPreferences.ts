@@ -15,7 +15,7 @@ export function useModelPreferences() {
     staleTime: 0,
     queryFn: async ({ signal }): Promise<ModelPreferences> => {
       const response = await fetch(apiUrl("/api/model-preferences"), { signal });
-      if (!response.ok) throw new Error(i18n.t("models.editor.errors.loadDefaultModelFailed"));
+      if (!response.ok) throw new Error(i18n.t("models.preferences.loadDefaultFailed"));
       return response.json();
     },
   });
@@ -33,7 +33,7 @@ export function useSetDefaultModel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error(i18n.t("models.editor.errors.saveDefaultModelFailed"));
+      if (!response.ok) throw new Error(i18n.t("models.preferences.saveDefaultFailed"));
       return response.json();
     },
     onSuccess: async (preferences) => {

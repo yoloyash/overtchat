@@ -11,8 +11,8 @@ import { useTheme } from "@/lib/theme";
 export type MessageAction = "copy" | "edit" | "regenerate" | "continue";
 
 const ACTION_META = {
-  copy: { labelKey: "chat.messages.copy", icon: "copy" },
-  edit: { labelKey: "chat.messages.edit", icon: "edit-3" },
+  copy: { labelKey: "common.actions.copy", icon: "copy" },
+  edit: { labelKey: "common.actions.edit", icon: "edit-3" },
   regenerate: { labelKey: "chat.messages.regenerate", icon: "rotate-ccw" },
   continue: { labelKey: "chat.messages.continueResponse", icon: "play" },
 } as const satisfies Record<

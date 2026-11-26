@@ -83,7 +83,7 @@ function ConnectionList() {
             <Row
               title={
                 host.transport === "ssh"
-                  ? t("connections.dialog.sshHost")
+                  ? t("connections.hosts.sshHost")
                   : t("connections.host.infoTitle")
               }
               icon={

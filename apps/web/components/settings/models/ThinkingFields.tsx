@@ -303,7 +303,7 @@ function CustomThinkingFields({
               disabled={checking || Boolean(issue) || levels.length === 0}
             >
               {checking
-                ? t("models.health.checking")
+                ? t("models.thinking.checking")
                 : t("models.thinking.checkWithServer")}
             </Button>
             {check ? (

@@ -91,7 +91,7 @@ function ContextSection({ values }: { values: ContextMeterValues }) {
       )}
       {values.contextWindow !== undefined && (
         <DetailRow
-          label={t("models.advanced.contextWindowTitle")}
+          label={t("chat.mobile.usage.contextWindow")}
           value={t("chat.usage.tokensCount", { count: formatInteger(values.contextWindow) })}
         />
       )}

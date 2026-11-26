@@ -393,7 +393,7 @@ export function AgentTranscript({
           <>
             <AgentText muted>{history.error}</AgentText>
             <AgentButton
-              label={t("agents.common.retry")}
+              label={t("common.actions.retry")}
               icon="refresh"
               onPress={history.load}
             />

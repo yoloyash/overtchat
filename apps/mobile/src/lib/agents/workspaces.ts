@@ -31,7 +31,7 @@ export type WorkspaceGroup = {
 export function agentHostLabel(
   host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
 ): string {
-  return host.sshAlias || host.name || i18n.t("connections.dialog.thisServer");
+  return host.sshAlias || host.name || i18n.t("connections.hosts.thisServer");
 }
 
 /**

@@ -18,7 +18,7 @@ type ToolKey = "camera" | "photos" | "files";
 const TOOLS = [
   { key: "camera" as ToolKey, labelKey: "chat.mobile.addToChat.camera" as const, icon: "camera-outline" as const },
   { key: "photos" as ToolKey, labelKey: "chat.mobile.addToChat.photos" as const, icon: "image-outline" as const },
-  { key: "files" as ToolKey, labelKey: "chat.files.title" as const, icon: "document-outline" as const },
+  { key: "files" as ToolKey, labelKey: "chat.mobile.addToChat.files" as const, icon: "document-outline" as const },
 ];
 
 export const AddToChatSheet = forwardRef<

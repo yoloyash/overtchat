@@ -91,7 +91,7 @@ export function CodeExecutionFiles({
             style={{ alignSelf: "flex-start", paddingVertical: 8 }}
           >
             <Text style={{ color: colors.primary }}>
-              {saving === file.id ? t("chat.share.saving") : t("agents.common.save")}
+              {saving === file.id ? t("common.states.saving") : t("common.actions.save")}
             </Text>
           </Pressable>
         </View>

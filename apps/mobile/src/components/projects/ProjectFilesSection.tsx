@@ -60,7 +60,7 @@ export function ProjectFilesSection({
     if (result.canceled) return;
     const picked: PickedProjectFile[] = result.assets.map((asset) => ({
       uri: asset.uri,
-      name: asset.name ?? t("chat.composer.fallbackFile"),
+      name: asset.name ?? t("projects.files.fallbackFile"),
       type: asset.mimeType ?? "application/octet-stream",
     }));
     const room = MAX_PROJECT_FILES - count - uploading.length;
@@ -277,7 +277,7 @@ export function ProjectFilesSection({
               })
             : ""
         }
-        confirmLabel={t("sidebar.agents.remove")}
+        confirmLabel={t("common.actions.remove")}
         destructive
         onConfirm={confirmRemove}
       />

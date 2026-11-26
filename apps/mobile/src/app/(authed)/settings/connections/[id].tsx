@@ -120,7 +120,7 @@ function Details() {
               title={
                 action.busy
                   ? t("connections.mobile.detail.testing")
-                  : t("models.connectionTester.testConnection")
+                  : t("connections.mobile.detail.testConnection")
               }
               icon="pulse-outline"
               disabled={action.busy || !connector?.online}
@@ -140,7 +140,7 @@ function Details() {
           </Section>
           {action.error && <Label error>{action.error}</Label>}
           <Section
-            title={t("sidebar.agents.workspacesHeading")}
+            title={t("connections.mobile.detail.workspacesTitle")}
             description={t("connections.mobile.detail.workspacesDescription")}
           >
             {connection.workspaces.map((workspace) => (

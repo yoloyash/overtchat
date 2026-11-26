@@ -49,7 +49,7 @@ export function ImageOptions({
           onPress={onClose}
           hitSlop={12}
         >
-          <Text style={{ color: colors.primary }}>{t("chat.share.close")}</Text>
+          <Text style={{ color: colors.primary }}>{t("common.actions.close")}</Text>
         </Pressable>
       </View>
       {configuredSize ? (
