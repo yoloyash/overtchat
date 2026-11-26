@@ -33,7 +33,7 @@ export type AgentSessionMenuInput = {
 /** The session menu's rows, in order, with their availability. */
 export function agentSessionMenuSections(
   input: AgentSessionMenuInput,
-  t: TFunction = i18n.t.bind(i18n),
+  t: TFunction,
 ): AgentMenuSection[] {
   const session: AgentMenuSection = { items: [] };
   if (input.renameSupported)

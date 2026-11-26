@@ -44,12 +44,13 @@ export function agentAttentionText(
 export function agentSessionRowMeta(
   entry: AgentAttentionItem,
   context: AgentSessionRowContext,
+  t: TFunction,
 ): string {
   const { item, group } = entry;
   const { attention } = item.session;
   if (attention) return agentAttentionText(attention);
   return context === "all"
-    ? `${group.name} · ${agentHostLabel(group.host)}`
+    ? `${group.name} · ${agentHostLabel(group.host, t)}`
     : agentProviderMetadata(item.provider).label;
 }
 
@@ -65,8 +66,8 @@ export function agentSessionRowTime(
     : formatAgentSessionAge(entry.since, now, t, locale);
 }
 
-export function agentSessionRowTitle(entry: AgentAttentionItem): string {
-  return sessionTitle(entry.item.session);
+export function agentSessionRowTitle(entry: AgentAttentionItem, t: TFunction): string {
+  return sessionTitle(entry.item.session, t);
 }
 
 export type AgentDrawerEntry =

@@ -221,7 +221,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
             title={t("scheduled.form.date")}
             searchLabel={t("scheduled.mobile.searchDate")}
             value={draft.date}
-            options={dateOptions(draft.date)}
+            options={dateOptions(draft.date, locale)}
             onChange={(date) => change({ date })}
           />
         )}

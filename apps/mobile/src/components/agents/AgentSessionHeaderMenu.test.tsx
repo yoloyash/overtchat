@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 
 vi.mock("react-native", () => ({
   Keyboard: { dismiss: () => {} },
@@ -38,7 +39,7 @@ const input: AgentSessionMenuInput = {
 };
 
 function item(key: string, overrides: Partial<AgentSessionMenuInput> = {}) {
-  const sections = agentSessionMenuSections({ ...input, ...overrides });
+  const sections = agentSessionMenuSections({ ...input, ...overrides }, i18n.t);
   const found = sections.flatMap((section) => section.items).find((entry) => entry.key === key);
   if (!found) throw new Error(`missing menu row ${key}`);
   return found;
@@ -68,11 +69,14 @@ it("greys session commands while the session is not writable", () => {
 });
 
 it("hides rename and usage when the provider does not support them", () => {
-  const sections = agentSessionMenuSections({
-    ...input,
-    renameSupported: false,
-    usageSupported: false,
-  });
+  const sections = agentSessionMenuSections(
+    {
+      ...input,
+      renameSupported: false,
+      usageSupported: false,
+    },
+    i18n.t,
+  );
   const keys = sections.flatMap((section) => section.items).map((entry) => entry.key);
   expect(keys).toEqual(["compact", "workspace", "copy-session", "copy-path"]);
 });

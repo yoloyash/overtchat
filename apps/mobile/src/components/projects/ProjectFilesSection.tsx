@@ -172,7 +172,7 @@ export function ProjectFilesSection({
                     numberOfLines={1}
                     style={[styles.rowMeta, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}
                   >
-                    {humanMediaLabel(file.mediaType)} · {formatSize(file.size)}
+                    {humanMediaLabel(file.mediaType, t)} · {formatSize(file.size, t)}
                     {file.pageCount
                       ? ` · ${t("projects.files.pages", { count: file.pageCount })}`
                       : ""}

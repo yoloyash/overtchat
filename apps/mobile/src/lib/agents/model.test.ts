@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import { snapshot } from "./test-fixtures";
 import {
   agentImageSource,
@@ -97,20 +98,26 @@ describe("mobile agent submissions", () => {
   });
   it("shows waiting and read-only state before ordinary running state", () => {
     expect(
-      sessionStatus({
-        ...snapshot("running"),
-        pendingInteraction: {
-          type: "interaction_request",
-          id: "approval",
-          method: "confirm",
+      sessionStatus(
+        {
+          ...snapshot("running"),
+          pendingInteraction: {
+            type: "interaction_request",
+            id: "approval",
+            method: "confirm",
+          },
         },
-      }),
+        i18n.t,
+      ),
     ).toBe("Waiting for you");
     expect(
-      sessionStatus({
-        ...snapshot(),
-        readOnly: { reason: "Busy elsewhere", retryable: true },
-      }),
+      sessionStatus(
+        {
+          ...snapshot(),
+          readOnly: { reason: "Busy elsewhere", retryable: true },
+        },
+        i18n.t,
+      ),
     ).toBe("Read only");
     expect(
       sessionModes({

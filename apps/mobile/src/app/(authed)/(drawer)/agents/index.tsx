@@ -60,8 +60,8 @@ export default function NewAgentScreen() {
   const { colors } = useTheme();
   const connections = useAgentConnections();
   const setups = useMemo(
-    () => recentAgentSetups(connections.data ?? []),
-    [connections.data],
+    () => recentAgentSetups(connections.data ?? [], t),
+    [connections.data, t],
   );
   const requested =
     params.workspace && isAgentProviderId(params.provider ?? "")

@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { i18n } from "@overtchat/shared/i18n";
 import type { BetterAuthClientPlugin } from "better-auth/client";
 
@@ -5,11 +6,14 @@ export const UNEXPECTED_SESSION_RESPONSE = "UNEXPECTED_SESSION_RESPONSE";
 
 // The message for a session check this guard rejected, read from the session
 // error that Better Auth keeps.
-export function unexpectedSessionMessage(error: unknown): string | null {
+export function unexpectedSessionMessage(
+  error: unknown,
+  t: TFunction,
+): string | null {
   return typeof error === "object" &&
     error !== null &&
     (error as { code?: unknown }).code === UNEXPECTED_SESSION_RESPONSE
-    ? i18n.t("auth.mobile.unexpectedSessionResponse")
+    ? t("auth.mobile.unexpectedSessionResponse")
     : null;
 }
 

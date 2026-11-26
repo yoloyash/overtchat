@@ -98,7 +98,7 @@ export default function AgentWorkspaceScreen() {
               size={14}
               color={colors.mutedForeground}
             />
-            <AgentText muted>{agentHostLabel(group.host)}</AgentText>
+            <AgentText muted>{agentHostLabel(group.host, t)}</AgentText>
           </View>
           <Text
             numberOfLines={2}

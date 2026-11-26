@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import type { AgentRewindMode } from "@overtchat/agent-bridge";
@@ -16,7 +16,7 @@ import { AgentRewindMenu, agentRewindMenuItems } from "./AgentRewindMenu";
 
 export function agentUserMessageParts(
   message: unknown,
-  t: TFunction = i18n.t.bind(i18n),
+  t: TFunction,
 ) {
   const value = record(message);
   const parts = Array.isArray(value.content) ? value.content.map(record) : [];
@@ -39,15 +39,19 @@ export function agentUserMessageParts(
   };
 }
 
-export function formatAgentMessageTime(timestamp: number, now = Date.now()) {
+export function formatAgentMessageTime(
+  timestamp: number,
+  locale: string,
+  now = Date.now(),
+) {
   const date = new Date(timestamp);
-  const time = date.toLocaleTimeString(undefined, {
+  const time = date.toLocaleTimeString(locale, {
     hour: "numeric",
     minute: "2-digit",
   });
   return new Date(now).toDateString() === date.toDateString()
     ? time
-    : `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+    : `${date.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${time}`;
 }
 
 export function AgentUserMessage({
@@ -64,6 +68,7 @@ export function AgentUserMessage({
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, radii, fonts } = useTheme();
   const menu = useMeasuredPopoverAnchor();
   const { copy } = useCopied();
@@ -165,7 +170,7 @@ export function AgentUserMessage({
           >
             {sending
               ? t("common.states.sending")
-              : formatAgentMessageTime(timestamp!)}
+              : formatAgentMessageTime(timestamp!, locale)}
           </Text>
         )}
         {rewindable && (

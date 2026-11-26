@@ -222,7 +222,7 @@ export function AgentTurnChangesCard({
         >
           {t("agents.messages.andMoreFiles", {
             count: unlisted,
-            formattedCount: unlisted.toLocaleString("en-US"),
+            formattedCount: unlisted.toLocaleString(locale),
           })}
         </Text>
       )}

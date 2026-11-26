@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import { Pressable, ScrollView, SectionList, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useLocalSearchParams } from "expo-router";
@@ -43,14 +42,14 @@ const ALL = "";
 /** What a history row says under its setup: the request, the error, or the reply. */
 export function agentHistorySnippet(
   entry: AgentAttentionItem,
-  t: TFunction = i18n.t.bind(i18n),
+  t: TFunction,
 ): string | null {
   const { session } = entry.item;
   if (session.attention) return agentAttentionText(session.attention);
   if (entry.state === "failed")
     return session.lastTurn?.error || t("agents.history.lastTurnFailed");
   if (session.lastTurn?.preview) return session.lastTurn.preview;
-  const title = agentSessionRowTitle(entry);
+  const title = agentSessionRowTitle(entry, t);
   return session.firstMessage && session.firstMessage !== title ? session.firstMessage : null;
 }
 
@@ -75,24 +74,24 @@ export default function AgentHistoryScreen() {
   const [provider, setProvider] = useState<AgentProviderId | null>(null);
   const [sort, setSort] = useState<AgentSessionSort>("activity");
   const [picker, setPicker] = useState<Picker | null>(null);
-  const hosts = useMemo(() => agentSessionHosts(groups), [groups]);
-  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host), [groups, host]);
+  const hosts = useMemo(() => agentSessionHosts(groups, t), [groups, t]);
+  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host, t), [groups, host, t]);
   const providers = useMemo(
-    () => agentSessionProviders(groups, host, workspace),
-    [groups, host, workspace],
+    () => agentSessionProviders(groups, host, workspace, t),
+    [groups, host, workspace, t],
   );
   const now = useNow(30_000);
 
   /** The agent filter, if it still has sessions in the narrowed scope. */
   function keptProvider(nextHost: string | null, nextWorkspace: string | null) {
-    return provider && agentSessionProviders(groups, nextHost, nextWorkspace).includes(provider)
+    return provider && agentSessionProviders(groups, nextHost, nextWorkspace, t).includes(provider)
       ? provider
       : null;
   }
   // Changing the machine drops a folder or agent that has no sessions on it.
   function selectHost(next: string | null) {
     const nextWorkspace =
-      workspace && agentSessionWorkspaces(groups, next).includes(workspace) ? workspace : null;
+      workspace && agentSessionWorkspaces(groups, next, t).includes(workspace) ? workspace : null;
     setHost(next);
     setWorkspace(nextWorkspace);
     setProvider(keptProvider(next, nextWorkspace));
@@ -103,8 +102,8 @@ export default function AgentHistoryScreen() {
   }
 
   const results = useMemo(
-    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }),
-    [groups, query, host, workspace, provider, sort],
+    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }, t),
+    [groups, query, host, workspace, provider, sort, t],
   );
   const sections = useMemo(
     () =>

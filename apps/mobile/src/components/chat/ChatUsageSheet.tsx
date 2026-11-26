@@ -10,14 +10,15 @@ import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ContextMeterValues } from "@overtchat/shared/context-meter";
 import { formatNanoUsd, type UsageTotals } from "@overtchat/shared/usage";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ContextRing, useContextTone } from "@/components/ui/ContextRing";
 import type { ChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { useTheme } from "@/lib/theme";
 
 export type ChatUsageSheetRef = BottomSheetModal;
 
-function formatInteger(value: number): string {
-  return Math.round(value).toLocaleString();
+function formatInteger(value: number, locale: string): string {
+  return Math.round(value).toLocaleString(locale);
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -48,6 +49,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 function ContextSection({ values }: { values: ContextMeterValues }) {
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const tone = useContextTone(values);
   const known = values.percentage !== undefined;
   return (
@@ -81,18 +83,18 @@ function ContextSection({ values }: { values: ContextMeterValues }) {
       </View>
       <DetailRow
         label={t("chat.mobile.usage.used")}
-        value={t("chat.usage.tokensCount", { count: formatInteger(values.usedTokens) })}
+        value={t("chat.usage.tokensCount", { count: formatInteger(values.usedTokens, locale) })}
       />
       {values.remainingTokens !== undefined && (
         <DetailRow
           label={t("chat.mobile.usage.remaining")}
-          value={t("chat.usage.tokensCount", { count: formatInteger(values.remainingTokens) })}
+          value={t("chat.usage.tokensCount", { count: formatInteger(values.remainingTokens, locale) })}
         />
       )}
       {values.contextWindow !== undefined && (
         <DetailRow
           label={t("chat.mobile.usage.contextWindow")}
-          value={t("chat.usage.tokensCount", { count: formatInteger(values.contextWindow) })}
+          value={t("chat.usage.tokensCount", { count: formatInteger(values.contextWindow, locale) })}
         />
       )}
     </View>
@@ -112,6 +114,7 @@ function CostSection({
 }) {
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const partial = usage.pricedGenerations < usage.generations;
   const cost = formatNanoUsd(usage.totalCostNanoUsd);
   return (
@@ -161,18 +164,18 @@ function CostSection({
           </Text>
         </View>
       </View>
-      <DetailRow label={t("chat.usage.input")} value={formatInteger(usage.inputTokens)} />
-      <DetailRow label={t("chat.usage.output")} value={formatInteger(usage.outputTokens)} />
+      <DetailRow label={t("chat.usage.input")} value={formatInteger(usage.inputTokens, locale)} />
+      <DetailRow label={t("chat.usage.output")} value={formatInteger(usage.outputTokens, locale)} />
       {usage.cacheReadTokens > 0 && (
         <DetailRow
           label={t("chat.usage.cacheRead")}
-          value={formatInteger(usage.cacheReadTokens)}
+          value={formatInteger(usage.cacheReadTokens, locale)}
         />
       )}
       {usage.cacheWriteTokens > 0 && (
         <DetailRow
           label={t("chat.usage.cacheWrite")}
-          value={formatInteger(usage.cacheWriteTokens)}
+          value={formatInteger(usage.cacheWriteTokens, locale)}
         />
       )}
       {partial && (
@@ -183,8 +186,8 @@ function CostSection({
           ]}
         >
           {t("chat.mobile.usage.partialPricingNote", {
-            priced: formatInteger(usage.pricedGenerations),
-            total: formatInteger(usage.generations),
+            priced: formatInteger(usage.pricedGenerations, locale),
+            total: formatInteger(usage.generations, locale),
           })}
         </Text>
       )}
@@ -199,6 +202,7 @@ export const ChatUsageSheet = forwardRef<
 >(function ChatUsageSheet({ usage }, ref) {
   const { colors, radii, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const insets = useSafeAreaInsets();
 
   const renderBackdrop = useCallback(
@@ -245,7 +249,7 @@ export const ChatUsageSheet = forwardRef<
         {session && (
           <CostSection
             title={t("chat.usage.session")}
-            summary={t("chat.usage.tokensCount", { count: formatInteger(session.totalTokens) })}
+            summary={t("chat.usage.tokensCount", { count: formatInteger(session.totalTokens, locale) })}
             usage={session}
             divider={!!context}
           />
@@ -255,7 +259,7 @@ export const ChatUsageSheet = forwardRef<
             title={t("chat.usage.images")}
             summary={t("chat.usage.imageCount", {
               count: images.generations,
-              formattedCount: formatInteger(images.generations),
+              formattedCount: formatInteger(images.generations, locale),
             })}
             usage={images}
             divider={!!(context || session)}

@@ -18,6 +18,7 @@ import {
   type AgentSessionCommand,
   type AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   AgentFeedback,
   AgentNotice,
@@ -79,6 +80,7 @@ function AgentSession({
   name?: string;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors } = useTheme();
   // A notification opens a session by id alone; the connection list fills in
   // its folder, and knows the provider's own session id for copying.
@@ -630,7 +632,7 @@ function AgentSession({
             {window.resetsAt && (
               <AgentText muted>
                 {t("agents.dialogs.resetsAt", {
-                  time: new Date(window.resetsAt * 1000).toLocaleString(),
+                  time: new Date(window.resetsAt * 1000).toLocaleString(locale),
                 })}
               </AgentText>
             )}

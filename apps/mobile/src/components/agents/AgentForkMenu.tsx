@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import { View } from "react-native";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { AgentMenu, type AgentMenuItem } from "./AgentMenu";
@@ -10,7 +9,7 @@ import { AgentIconButton } from "./AgentPrimitives";
 /** Fork destinations, as menu items. */
 export function agentForkMenuItems(
   onFork: (chooseWorkspace: boolean) => void,
-  t: TFunction = i18n.t.bind(i18n),
+  t: TFunction,
 ): AgentMenuItem[] {
   return [
     {
