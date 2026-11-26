@@ -9,7 +9,6 @@ export const library: Translation["library"] = {
     loading: "正在加载资料库…",
     loadError: "无法加载你的资料库。",
     refreshError: "无法刷新你的资料库。",
-    tryAgain: "重试",
     emptySearchTitle: "没有匹配的文件",
     emptyTitle: "你的资料库为空",
     emptySearchDescription: "请尝试其他文件名。",
@@ -17,7 +16,6 @@ export const library: Translation["library"] = {
     filesLabel: "资料库文件",
     alreadyAttached: "已附加",
     openFile: "打开 {{filename}}",
-    loadingMore: "正在加载…",
     loadMore: "加载更多",
   },
   picker: {

@@ -186,7 +186,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                 setLimit(PAGE_SIZE);
               }}
               placeholder={t("agents.history.searchPlaceholder")}
-              aria-label={t("agents.history.searchPlaceholder")}
+              aria-label={t("agents.history.searchLabel")}
               autoFocus={typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches}
               className="h-10 pr-9 pl-9 [&::-webkit-search-cancel-button]:hidden"
             />
@@ -194,7 +194,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                aria-label={t("agents.history.clearSearch")}
+                aria-label={t("common.actions.clearSearch")}
                 className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
               >
                 <X aria-hidden="true" className="size-4" />
@@ -306,7 +306,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
             </Select>
             <span role="status" className="ml-auto text-xs tabular-nums text-muted-foreground">
               {isPending
-                ? t("agents.common.loading")
+                ? t("common.states.loading")
                 : t("agents.history.sessionCount", { count: results.length })}
             </span>
           </div>
@@ -375,7 +375,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                   className="self-center"
                   onClick={() => setLimit((current) => current + PAGE_SIZE)}
                 >
-                  {t("agents.common.showCountMore", {
+                  {t("common.actions.showCountMore", {
                     count: Math.min(PAGE_SIZE, results.length - shown.length),
                   })}
                 </Button>

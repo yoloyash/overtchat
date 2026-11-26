@@ -45,7 +45,7 @@ export function ChatFindBar({
   const position = activeIndex >= 0 ? String(activeIndex + 1) : "?";
   let status = "";
   if (hasQuery) {
-    if (counting) status = total ? `${position}/…` : t("chat.find.searchingEllipsis");
+    if (counting) status = total ? `${position}/…` : t("common.states.searching");
     else if (total === 0) status = t("chat.find.noResults");
     else status = `${position}/${total}`;
   }
@@ -107,7 +107,7 @@ export function ChatFindBar({
           title={t("chat.find.incompleteHistoryTitle")}
           onClick={onRetryHistory}
         >
-          {t("chat.find.retry")}
+          {t("common.actions.retry")}
         </Button>
       )}
       <Button

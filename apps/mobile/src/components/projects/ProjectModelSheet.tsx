@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetBackdrop,
@@ -36,6 +37,7 @@ export const ProjectModelSheet = forwardRef<
   ref,
 ) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
 
@@ -82,7 +84,7 @@ export const ProjectModelSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          Default model
+          {t("projects.model.title")}
         </Text>
         <Text
           style={[
@@ -90,14 +92,14 @@ export const ProjectModelSheet = forwardRef<
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          New chats in this project start with this model.
+          {t("projects.model.description")}
         </Text>
         <View style={styles.options}>
           <ModelOption
             selected={selectedId === null}
             onPress={() => choose(null)}
-            label="Account default"
-            detail={accountDefault?.label ?? "No models configured"}
+            label={t("projects.model.accountDefault")}
+            detail={accountDefault?.label ?? t("projects.model.noModels")}
             icon={
               <Ionicons
                 name="person-circle-outline"

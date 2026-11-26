@@ -94,8 +94,8 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={showSource ? t("chat.diagram.showDiagram") : t("chat.diagram.showSource")}
-              title={showSource ? t("chat.diagram.showDiagram") : t("chat.diagram.showSource")}
+              aria-label={showSource ? t("chat.diagram.showDiagram") : t("chat.files.showSource")}
+              title={showSource ? t("chat.diagram.showDiagram") : t("chat.files.showSource")}
               aria-pressed={showSource}
               onClick={() => setShowSource(!showSource)}
             >

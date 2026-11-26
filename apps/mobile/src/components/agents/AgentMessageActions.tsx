@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import * as Clipboard from "expo-clipboard";
 import { toastError } from "@/lib/toast";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -30,19 +31,25 @@ export function useCopied() {
 
 export function AgentCopyButton({
   text,
-  label = "Copy response",
-  copiedLabel = "Copied response",
+  label,
+  copiedLabel,
+  failureLabel,
 }: {
   text: string;
   label?: string;
   copiedLabel?: string;
+  failureLabel?: string;
 }) {
+  const { t } = useTranslation();
   const { copied, copy } = useCopied();
+  const copyText = label ?? t("agents.messages.copyResponse");
+  const copiedText = copiedLabel ?? t("agents.messages.copiedResponse");
+  const failedText = failureLabel ?? t("agents.mobile.messages.copyResponseFailed");
   return (
     <AgentIconButton
-      label={copied ? copiedLabel : label}
+      label={copied ? copiedText : copyText}
       icon={copied ? "checkmark" : "copy-outline"}
-      onPress={() => copy(text, `Couldn't ${label.toLowerCase()}`)}
+      onPress={() => copy(text, failedText)}
     />
   );
 }
@@ -56,6 +63,7 @@ export function AgentSpeakButton({
   text: string;
   speech: Pick<ReturnType<typeof useSpeech>, "activeId" | "status" | "play">;
 }) {
+  const { t } = useTranslation();
   const spokenText = text.trim();
   if (!spokenText) return null;
   const active = speech.activeId === id;
@@ -66,11 +74,11 @@ export function AgentSpeakButton({
       label={
         active
           ? loading
-            ? "Cancel loading speech"
-            : "Stop reading"
+            ? t("agents.messages.cancelLoadingSpeech")
+            : t("agents.messages.stopReading")
           : tooLong
-            ? "Read aloud supports up to 5,000 characters"
-            : "Read aloud"
+            ? t("agents.messages.readAloudLimit")
+            : t("agents.messages.readAloud")
       }
       icon={active ? "stop-outline" : "volume-medium-outline"}
       loading={loading}

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import type { UIMessage } from "ai";
@@ -20,7 +21,7 @@ export function useChatMessages(chatId: string | null) {
     enabled: !!chatId,
     queryFn: async (): Promise<ChatMessagesResponse> => {
       const res = await authFetch(`${getApiBase()}/api/chat/${chatId}/messages?openui=1`);
-      if (!res.ok) throw new Error(`Failed to load chat (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.loadChat", { status: res.status }));
       return (await res.json()) as ChatMessagesResponse;
     },
   });

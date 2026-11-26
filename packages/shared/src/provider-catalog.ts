@@ -126,7 +126,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   custom: {
     id: "custom",
     get label() {
-      return i18n.t("models.page.providerCustom");
+      return i18n.t("models.providers.custom");
     },
     iconId: null,
     defaultBaseUrl: "",

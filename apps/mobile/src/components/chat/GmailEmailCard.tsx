@@ -9,6 +9,7 @@ import {
 } from "@overtchat/shared";
 import { useLayoutState } from "@shopify/flash-list";
 import { useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { GmailLogo } from "@/components/GmailLogo";
 import { useSaveGmailEmail, useSendGmailEmail } from "@/lib/queries/gmail-emails";
@@ -36,6 +37,7 @@ export function GmailEmailCard({
   canSend: boolean;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useLayoutState(false);
   const send = useSendGmailEmail();
   const save = useSaveGmailEmail();
@@ -61,9 +63,9 @@ export function GmailEmailCard({
   const busy = send.isPending || save.isPending;
   const actions = canSend && !sent && email.status !== "replaced";
   const failure = send.isError
-    ? getErrorMessage(send.error, "Could not send the email.")
+    ? getErrorMessage(send.error, t("chat.steps.sendEmailFailed"))
     : save.isError
-      ? getErrorMessage(save.error, "Could not save the email in Gmail.")
+      ? getErrorMessage(save.error, t("chat.steps.saveEmailFailed"))
       : null;
 
   return (
@@ -77,7 +79,7 @@ export function GmailEmailCard({
         disabled={!href}
         accessibilityRole={href ? "link" : undefined}
         accessibilityLabel={
-          href ? (sent ? "Open in Gmail" : "Open drafts in Gmail") : undefined
+          href ? (sent ? t("chat.steps.openInGmail") : t("chat.steps.openDraftsInGmail")) : undefined
         }
         onPress={() => {
           if (href) Linking.openURL(href).catch(() => {});
@@ -123,7 +125,7 @@ export function GmailEmailCard({
               hitSlop={8}
             >
               <Text style={[styles.meta, muted]}>
-                {expanded ? "Show less" : "Show all"}
+                {expanded ? t("common.actions.showLess") : t("chat.steps.showAll")}
               </Text>
             </Pressable>
           ) : null}
@@ -162,7 +164,7 @@ export function GmailEmailCard({
                   { color: colors.foreground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {save.isPending ? "Saving…" : "Save to Gmail"}
+                {save.isPending ? t("common.states.saving") : t("chat.steps.saveToGmail")}
               </Text>
             </Pressable>
           ) : null}
@@ -189,7 +191,7 @@ export function GmailEmailCard({
                 { color: colors.primaryForeground, fontFamily: fonts.sansMedium },
               ]}
             >
-              {send.isPending ? "Sending…" : "Send"}
+              {send.isPending ? t("common.states.sending") : t("common.actions.send")}
             </Text>
           </Pressable>
         </View>

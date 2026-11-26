@@ -81,7 +81,7 @@ export function DocumentCard({
     ? live
       ? creating
         ? t("chat.documents.writing")
-        : t("chat.documents.updating")
+        : t("common.states.updating")
       : creating
         ? t("chat.documents.stoppedBeforeSaved")
         : t("chat.documents.updateStopped")

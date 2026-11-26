@@ -1,18 +1,12 @@
 export const projects = {
-  loading: "Loading…",
   settingsLabel: "Project settings",
   nameInputLabel: "Project name",
   renameTitle: "Rename project",
   actionsLabel: "Project actions",
   deleteProject: "Delete project",
   actions: {
-    rename: "Rename",
-    delete: "Delete",
-    deleting: "Deleting…",
-    cancel: "Cancel",
-    save: "Save",
-    saving: "Saving…",
-    tryAgain: "Try again",
+    newChatIn: "New chat in {{name}}",
+    removeFromProject: "Remove from project",
   },
   deleteDialog: {
     title: "Delete project?",
@@ -30,7 +24,6 @@ export const projects = {
   },
   chats: {
     heading: "Chats",
-    untitled: "Untitled",
     filterPlaceholder: "Filter chats",
     empty: {
       title: "No chats yet",
@@ -42,7 +35,6 @@ export const projects = {
     pinned: "Pinned",
     responding: "Responding…",
     actionsLabel: "Actions for {{title}}",
-    removeFromProject: "Remove from project",
     deleteDialog: {
       title: "Delete chat?",
       description: "<title>{{title}}</title> will be permanently deleted.",
@@ -67,14 +59,11 @@ export const projects = {
     addFiles: "Add files",
     inputLabel: "Project files to add",
     loadError: "Could not load the project files.",
-    listLabel: "Files",
     pages_one: "{{count}} page",
     pages_other: "{{count}} pages",
     fromChat: "from <chatLink>{{chat}}</chatLink>",
     fromUnnamedChat: "from <chatLink>a chat</chatLink>",
     removeFileLabel: "Remove {{filename}} from project",
-    removeFromProject: "Remove from project",
-    uploading: "Uploading…",
     footer:
       "{{used}} of {{max}} files. The model reads and searches them with the file tools when a question needs them.",
     toast: {
@@ -90,6 +79,7 @@ export const projects = {
       addFallback: "The file was not added.",
       removeFallback: "The file is still in the project.",
     },
+    fallbackFile: "file",
   },
   instructions: {
     title: "Instructions",
@@ -115,8 +105,7 @@ export const projects = {
     description: "New chats in this project start with this model.",
     accountDefault: "Account default",
     noModels: "No models configured",
-    unavailable:
-      "The selected model is unavailable, so new chats use your account default.",
+    unavailable: "The selected model is unavailable, so new chats use your account default.",
     toast: {
       changeError: "Failed to change the default model",
     },
@@ -145,6 +134,48 @@ export const projects = {
     errors: {
       uploadFailed: "Upload failed ({{status}})",
       saveFallback: "The file was not added to the project.",
+    },
+  },
+  mobile: {
+    renamedToast: "Renamed",
+    renameError: "Couldn't rename project",
+    changeModelError: "Couldn't change the default model",
+    deleteError: "Couldn't delete project",
+    notFound: "Project not found",
+    renameProjectLabel: "Rename {{name}}",
+    chatCount_one: "{{count}} chat",
+    chatCount_other: "{{count}} chats",
+    settingsHeading: "SETTINGS",
+    instructionsPlaceholderDetail: "Add context the model should always follow",
+    accountDefaultWithModel: "Account default · {{model}}",
+    chatsHeading: "CHATS",
+    chatsHeadingCount: "CHATS · {{count}}",
+    emptyChatsDescription:
+      "Chats here share this project's instructions, files, and default model.",
+    deleteDialogMessage: "{{name}} will be deleted. Chats inside it will move to your main list.",
+    instructions: {
+      saveError: "Couldn't save instructions",
+      sheetSubtitle:
+        "Added to every chat in {{name}}: context, tone, or preferences the model should always follow.",
+      saveLabel: "Save instructions",
+    },
+    files: {
+      heading: "FILES",
+      headingCount: "FILES · {{count}} OF {{max}}",
+      imageNotAllowedTitle: "{{name}} is an image",
+      imageNotAllowedMessage: "Project files are documents and text.",
+      addError: "Couldn't add {{filename}}",
+      removeError: "Couldn't remove {{filename}}",
+      retryLoadLabel: "Retry loading project files",
+      loadErrorTap: "Couldn't load files. Tap to retry.",
+      metaFromChat: " · from <chatLink>{{chat}}</chatLink>",
+      metaFromUnnamedChat: " · from <chatLink>a chat</chatLink>",
+      uploadingLabel: "Uploading {{name}}",
+      addFilesHint: "Reference material the model can read in every chat here",
+      addFilesExistingDetail: "The model reads and searches these when a question needs them.",
+      removeConfirmTitle: "Remove from project?",
+      removeConfirmMessage:
+        "{{filename}} will no longer be available to chats in this project. Messages that attached it keep their copy.",
     },
   },
 } as const;

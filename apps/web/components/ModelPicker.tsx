@@ -68,7 +68,7 @@ export function ModelPicker({
   const thinkingOptions = reasoningOptions(reasoningControls);
 
   const label = loading
-    ? t("app.modelPicker.loading")
+    ? t("common.states.loading")
     : selected
       ? selected.label
       : models && models.length > 0

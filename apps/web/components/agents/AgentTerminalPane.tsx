@@ -673,7 +673,7 @@ export function AgentTerminalPane({
           {copied && (
             <Check
               className="mr-1 size-3.5 text-emerald-600"
-              aria-label={t("agents.common.copied")}
+              aria-label={t("common.states.copied")}
             />
           )}
           {exited && (

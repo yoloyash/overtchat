@@ -245,7 +245,7 @@ export function AgentBranchPicker({
                     className={itemClassName}
                   >
                     <span className="size-3.5" />
-                    {t("agents.common.cancel")}
+                    {t("common.actions.cancel")}
                   </Menu.Item>
                 </>
               ) : (

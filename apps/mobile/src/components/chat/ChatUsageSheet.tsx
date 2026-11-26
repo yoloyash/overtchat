@@ -5,6 +5,7 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { forwardRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ContextMeterValues } from "@overtchat/shared/context-meter";
@@ -17,10 +18,6 @@ export type ChatUsageSheetRef = BottomSheetModal;
 
 function formatInteger(value: number): string {
   return Math.round(value).toLocaleString();
-}
-
-function formatTokens(value: number): string {
-  return `${formatInteger(value)} tokens`;
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -50,6 +47,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 function ContextSection({ values }: { values: ContextMeterValues }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const tone = useContextTone(values);
   const known = values.percentage !== undefined;
   return (
@@ -67,7 +65,7 @@ function ContextSection({ values }: { values: ContextMeterValues }) {
               },
             ]}
           >
-            {known ? `${values.percentage}% used` : "Limit unknown"}
+            {known ? t("chat.usage.percentUsed", { percentage: values.percentage }) : t("chat.usage.limitUnknown")}
           </Text>
           <Text
             style={[
@@ -76,22 +74,25 @@ function ContextSection({ values }: { values: ContextMeterValues }) {
             ]}
           >
             {known
-              ? "Measured at the last response."
-              : "This model hasn't reported a context window."}
+              ? t("chat.mobile.usage.measuredAtLastResponse")
+              : t("chat.mobile.usage.noContextWindowReported")}
           </Text>
         </View>
       </View>
-      <DetailRow label="Used" value={formatTokens(values.usedTokens)} />
+      <DetailRow
+        label={t("chat.mobile.usage.used")}
+        value={t("chat.usage.tokensCount", { count: formatInteger(values.usedTokens) })}
+      />
       {values.remainingTokens !== undefined && (
         <DetailRow
-          label="Remaining"
-          value={formatTokens(values.remainingTokens)}
+          label={t("chat.mobile.usage.remaining")}
+          value={t("chat.usage.tokensCount", { count: formatInteger(values.remainingTokens) })}
         />
       )}
       {values.contextWindow !== undefined && (
         <DetailRow
-          label="Context window"
-          value={formatTokens(values.contextWindow)}
+          label={t("chat.mobile.usage.contextWindow")}
+          value={t("chat.usage.tokensCount", { count: formatInteger(values.contextWindow) })}
         />
       )}
     </View>
@@ -110,6 +111,7 @@ function CostSection({
   divider: boolean;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const partial = usage.pricedGenerations < usage.generations;
   const cost = formatNanoUsd(usage.totalCostNanoUsd);
   return (
@@ -155,21 +157,21 @@ function CostSection({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {partial ? "Known cost" : "Cost"}
+            {partial ? t("chat.usage.knownCost") : t("chat.usage.cost")}
           </Text>
         </View>
       </View>
-      <DetailRow label="Input" value={formatInteger(usage.inputTokens)} />
-      <DetailRow label="Output" value={formatInteger(usage.outputTokens)} />
+      <DetailRow label={t("chat.usage.input")} value={formatInteger(usage.inputTokens)} />
+      <DetailRow label={t("chat.usage.output")} value={formatInteger(usage.outputTokens)} />
       {usage.cacheReadTokens > 0 && (
         <DetailRow
-          label="Cache read"
+          label={t("chat.usage.cacheRead")}
           value={formatInteger(usage.cacheReadTokens)}
         />
       )}
       {usage.cacheWriteTokens > 0 && (
         <DetailRow
-          label="Cache write"
+          label={t("chat.usage.cacheWrite")}
           value={formatInteger(usage.cacheWriteTokens)}
         />
       )}
@@ -180,7 +182,10 @@ function CostSection({
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          {`${formatInteger(usage.pricedGenerations)} of ${formatInteger(usage.generations)} generations have pricing. Missing prices are excluded.`}
+          {t("chat.mobile.usage.partialPricingNote", {
+            priced: formatInteger(usage.pricedGenerations),
+            total: formatInteger(usage.generations),
+          })}
         </Text>
       )}
     </View>
@@ -193,6 +198,7 @@ export const ChatUsageSheet = forwardRef<
   { usage: ChatUsageSummary | undefined }
 >(function ChatUsageSheet({ usage }, ref) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const renderBackdrop = useCallback(
@@ -233,21 +239,24 @@ export const ChatUsageSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          Usage
+          {t("chat.usage.title")}
         </Text>
         {context && <ContextSection values={context} />}
         {session && (
           <CostSection
-            title="Session"
-            summary={formatTokens(session.totalTokens)}
+            title={t("chat.usage.session")}
+            summary={t("chat.usage.tokensCount", { count: formatInteger(session.totalTokens) })}
             usage={session}
             divider={!!context}
           />
         )}
         {images && (
           <CostSection
-            title="Images"
-            summary={`${formatInteger(images.generations)} ${images.generations === 1 ? "image" : "images"}`}
+            title={t("chat.usage.images")}
+            summary={t("chat.usage.imageCount", {
+              count: images.generations,
+              formattedCount: formatInteger(images.generations),
+            })}
             usage={images}
             divider={!!(context || session)}
           />
@@ -259,7 +268,7 @@ export const ChatUsageSheet = forwardRef<
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            No usage has been recorded for this chat yet.
+            {t("chat.mobile.usage.empty")}
           </Text>
         )}
       </BottomSheetView>

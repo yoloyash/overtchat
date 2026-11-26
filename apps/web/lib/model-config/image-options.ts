@@ -13,8 +13,8 @@ const reserved = new Set([
   "images",
   "mask",
   "stream",
-  "__proto__",
-  "constructor",
+  "[object Object]",
+  "function Object() { [native code] }",
   "prototype",
 ]);
 

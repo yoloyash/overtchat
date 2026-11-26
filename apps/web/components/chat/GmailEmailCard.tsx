@@ -117,7 +117,7 @@ export function GmailEmailCard({
                     save.mutate(email);
                   }}
                 >
-                  {save.isPending ? t("chat.steps.saving") : t("chat.steps.saveToGmail")}
+                  {save.isPending ? t("common.states.saving") : t("chat.steps.saveToGmail")}
                 </Button>
               )}
               <Button
@@ -129,7 +129,7 @@ export function GmailEmailCard({
                   send.mutate(email);
                 }}
               >
-                {send.isPending ? t("chat.steps.sending") : t("chat.steps.send")}
+                {send.isPending ? t("common.states.sending") : t("common.actions.send")}
               </Button>
             </>
           )
@@ -152,7 +152,7 @@ export function GmailEmailCard({
               aria-expanded={expanded}
               className="mt-1.5 text-xs text-muted-foreground outline-none motion-colors hover:text-foreground focus-visible:underline"
             >
-              {expanded ? t("chat.steps.showLess") : t("chat.steps.showAll")}
+              {expanded ? t("common.actions.showLess") : t("chat.steps.showAll")}
             </button>
           )}
         </div>

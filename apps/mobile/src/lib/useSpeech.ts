@@ -1,4 +1,5 @@
 import { ApiError, apiError, getErrorMessage } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { type AudioPlayer, createAudioPlayer } from "expo-audio";
 import { File as FsFile, Paths } from "expo-file-system";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -95,7 +96,7 @@ export function useSpeech() {
           throw apiError(
             res.status,
             await res.text().catch(() => ""),
-            "Couldn't play speech. Please try again.",
+            i18n.t("chat.speech.playFailed"),
             "tts",
           );
         const buf = await res.arrayBuffer();
@@ -211,5 +212,5 @@ export function useSpeech() {
 }
 
 function networkErrorMessage(err: unknown): string {
-  return getErrorMessage(err, "Couldn't play speech. Please try again.");
+  return getErrorMessage(err, i18n.t("chat.speech.playFailed"));
 }

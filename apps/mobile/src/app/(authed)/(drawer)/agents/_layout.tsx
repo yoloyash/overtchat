@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Stack } from "expo-router";
 import { DrawerToggleButton } from "expo-router/build/react-navigation/drawer";
 import { useTheme } from "@/lib/theme";
@@ -12,6 +13,7 @@ export const unstable_settings = { initialRouteName: "index" };
  * beside the chat screen instead.
  */
 export default function AgentsLayout() {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   return (
     <Stack
@@ -25,11 +27,11 @@ export default function AgentsLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: "New agent",
+          title: t("agents.mobile.newSession.title"),
           headerLeft: () => <DrawerToggleButton tintColor={colors.foreground} />,
         }}
       />
-      <Stack.Screen name="history" options={{ title: "History" }} />
+      <Stack.Screen name="history" options={{ title: t("agents.history.title") }} />
       <Stack.Screen name="workspace" />
     </Stack>
   );

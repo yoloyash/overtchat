@@ -295,7 +295,7 @@ export function AgentMessageList({
                 }}
               >
                 {history.loading
-                  ? t("agents.common.loading")
+                  ? t("common.states.loading")
                   : t("agents.messages.loadOlder")}
               </Button>
               {history.error && (
@@ -989,8 +989,8 @@ function UserMessageText({ text }: { text: string }) {
           className="mt-1.5 cursor-pointer text-xs font-medium text-muted-foreground motion-colors hover:text-foreground"
         >
           {expanded
-            ? t("agents.common.showLess")
-            : t("agents.common.showMore")}
+            ? t("common.actions.showLess")
+            : t("common.actions.showMore")}
         </button>
       )}
     </div>

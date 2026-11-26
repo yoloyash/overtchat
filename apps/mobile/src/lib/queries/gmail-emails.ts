@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import {
   apiError,
   rememberGmailEmailResult,
@@ -25,7 +26,7 @@ async function postGmailEmail<T>(
     throw apiError(
       response.status,
       body,
-      "Could not complete the request. Please try again.",
+      i18n.t("common.errors.requestFailed"),
     );
   }
   return (await response.json()) as T;

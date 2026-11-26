@@ -8,6 +8,7 @@ import {
 } from "@overtchat/shared";
 import { useLayoutState } from "@shopify/flash-list";
 import { router } from "expo-router";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -19,6 +20,7 @@ import { useTheme } from "@/lib/theme";
 
 export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const [open, setOpen] = useLayoutState(false);
   const details = parts.map(describeMemoryToolPart);
   const running = details.some((detail) => detail.status === "running");
@@ -85,7 +87,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Manage memories"
+          accessibilityLabel={t("chat.mobile.memory.manageMemories")}
           onPress={() => router.push("/personalization")}
           hitSlop={6}
           style={({ pressed }) => [
@@ -102,7 +104,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
               },
             ]}
           >
-            Manage
+            {t("chat.steps.memoryManage")}
           </Text>
         </Pressable>
       </View>
@@ -130,6 +132,7 @@ function MemoryDetail({
   divided: boolean;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   return (
     <View
       style={[
@@ -146,7 +149,7 @@ function MemoryDetail({
             { color: colors.mutedForeground, fontFamily: fonts.mono },
           ]}
         >
-          {detail.key ?? "Memory"}
+          {detail.key ?? t("chat.steps.memoryFallback")}
         </Text>
         <Text
           style={[

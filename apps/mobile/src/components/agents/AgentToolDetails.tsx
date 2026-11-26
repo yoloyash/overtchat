@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -26,6 +27,22 @@ const icons: Record<
   fetch: "globe-outline",
   other: "construct-outline",
 };
+const KNOWN_SECTION_COPY_KEYS = [
+  ["agents.toolDetails.command", "agents.mobile.toolDetails.copy.command", "agents.mobile.toolDetails.copied.command"],
+  ["agents.toolDetails.path", "agents.mobile.toolDetails.copy.path", "agents.mobile.toolDetails.copied.path"],
+  ["agents.toolDetails.workingDirectory", "agents.mobile.toolDetails.copy.workingDirectory", "agents.mobile.toolDetails.copied.workingDirectory"],
+  ["agents.activity.changes", "agents.mobile.toolDetails.copy.changes", "agents.mobile.toolDetails.copied.changes"],
+  ["agents.toolDetails.before", "agents.mobile.toolDetails.copy.before", "agents.mobile.toolDetails.copied.before"],
+  ["agents.toolDetails.after", "agents.mobile.toolDetails.copy.after", "agents.mobile.toolDetails.copied.after"],
+  ["agents.activity.content", "agents.mobile.toolDetails.copy.content", "agents.mobile.toolDetails.copied.content"],
+  ["agents.activity.input", "agents.mobile.toolDetails.copy.input", "agents.mobile.toolDetails.copied.input"],
+  ["agents.activity.output", "agents.mobile.toolDetails.copy.output", "agents.mobile.toolDetails.copied.output"],
+  ["agents.toolDetails.errorOutput", "agents.mobile.toolDetails.copy.errorOutput", "agents.mobile.toolDetails.copied.errorOutput"],
+  ["agents.toolDetails.terminalInput", "agents.mobile.toolDetails.copy.terminalInput", "agents.mobile.toolDetails.copied.terminalInput"],
+  ["agents.toolDetails.exitCode", "agents.mobile.toolDetails.copy.exitCode", "agents.mobile.toolDetails.copied.exitCode"],
+  ["agents.toolDetails.status", "agents.mobile.toolDetails.copy.status", "agents.mobile.toolDetails.copied.status"],
+  ["agents.toolDetails.outputLimit", "agents.mobile.toolDetails.copy.outputLimit", "agents.mobile.toolDetails.copied.outputLimit"],
+] as const;
 
 export function agentToolIcon(category: AgentToolCategory) {
   return icons[category];
@@ -40,13 +57,26 @@ export function AgentToolRow({
   active: boolean;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const presentation = describeAgentTool(tool);
   const status = agentToolStatus(tool, active);
+  const statusLabel = t(`agents.activity.toolStatus.${status}`);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${presentation.label}${presentation.summary ? `: ${presentation.summary}` : ""}, ${status}`}
+      accessibilityLabel={
+        presentation.summary
+          ? t("agents.activity.toolStepAriaWithSummary", {
+              label: presentation.label,
+              summary: presentation.summary,
+              status: statusLabel,
+            })
+          : t("agents.activity.toolGroupAria", {
+              label: presentation.label,
+              status: statusLabel,
+            })
+      }
       onPress={onPress}
       style={({ pressed }) => ({
         minHeight: 44,
@@ -88,7 +118,7 @@ export function AgentToolRow({
         )}
       </View>
       {status === "running" ? (
-        <AgentWorkingIndicator label="Tool running" />
+        <AgentWorkingIndicator label={t("agents.mobile.toolDetails.toolRunning")} />
       ) : (
         <Ionicons
           name={
@@ -120,30 +150,33 @@ export function AgentToolDetails({
   tool: AgentToolActivity;
   active: boolean;
 }) {
+  const { t } = useTranslation();
   const status = agentToolStatus(tool, active);
   const details = toolDetails(tool);
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        {status === "running" && <AgentWorkingIndicator label="Tool running" />}
+        {status === "running" && (
+          <AgentWorkingIndicator label={t("agents.mobile.toolDetails.toolRunning")} />
+        )}
         <AgentText muted={status !== "failed"} danger={status === "failed"}>
           {tool.cancelled
-            ? "Cancelled"
+            ? t("agents.toolDetails.cancelled")
             : status === "running"
-              ? "Running"
+              ? t("agents.mobile.toolDetails.statusRunning")
               : status === "failed"
-                ? "Failed"
+                ? t("agents.mobile.toolDetails.statusFailed")
                 : status === "completed"
-                  ? "Completed"
-                  : "Stopped"}
+                  ? t("agents.mobile.toolDetails.statusCompleted")
+                  : t("agents.mobile.toolDetails.statusStopped")}
         </AgentText>
       </View>
       <AgentDetailSections sections={details.sections} />
       {!details.sections.length && (
         <AgentText muted>
           {status === "running"
-            ? "Waiting for output…"
-            : "No details were provided by the agent."}
+            ? t("agents.mobile.toolDetails.waitingForOutput")
+            : t("agents.mobile.toolDetails.noDetails")}
         </AgentText>
       )}
     </View>
@@ -161,6 +194,7 @@ export function AgentDetailSections({ sections }: { sections: ToolSection[] }) {
 }
 
 function DetailSection({ section }: { section: ToolSection }) {
+  const { t } = useTranslation();
   const { colors, fonts, scheme } = useTheme();
   const [limit, setLimit] = useState(80);
   const [copied, setCopied] = useState(false);
@@ -244,11 +278,19 @@ function DetailSection({ section }: { section: ToolSection }) {
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={
-            copied
-              ? `Copied ${section.label.toLowerCase()}`
-              : `Copy ${section.label.toLowerCase()}`
-          }
+          accessibilityLabel={(() => {
+            const known = KNOWN_SECTION_COPY_KEYS.find(
+              ([labelKey]) => t(labelKey) === section.label,
+            );
+            if (known) return t(copied ? known[2] : known[1]);
+            return copied
+              ? t("agents.mobile.messages.copiedSectionLabel", {
+                  label: section.label,
+                })
+              : t("agents.mobile.messages.copySectionLabel", {
+                  label: section.label,
+                });
+          })()}
           onPress={() => {
             void Clipboard.setStringAsync(section.value)
               .then(() => {
@@ -257,7 +299,9 @@ function DetailSection({ section }: { section: ToolSection }) {
                 clearTimeout(timer.current);
                 timer.current = setTimeout(() => setCopied(false), 1200);
               })
-              .catch((cause) => toastError("Couldn't copy", cause));
+              .catch((cause) =>
+                toastError(t("agents.mobile.messages.copyFailed"), cause),
+              );
           }}
           style={{
             width: 44,
@@ -313,14 +357,16 @@ function DetailSection({ section }: { section: ToolSection }) {
           </View>
         ) : (
           <Text selectable style={{ ...code, paddingHorizontal: 12 }}>
-            {shown || "(empty)"}
+            {shown || t("agents.mobile.toolDetails.empty")}
           </Text>
         )}
       </ScrollView>
       {more && (
         <AgentButton
-          label="Show more"
-          detail={`${lines.length.toLocaleString()} lines total`}
+          label={t("common.actions.showMore")}
+          detail={t("agents.mobile.toolDetails.linesTotal", {
+            formattedCount: lines.length.toLocaleString(),
+          })}
           icon="chevron-down"
           onPress={() => setLimit((value) => value + 160)}
         />

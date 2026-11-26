@@ -19,14 +19,11 @@ export const app = {
   },
   error: {
     title: "Couldn't load OvertChat",
-    description:
-      "Check your connection and that the server is running, then try again.",
+    description: "Check your connection and that the server is running, then try again.",
     server: "Server: {{origin}}",
-    tryAgain: "Try again",
     changeServer: "Change server",
     changingServer: "Changing server…",
-    changeServerError:
-      "Couldn't change servers. Try again or restart the app.",
+    changeServerError: "Couldn't change servers. Try again or restart the app.",
     details: "Error details",
   },
   notFound: {
@@ -51,8 +48,7 @@ export const app = {
     },
     library: {
       title: "Library",
-      description:
-        "Files from your saved chats. Reuse them with “Add from library” in any chat.",
+      description: "Files from your saved chats. Reuse them with “Add from library” in any chat.",
     },
     activity: {
       title: "Activity",
@@ -72,10 +68,8 @@ export const app = {
     loadFailed: "Could not load the shared chat.",
   },
   accountMenu: {
-    loading: "Loading…",
     serverUpdateAvailable: "Server update available",
     profile: "Profile",
-    settings: "Settings",
     getMobileApp: "Get the mobile app",
     administration: "Administration",
     releaseNotes: "Release notes",
@@ -84,22 +78,17 @@ export const app = {
     logOutErrorTitle: "Failed to log out",
     logOutErrorFallback: "Try again in a moment.",
     versionTooltip: "Desktop v{{desktopVersion}}",
-    versionTooltipWithServer:
-      "Desktop v{{desktopVersion}} · Server v{{serverVersion}}",
+    versionTooltipWithServer: "Desktop v{{desktopVersion}} · Server v{{serverVersion}}",
     updateDialog: {
-      title: "Server update available",
       descriptionCompose:
         "Server v{{version}} is available. If your Compose file pins the app image, change its tag to {{version}}. Then run this in the Compose directory, using podman compose with Podman.",
-      descriptionHost:
-        "Server v{{version}} is available. Run this on the OvertChat host.",
+      descriptionHost: "Server v{{version}} is available. Run this on the OvertChat host.",
       commandLabel: "OvertChat update command",
       copyCommand: "Copy update command",
       commandCopied: "Update command copied",
-      copied: "Copied",
       copyErrorTitle: "Could not copy update command",
       copyErrorFallback: "Copy the command manually.",
       viewReleaseNotes: "View release notes",
-      close: "Close",
     },
   },
   desktopUpdate: {
@@ -112,7 +101,6 @@ export const app = {
     blocked: "Update requires attention",
     unsupported: "View update options",
     check: "Check for updates",
-    retry: "Retry",
     download: "Download update",
     downloadsLink: "Desktop downloads",
     unavailableTitle: "Desktop update unavailable",
@@ -160,8 +148,7 @@ export const app = {
     title: "Welcome to overtchat",
     description: "A couple of quick steps to get your workspace running.",
     firstModelTitle: "Add your first model",
-    firstModelDescription:
-      "Anthropic, Google Gemini, or any OpenAI-compatible endpoint.",
+    firstModelDescription: "Anthropic, Google Gemini, or any OpenAI-compatible endpoint.",
     addModel: "Add model",
     addAnother: "Add another",
     inviteTitle: "Invite a teammate",
@@ -174,15 +161,12 @@ export const app = {
   alertsIntro: {
     blocked:
       "Your browser is blocking notifications for this site. Allow them there, then turn on Alerts in Settings.",
-    promptWithAgents:
-      "Get notified when an agent needs you or a reply is ready.",
+    promptWithAgents: "Get notified when an agent needs you or a reply is ready.",
     prompt: "Get notified when a reply is ready.",
-    dismiss: "Dismiss",
-    notNow: "Not now",
     enable: "Enable notifications",
+    ariaLabel: "Alerts",
   },
   modelPicker: {
-    loading: "Loading…",
     selectModel: "Select model",
     noModels: "No models configured",
     triggerWithThinking: "{{label}}, thinking {{level}}",
@@ -209,5 +193,82 @@ export const app = {
     closeModelSearch: "Close model search",
     closeSearch: "Close search",
     searchModels: "Search models",
+    searchPlaceholder: "Search models",
+    searchInputLabel: "Search models",
+  },
+  mobile: {
+    welcome: {
+      tagline: "Your chat. Your endpoint. Your data.",
+      getStarted: "Get started",
+    },
+    server: {
+      title: "Connect to a server",
+      subtitle: "Enter your server address or scan it from the web app.",
+      urlLabel: "Server URL",
+      connect: "Connect",
+      connecting: "Connecting…",
+      scanQrCode: "Scan QR code",
+      errors: {
+        emptyUrl: "Enter a server URL.",
+        invalidUrl: "Enter a valid HTTP or HTTPS server address.",
+        httpStatus: "Server returned {{status}}.",
+        notOvertChat: "That doesn't look like an overtchat server.",
+        unreachable:
+          "Couldn’t reach this server. Check the address and your connection, then retry.",
+      },
+    },
+    qrScanner: {
+      title: "Scan server QR code",
+      instructions: "On the web, open your account menu → Get the mobile app → Connect your phone.",
+      footer: "Scan to connect and sign in.",
+      checkingPermission: "Checking camera permission…",
+      permissionPrompt:
+        "Allow camera access to scan your server’s QR code. You can also go back and enter the address manually.",
+      allowCamera: "Allow camera",
+      openSettings: "Open settings",
+      errors: {
+        checkPermission:
+          "Could not check camera permission. Try again or enter the server address manually.",
+        notServerAddress:
+          "That code isn’t a server address. Open Connect your phone in the web app’s mobile dialog and scan that code.",
+        localOnly:
+          "This address only works on the server. Run overtchat setup and choose “On my home network”, then open the network address to scan again.",
+        cameraMount: "Could not start the camera. Try again or enter the server address manually.",
+        openPermissions:
+          "Could not open camera permissions. Enable camera access in your device settings or enter the address manually.",
+      },
+    },
+    errorBoundary: {
+      title: "Something went wrong",
+      body: "This screen couldn't be shown. If it keeps happening, update the app.",
+      goBack: "Go back",
+    },
+    selectionSheet: {
+      closeLabel: "Close {{title}}",
+      searchPlaceholder: "Search",
+      noMatches: "No matching options",
+      searchLabel: "Search",
+    },
+    notifications: {
+      serverUpdateRequired: "Update your OvertChat server to enable notifications.",
+      saveFailed: "Couldn't save notification settings on your server. Try again.",
+      channels: {
+        chatResponses: "Chat responses",
+        agentActivity: "Agent activity",
+        signInRequests: "Sign-in requests",
+      },
+      permissionDisabled:
+        "Notifications are disabled in your phone's settings. Enable them there, then try again.",
+      notConfigured: "This app build isn't configured for push notifications.",
+      registerFailed:
+        "Couldn't register for push notifications. Check your connection and the app's push configuration.",
+      introTitle: "Know when it’s ready",
+      introBody:
+        "Get notified when your response is ready, when an agent needs you or finishes, or when someone signs in to your account.",
+      enableFailedTitle: "Couldn't enable notifications",
+      enableFailedFallback: "Try again in Settings → Notifications.",
+      updateFailed: "Couldn't update notifications.",
+      syncFailed: "Couldn't sync notifications.",
+    },
   },
 } as const;

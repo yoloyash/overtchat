@@ -16,6 +16,7 @@ import {
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { buildSourceLookup } from "@/lib/chat/citations";
@@ -77,6 +78,7 @@ function MessageBubbleView({
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const preferences = useChatPreferences();
   const stats = preferences.messageStats ? readMessageStats(message) : null;
   const [copied, setCopied] = useState(false);
@@ -320,16 +322,16 @@ function MessageBubbleView({
           >
             {[
               stats.totalTokens !== undefined
-                ? `${stats.totalTokens.toLocaleString()} tokens`
+                ? t("chat.usage.tokensCount", { count: stats.totalTokens.toLocaleString() })
                 : undefined,
               stats.responseTokens !== undefined
-                ? `${stats.responseTokens.toLocaleString()} output`
+                ? t("chat.mobile.stats.outputTokens", { count: stats.responseTokens.toLocaleString() })
                 : undefined,
               stats.tps !== undefined
-                ? `${stats.tps.toFixed(1)} tok/s`
+                ? t("chat.stats.tpsValue", { value: stats.tps.toFixed(1) })
                 : undefined,
               stats.ttftMs !== undefined
-                ? `${(stats.ttftMs / 1000).toFixed(2)}s to first token`
+                ? t("chat.mobile.stats.ttft", { seconds: (stats.ttftMs / 1000).toFixed(2) })
                 : undefined,
             ]
               .filter(Boolean)
@@ -337,6 +339,7 @@ function MessageBubbleView({
           </Text>
         )}
         {streaming && !hasAnyText ? (
+          // eslint-disable-next-line i18next/no-literal-string -- Streaming cursor glyph
           <Text style={{ color: colors.mutedForeground }}>▍</Text>
         ) : null}
         {showActions ? (

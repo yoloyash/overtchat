@@ -140,7 +140,7 @@ export function ResetPasswordDialog({
                 disabled={submitting}
                 onClick={onClose}
               >
-                {t("users.resetPasswordDialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting

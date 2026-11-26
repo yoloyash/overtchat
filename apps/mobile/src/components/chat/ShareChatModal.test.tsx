@@ -3,6 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -161,9 +163,11 @@ async function click(label: string) {
 async function render(open = true) {
   await act(async () =>
     root.render(
-      <QueryClientProvider client={qc}>
-        <ShareChatModal chatId="chat/id" open={open} onClose={() => {}} />
-      </QueryClientProvider>,
+      <I18nextProvider i18n={i18n}>
+        <QueryClientProvider client={qc}>
+          <ShareChatModal chatId="chat/id" open={open} onClose={() => {}} />
+        </QueryClientProvider>
+      </I18nextProvider>,
     ),
   );
   await settle();

@@ -98,7 +98,7 @@ export function AddUserDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {t("users.addDialog.title")}
+            {t("users.page.addUser")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {provider
@@ -164,7 +164,7 @@ export function AddUserDialog({
               >
                 <SelectTrigger
                   id="new-role"
-                  aria-label={t("users.addDialog.roleLabel")}
+                  aria-label={t("users.addDialog.roleAriaLabel")}
                   className="w-full"
                 >
                   <SelectValue>{t(`users.roles.${role}`)}</SelectValue>
@@ -187,12 +187,12 @@ export function AddUserDialog({
                 size="sm"
                 onClick={() => onOpenChange(false)}
               >
-                {t("users.addDialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting
-                  ? t("users.addDialog.creating")
-                  : t("users.addDialog.create")}
+                  ? t("common.states.creating")
+                  : t("common.actions.create")}
               </Button>
             </SettingsActions>
           </form>

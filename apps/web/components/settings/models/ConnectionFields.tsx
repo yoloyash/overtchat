@@ -99,7 +99,7 @@ export function ConnectionFields({
   const provider = findProvider(draft.providerId);
   const providerName =
     provider?.id === "custom"
-      ? t("models.page.providerCustom")
+      ? t("models.providers.custom")
       : (provider?.label ?? providerLabel ?? draft.providerId);
   const requiresKey = provider?.requiresApiKey ?? false;
 
@@ -320,7 +320,7 @@ export function ConnectionFields({
                 {imageModel && id === "custom"
                   ? t("models.connection.customOpenAiCompatible")
                   : id === "custom"
-                    ? t("models.page.providerCustom")
+                    ? t("models.providers.custom")
                     : PROVIDERS[id].label}
               </SelectItem>
             ))}

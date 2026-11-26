@@ -55,7 +55,7 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
   const query = filter.trim().toLowerCase();
   const visibleChats = query
     ? projectChats.filter((chat) =>
-        (chat.title ?? t("projects.chats.untitled")).toLowerCase().includes(query),
+        (chat.title ?? t("common.states.untitled")).toLowerCase().includes(query),
       )
     : projectChats;
   // Keeps labels such as "5m ago" current while the page stays open.
@@ -170,7 +170,7 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
               <Trans
                 i18nKey="projects.chats.deleteDialog.description"
                 values={{
-                  title: deleting?.title?.trim() || t("projects.chats.untitled"),
+                  title: deleting?.title?.trim() || t("common.states.untitled"),
                 }}
                 components={{
                   title: <span className="font-medium text-foreground" />,
@@ -190,7 +190,7 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
                   />
                 }
               >
-                {t("projects.actions.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -199,8 +199,8 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
                 onClick={confirmDelete}
               >
                 {deleteMut.isPending
-                  ? t("projects.actions.deleting")
-                  : t("projects.actions.delete")}
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -227,7 +227,7 @@ function ProjectChatRow({
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const title = chat.title?.trim() || t("projects.chats.untitled");
+  const title = chat.title?.trim() || t("common.states.untitled");
 
   function commitRename() {
     const next = draft.trim();
@@ -353,18 +353,18 @@ function ProjectChatRow({
                 className={menuItemClass}
               >
                 <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>{t("projects.actions.rename")}</span>
+                <span>{t("common.actions.rename")}</span>
               </Menu.Item>
               <Menu.Item onClick={removeFromProject} className={menuItemClass}>
                 <FolderMinus className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>{t("projects.chats.removeFromProject")}</span>
+                <span>{t("projects.actions.removeFromProject")}</span>
               </Menu.Item>
               <Menu.Item
                 onClick={onDelete}
                 className={cn(menuItemClass, "text-destructive data-[highlighted]:text-destructive")}
               >
                 <Trash2 className="size-3.5 shrink-0" />
-                <span>{t("projects.actions.delete")}</span>
+                <span>{t("common.actions.delete")}</span>
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>

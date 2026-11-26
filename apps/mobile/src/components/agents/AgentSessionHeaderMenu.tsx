@@ -1,3 +1,6 @@
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { Keyboard, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -24,18 +27,19 @@ export type AgentSessionMenuInput = {
   onCompact: () => void;
   onUsage: () => void;
   onOpenWorkspace: () => void;
-  onCopy: (value: string, label: string) => void;
+  onCopy: (value: string, kind: "sessionId" | "workspacePath") => void;
 };
 
 /** The session menu's rows, in order, with their availability. */
 export function agentSessionMenuSections(
   input: AgentSessionMenuInput,
+  t: TFunction = i18n.t.bind(i18n),
 ): AgentMenuSection[] {
   const session: AgentMenuSection = { items: [] };
   if (input.renameSupported)
     session.items.push({
       key: "rename",
-      label: "Rename",
+      label: t("common.actions.rename"),
       icon: "pencil-outline",
       // Renaming is metadata, allowed mid-turn as on web.
       disabled: !input.ready || input.commandPending,
@@ -43,7 +47,7 @@ export function agentSessionMenuSections(
     });
   session.items.push({
     key: "compact",
-    label: "Compact context",
+    label: t("agents.session.compactContext"),
     icon: "sparkles-outline",
     disabled: !input.ready || input.busy || input.commandPending,
     onSelect: input.onCompact,
@@ -51,7 +55,7 @@ export function agentSessionMenuSections(
   if (input.usageSupported)
     session.items.push({
       key: "usage",
-      label: "Account usage",
+      label: t("agents.session.accountUsage"),
       icon: "speedometer-outline",
       disabled: !input.ready || input.busy || input.commandPending,
       onSelect: input.onUsage,
@@ -60,33 +64,49 @@ export function agentSessionMenuSections(
   if (input.workspaceKnown)
     workspace.items.push({
       key: "workspace",
-      label: "Open workspace",
+      label: t("agents.mobile.session.openWorkspace"),
       icon: "folder-open-outline",
       onSelect: input.onOpenWorkspace,
     });
   if (input.providerSessionId)
     workspace.items.push({
       key: "copy-session",
-      label: "Copy session ID",
+      label: t("agents.session.copySessionId"),
       icon: "copy-outline",
-      onSelect: () => input.onCopy(input.providerSessionId!, "Session ID"),
+      onSelect: () => input.onCopy(input.providerSessionId!, "sessionId"),
     });
   if (input.workspacePath)
     workspace.items.push({
       key: "copy-path",
-      label: "Copy workspace path",
+      label: t("agents.session.copyWorkspacePath"),
       icon: "copy-outline",
-      onSelect: () => input.onCopy(input.workspacePath!, "Workspace path"),
+      onSelect: () => input.onCopy(input.workspacePath!, "workspacePath"),
     });
   return [session, workspace];
 }
 
-export async function copyToClipboard(value: string, label: string) {
+export async function copyToClipboard(
+  value: string,
+  kind: "sessionId" | "workspacePath",
+) {
   try {
     await Clipboard.setStringAsync(value);
-    toastSuccess(`${label} copied`);
+    toastSuccess(
+      i18n.t(
+        kind === "sessionId"
+          ? "agents.session.sessionIdCopied"
+          : "agents.session.workspacePathCopied",
+      ),
+    );
   } catch (error) {
-    toastError(`Couldn't copy ${label.toLowerCase()}`, error);
+    toastError(
+      i18n.t(
+        kind === "sessionId"
+          ? "agents.mobile.session.copySessionIdFailed"
+          : "agents.mobile.session.copyWorkspacePathFailed",
+      ),
+      error,
+    );
   }
 }
 
@@ -102,6 +122,7 @@ export function AgentSessionHeaderMenu({
   title: string;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   const menu = useMeasuredPopoverAnchor();
   return (
@@ -109,7 +130,7 @@ export function AgentSessionHeaderMenu({
       <Pressable
         ref={menu.anchorRef}
         accessibilityRole="button"
-        accessibilityLabel="Session actions"
+        accessibilityLabel={t("agents.session.actions")}
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={() => {
@@ -125,10 +146,13 @@ export function AgentSessionHeaderMenu({
         from={menu.anchorRect}
         visible={menu.visible}
         title={title}
-        sections={agentSessionMenuSections({
-          ...input,
-          onCopy: (value, label) => void copyToClipboard(value, label),
-        })}
+        sections={agentSessionMenuSections(
+          {
+            ...input,
+            onCopy: (value, kind) => void copyToClipboard(value, kind),
+          },
+          t,
+        )}
         onClose={menu.close}
       />
     </>

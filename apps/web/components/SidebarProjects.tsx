@@ -117,7 +117,7 @@ function ProjectNode({
           to="/"
           search={{ projectId: project.id }}
           onClick={closeMobile}
-          aria-label={t("sidebar.projects.newChatIn", { name: project.name })}
+          aria-label={t("projects.actions.newChatIn", { name: project.name })}
           className={cn(
             "mr-0.5 rounded p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:p-2",
             motionClasses.hoverReveal,
@@ -130,7 +130,7 @@ function ProjectNode({
         <ul className="ml-5 flex flex-col gap-0.5 border-l pl-1">
           {project.chats.length === 0 ? (
             <li className="px-2 py-1 text-xs text-muted-foreground">
-              {t("sidebar.projects.noChatsYet")}
+              {t("sidebar.sections.noChatsYet")}
             </li>
           ) : (
             project.chats.map((c) => (
@@ -218,7 +218,7 @@ export function CreateProjectDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {t("sidebar.projects.createDialog.title")}
+            {t("sidebar.sections.newProject")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {t("sidebar.projects.createDialog.description")}
@@ -245,10 +245,10 @@ export function CreateProjectDialog({
                   onClose();
                 }}
               >
-                {t("sidebar.projects.createDialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending}>
-                {pending ? t("sidebar.projects.createDialog.creating") : t("sidebar.projects.createDialog.create")}
+                {pending ? t("common.states.creating") : t("common.actions.create")}
               </Button>
             </div>
           </form>

@@ -171,7 +171,7 @@ function PasswordSecurity({
           )}
           <Button type="submit" disabled={pwStatus === "submitting"}>
             {pwStatus === "submitting"
-              ? t("account.password.saving")
+              ? t("common.states.saving")
               : t("account.password.submit")}
           </Button>
         </SettingsActions>

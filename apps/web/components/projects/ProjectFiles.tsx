@@ -141,7 +141,7 @@ export function ProjectFilesCard({
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>{t("projects.files.loadError")}</span>
             <Button variant="ghost" size="sm" onClick={() => void refetch()}>
-              {t("projects.actions.tryAgain")}
+              {t("common.actions.tryAgain")}
             </Button>
           </div>
         ) : count === 0 && uploading.length === 0 ? (
@@ -154,7 +154,7 @@ export function ProjectFilesCard({
             <Plus /> {t("projects.files.addFiles")}
           </Button>
         ) : (
-          <ul aria-label={t("projects.files.listLabel")} className="max-h-80 space-y-0.5 overflow-y-auto">
+          <ul aria-label={t("projects.files.title")} className="max-h-80 space-y-0.5 overflow-y-auto">
             {files?.map((file) => (
               <li
                 key={file.uploadId}
@@ -216,7 +216,7 @@ export function ProjectFilesCard({
                   variant="ghost"
                   size="icon-sm"
                   aria-label={t("projects.files.removeFileLabel", { filename: file.filename })}
-                  title={t("projects.files.removeFromProject")}
+                  title={t("projects.actions.removeFromProject")}
                   className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                   disabled={removeMut.isPending}
                   onClick={() => remove(file)}
@@ -233,7 +233,7 @@ export function ProjectFilesCard({
               >
                 <CategoryIcon category={undefined} className="size-4 shrink-0" />
                 <span className="truncate">{name}</span>
-                <span className="ml-auto shrink-0 text-xs">{t("projects.files.uploading")}</span>
+                <span className="ml-auto shrink-0 text-xs">{t("common.states.uploading")}</span>
               </li>
             ))}
           </ul>

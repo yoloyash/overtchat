@@ -361,7 +361,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     <SettingsPage>
       <SettingsPageHeader
         title={
-          isEditing ? t("models.editor.editTitle") : t("models.editor.addTitle")
+          isEditing ? t("models.editor.editTitle") : t("models.page.addModel")
         }
         description={t("models.editor.description")}
         leading={
@@ -782,14 +782,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             variant="outline"
             render={<Link to="/settings/models" />}
           >
-            {t("models.editor.cancel")}
+            {t("common.actions.cancel")}
           </Button>
           <Button type="submit" disabled={!canSave}>
             {saving
-              ? t("models.editor.saving")
+              ? t("common.states.saving")
               : isEditing
-                ? t("models.editor.saveChanges")
-                : t("models.editor.addModel")}
+                ? t("common.actions.saveChanges")
+                : t("models.page.addModel")}
           </Button>
         </SettingsActions>
       </form>

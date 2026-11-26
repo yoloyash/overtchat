@@ -51,7 +51,7 @@ export function MiniSpeechPlayer({
                   to="/settings/services"
                   className="text-xs underline underline-offset-4"
                 >
-                  {t("chat.dictation.speechSettings")}
+                  {t("chat.speech.settings")}
                 </Link>
               )}
             </>
@@ -74,7 +74,7 @@ export function MiniSpeechPlayer({
                 aria-live="polite"
                 className="flex-1 px-2 text-xs text-muted-foreground"
               >
-                {loading ? t("chat.speech.loading") : t("chat.speech.streaming")}
+                {loading ? t("common.states.loading") : t("chat.speech.streaming")}
               </span>
             )}
             <AudioPlayerTimeDisplay showDuration={canSeek} />

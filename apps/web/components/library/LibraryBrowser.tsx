@@ -81,7 +81,7 @@ export function LibraryBrowser({ selected, attachedUrls, onToggle }: LibraryBrow
         ) : library.isError && !items.length ? (
           <div role="alert" className="space-y-3 py-12 text-center">
             <p className="text-sm text-muted-foreground">{t("library.browser.loadError")}</p>
-            <Button variant="outline" onClick={() => void library.refetch()}>{t("library.browser.tryAgain")}</Button>
+            <Button variant="outline" onClick={() => void library.refetch()}>{t("common.actions.tryAgain")}</Button>
           </div>
         ) : !items.length ? (
           <div role="status" className="flex flex-col items-center gap-3 py-12 text-center">
@@ -134,13 +134,13 @@ export function LibraryBrowser({ selected, attachedUrls, onToggle }: LibraryBrow
         )}
         {items.length > 0 && library.isError && (
           <div role="alert" className="mt-4 text-center text-sm">
-            {t("library.browser.refreshError")}{" "}<Button variant="ghost" onClick={() => void library.refetch()}>{t("library.browser.tryAgain")}</Button>
+            {t("library.browser.refreshError")}{" "}<Button variant="ghost" onClick={() => void library.refetch()}>{t("common.actions.tryAgain")}</Button>
           </div>
         )}
         {library.hasNextPage && (
           <div className="mt-5 text-center">
             <Button variant="outline" disabled={library.isFetching} onClick={() => void library.fetchNextPage()}>
-              {library.isFetchingNextPage ? t("library.browser.loadingMore") : t("library.browser.loadMore")}
+              {library.isFetchingNextPage ? t("common.states.loading") : t("library.browser.loadMore")}
             </Button>
           </div>
         )}

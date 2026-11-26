@@ -40,7 +40,7 @@ export type AgentWorkspaceProviderTarget = {
 export function agentHostLabel(
   host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
 ): string {
-  return host.sshAlias || host.name || i18n.t("connections.dialog.thisServer");
+  return host.sshAlias || host.name || i18n.t("connections.hosts.thisServer");
 }
 
 export function agentTargetKey(target: AgentDiscoveryTarget): string {

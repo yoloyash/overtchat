@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -5,20 +6,18 @@ import { useTheme } from "@/lib/theme";
 
 export default function WelcomeScreen() {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
         <View style={styles.brand}>
-          <Text
-            style={[styles.wordmark, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
-          >
-            overtchat
-          </Text>
+          {/* eslint-disable-next-line i18next/no-literal-string -- product name */}
+          <Text style={[styles.wordmark, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}>overtchat</Text>
           <Text
             style={[styles.tagline, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}
           >
-            Your chat. Your endpoint. Your data.
+            {t("app.mobile.welcome.tagline")}
           </Text>
         </View>
 
@@ -41,7 +40,7 @@ export default function WelcomeScreen() {
               { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
             ]}
           >
-            Get started
+            {t("app.mobile.welcome.getStarted")}
           </Text>
         </Pressable>
       </View>

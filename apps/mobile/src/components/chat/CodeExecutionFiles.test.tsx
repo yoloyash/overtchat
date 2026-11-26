@@ -2,6 +2,8 @@ import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import type { CodeExecutionFile } from "@overtchat/shared";
 
 const mocks = vi.hoisted(() => ({
@@ -69,7 +71,11 @@ beforeEach(() => {
     vi.stubGlobal(key, value);
   }
   container = window.document.getElementById("root") as unknown as HTMLElement;
-  root = createRoot(container);
+  const reactRoot = createRoot(container);
+  root = {
+    render: (node) => reactRoot.render(<I18nextProvider i18n={i18n}>{node}</I18nextProvider>),
+    unmount: () => reactRoot.unmount(),
+  };
 });
 
 afterEach(async () => {

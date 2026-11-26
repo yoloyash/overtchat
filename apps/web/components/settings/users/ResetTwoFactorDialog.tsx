@@ -107,7 +107,7 @@ export function ResetTwoFactorDialog({
                 disabled={submitting}
                 onClick={onClose}
               >
-                {t("users.resetTwoFactorDialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting

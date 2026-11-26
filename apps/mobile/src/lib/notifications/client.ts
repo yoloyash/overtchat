@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import * as Crypto from "expo-crypto";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -127,8 +128,8 @@ async function updateServer(
     if (!response.ok && !(response.status === 401 && !enabled)) {
       throw new Error(
         response.status === 404
-          ? "Update your OvertChat server to enable notifications."
-          : "Couldn't save notification settings on your server. Try again.",
+          ? i18n.t("app.mobile.notifications.serverUpdateRequired")
+          : i18n.t("app.mobile.notifications.saveFailed"),
       );
     }
   } finally {
@@ -138,17 +139,17 @@ async function updateServer(
 async function permitted(request: boolean) {
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("chat-responses", {
-      name: "Chat responses",
+      name: i18n.t("app.mobile.notifications.channels.chatResponses"),
       importance: Notifications.AndroidImportance.HIGH,
     });
     // The channel id predates alerts for requests and failures; its name says
     // what it carries now.
     await Notifications.setNotificationChannelAsync("agent-idle", {
-      name: "Agent activity",
+      name: i18n.t("app.mobile.notifications.channels.agentActivity"),
       importance: Notifications.AndroidImportance.HIGH,
     });
     await Notifications.setNotificationChannelAsync("sign-in-requests", {
-      name: "Sign-in requests",
+      name: i18n.t("app.mobile.notifications.channels.signInRequests"),
       importance: Notifications.AndroidImportance.HIGH,
     });
   }
@@ -171,26 +172,20 @@ async function register(
   if (enabled) {
     if (!(await permitted(requestPermission))) {
       await updateServer(scope, next, false);
-      throw new Error(
-        "Notifications are disabled in your phone's settings. Enable them there, then try again.",
-      );
+      throw new Error(i18n.t("app.mobile.notifications.permissionDisabled"));
     }
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ??
       Constants.easConfig?.projectId;
     if (!projectId)
-      throw new Error(
-        "This app build isn't configured for push notifications.",
-      );
+      throw new Error(i18n.t("app.mobile.notifications.notConfigured"));
     try {
       next = {
         ...next,
         token: (await Notifications.getExpoPushTokenAsync({ projectId })).data,
       };
     } catch {
-      throw new Error(
-        "Couldn't register for push notifications. Check your connection and the app's push configuration.",
-      );
+      throw new Error(i18n.t("app.mobile.notifications.registerFailed"));
     }
   }
   if (paused.has(key(scope))) return;
@@ -218,12 +213,12 @@ export function showNotificationIntro(scope: NotificationScope) {
   const settings = notificationSettings(scope);
   if (settings.chats || settings.agents || settings.signIns) return;
   Alert.alert(
-    "Know when it’s ready",
-    "Get notified when your response is ready, when an agent needs you or finishes, or when someone signs in to your account.",
+    i18n.t("app.mobile.notifications.introTitle"),
+    i18n.t("app.mobile.notifications.introBody"),
     [
-      { text: "Not now", style: "cancel" },
+      { text: i18n.t("common.actions.notNow"), style: "cancel" },
       {
-        text: "Enable notifications",
+        text: i18n.t("app.alertsIntro.enable"),
         onPress: () => {
           // A dialog may outlive its login; never register a previous identity.
           if (
@@ -239,10 +234,10 @@ export function showNotificationIntro(scope: NotificationScope) {
           }).catch((error: unknown) => {
             if (active && key(active.scope) === key(scope)) {
               Alert.alert(
-                "Couldn't enable notifications",
+                i18n.t("app.mobile.notifications.enableFailedTitle"),
                 error instanceof Error
                   ? error.message
-                  : "Try again in Settings → Notifications.",
+                  : i18n.t("app.mobile.notifications.enableFailedFallback"),
               );
             }
           });
@@ -266,7 +261,7 @@ export function changeNotificationPreferences(
         key(scope),
         error instanceof Error
           ? error.message
-          : "Couldn't update notifications.",
+          : i18n.t("app.mobile.notifications.updateFailed"),
       );
       throw error;
     } finally {
@@ -286,7 +281,9 @@ export function syncNotifications(scope: NotificationScope) {
     } catch (error) {
       errors.set(
         key(scope),
-        error instanceof Error ? error.message : "Couldn't sync notifications.",
+        error instanceof Error
+          ? error.message
+          : i18n.t("app.mobile.notifications.syncFailed"),
       );
     } finally {
       emit();

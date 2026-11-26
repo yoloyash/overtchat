@@ -192,7 +192,7 @@ export function ProfileForm({
             type="submit"
             disabled={status === "submitting" || !changed}
           >
-            {status === "submitting" ? t("profile.saving") : t("profile.save")}
+            {status === "submitting" ? t("common.states.saving") : t("profile.save")}
           </Button>
         </SettingsActions>
       </form>

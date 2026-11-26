@@ -5,23 +5,20 @@ export const models = {
       "Manage chat, image, and background task models. One image model can be enabled at a time.",
     addModel: "Add model",
     searchPlaceholder: "Search models",
-    searchLabel: "Search models",
     configuredCount: "{{count}} configured",
     empty: "No models configured.",
     addFirstModel: "Add your first model",
     noMatches: "No models match <query>{{query}}</query>.",
     reorderClearSearch: "Clear search to change model order.",
     reorderHint: "Use the arrows to set the model order for everyone.",
-    providerCustom: "Custom",
+    searchLabel: "Search models",
   },
   backgroundTasks: {
     title: "Background tasks",
-    description:
-      "Choose how lightweight model work is handled across this server.",
+    description: "Choose how lightweight model work is handled across this server.",
     taskModelTitle: "Task model",
     taskModelDescription:
       "Used to generate chat titles. A fast, inexpensive, non-reasoning model works best.",
-    taskModelLabel: "Task model",
     sameAsChatModel: "Same as chat model",
     notInChat: "Not in chat",
   },
@@ -36,9 +33,7 @@ export const models = {
     off: "Off",
     disableLabel: "Disable {{label}}",
     enableLabel: "Enable {{label}}",
-    edit: "Edit",
     editLabel: "Edit {{label}}",
-    delete: "Delete",
     deleteLabel: "Delete {{label}}",
   },
   deleteDialog: {
@@ -47,9 +42,6 @@ export const models = {
       "<name>{{name}}</name> will be removed from chat. Existing chats keep their messages.",
     descriptionTaskModel:
       "<name>{{name}}</name> will be removed from chat. Existing chats keep their messages. Background tasks will return to using the active chat model.",
-    cancel: "Cancel",
-    delete: "Delete",
-    deleting: "Deleting…",
   },
   toast: {
     reorderFailed: "Couldn't save model order",
@@ -78,12 +70,10 @@ export const models = {
     testConnection: "Test connection",
     connected: "Connected",
     elapsedMs: "{{elapsedMs}}ms",
-    elapsedMsWithTokens:
-      "{{elapsedMs}}ms · {{inputTokens}} in / {{outputTokens}} out",
+    elapsedMsWithTokens: "{{elapsedMs}}ms · {{inputTokens}} in / {{outputTokens}} out",
   },
   editor: {
     editTitle: "Edit model",
-    addTitle: "Add model",
     description: "Configure a model that everyone on this server can use.",
     backLabel: "Back to models",
     modelTypeSection: "Model type",
@@ -93,8 +83,7 @@ export const models = {
     typeChat: "Chat",
     typeImage: "Image",
     connectionTitle: "Connection",
-    connectionDescription:
-      "Provider, credentials, model discovery, and connectivity.",
+    connectionDescription: "Provider, credentials, model discovery, and connectivity.",
     headersLabel: "Request headers",
     headersDescription:
       "Extra HTTP headers for gateways that need them. <code>{{placeholder}}</code> in a value becomes the conversation's ID.",
@@ -111,17 +100,14 @@ export const models = {
       "Allow tools such as web search. Custom servers rarely report this reliably, so use Test connection to verify the served template and parser.",
     toolCallingDisableLabel: "Disable tool calling",
     toolCallingEnableLabel: "Enable tool calling",
-    testConnectionTitle: "Test connection",
     testConnectionWithTools:
       "Send a short request and verify tool calling with the current connection settings.",
-    testConnectionTextOnly:
-      "Send a short text request with the current connection settings.",
+    testConnectionTextOnly: "Send a short text request with the current connection settings.",
     imageAvailabilityTitle: "Image availability",
     imageAvailabilityDescription:
       "One image model can be enabled at a time. Enabling this model switches off the previous image model.",
     chatAvailabilityTitle: "Chat availability",
-    chatAvailabilityDescription:
-      "How this model appears to people using chat.",
+    chatAvailabilityDescription: "How this model appears to people using chat.",
     displayNameTitle: "Display name",
     displayNameImageDescription: "Shown in model settings.",
     displayNameChatDescription: "Shown in the chat model picker.",
@@ -136,54 +122,39 @@ export const models = {
     enabledImageDescription:
       "Makes image generation and editing available to chats with tool calling enabled.",
     availableInChatTitle: "Available in chat",
-    availableInChatDescription:
-      "Turn off to keep this model saved without showing it in chat.",
+    availableInChatDescription: "Turn off to keep this model saved without showing it in chat.",
     disableModelLabel: "Disable model",
     enableModelLabel: "Enable model",
     usageCostTitle: "Usage cost",
-    usageCostOpenRouter:
-      "Chat usage records each image at the charge OpenRouter reports with it.",
+    usageCostOpenRouter: "Chat usage records each image at the charge OpenRouter reports with it.",
     usageCostCustom:
       "Estimates image cost from the token usage the backend reports with each image. Images stay unpriced when it reports none.",
     usageCostDefault:
       "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count.",
-    usageCostOpenRouterNotice:
-      "No rates are needed for OpenRouter image models.",
-    cancel: "Cancel",
-    saving: "Saving…",
-    saveChanges: "Save changes",
-    addModel: "Add model",
-    perUserSaveFirst:
-      "Save this model, then set each person's own key or endpoint under People.",
+    usageCostOpenRouterNotice: "No rates are needed for OpenRouter image models.",
+    perUserSaveFirst: "Save this model, then set each person's own key or endpoint under People.",
     errors: {
-      invalidProviderOptions:
-        "Provider options must be a valid JSON object: {{error}}",
+      invalidProviderOptions: "Provider options must be a valid JSON object: {{error}}",
       invalidJson: "Invalid JSON",
-      invalidImagePricing:
-        "Enter input and output rates as nonnegative numbers.",
-      invalidChatPricing:
-        "Enter all four pricing rates as nonnegative numbers.",
-      updateAppForProvider:
-        "Update the app to edit models that use {{provider}}.",
+      invalidImagePricing: "Enter input and output rates as nonnegative numbers.",
+      invalidChatPricing: "Enter all four pricing rates as nonnegative numbers.",
+      updateAppForProvider: "Update the app to edit models that use {{provider}}.",
       invalidInput: "Invalid input",
       tooManyHeaders: "A model can send at most {{max}} request headers",
       emptyHeaderName: "Request header names cannot be empty",
-      invalidHeaderName: '"{{name}}" is not a valid request header name',
-      reservedHeaderName:
-        "The {{name}} request header is set by the app and cannot be changed",
+      invalidHeaderName: "\"{{name}}\" is not a valid request header name",
+      reservedHeaderName: "The {{name}} request header is set by the app and cannot be changed",
       duplicateHeaderName: "The {{name}} request header is listed twice",
       missingHeaderValue: "The {{name}} request header needs a value",
       headerValueTooLong: "The {{name}} request header value is too long",
       invalidHeaderValue:
         "The {{name}} request header value has characters HTTP headers cannot carry",
-      loadDefaultModelFailed: "Couldn't load default model",
-      saveDefaultModelFailed: "Couldn't save default model",
     },
+    testConnectionTitle: "Test connection",
   },
   connection: {
     providerTitle: "Provider",
-    providerDescription:
-      "Selects model discovery, authentication, and runtime behavior.",
+    providerDescription: "Selects model discovery, authentication, and runtime behavior.",
     customOpenAiCompatible: "Custom (OpenAI-compatible)",
     apiFormatTitle: "API format",
     apiFormatAutoDescription: "Choose the protocol exposed by this endpoint.",
@@ -212,8 +183,6 @@ export const models = {
     modelImageDescription: "Choose an image model or enter its ID manually.",
     modelChatDescription: "Choose a fetched model or enter an id.",
     fetchedModelsLabel: "Fetched models",
-    searchModelsPlaceholder: "Search models",
-    searchModelsLabel: "Search models",
     noMatchingModels: "No matching models.",
     refresh: "Refresh",
     fetch: "Fetch",
@@ -227,18 +196,18 @@ export const models = {
     chooseFetchedModel: "Choose fetched model",
     manualModelNotice:
       "The current model id was not returned by the endpoint, so it is being kept as a manual entry.",
+    searchModelsPlaceholder: "Search models",
+    searchModelsLabel: "Search models",
   },
   customImage: {
     title: "Image API settings",
-    description:
-      "Connect an OpenAI-compatible Images API and configure generation and editing.",
+    description: "Connect an OpenAI-compatible Images API and configure generation and editing.",
     generationSizeTitle: "Generation size",
     generationSizeDescription:
       "Use a size supported by your backend, such as 512x512. Leave blank to use its default. Chat suggestions cannot override this size.",
     generationSizePlaceholder: "Backend default",
     responseFormatTitle: "Response format",
-    responseFormatDescription:
-      "URL responses must contain an inline image data URL.",
+    responseFormatDescription: "URL responses must contain an inline image data URL.",
     responseFormatBase64: "Base64 (b64_json)",
     responseFormatUrl: "Data URL (url)",
     supportsEditingTitle: "Supports image editing",
@@ -250,7 +219,7 @@ export const models = {
     editingSizePlaceholder: "Same as generation",
     extraParamsTitle: "Extra request parameters",
     extraParamsDescription:
-      'Optional JSON object, such as {"seed": 7}. Use this for backend-specific quality or sampling settings. Model, prompt, size, response format, and image count are managed separately.',
+      "Optional JSON object, such as {\"seed\": 7}. Use this for backend-specific quality or sampling settings. Model, prompt, size, response format, and image count are managed separately.",
     invalidJsonObject: "Enter a JSON object.",
     invalidValidJsonObject: "Enter a valid JSON object.",
     reservedExtraParam: "{{key}} cannot be set in extra image parameters.",
@@ -258,8 +227,7 @@ export const models = {
   },
   advanced: {
     title: "Advanced",
-    description:
-      "Optional prompt and provider-specific behavior for this model.",
+    description: "Optional prompt and provider-specific behavior for this model.",
     hide: "Hide",
     show: "Show",
     contextWindowTitle: "Context window",
@@ -270,11 +238,9 @@ export const models = {
     systemPromptDescription: "Optional instructions sent before each chat.",
     systemPromptPlaceholder: "You are a helpful assistant…",
     providerOptionsTitle: "Provider options",
-    providerOptionsDescription:
-      "Optional AI SDK options for the selected provider.",
+    providerOptionsDescription: "Optional AI SDK options for the selected provider.",
     providerOptionsAriaLabel: "Provider options JSON",
-    providerOptionsHint:
-      "Must be a JSON object using the selected provider's AI SDK option keys.",
+    providerOptionsHint: "Must be a JSON object using the selected provider's AI SDK option keys.",
     providerOptionsMustBeObject: "Must be a JSON object",
     pricing: {
       title: "Pricing",
@@ -297,19 +263,16 @@ export const models = {
   },
   thinking: {
     title: "Thinking",
-    description:
-      "Thinking levels offered in chat and the request fields each level sends.",
+    description: "Thinking levels offered in chat and the request fields each level sends.",
     levelsTitle: "Levels",
-    levelsCustomDescription:
-      "Custom levels replace catalog and detected values.",
+    levelsCustomDescription: "Custom levels replace catalog and detected values.",
     levelsKnownDescription: "Known levels: {{levels}} (default {{defaultLevel}}).",
     levelsUnknownDescription:
       "No thinking levels are known for this model. Choose Custom to configure them.",
     modeAutomatic: "Automatic",
     modeCustom: "Custom",
     presetsTitle: "Presets",
-    presetsDescription:
-      "Replace the request fields with a common convention.",
+    presetsDescription: "Replace the request fields with a common convention.",
     presetNone: "None",
     presetDescriptions: {
       enable_thinking: "On/Off through chat_template_kwargs.enable_thinking",
@@ -321,8 +284,7 @@ export const models = {
     requestFieldsDescription:
       "One entry per level: on, off, minimal, low, medium, high, xhigh, or max. Each entry is merged into the request body; null removes a field. An empty object hides the thinking selector.",
     requestFieldsAriaLabel: "Thinking request fields JSON",
-    requestFieldsMustBeObject:
-      "Must be a JSON object whose values are objects.",
+    requestFieldsMustBeObject: "Must be a JSON object whose values are objects.",
     defaultLevelTitle: "Default level",
     defaultLevelDescription:
       "What the server does when no thinking field is sent. Chat marks it as the default.",
@@ -330,7 +292,6 @@ export const models = {
     checkTitle: "Check",
     checkDescription:
       "Renders the prompt template for each level without generating a reply. Fields the server handles outside the template aren't reflected.",
-    checking: "Checking…",
     checkWithServer: "Check with server",
     useAsDefault: "Use {{level}} as default",
     checkUnavailable:
@@ -338,8 +299,7 @@ export const models = {
     checkRejected: "The server rejected the fields for {{levels}}.",
     checkIdentical: "{{levels}} render the same prompt.",
     checkDistinct: "Each level renders a distinct prompt.",
-    checkMatchesDefault:
-      "Without thinking fields, the server renders like {{level}}.",
+    checkMatchesDefault: "Without thinking fields, the server renders like {{level}}.",
     levels: {
       on: "On",
       off: "Off",
@@ -350,14 +310,13 @@ export const models = {
       xhigh: "Extra high",
       max: "Max",
     },
-    unknownLevel: 'Unknown thinking level "{{level}}". Use {{levels}}.',
-    missingOnOffOrEffort:
-      "Configure both on and off, or at least one effort level.",
+    unknownLevel: "Unknown thinking level \"{{level}}\". Use {{levels}}.",
+    missingOnOffOrEffort: "Configure both on and off, or at least one effort level.",
     missingDefaultLevel: "Choose the server's default thinking level.",
-    defaultLevelNotConfigured:
-      "The default thinking level must be one of the configured levels.",
+    defaultLevelNotConfigured: "The default thinking level must be one of the configured levels.",
     onOnlyDefaultWithEfforts:
-      'With effort levels configured, "on" is only offered as the default level.',
+      "With effort levels configured, \"on\" is only offered as the default level.",
+    checking: "Checking…",
   },
   userCredentials: {
     title: "People",
@@ -377,14 +336,84 @@ export const models = {
     apiKeyPlaceholder: "Leave empty to use the model's key",
     endpointLabel: "Endpoint for {{who}}",
     endpointPlaceholder: "Leave empty to use {{baseUrl}}",
-    cancel: "Cancel",
-    save: "Save",
     saveLabel: "Save credential for {{who}}",
-    remove: "Remove",
     removeLabel: "Remove credential for {{who}}",
     change: "Change",
     changeLabel: "Change credential for {{who}}",
     setUp: "Set up",
     setUpLabel: "Set up credential for {{who}}",
+  },
+  mobile: {
+    validation: {
+      nameAndModelRequired: "Enter a display name and model ID.",
+      invalidEndpoint: "Use an HTTP or HTTPS endpoint.",
+      apiKeyRequired: "Enter the provider API key.",
+      providerOptionsObject: "Provider options must be a JSON object.",
+      invalidContextWindow: "Context window must be a positive integer.",
+      invalidPricing: "Pricing must contain non-negative numbers.",
+    },
+    list: {
+      availableTitle: "Available models",
+      doneReorderingLabel: "Done reordering models",
+      reorderLabel: "Reorder models",
+      reorder: "Reorder",
+      savingOrder: "Saving order…",
+      reorderHint:
+        "Use the arrows to set the model order for everyone. Changes save automatically.",
+      sectionDescription: "Open a model to edit, test, or change availability.",
+      rowDetailChat: "{{provider}} · Chat",
+      rowDetailImage: "{{provider}} · Image",
+      statusEnabled: "Enabled",
+      statusDisabled: "Disabled",
+      statusEnabledTask: "Enabled · Task model",
+      statusDisabledTask: "Disabled · Task model",
+      noMatchesTitle: "No matching models",
+      noMatchesDetail: "Try another name or provider.",
+      emptyDetail: "Add your first chat or image model.",
+      backgroundTasksDescription:
+        "The task model generates chat titles for everyone on this server.",
+      searchTaskModel: "Search task model",
+      emptyTitle: "No models configured",
+    },
+    editor: {
+      notFound: "Model no longer exists.",
+      availabilityTitle: "Availability",
+      imageAvailabilityDescription: "Enabling this image model disables the other image model.",
+      connectionDescription: "Configured models are shared by everyone on this server.",
+      endpointHint: "Address reachable from your OvertChat server.",
+      discoverModels: "Discover models",
+      noModelsDiscovered: "No models found. Enter a model ID manually.",
+      discoveredModels: "Discovered models",
+      searchProvider: "Search provider",
+      searchDiscoveredModels: "Search discovered models",
+      modelIdLabel: "Model ID",
+      hideAdvanced: "Hide advanced settings",
+      showAdvanced: "Show advanced settings",
+      contextWindowHint: "Leave blank for automatic detection.",
+      contextWindowHintDetected: "Leave blank for automatic detection ({{tokens}} tokens).",
+      providerOptionsLabel: "Provider options (JSON)",
+      pricing: {
+        input: "Input price",
+        output: "Output price",
+        cacheRead: "Cache read price",
+        cacheWrite: "Cache write price",
+        unitHint: "USD per 1 million tokens",
+      },
+      imageOptionsTitle: "Image options",
+      imageOptionsDescription: "Size, response format, editing support, and extra request fields.",
+      connectedInMs: "Connected in {{elapsedMs}} ms.",
+      save: "Save model",
+      manageTitle: "Manage model",
+      deleteAction: "Delete model",
+      deleteMessage:
+        "{{label}} will no longer be available for new requests. Existing chats remain.",
+    },
+  },
+  preferences: {
+    loadDefaultFailed: "Couldn't load default model",
+    saveDefaultFailed: "Couldn't save default model",
+  },
+  providers: {
+    custom: "Custom",
   },
 } as const;

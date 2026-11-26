@@ -123,7 +123,7 @@ function useScheduledRunAlerts(
           title,
           description: run.taskName,
           icon: <CalendarClock className="size-4" />,
-          action: { label: t("scheduled.alerts.open"), onClick: open },
+          action: { label: t("common.actions.open"), onClick: open },
         });
       if (visible && document.hasFocus()) {
         showToast();

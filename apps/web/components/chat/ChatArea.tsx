@@ -243,8 +243,8 @@ export function ChatArea({
     ?.find((chat) => chat.id === chatId)
     ?.title?.trim();
   const headerTitle = temporary
-    ? t("chat.header.temporaryChat")
-    : persistedTitle || (isNew ? null : t("chat.header.untitled"));
+    ? t("chat.empty.temporaryTitle")
+    : persistedTitle || (isNew ? null : t("common.states.untitled"));
   const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
     () =>
       initialQuery?.trim()
@@ -949,7 +949,7 @@ export function ChatArea({
       voiceUnavailableReason={
         !configured
           ? modelLoading
-            ? t("chat.composer.unavailable.loadingModel")
+            ? t("chat.composer.loadingModelPlaceholder")
             : t("chat.composer.unavailable.configureModelBeforeVoice")
           : voiceCapability?.unavailableReason === "stt-unavailable"
             ? t("chat.composer.unavailable.sttDisabled")
@@ -971,7 +971,7 @@ export function ChatArea({
                   ? t("chat.composer.unavailable.waitForResponse")
                   : !configured
                     ? modelLoading
-                      ? t("chat.composer.unavailable.loadingModel")
+                      ? t("chat.composer.loadingModelPlaceholder")
                       : t("chat.composer.unavailable.configureModelFirst")
                     : messages.length === 0
                       ? t("chat.composer.unavailable.startConversationFirst")

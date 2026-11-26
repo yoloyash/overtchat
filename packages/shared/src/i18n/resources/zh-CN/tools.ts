@@ -10,15 +10,13 @@ export const tools: Translation["tools"] = {
     description: "已禁用的工具不会包含在对话请求中。",
     webSearch: {
       title: "联网搜索",
-      description:
-        "允许支持的模型搜索网络并抓取网页。禁用此项也会关闭对话中的搜索操作。",
+      description: "允许支持的模型搜索网络并抓取网页。禁用此项也会关闭对话中的搜索操作。",
       toggleLabel: "启用联网搜索",
     },
   },
   interactiveUi: {
     title: "交互式界面",
-    description:
-      "支持的模型可通过 OpenUI 渲染交互式图表、表格、表单和卡片。推荐使用按需加载。",
+    description: "支持的模型可通过 OpenUI 渲染交互式图表、表格、表单和卡片。推荐使用按需加载。",
     toolAccessTitle: "工具调用方式",
     toolAccessDescription:
       "“按需加载”会在消息需要界面、或你从 + 菜单或 /openui 请求界面时才加载 OpenUI 指令。“始终可用”会为每次请求增加约 6,800 个 token。",
@@ -30,8 +28,7 @@ export const tools: Translation["tools"] = {
   },
   connectors: {
     title: "连接器",
-    description:
-      "连接你自己的账号，以便模型在对话中使用。推荐使用按需加载。",
+    description: "连接你自己的账号，以便模型在对话中使用。推荐使用按需加载。",
     loading: "正在加载连接器…",
     loadError: "无法加载连接器。",
     status: {
@@ -39,11 +36,9 @@ export const tools: Translation["tools"] = {
       connected: "已连接",
     },
     google: {
-      unconfiguredAdmin: "先为此服务器设置 Google 访问权限，用户才能连接。",
-      unconfiguredUser:
-        "此服务器尚未设置。请联系管理员配置 Google 访问权限。",
-      needsReconnect:
-        "Google 已终止 {{email}} 的访问权限。请重新连接以继续使用。",
+      unconfiguredAdmin: "先为此服务器配置 Google 访问权限，用户才能连接。",
+      unconfiguredUser: "此服务器尚未配置。请联系管理员配置 Google 访问权限。",
+      needsReconnect: "Google 已终止 {{email}} 的访问权限。请重新连接以继续使用。",
       signInOnce: "登录一次即可连接 {{services}}。",
       disconnecting: "正在断开连接…",
       disconnect: "断开连接",
@@ -51,7 +46,7 @@ export const tools: Translation["tools"] = {
       reconnect: "重新连接",
       connect: "连接",
       accessSettings: "Google 访问设置",
-      setUp: "设置",
+      setUp: "配置",
       disconnectedTitle: "已断开 Google 连接",
       disconnectErrorTitle: "无法断开 Google 连接",
       disconnectErrorFallback: "该账号仍处于连接状态。",
@@ -59,22 +54,18 @@ export const tools: Translation["tools"] = {
     integrations: {
       gmail: {
         description: "让模型搜索、阅读和整理你的邮件，并为你起草邮件以供发送。",
-        toolAccess:
-          "“按需加载”会在消息需要邮件或你输入 /gmail 时加载邮件技能。“始终可用”会为每次请求增加约 1,100 个 token。",
+        toolAccess: "“按需加载”会在消息需要邮件或你输入 /gmail 时加载邮件技能。“始终可用”会为每次请求增加约 1,100 个 token。",
       },
       calendar: {
         description: "让模型查看你的日程，并添加、修改或删除日程事件。",
-        toolAccess:
-          "“按需加载”会在消息需要日程或你输入 /calendar 时加载日历技能。“始终可用”会为每次请求增加约 900 个 token。",
+        toolAccess: "“按需加载”会在消息需要日程或你输入 /calendar 时加载日历技能。“始终可用”会为每次请求增加约 900 个 token。",
       },
     },
     row: {
       notPartOfSignIn: "未包含在此次登录中。",
       toolAccessLabel: "{{name}} 工具调用方式",
-      add: "添加",
       sendingTitle: "发送邮件",
-      sendingWithoutAskingDescription:
-        "模型可以不经询问直接以你的名义发送邮件。它阅读的邮件可能会诱导它发送内容。",
+      sendingWithoutAskingDescription: "模型可以不经询问直接以你的名义发送邮件。它阅读的邮件可能会诱导它发送内容。",
       sendingAskFirstDescription: "由模型起草邮件，再由你确认发送。",
       sendingLabel: "{{name}} 发送设置",
       askFirst: "先询问",
@@ -84,10 +75,9 @@ export const tools: Translation["tools"] = {
     },
     connectGoogle: {
       title: "连接 Google",
-      description: "登录 Google，然后将结果带回此处。",
+      description: "登录 Google 后返回此处完成连接。",
       connectedTitle: "已连接 {{services}}",
-      partialDescription:
-        "在 Google 页面上未授予 {{services}} 权限。请更改权限以添加。",
+      partialDescription: "在 Google 页面上未授予 {{services}} 权限。请更改权限以添加。",
       connectErrorFallback: "无法连接 Google，请重试。",
       chooseTitle: "选择要连接的服务",
       signInTitle: "登录 Google",
@@ -97,46 +87,32 @@ export const tools: Translation["tools"] = {
       chooseAtLeastOne: "请至少选择一项要连接的服务。",
       openSignIn: "打开 Google 登录",
       copyAddressTitle: "复制跳转后页面的网址",
-      copyAddressDescription:
-        "浏览器会显示无法访问此网页，这是正常现象。请复制完整的页面地址，它以 <url>{{prefix}}</url> 开头。",
+      copyAddressDescription: "浏览器会显示无法访问此网页，这是正常现象。请复制完整的页面地址，它以 <url>{{prefix}}</url> 开头。",
       pasteTitle: "粘贴到此处",
       pasteLabel: "来自浏览器的地址",
       startAgain: "重新开始",
-      cancel: "取消",
       connecting: "正在连接…",
-      connect: "连接",
     },
     googleAccess: {
       title: "Google 访问权限",
       description:
         "此服务器上的所有人都通过你自己的 Google Cloud 项目中的 OAuth 客户端登录 Google。请创建一个桌面应用（Desktop app）类型的客户端并填写在下方，同时将每个人的 Google 邮箱添加到项目的测试用户中。<guide>配置指南</guide>",
       loadError: "无法加载 Google 访问权限。",
-      loading: "正在加载…",
       savedTitle: "已保存 Google 访问权限",
       saveErrorFallback: "无法保存 Google 访问权限。",
       removedTitle: "已移除 Google 访问权限",
       removeErrorFallback: "无法移除 Google 访问权限。",
-      confirmRemoval:
-        "移除 Google 访问权限？此服务器上所有人的 Google 连接都会被删除，在重新设置前任何人都无法连接。",
-      cancel: "取消",
-      removing: "正在移除…",
-      remove: "移除",
+      confirmRemoval: "移除 Google 访问权限？此服务器上所有人的 Google 连接都会被删除，在重新配置前任何人都无法连接。",
       clientIdLabel: "客户端 ID",
-      clientIdChangeWarning:
-        "更换客户端 ID 会断开所有人的连接，他们需要重新登录。",
+      clientIdChangeWarning: "更换客户端 ID 会断开所有人的连接，他们需要重新登录。",
       clientSecretLabel: "客户端密钥",
       clientSecretPlaceholder: "留空以保留已保存的密钥",
-      saving: "正在保存…",
-      save: "保存",
     },
   },
   mcp: {
     available: {
       title: "MCP 服务器",
       description: "选择哪些可用的 MCP 服务器可以在你的对话中提供工具。",
-      loading: "正在加载 MCP 服务器…",
-      loadError: "无法加载 MCP 服务器。",
-      emptyTitle: "暂无可用的 MCP 服务器",
       emptyDescription: "请联系管理员连接工具服务器。",
       enableErrorTitle: "无法启用 MCP 服务器",
       disableErrorTitle: "无法禁用 MCP 服务器",
@@ -145,22 +121,18 @@ export const tools: Translation["tools"] = {
       disableLabel: "在我的对话中禁用 {{name}}",
     },
     health: {
-      check: "检查",
-      checkTitle: "点击检查连接",
-      checking: "检查中…",
-      checkingTitle: "正在检查连接…",
+      check: "检测",
+      checkTitle: "点击检测连接",
+      checking: "正在检测…",
+      checkingTitle: "正在检测连接…",
       toolCount_other: "{{count}} 个工具",
-      workingTitle_other: "运行正常 — 耗时 {{elapsedMs}}ms 发现 {{count}} 个工具",
-      down: "离线",
+      workingTitle_other: "正常 — 耗时 {{elapsedMs}} 毫秒，发现 {{count}} 个工具",
+      down: "异常",
     },
     manage: {
       title: "管理 MCP 服务器",
-      description:
-        "连接外部工具服务器并选择谁可以使用它们。命令在 OvertChat 服务器环境中运行。",
+      description: "连接外部工具服务器并选择谁可以使用它们。命令在 OvertChat 服务器环境中运行。",
       addServer: "添加服务器",
-      loading: "正在加载 MCP 服务器…",
-      loadError: "无法加载 MCP 服务器。",
-      emptyTitle: "暂无可用的 MCP 服务器",
       emptyDescription: "连接服务器以在对话中使用其工具。",
       availableTo: "可见范围",
       availableToLabel: "{{name}} 的可见范围",
@@ -169,16 +141,12 @@ export const tools: Translation["tools"] = {
         admins: "仅管理员",
         disabled: "已禁用",
       },
-      edit: "编辑",
-      delete: "删除",
       availabilityErrorTitle: "无法更改 MCP 服务器可见范围",
       availabilityErrorFallback: "服务器配置未更改。",
       deletedTitle: "已删除 MCP 服务器",
       deleteErrorFallback: "无法删除 MCP 服务器",
       deleteDialogTitle: "删除 MCP 服务器？",
       deleteDialogDescription: "<name>{{name}}</name> 及其配置将被移除。",
-      cancel: "取消",
-      deleting: "正在删除…",
     },
     editor: {
       backToTools: "返回工具设置",
@@ -212,7 +180,7 @@ export const tools: Translation["tools"] = {
       httpConnectionDescription: "配置服务器地址和可选身份验证。",
       serverUrlLabel: "服务器 URL",
       httpHeadersLabel: "HTTP 请求头",
-      headerPlaceholder: "请求头",
+      headerPlaceholder: "请求头名称",
       addHeader: "添加请求头",
       removeHttpHeaderRow: "移除 HTTP 请求头行",
       envHeadersLabel: "环境变量 HTTP 请求头",
@@ -220,14 +188,26 @@ export const tools: Translation["tools"] = {
       addEnvHeader: "添加环境变量请求头",
       removeEnvHeaderRow: "移除环境变量 HTTP 请求头行",
       bearerTokenEnvVarLabel: "Bearer token 环境变量",
-      cancel: "取消",
-      saving: "正在保存…",
-      saveChanges: "保存更改",
-      addServer: "添加服务器",
       validationFallback: "请检查服务器配置。",
       updatedTitle: "MCP 服务器已更新",
       addedTitle: "MCP 服务器已添加",
       saveErrorFallback: "无法保存 MCP 服务器",
     },
+    emptyTitle: "暂无可用的 MCP 服务器",
+    loadError: "无法加载 MCP 服务器。",
+    loading: "正在加载 MCP 服务器…",
+  },
+  mobile: {
+    webSearchDetail: "允许支持的模型搜索网络并抓取网页。",
+    interactiveUiDescription: "支持的模型可通过 OpenUI 渲染交互式图表、表格、表单和卡片。推荐使用按需加载。保存在此设备上。",
+    interactiveUiToolAccessDetail:
+      "“按需加载”会在消息需要界面、或你从 + 菜单请求界面时才加载 OpenUI 指令。“始终可用”会为每次请求增加约 6,800 个 token。",
+    connectedToolsTitle: "已连接的工具",
+    connectedToolsDescription: "你的选择适用于此服务器上的个人账号。",
+    manageMcpDetail: "在浏览器中添加或配置工具服务器。",
+    emptyTitle: "暂无已连接的工具",
+    emptyDetail: "管理员可在网页端添加工具服务器。",
+    savedOnDevice: "保存在此设备上。",
+    administrationTitle: "管理",
   },
 };

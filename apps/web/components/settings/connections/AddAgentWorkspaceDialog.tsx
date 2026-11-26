@@ -271,7 +271,7 @@ export function AddAgentWorkspaceDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {t("connections.dialog.title")}
+            {t("connections.page.addWorkspace")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {t("connections.dialog.description")}
@@ -292,12 +292,12 @@ export function AddAgentWorkspaceDialog({
               >
                 <TransportChoice
                   value="local"
-                  label={t("connections.dialog.thisServer")}
+                  label={t("connections.hosts.thisServer")}
                   icon={Server}
                 />
                 <TransportChoice
                   value="ssh"
-                  label={t("connections.dialog.sshHost")}
+                  label={t("connections.hosts.sshHost")}
                   icon={Wifi}
                 />
               </RadioGroup>
@@ -556,7 +556,7 @@ export function AddAgentWorkspaceDialog({
                     onOpenChange(false);
                   }}
                 >
-                  {t("connections.dialog.cancel")}
+                  {t("common.actions.cancel")}
                 </Button>
                 <Button
                   type="submit"
@@ -575,7 +575,7 @@ export function AddAgentWorkspaceDialog({
                   ) : (
                     <FolderPlus />
                   )}
-                  {t("connections.dialog.submit")}
+                  {t("connections.page.addWorkspace")}
                 </Button>
               </div>
             </SettingsActions>

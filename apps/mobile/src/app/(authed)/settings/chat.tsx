@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useChatPreferences, setChatPreferences } from "@/lib/chatPreferences";
 import {
   SettingsPage,
@@ -19,12 +20,9 @@ import {
 } from "@/lib/toolPreferences";
 import { useSettingsQuery, useSettingsMutation } from "@/lib/queries/settings";
 import type { AvailableMcpServer } from "@overtchat/shared/admin-settings";
-const TOOL_ACCESS_OPTIONS = [
-  { value: "always", label: "Always available" },
-  { value: "on-demand", label: "On demand" },
-] as const;
 
 export default function ChatSettings() {
+  const { t } = useTranslation();
   const prefs = useChatPreferences();
   const web = useWebSearchEnabled();
   const openui = useOpenUIEnabled();
@@ -34,60 +32,67 @@ export default function ChatSettings() {
   );
   const mutation = useSettingsMutation();
   useRefreshOnFocus(query.refetch);
+  const toolAccessOptions = [
+    { value: "always", label: t("tools.accessChoice.alwaysAvailable") },
+    { value: "on-demand", label: t("tools.accessChoice.onDemand") },
+  ] as const;
   return (
-    <SettingsPage title="Chat & tools">
+    <SettingsPage title={t("settings.mobile.index.chatAndTools")}>
       <Section
-        title="Messages"
-        description="Display preferences for this device."
+        title={t("settings.general.messages.title")}
+        description={t("settings.mobile.chat.messagesDescription")}
       >
         <Toggle
-          title="Expand thinking and tools"
-          detail="Open each reply's thinking and tool steps without a tap."
+          title={t("settings.general.messages.expandActivity.title")}
+          detail={t("settings.mobile.chat.expandActivityDetail")}
           value={prefs.expandActivity}
           onChange={(expandActivity) => setChatPreferences({ expandActivity })}
         />
         <Toggle
-          title="Message stats"
-          detail="Token counts and generation speed below responses."
+          title={t("settings.general.messages.messageStats.title")}
+          detail={t("settings.mobile.chat.messageStatsDetail")}
           value={prefs.messageStats}
           onChange={(messageStats) => setChatPreferences({ messageStats })}
         />
         <Toggle
-          title="Context meter"
-          detail="Context-window ring in the chat header."
+          title={t("settings.general.messages.contextMeter.title")}
+          detail={t("settings.mobile.chat.contextMeterDetail")}
           value={prefs.contextMeter}
           onChange={(contextMeter) => setChatPreferences({ contextMeter })}
         />
         <Toggle
-          title="Session cost"
-          detail="Recorded cost in the usage details, when pricing is available."
+          title={t("settings.general.messages.sessionCost.title")}
+          detail={t("settings.mobile.chat.sessionCostDetail")}
           value={prefs.sessionCost}
           onChange={(sessionCost) => setChatPreferences({ sessionCost })}
         />
       </Section>
-      <Section title="Built-in tools" description="Saved on this device.">
+      <Section
+        title={t("tools.builtIn.title")}
+        description={t("tools.mobile.savedOnDevice")}
+      >
         <Toggle
-          title="Web search"
-          detail="Allow supported models to search the web and fetch pages."
+          title={t("tools.builtIn.webSearch.title")}
+          detail={t("tools.mobile.webSearchDetail")}
           value={web}
           onChange={setWebSearchEnabled}
         />
       </Section>
       <Section
-        title="Interactive UI"
-        description="Supported models render interactive charts, tables, forms and cards with OpenUI. On demand tool access is recommended. Saved on this device."
+        title={t("tools.interactiveUi.title")}
+        description={t("tools.mobile.interactiveUiDescription")}
       >
         <Choice
-          title="Tool access"
-          detail="On demand loads the OpenUI instructions when a message calls for an interface, or when you ask for one from the + menu. Always available adds about 6,800 tokens to every request."
+          title={t("tools.interactiveUi.toolAccessTitle")}
+          detail={t("tools.mobile.interactiveUiToolAccessDetail")}
           value={openui ? "always" : "on-demand"}
-          options={TOOL_ACCESS_OPTIONS}
+          options={toolAccessOptions}
           onChange={(value) => setOpenUIEnabled(value === "always")}
         />
       </Section>
       <Section
-        title="Connected tools"
-        description="Your choices apply to your account on this server."
+        title={t("tools.mobile.connectedToolsTitle")}
+        description={t("tools.mobile.connectedToolsDescription")}
       >
         <QueryState query={query} />
         {query.data?.mcpServers.map((server) => (
@@ -108,11 +113,11 @@ export default function ChatSettings() {
       </Section>
       {mutation.error && <Label error>{mutation.error.message}</Label>}
       {session.data?.user.role === "admin" && (
-        <Section title="Administration">
+        <Section title={t("tools.mobile.administrationTitle")}>
           <WebRow
-            title="Manage MCP servers"
+            title={t("tools.mcp.manage.title")}
             path="/settings/tools"
-            detail="Add or configure tool servers in your browser."
+            detail={t("tools.mobile.manageMcpDetail")}
           />
         </Section>
       )}
@@ -120,10 +125,11 @@ export default function ChatSettings() {
   );
 }
 function RowEmpty() {
+  const { t } = useTranslation();
   return (
     <Row
-      title="No connected tools"
-      detail="An administrator can add tool servers on web."
+      title={t("tools.mobile.emptyTitle")}
+      detail={t("tools.mobile.emptyDetail")}
     />
   );
 }

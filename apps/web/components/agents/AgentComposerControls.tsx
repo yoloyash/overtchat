@@ -227,7 +227,7 @@ function ModeControl(props: AgentComposerControlsProps) {
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
               <AlertDialog.Close render={<Button variant="ghost" size="sm" />}>
-                {t("agents.common.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"

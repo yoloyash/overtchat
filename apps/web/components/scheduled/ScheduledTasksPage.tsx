@@ -298,13 +298,13 @@ function TaskRow({
                   <Play className="size-3.5" /> {t("scheduled.actions.runNow")}
                 </Menu.Item>
                 <Menu.Item onClick={onEdit} className={itemClass}>
-                  <Pencil className="size-3.5" /> {t("scheduled.actions.edit")}
+                  <Pencil className="size-3.5" /> {t("common.actions.edit")}
                 </Menu.Item>
                 <Menu.Item
                   onClick={() => setDeleteOpen(true)}
                   className={cn(itemClass, "text-destructive data-[highlighted]:text-destructive")}
                 >
-                  <Trash2 className="size-3.5" /> {t("scheduled.actions.delete")}
+                  <Trash2 className="size-3.5" /> {t("common.actions.delete")}
                 </Menu.Item>
               </Menu.Popup>
             </Menu.Positioner>
@@ -382,7 +382,7 @@ function TaskRow({
                   <Button variant="ghost" size="sm" disabled={deleteTask.isPending} />
                 }
               >
-                {t("scheduled.actions.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -409,8 +409,8 @@ function TaskRow({
                 }
               >
                 {deleteTask.isPending
-                  ? t("scheduled.actions.deleting")
-                  : t("scheduled.actions.delete")}
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -460,7 +460,7 @@ export function ScheduledTasksPage() {
               {t("scheduled.page.loadError")}
             </p>
             <Button variant="outline" onClick={() => void tasks.refetch()}>
-              {t("scheduled.actions.tryAgain")}
+              {t("common.actions.tryAgain")}
             </Button>
           </div>
         ) : list.length === 0 ? (

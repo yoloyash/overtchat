@@ -15,21 +15,17 @@ export const account = {
     newLabel: "New password",
     newDescription: "Use at least 8 characters.",
     updated: "Password updated",
-    saving: "Saving…",
     submit: "Change password",
     changeFailed: "Failed to change password",
   },
   twoFactor: {
     title: "Two-factor authentication",
-    descriptionRequired:
-      "Administrators on this server must use two-factor authentication.",
+    descriptionRequired: "Administrators on this server must use two-factor authentication.",
     descriptionRecommended:
       "Recommended. After your password, sign-in also asks for a code from an authenticator app.",
     statusTitle: "Status",
-    loading: "Loading…",
     loadError: "Could not load two-factor status.",
-    backupCodesIntro:
-      "Your old backup codes no longer work. Save these somewhere safe.",
+    backupCodesIntro: "Your old backup codes no longer work. Save these somewhere safe.",
     authenticatorTitle: "Authenticator app",
     enabledDescription:
       "On. When you sign in somewhere new, you can also approve it from a device where you're already signed in. Keep your backup codes somewhere safe in case you lose your device.",
@@ -41,7 +37,6 @@ export const account = {
     disabledToast: "Two-factor authentication is off",
     confirm: {
       passwordLabel: "Your password",
-      cancel: "Cancel",
       backupCodes: {
         title: "New backup codes",
         description: "Your current backup codes will stop working.",
@@ -58,5 +53,28 @@ export const account = {
         error: "Could not turn off two-factor.",
       },
     },
+  },
+  mobile: {
+    sso: {
+      defaultProvider: "your identity provider",
+      description: "Your password and sign-in protection are managed there.",
+      signedInWith: "You sign in with",
+    },
+    password: {
+      newHint: "Use 8–128 characters.",
+      confirmLabel: "Confirm new password",
+      errors: {
+        currentRequired: "Enter your current password.",
+        invalidLength: "Use 8–128 characters for your new password.",
+        mismatch: "The new passwords do not match.",
+        changeFailed: "Couldn’t change password.",
+      },
+    },
+    twoFactor: {
+      on: "On",
+      manageTitle: "Manage two-factor",
+      manageDetail: "Set up or turn off an authenticator app in your browser.",
+    },
+    emailLabel: "Email",
   },
 } as const;

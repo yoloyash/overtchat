@@ -110,8 +110,8 @@ export function memoryToolStatusLabel(detail: MemoryToolDisplay): string {
   if (detail.status === "running") {
     return i18n.t(
       detail.action === "set"
-        ? "chat.steps.memory.status.updating"
-        : "chat.steps.memory.status.removing",
+        ? "common.states.updating"
+        : "common.states.removing",
     );
   }
   if (detail.status === "error") return i18n.t("chat.steps.memory.status.failed");

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch, getApiBase } from "@/lib/api";
 import { queryKeys } from "@/lib/queries/keys";
@@ -13,14 +14,14 @@ export type ProjectListItem = {
 
 async function fetchProjects(): Promise<ProjectListItem[]> {
   const res = await authFetch(`${getApiBase()}/api/projects`);
-  if (!res.ok) throw new Error(`Failed to load projects (${res.status})`);
+  if (!res.ok) throw new Error(i18n.t("common.mobile.errors.loadProjects", { status: res.status }));
   const json = (await res.json()) as { projects: ProjectListItem[] };
   return json.projects;
 }
 
 async function fetchProject(id: string): Promise<ProjectListItem> {
   const res = await authFetch(`${getApiBase()}/api/projects/${id}`);
-  if (!res.ok) throw new Error(`Failed to load project (${res.status})`);
+  if (!res.ok) throw new Error(i18n.t("common.mobile.errors.loadProject", { status: res.status }));
   const json = (await res.json()) as { project: ProjectListItem };
   return json.project;
 }
@@ -63,7 +64,7 @@ export function useCreateProject() {
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `Failed to create (${res.status})`);
+        throw new Error(j.error ?? i18n.t("common.mobile.errors.createFailed", { status: res.status }));
       }
       const json = (await res.json()) as { project: ProjectListItem };
       return json.project;
@@ -87,7 +88,7 @@ export function useUpdateProject(id: string) {
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `Failed to update (${res.status})`);
+        throw new Error(j.error ?? i18n.t("common.mobile.errors.updateFailed", { status: res.status }));
       }
       const json = (await res.json()) as { project: ProjectListItem };
       return json.project;
@@ -106,7 +107,7 @@ export function useDeleteProject() {
       const res = await authFetch(`${getApiBase()}/api/projects/${id}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(`Failed to delete (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.deleteFailed", { status: res.status }));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.projects() });

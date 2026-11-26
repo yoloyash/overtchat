@@ -160,7 +160,7 @@ export function SearchChatsPalette({
             motionClasses.palette,
           )}
         >
-          <Dialog.Title className="sr-only">{t("sidebar.searchPalette.title")}</Dialog.Title>
+          <Dialog.Title className="sr-only">{t("sidebar.nav.searchChats")}</Dialog.Title>
           <div className="flex items-center gap-2 border-b px-3 py-2.5">
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <input
@@ -186,7 +186,7 @@ export function SearchChatsPalette({
             <button
               type="button"
               onClick={() => handleOpenChange(false)}
-              aria-label={t("sidebar.searchPalette.close")}
+              aria-label={t("common.actions.close")}
               className="rounded p-1 text-muted-foreground motion-colors hover:bg-muted hover:text-foreground"
             >
               <X className="size-4" />
@@ -224,7 +224,7 @@ export function SearchChatsPalette({
                     )}
                   >
                     <Pencil className="size-4 shrink-0 text-muted-foreground" />
-                    <span>{t("sidebar.searchPalette.newChat")}</span>
+                    <span>{t("sidebar.nav.newChat")}</span>
                   </button>
                 );
               }
@@ -242,7 +242,7 @@ export function SearchChatsPalette({
                     )}
                   >
                     <span className="truncate">
-                      {row.chat.title ?? t("sidebar.searchPalette.untitled")}
+                      {row.chat.title ?? t("common.states.untitled")}
                     </span>
                   </button>
                 );
@@ -260,7 +260,7 @@ export function SearchChatsPalette({
                   )}
                 >
                   <span className="truncate w-full">
-                    {row.hit.title ?? t("sidebar.searchPalette.untitled")}
+                    {row.hit.title ?? t("common.states.untitled")}
                   </span>
                   {row.hit.snippet && (
                     <span className="line-clamp-2 text-xs text-muted-foreground [&_mark]:bg-transparent [&_mark]:font-medium [&_mark]:text-foreground">
@@ -272,7 +272,7 @@ export function SearchChatsPalette({
             })}
             {showingResults && loading && (
               <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                {t("sidebar.searchPalette.searching")}
+                {t("common.states.searching")}
               </p>
             )}
             {emptyResults && (

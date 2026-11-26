@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FlatList, Text, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,6 +31,7 @@ import { useNow } from "@/lib/useNow";
 
 /** One folder: where it is, its branch, and every session in it. */
 export default function AgentWorkspaceScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{
     workspace: string;
     name?: string;
@@ -73,10 +75,10 @@ export default function AgentWorkspaceScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack.Screen
         options={{
-          title: group?.name ?? params.name ?? "Workspace",
+          title: group?.name ?? params.name ?? t("agents.setup.workspace"),
           headerRight: () => (
             <AgentButton
-              label="New session"
+              label={t("agents.session.newSession")}
               icon="add"
               disabled={!group}
               onPress={startSession}
@@ -123,7 +125,7 @@ export default function AgentWorkspaceScreen() {
       <AgentSearch
         value={search}
         onChangeText={setSearch}
-        placeholder="Search sessions in this workspace"
+        placeholder={t("agents.mobile.workspace.searchPlaceholder")}
       />
       {(connections.isPending || connections.error) && (
         <AgentFeedback
@@ -133,7 +135,7 @@ export default function AgentWorkspaceScreen() {
         />
       )}
       {!connections.isPending && !connections.error && !group && (
-        <AgentFeedback error="This workspace is no longer available. Go back to Agent Connections and sync." />
+        <AgentFeedback error={t("agents.mobile.errors.workspaceUnavailableSync")} />
       )}
       <FlatList
         data={sessions}
@@ -150,8 +152,12 @@ export default function AgentWorkspaceScreen() {
             <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
               <AgentText muted>
                 {search
-                  ? `${sessions.length} matching ${sessions.length === 1 ? "session" : "sessions"}`
-                  : `${sessions.length} ${sessions.length === 1 ? "session" : "sessions"} · Most recent first`}
+                  ? t("agents.mobile.workspace.matchingSessions", {
+                      count: sessions.length,
+                    })
+                  : t("agents.mobile.workspace.sessionsMostRecent", {
+                      count: sessions.length,
+                    })}
               </AgentText>
             </View>
           ) : null
@@ -160,12 +166,14 @@ export default function AgentWorkspaceScreen() {
           group ? (
             <View style={{ padding: 24, gap: 8 }}>
               <AgentText title>
-                {search ? "No matching sessions" : "Start your first session"}
+                {search
+                  ? t("agents.mobile.workspace.noMatchingSessions")
+                  : t("agents.mobile.workspace.startFirstSession")}
               </AgentText>
               <AgentText muted>
                 {search
-                  ? "Try another search."
-                  : "Use New session; the agent can be changed before sending."}
+                  ? t("agents.mobile.workspace.tryAnotherSearch")
+                  : t("agents.mobile.workspace.startFirstSessionHint")}
               </AgentText>
             </View>
           ) : null

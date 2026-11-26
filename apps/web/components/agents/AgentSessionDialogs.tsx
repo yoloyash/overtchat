@@ -125,7 +125,7 @@ function RenameAgentSessionDialogContent({
                 disabled={pending}
                 onClick={() => onOpenChange(false)}
               >
-                {t("agents.common.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 type="submit"
@@ -133,7 +133,7 @@ function RenameAgentSessionDialogContent({
                 disabled={pending || !name.trim()}
               >
                 {pending && <PendingIcon />}
-                {t("agents.common.save")}
+                {t("common.actions.save")}
               </Button>
             </DialogActions>
           </form>
@@ -245,7 +245,7 @@ function CompactAgentSessionDialogContent({
                 disabled={pending}
                 onClick={() => onOpenChange(false)}
               >
-                {t("agents.common.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending}>
                 {pending && <PendingIcon />}
@@ -443,7 +443,7 @@ export function AgentUsageDialog({
 
           <DialogActions>
             <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-              {t("agents.common.done")}
+              {t("common.actions.done")}
             </Button>
           </DialogActions>
         </Dialog.Popup>
@@ -508,7 +508,7 @@ export function AgentSessionStatsDialog({
           </dl>
           <DialogActions>
             <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-              {t("agents.common.done")}
+              {t("common.actions.done")}
             </Button>
           </DialogActions>
         </Dialog.Popup>
@@ -625,7 +625,7 @@ function InteractionDialogContent({
                 disabled={pending}
                 onClick={cancel}
               >
-                {t("agents.common.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               {request.method === "external" && (
                 <Button
@@ -635,7 +635,7 @@ function InteractionDialogContent({
                   onClick={() => onRespond({ confirmed: true })}
                 >
                   {pending && <PendingIcon />}
-                  {t("agents.dialogs.continueAction")}
+                  {t("common.actions.continue")}
                 </Button>
               )}
             </DialogActions>

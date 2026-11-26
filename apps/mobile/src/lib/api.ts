@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { CLIENT_HEADER } from "@overtchat/shared";
 import Constants from "expo-constants";
 import { File as FsFile } from "expo-file-system";
@@ -72,7 +73,10 @@ export async function uploadFile(file: {
     error?: string;
   };
   if (!res.ok || !json.url || !json.mediaType) {
-    throw new Error(json.error ?? `Upload failed (${res.status})`);
+    throw new Error(
+      json.error ??
+        i18n.t("chat.composer.uploadFailedStatus", { status: res.status }),
+    );
   }
   return json as UploadResponse;
 }

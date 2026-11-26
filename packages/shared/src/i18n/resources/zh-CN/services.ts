@@ -3,8 +3,7 @@ import type { Translation } from "../../catalog";
 export const services: Translation["services"] = {
   page: {
     title: "服务",
-    description:
-      "管理此服务器的搜索和语音服务商。本地服务可通过 overtchat setup 安装。",
+    description: "管理此服务器的搜索和语音服务商。本地服务可通过 overtchat setup 安装。",
     loading: "正在加载服务…",
     loadError: "无法加载服务器服务。",
   },
@@ -19,7 +18,7 @@ export const services: Translation["services"] = {
         bundled: "内置 SearXNG",
         brave: "Brave Search API",
         searxng: "现有 SearXNG",
-        disabled: "已停用",
+        disabled: "已禁用",
       },
     },
     tts: {
@@ -31,7 +30,7 @@ export const services: Translation["services"] = {
       providers: {
         bundled: "内置 Kokoro",
         "openai-compatible": "OpenAI 兼容 API",
-        disabled: "已停用",
+        disabled: "已禁用",
       },
     },
     stt: {
@@ -43,40 +42,35 @@ export const services: Translation["services"] = {
       providers: {
         bundled: "内置 Parakeet",
         "openai-compatible": "OpenAI 兼容 API",
-        disabled: "已停用",
+        disabled: "已禁用",
       },
     },
   },
   fields: {
     providerTitle: "服务商",
-    bundledMissingDescription:
-      "此服务器未安装{{provider}}。请运行：overtchat setup",
+    bundledMissingDescription: "此服务器未安装 {{provider}}。请运行：overtchat setup",
     providerOptionNotInstalled: "{{provider}} — 未安装",
     apiBaseUrlTitle: "API 基础 URL",
     apiKeyTitle: "API 密钥",
     apiKeyConfiguredDescription: "已配置密钥。留空以保留现有密钥。",
     searchOrderTitle: "搜索顺序",
-    searchOrderDescription:
-      "如果首选服务商失败，OvertChat 会尝试免费搜索服务商。",
+    searchOrderDescription: "如果首选服务商失败，OvertChat 会尝试免费搜索服务商。",
     modelTitle: "模型",
     defaultVoiceTitle: "默认音色",
   },
   actions: {
-    testing: "测试中…",
+    testing: "正在测试…",
     testConnection: "测试连接",
-    saving: "正在保存…",
-    save: "保存",
   },
   errors: {
     updateUnchanged: "服务商未更改。",
     connectFailed: "无法连接到服务商。",
-    loadCapabilitiesFailed: "无法加载服务器能力。",
+    loadCapabilitiesFailed: "无法加载服务器功能。",
     serviceRequestFailed: "无法完成服务请求。",
   },
   voice: {
     title: "实时语音",
-    description:
-      "使用上方的语音服务商和所选对话模型进行可打断的实时语音对话。",
+    description: "使用上方的语音服务商和所选对话模型进行可打断的实时语音对话。",
     statusTitle: "状态",
     configuredLabel: "已配置",
     configuredDescription: "此服务器已支持实时语音对话。",
@@ -88,5 +82,32 @@ export const services: Translation["services"] = {
     needsTtsDescription: "请在上方选择一个文字转语音服务商。",
     incompleteSetupLabel: "配置不完整",
     incompleteSetupDescription: "请运行 overtchat setup 以修复实时语音配置。",
+  },
+  mobile: {
+    list: {
+      sectionTitle: "服务器服务",
+      sectionDescription: "这些服务商供此服务器上的所有人使用。",
+    },
+    status: {
+      needsSetup: "需要配置",
+      unavailable: "不可用",
+      disabled: "已禁用",
+    },
+    voice: {
+      rowTitle: "语音对话",
+      readyDetail: "已就绪，可进行实时语音对话。",
+      unavailableDetail: "需要已安装的实时语音和已配置的语音服务商。请在主机上运行 overtchat setup 以安装或修复。",
+    },
+    detail: {
+      fallbackTitle: "服务",
+      notFound: "未找到该服务。",
+      providerDescription: "更改会影响此服务器上的所有人。",
+      notInstalledDetail: "请在服务器上运行 overtchat setup 以安装此服务。",
+      apiKeySavedHint: "已保存密钥。留空以保留现有密钥。",
+      apiKeyEmptyHint: "请输入服务商密钥。",
+      searchFallbackNote: "当首选搜索服务商失败时，OvertChat 会尝试免费搜索服务商。",
+      save: "保存服务",
+      saved: "服务已保存",
+    },
   },
 };

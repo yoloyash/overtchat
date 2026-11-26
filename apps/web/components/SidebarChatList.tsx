@@ -300,13 +300,13 @@ export function SidebarItem({
               onComplete={markTitleRevealComplete}
             />
           ) : (
-            t("sidebar.chat.untitled")
+            t("common.states.untitled")
           )}
         </Link>
         {generating && (
           <span
             role="status"
-            aria-label={t("sidebar.chat.generatingFor", { title: chat.title?.trim() || t("sidebar.chat.untitled") })}
+            aria-label={t("sidebar.chat.generatingFor", { title: chat.title?.trim() || t("common.states.untitled") })}
             className={cn(
               "pointer-events-none absolute right-1 flex size-5.5 items-center justify-center text-muted-foreground motion-opacity max-md:size-7.5",
               "[@media(hover:hover)]:group-hover:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-0 [@media(hover:hover)]:group-data-[menu-open=true]:opacity-0 [@media(hover:none)]:right-(--chat-actions-padding)",
@@ -372,7 +372,7 @@ export function SidebarItem({
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                   >
                     <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span>{t("sidebar.chat.rename")}</span>
+                    <span>{t("common.actions.rename")}</span>
                   </Menu.Item>
                   <Menu.SubmenuRoot>
                     <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
@@ -426,7 +426,7 @@ export function SidebarItem({
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
                   >
                     <Trash2 className="size-3.5 shrink-0" />
-                    <span>{t("sidebar.chat.delete")}</span>
+                    <span>{t("common.actions.delete")}</span>
                   </Menu.Item>
                 </Menu.Popup>
               </Menu.Positioner>
@@ -503,7 +503,7 @@ export function SidebarItem({
                   />
                 }
               >
-                {t("sidebar.chat.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -511,7 +511,7 @@ export function SidebarItem({
                 disabled={deleteMut.isPending}
                 onClick={confirmDelete}
               >
-                {deleteMut.isPending ? t("sidebar.chat.deleting") : t("sidebar.chat.delete")}
+                {deleteMut.isPending ? t("common.states.deleting") : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

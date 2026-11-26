@@ -81,8 +81,8 @@ export function MemoryDialog({
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
             {memory
-              ? t("personalization.memories.dialog.editTitle")
-              : t("personalization.memories.dialog.addTitle")}
+              ? t("personalization.memories.editTitle")
+              : t("personalization.memories.add")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             {t("personalization.memories.dialog.description")}
@@ -139,14 +139,14 @@ export function MemoryDialog({
                 size="sm"
                 onClick={() => onOpenChange(false)}
               >
-                {t("personalization.memories.dialog.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={pending || !changed}>
                 {pending
-                  ? t("personalization.memories.dialog.saving")
+                  ? t("common.states.saving")
                   : memory
-                    ? t("personalization.memories.dialog.saveChanges")
-                    : t("personalization.memories.dialog.addSubmit")}
+                    ? t("common.actions.saveChanges")
+                    : t("personalization.memories.add")}
               </Button>
             </SettingsActions>
           </form>
@@ -199,7 +199,7 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
           )}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Close render={<Button variant="ghost" />}>
-              {t("personalization.memories.deleteDialog.cancel")}
+              {t("common.actions.cancel")}
             </AlertDialog.Close>
             <Button
               variant="destructive"
@@ -223,8 +223,8 @@ export function DeleteMemoryButton({ memory }: { memory: Memory }) {
               }}
             >
               {deleteMemory.isPending
-                ? t("personalization.memories.deleteDialog.deleting")
-                : t("personalization.memories.deleteDialog.confirm")}
+                ? t("common.states.deleting")
+                : t("common.actions.delete")}
             </Button>
           </div>
         </AlertDialog.Popup>
@@ -271,7 +271,7 @@ export function ClearMemoriesButton({
           )}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Close render={<Button variant="ghost" />}>
-              {t("personalization.memories.clearDialog.cancel")}
+              {t("common.actions.cancel")}
             </AlertDialog.Close>
             <Button
               variant="destructive"
@@ -293,7 +293,7 @@ export function ClearMemoriesButton({
             >
               {pending
                 ? t("personalization.memories.clearDialog.clearing")
-                : t("personalization.memories.clearDialog.confirm")}
+                : t("personalization.memories.clearDialog.trigger")}
             </Button>
           </div>
         </AlertDialog.Popup>

@@ -6,6 +6,7 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { forwardRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
@@ -14,10 +15,10 @@ export type AddToChatSheetRef = BottomSheetModal;
 
 type ToolKey = "camera" | "photos" | "files";
 
-const TOOLS: { key: ToolKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "camera", label: "Camera", icon: "camera-outline" },
-  { key: "photos", label: "Photos", icon: "image-outline" },
-  { key: "files", label: "Files", icon: "document-outline" },
+const TOOLS = [
+  { key: "camera" as ToolKey, labelKey: "chat.mobile.addToChat.camera" as const, icon: "camera-outline" as const },
+  { key: "photos" as ToolKey, labelKey: "chat.mobile.addToChat.photos" as const, icon: "image-outline" as const },
+  { key: "files" as ToolKey, labelKey: "chat.mobile.addToChat.files" as const, icon: "document-outline" as const },
 ];
 
 export const AddToChatSheet = forwardRef<
@@ -51,6 +52,7 @@ export const AddToChatSheet = forwardRef<
   ref,
 ) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const renderBackdrop = useCallback(
@@ -84,14 +86,14 @@ export const AddToChatSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          Add to chat
+          {t("chat.mobile.addToChat.title")}
         </Text>
 
         <View style={styles.tileRow}>
-          {TOOLS.map((t) => (
+          {TOOLS.map((tool) => (
             <Pressable
-              key={t.key}
-              onPress={() => onPickTool?.(t.key)}
+              key={tool.key}
+              onPress={() => onPickTool?.(tool.key)}
               style={({ pressed }) => [
                 styles.tile,
                 {
@@ -102,7 +104,7 @@ export const AddToChatSheet = forwardRef<
               ]}
             >
               <Ionicons
-                name={t.icon}
+                name={tool.icon}
                 size={22}
                 color={colors.popoverForeground}
               />
@@ -115,7 +117,7 @@ export const AddToChatSheet = forwardRef<
                   },
                 ]}
               >
-                {t.label}
+                {t(tool.labelKey)}
               </Text>
             </Pressable>
           ))}
@@ -145,7 +147,7 @@ export const AddToChatSheet = forwardRef<
                 },
               ]}
             >
-              Search this message
+              {t("chat.mobile.addToChat.searchThisMessage")}
             </Text>
             {!searchAvailable ? (
               <Text
@@ -167,7 +169,7 @@ export const AddToChatSheet = forwardRef<
             disabled={!searchAvailable}
             accessibilityLabel={
               searchAvailable
-                ? "Search the web for this message"
+                ? t("chat.commands.items.search.description")
                 : searchUnavailableReason
             }
             trackColor={{ true: colors.primary, false: colors.border }}
@@ -198,7 +200,7 @@ export const AddToChatSheet = forwardRef<
                 },
               ]}
             >
-              Interactive UI
+              {t("chat.composer.interactiveUI")}
             </Text>
             {!openuiAvailable && openuiUnavailableReason ? (
               <Text
@@ -220,7 +222,7 @@ export const AddToChatSheet = forwardRef<
             disabled={!openuiAvailable}
             accessibilityLabel={
               openuiAvailable
-                ? "Render interactive UI for this message"
+                ? t("chat.mobile.addToChat.renderInteractiveUI")
                 : openuiUnavailableReason
             }
             trackColor={{ true: colors.primary, false: colors.border }}
@@ -228,7 +230,7 @@ export const AddToChatSheet = forwardRef<
           />
         </View>
         {imageAvailable && <Pressable accessibilityRole="button" onPress={onCreateImage} style={{ padding: 12, opacity: imageAvailable ? 1 : 0.5 }}>
-          <Text style={{ color: colors.popoverForeground, fontFamily: fonts.sansMedium }}>Create image</Text>
+          <Text style={{ color: colors.popoverForeground, fontFamily: fonts.sansMedium }}>{t("chat.composer.createImage")}</Text>
         </Pressable>}
       </BottomSheetView>
     </BottomSheetModal>

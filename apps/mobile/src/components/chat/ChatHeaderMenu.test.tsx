@@ -1,3 +1,5 @@
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
@@ -71,16 +73,18 @@ afterEach(async () => {
 
 async function render(props: Partial<React.ComponentProps<typeof ChatHeaderMenu>> = {}) {
   await act(async () => root.render(
-    <ChatHeaderMenu
-      title="Weekend plans"
-      pinned={false}
-      pinPending={false}
-      pinningSupported
-      disabled={false}
-      disabledActions={[]}
-      onSelect={onSelect}
-      {...props}
-    />,
+    <I18nextProvider i18n={i18n}>
+      <ChatHeaderMenu
+        title="Weekend plans"
+        pinned={false}
+        pinPending={false}
+        pinningSupported
+        disabled={false}
+        disabledActions={[]}
+        onSelect={onSelect}
+        {...props}
+      />
+    </I18nextProvider>,
   ));
 }
 

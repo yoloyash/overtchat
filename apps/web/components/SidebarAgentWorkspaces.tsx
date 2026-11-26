@@ -329,7 +329,7 @@ export function SidebarAgentWorkspaces({
                   />
                 }
               >
-                {t("sidebar.agents.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -337,7 +337,7 @@ export function SidebarAgentWorkspaces({
                 disabled={removal.isPending || worktreeInspection.isLoading}
                 onClick={() => void confirmRemoval()}
               >
-                {removal.isPending ? t("sidebar.agents.removing") : t("sidebar.agents.remove")}
+                {removal.isPending ? t("common.states.removing") : t("common.actions.remove")}
               </Button>
             </div>
           </AlertDialog.Popup>

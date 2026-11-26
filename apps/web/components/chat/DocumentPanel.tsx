@@ -233,7 +233,7 @@ export function DocumentPanel({
                       variant="ghost"
                       size="icon-sm"
                       aria-label={t("chat.documents.downloadDocument")}
-                      title={t("chat.files.download")}
+                      title={t("common.actions.download")}
                       disabled={writing || exporting}
                     />
                   }

@@ -1,6 +1,7 @@
 import { AppState, Platform } from "react-native";
 import { requireOptionalNativeModule } from "expo";
 import type { VoiceAudio, VoiceClientCallbacks } from "@overtchat/voice-client";
+import { i18n } from "@overtchat/shared/i18n";
 
 type Subscription = { remove(): void };
 type NativeAudio = {
@@ -20,13 +21,13 @@ export const nativeVoiceAvailable = native !== null;
 export async function waitForVoiceForeground(permissionRequested = false): Promise<void> {
   const permissionActivity = permissionRequested && Platform.OS === "android";
   if (AppState.currentState === "active") return;
-  if (AppState.currentState === "background" && !permissionActivity) throw new Error("Keep OvertChat open to use live voice.");
+  if (AppState.currentState === "background" && !permissionActivity) throw new Error(i18n.t("chat.mobile.voice.keepOpen"));
   await new Promise<void>((resolve, reject) => {
     const finish = (active: boolean) => {
       clearTimeout(timeout);
       subscription.remove();
       if (active) resolve();
-      else reject(new Error("Keep OvertChat open to use live voice."));
+      else reject(new Error(i18n.t("chat.mobile.voice.keepOpen")));
     };
     const subscription = AppState.addEventListener("change", state => {
       if (state === "active" || (state === "background" && !permissionActivity)) finish(state === "active");
@@ -36,11 +37,11 @@ export async function waitForVoiceForeground(permissionRequested = false): Promi
 }
 
 export async function requestVoicePermission(): Promise<boolean> {
-  if (!native) throw new Error("Live voice requires an updated mobile app.");
+  if (!native) throw new Error(i18n.t("chat.mobile.voice.requiresUpdateSentence"));
   // Android launches its permission activity even when every permission is granted.
   if ((await native.getMicrophonePermissionsAsync()).granted) return false;
   if (!(await native.requestMicrophonePermissionsAsync()).granted) {
-    throw new Error("Allow microphone access in Settings to start live voice.");
+    throw new Error(i18n.t("chat.mobile.voice.allowMicrophone"));
   }
   return true;
 }
@@ -54,8 +55,8 @@ export class NativeVoiceAudio implements VoiceAudio {
   constructor(private readonly callbacks: VoiceClientCallbacks) {}
 
   async start(onAudio: (data: ArrayBuffer) => void): Promise<void> {
-    if (!native) throw new Error("Live voice requires an updated mobile app.");
-    if (this.closed || AppState.currentState !== "active") throw new Error("Keep OvertChat open to use live voice.");
+    if (!native) throw new Error(i18n.t("chat.mobile.voice.requiresUpdateSentence"));
+    if (this.closed || AppState.currentState !== "active") throw new Error(i18n.t("chat.mobile.voice.keepOpen"));
     this.subscriptions = [
       native.addListener("onMicrophoneData", ({ data }) => {
         if (this.closed || this.muted || !(data instanceof Uint8Array)) return;
@@ -69,17 +70,17 @@ export class NativeVoiceAudio implements VoiceAudio {
       }),
       native.addListener("onAudioInterruption", ({ data }) => {
         if (!this.closed && data !== "ended") {
-          this.callbacks.onError(new Error("Voice ended because audio was interrupted. Start voice again when ready."));
+          this.callbacks.onError(new Error(i18n.t("chat.mobile.voice.audioInterrupted")));
         }
       }),
     ];
-    if (!(await native.initialize())) throw new Error("Could not initialize voice audio.");
+    if (!(await native.initialize())) throw new Error(i18n.t("chat.mobile.voice.initAudioFailed"));
     this.initialized = true;
     if (this.closed || AppState.currentState !== "active") {
       await this.close();
-      throw new Error("Keep OvertChat open to use live voice.");
+      throw new Error(i18n.t("chat.mobile.voice.keepOpen"));
     }
-    if (!native.toggleRecording(true)) throw new Error("The microphone is in use. Try again when other audio has finished.");
+    if (!native.toggleRecording(true)) throw new Error(i18n.t("chat.mobile.voice.microphoneInUse"));
   }
   setMuted(muted: boolean) {
     this.muted = muted;

@@ -1,9 +1,9 @@
 import {
   IMAGE_SIZES,
-  imageSizeLabel,
   IMAGE_QUALITIES,
   type ImageGenerationOptions,
 } from "@overtchat/shared";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "@/lib/theme";
 
@@ -23,6 +23,7 @@ export function ImageOptions({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   return (
     <View
       style={{
@@ -40,20 +41,25 @@ export function ImageOptions({
         }}
       >
         <Text style={{ color: colors.foreground, flex: 1 }}>
-          Create image{model ? ` · ${model}` : ""}
+          {model ? t("chat.image.createTitleWithModel", { model }) : t("chat.composer.createImage")}
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Remove image request"
+          accessibilityLabel={t("chat.image.removeRequest")}
           onPress={onClose}
           hitSlop={12}
         >
-          <Text style={{ color: colors.primary }}>Close</Text>
+          <Text style={{ color: colors.primary }}>{t("common.actions.close")}</Text>
         </Pressable>
       </View>
       {configuredSize ? (
         <Text style={{ color: colors.mutedForeground }}>
-          Size: {configuredSize === "auto" ? "Backend default" : configuredSize}
+          {t("chat.image.sizeConfigured", {
+            size:
+              configuredSize === "auto"
+                ? t("chat.image.backendDefault")
+                : configuredSize,
+          })}
         </Text>
       ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -61,7 +67,7 @@ export function ImageOptions({
             <Pressable
               key={size}
               accessibilityRole="button"
-              accessibilityLabel={`Image size: ${imageSizeLabel(size)}`}
+              accessibilityLabel={t("chat.mobile.image.sizeOption", { size: t(`chat.image.sizes.${size}`) })}
               accessibilityState={{ selected: value.size === size }}
               onPress={() => onChange({ ...value, size })}
               style={{
@@ -72,7 +78,7 @@ export function ImageOptions({
               }}
             >
               <Text style={{ color: colors.foreground }}>
-                {imageSizeLabel(size)}
+                {t(`chat.image.sizes.${size}`)}
               </Text>
             </Pressable>
           ))}
@@ -81,14 +87,14 @@ export function ImageOptions({
       {supportsQuality && (
         <>
           <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-            Quality
+            {t("chat.image.qualityLabel")}
           </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {IMAGE_QUALITIES.map((quality) => (
               <Pressable
                 key={quality}
                 accessibilityRole="button"
-                accessibilityLabel={`Image quality: ${quality}`}
+                accessibilityLabel={t("chat.mobile.image.qualityOption", { quality: t(`chat.image.qualities.${quality}`) })}
                 accessibilityState={{ selected: value.quality === quality }}
                 onPress={() => onChange({ ...value, quality })}
                 style={{
@@ -100,7 +106,7 @@ export function ImageOptions({
                       : colors.background,
                 }}
               >
-                <Text style={{ color: colors.foreground }}>{quality}</Text>
+                <Text style={{ color: colors.foreground }}>{t(`chat.image.qualities.${quality}`)}</Text>
               </Pressable>
             ))}
           </View>

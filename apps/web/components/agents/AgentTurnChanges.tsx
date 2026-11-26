@@ -143,7 +143,7 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
           <button
             type="button"
             title={title}
-            aria-label={t("agents.activity.openFilePath", { path: node.path })}
+            aria-label={t("agents.files.openFilePath", { path: node.path })}
             style={style}
             className={cn(rowClass, pressableClass)}
             onClick={() => navigation.openFile({ path: workspacePath })}

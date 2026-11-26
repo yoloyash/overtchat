@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   type NativeScrollEvent,
@@ -115,6 +116,7 @@ export function MessageList({
   );
   const liveOpenUI = useStable(useMemo(() => recentOpenUICards(messages), [messages]), sameSet);
   const { colors, fonts } = useTheme();
+  const { t, i18n } = useTranslation();
   const latestMessage = messages.at(-1);
   const latestMessageId = latestMessage?.id;
   const latestMessageRole = latestMessage?.role;
@@ -126,6 +128,7 @@ export function MessageList({
     () => ({
       contextStatus,
       editingId,
+      language: i18n.language,
       readOnly,
       replacedEmails,
       speechActiveId: speech.activeId,
@@ -135,6 +138,7 @@ export function MessageList({
     [
       contextStatus,
       editingId,
+      i18n.language,
       readOnly,
       replacedEmails,
       speech.activeId,
@@ -165,7 +169,7 @@ export function MessageList({
     <>
       {!error && !contextStatus && status === "submitted" && lastIsUser && (
         <Text
-          accessibilityLabel="Assistant is responding"
+          accessibilityLabel={t("chat.messages.assistantResponding")}
           accessibilityLiveRegion="polite"
           style={[
             styles.pending,
@@ -175,7 +179,7 @@ export function MessageList({
           …
         </Text>
       )}
-      {error && <ErrorNotice message={error} fallback="Couldn't complete the response. Please try again." action={onReconnect ? { label: "Reconnect", onPress: onReconnect } : undefined} />}
+      {error && <ErrorNotice message={error} fallback={t("chat.errors.responseFailed")} action={onReconnect ? { label: t("chat.messages.reconnect"), onPress: onReconnect } : undefined} />}
 
     </>
   );
@@ -274,7 +278,7 @@ export function MessageList({
         <View style={styles.scrollToBottomContainer} pointerEvents="box-none">
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Scroll to bottom"
+            accessibilityLabel={t("chat.messages.scrollToBottom")}
             hitSlop={8}
             onPress={() => listRef.current?.scrollToEnd({ animated: true })}
             style={({ pressed }) => [

@@ -78,7 +78,7 @@ export function GeneratedImageCard({
               download={image.filename}
               className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs hover:bg-accent"
             >
-              <Download className="size-3.5" /> {t("chat.files.download")}
+              <Download className="size-3.5" /> {t("common.actions.download")}
             </a>
             {onReference && (
               <Button

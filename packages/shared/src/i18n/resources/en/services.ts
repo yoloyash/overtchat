@@ -47,13 +47,11 @@ export const services = {
   },
   fields: {
     providerTitle: "Provider",
-    bundledMissingDescription:
-      "{{provider}} is not installed on this server. Run: overtchat setup",
+    bundledMissingDescription: "{{provider}} is not installed on this server. Run: overtchat setup",
     providerOptionNotInstalled: "{{provider}} — Not installed",
     apiBaseUrlTitle: "API base URL",
     apiKeyTitle: "API key",
-    apiKeyConfiguredDescription:
-      "A key is configured. Leave this blank to keep it.",
+    apiKeyConfiguredDescription: "A key is configured. Leave this blank to keep it.",
     searchOrderTitle: "Search order",
     searchOrderDescription:
       "If your primary provider fails, OvertChat tries free search providers.",
@@ -63,8 +61,6 @@ export const services = {
   actions: {
     testing: "Testing…",
     testConnection: "Test connection",
-    saving: "Saving…",
-    save: "Save",
   },
   errors: {
     updateUnchanged: "The provider was not changed.",
@@ -78,17 +74,43 @@ export const services = {
       "Live, interruptible conversations using the speech providers above and the selected chat model.",
     statusTitle: "Status",
     configuredLabel: "Configured",
-    configuredDescription:
-      "Realtime voice conversations are available on this server.",
+    configuredDescription: "Realtime voice conversations are available on this server.",
     notInstalledLabel: "Not installed",
-    notInstalledDescription:
-      "Run overtchat setup and enable realtime voice conversations.",
+    notInstalledDescription: "Run overtchat setup and enable realtime voice conversations.",
     needsSttLabel: "Needs speech-to-text",
     needsSttDescription: "Choose a speech-to-text provider above.",
     needsTtsLabel: "Needs text-to-speech",
     needsTtsDescription: "Choose a text-to-speech provider above.",
     incompleteSetupLabel: "Incomplete setup",
-    incompleteSetupDescription:
-      "Run overtchat setup to repair the realtime voice configuration.",
+    incompleteSetupDescription: "Run overtchat setup to repair the realtime voice configuration.",
+  },
+  mobile: {
+    list: {
+      sectionTitle: "Server services",
+      sectionDescription: "These providers are used by everyone on this server.",
+    },
+    status: {
+      needsSetup: "Needs setup",
+      unavailable: "Unavailable",
+      disabled: "Disabled",
+    },
+    voice: {
+      rowTitle: "Voice conversations",
+      readyDetail: "Ready for live voice conversations.",
+      unavailableDetail:
+        "Requires installed realtime voice and configured speech providers. Run overtchat setup on the host to install or repair it.",
+    },
+    detail: {
+      fallbackTitle: "Service",
+      notFound: "Service not found.",
+      providerDescription: "Changes affect everyone on this server.",
+      notInstalledDetail: "Run overtchat setup on the server to install this service.",
+      apiKeySavedHint: "A key is saved. Leave blank to keep it.",
+      apiKeyEmptyHint: "Enter your provider key.",
+      searchFallbackNote:
+        "When the primary search provider fails, OvertChat tries free search providers.",
+      save: "Save service",
+      saved: "Service saved",
+    },
   },
 } as const;

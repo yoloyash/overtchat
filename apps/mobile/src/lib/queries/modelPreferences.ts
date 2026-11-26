@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ModelPreferences } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
@@ -17,7 +18,7 @@ export function useModelPreferences() {
           signal,
         },
       );
-      if (!response.ok) throw new Error("Couldn't load default model");
+      if (!response.ok) throw new Error(i18n.t("common.mobile.errors.loadDefaultModel"));
       return response.json();
     },
   });
@@ -38,7 +39,7 @@ export function useSetDefaultModel() {
           body: JSON.stringify(input),
         },
       );
-      if (!response.ok) throw new Error("Couldn't save default model");
+      if (!response.ok) throw new Error(i18n.t("common.mobile.errors.saveDefaultModel"));
       return response.json();
     },
     onSuccess: async (preferences) => {

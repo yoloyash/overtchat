@@ -39,7 +39,7 @@ export function AppError({ error }: { error: unknown }) {
         </header>
         <div className="flex flex-col gap-2">
           {/* A full reload also reruns the desktop's compatibility/connection check. */}
-          <Button onClick={() => window.location.reload()}>{t("app.error.tryAgain")}</Button>
+          <Button onClick={() => window.location.reload()}>{t("common.actions.tryAgain")}</Button>
           {bridge && (
             <Button variant="outline" disabled={changing} onClick={() => void changeServer()}>
               {changing ? t("app.error.changingServer") : t("app.error.changeServer")}

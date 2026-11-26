@@ -41,12 +41,14 @@ export default function Appearance() {
         />
         <Choice
           title={t("settings.appearance.font.title")}
+          searchLabel={t("settings.mobile.appearance.searchFont")}
           value={font}
           onChange={setFontPref}
           options={FONT_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
         />
         <Choice
           title={t("settings.appearance.language.title")}
+          searchLabel={t("settings.mobile.appearance.searchLanguage")}
           value={language}
           onChange={setLanguagePref}
           options={LANGUAGES.map((value) => ({

@@ -44,7 +44,7 @@ export function TwoFactorSection({
       {isPending ? (
         <SettingsRow title={t("account.twoFactor.statusTitle")}>
           <span className="text-sm text-muted-foreground">
-            {t("account.twoFactor.loading")}
+            {t("common.states.loading")}
           </span>
         </SettingsRow>
       ) : isError ? (
@@ -201,7 +201,7 @@ function ConfirmPasswordDialog({
             {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
             <SettingsActions bordered={false} className="pt-2">
               <Button type="button" variant="ghost" size="sm" disabled={submitting} onClick={onClose}>
-                {t("account.twoFactor.confirm.cancel")}
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 type="submit"

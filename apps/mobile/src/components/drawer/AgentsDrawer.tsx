@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import * as Haptics from "expo-haptics";
@@ -88,6 +89,7 @@ export function AgentsDrawer({
   onNavigate: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t, i18n } = useTranslation();
   const [grouping, setGroupingState] = useState<AgentDrawerGrouping>(readGrouping);
   const [collapsed, setCollapsedState] = useState<string[]>(readCollapsed);
   const [showAllDone, setShowAllDone] = useState(false);
@@ -104,7 +106,7 @@ export function AgentsDrawer({
         showAllDone,
         activeSessionId,
       }),
-    [groups, grouping, collapsed, showAllDone, activeSessionId],
+    [groups, grouping, collapsed, showAllDone, activeSessionId, i18n.language],
   );
   const sections = useMemo(() => agentAttentionSections(groups), [groups]);
   const working = useMemo(
@@ -163,14 +165,14 @@ export function AgentsDrawer({
       onSuccess: (result) => {
         if (result.failures.length) {
           toastError(
-            "Some workspaces couldn't refresh",
+            t("sidebar.mobile.agents.partialRefreshError"),
             new Error(result.failures.map((failure) => failure.message).join("\n")),
           );
         } else {
-          toastSuccess("Sessions refreshed");
+          toastSuccess(t("agents.refresh.successTitle"));
         }
       },
-      onError: (error) => toastError("Couldn't refresh sessions", error),
+      onError: (error) => toastError(t("sidebar.mobile.agents.refreshError"), error),
     });
   }
 
@@ -179,7 +181,7 @@ export function AgentsDrawer({
   if (readyCount > 0) {
     listActions.push({
       key: "read-all",
-      label: "Mark all as read",
+      label: t("sidebar.agents.markAllAsRead"),
       icon: "checkmark-done-outline",
       onSelect: markAllRead,
     });
@@ -187,7 +189,7 @@ export function AgentsDrawer({
   listActions.push(
     {
       key: "add-workspace",
-      label: "Add workspace…",
+      label: t("sidebar.agents.addWorkspaceEllipsis"),
       icon: "add-circle-outline",
       onSelect: () => {
         onNavigate();
@@ -196,7 +198,7 @@ export function AgentsDrawer({
     },
     {
       key: "refresh",
-      label: "Refresh sessions",
+      label: t("sidebar.agents.refreshSessions"),
       icon: "refresh-outline",
       disabled: sync.isPending,
       onSelect: refresh,
@@ -208,13 +210,13 @@ export function AgentsDrawer({
         grouping === "status"
           ? {
               key: "group-workspace",
-              label: "Group by workspace",
+              label: t("sidebar.mobile.agents.groupByWorkspace"),
               icon: "folder-outline",
               onSelect: () => setGrouping("workspace"),
             }
           : {
               key: "group-status",
-              label: "Group by status",
+              label: t("sidebar.mobile.agents.groupByStatus"),
               icon: "pulse-outline",
               onSelect: () => setGrouping("status"),
             },
@@ -228,7 +230,7 @@ export function AgentsDrawer({
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="New agent"
+          accessibilityLabel={t("sidebar.nav.newAgent")}
           onPress={() => startSession()}
           style={({ pressed }) => [
             styles.newAgent,
@@ -245,12 +247,12 @@ export function AgentsDrawer({
               { color: colors.foreground, fontFamily: fonts.sansSemiBold },
             ]}
           >
-            New agent
+            {t("sidebar.nav.newAgent")}
           </Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Search agent sessions"
+          accessibilityLabel={t("sidebar.mobile.agents.searchSessionsLabel")}
           onPress={() => {
             onNavigate();
             router.push({ pathname: "/agents/history", params: { focus: "1" } });
@@ -281,7 +283,11 @@ export function AgentsDrawer({
           onRefresh={() => void connections.refresh()}
           ListHeaderComponent={
             <ListLabel
-              label={grouping === "workspace" ? "Workspaces" : "Sessions"}
+              label={
+                grouping === "workspace"
+                  ? t("sidebar.agents.workspacesHeading")
+                  : t("sidebar.agents.sessionsHeading")
+              }
               options={listOptions}
             />
           }
@@ -291,7 +297,7 @@ export function AgentsDrawer({
             ) : connections.error ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading agent sessions"
+                accessibilityLabel={t("sidebar.mobile.agents.retryLoadLabel")}
                 onPress={() => void connections.refetch()}
                 style={{ padding: 16 }}
               >
@@ -301,7 +307,7 @@ export function AgentsDrawer({
                     { color: colors.destructive, fontFamily: fonts.sansRegular },
                   ]}
                 >
-                  Couldn't load agent sessions. Tap to retry.
+                  {t("sidebar.mobile.agents.loadError")}
                 </Text>
               </Pressable>
             ) : null
@@ -347,7 +353,11 @@ export function AgentsDrawer({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={
-                      entry.expanded ? "Show fewer sessions" : `Show ${entry.hidden} more sessions`
+                      entry.expanded
+                        ? t("sidebar.mobile.agents.showFewerSessions")
+                        : t("sidebar.mobile.agents.showMoreSessions", {
+                            count: entry.hidden,
+                          })
                     }
                     accessibilityState={{ expanded: entry.expanded }}
                     onPress={() => setShowAllDone((current) => !current)}
@@ -370,7 +380,11 @@ export function AgentsDrawer({
                         { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                       ]}
                     >
-                      {entry.expanded ? "Show less" : `Show ${entry.hidden} more`}
+                      {entry.expanded
+                        ? t("common.actions.showLess")
+                        : t("common.actions.showCountMore", {
+                            count: entry.hidden,
+                          })}
                     </Text>
                   </Pressable>
                 );
@@ -402,6 +416,7 @@ function ListLabel({
   options: AgentMenuSection[];
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const menu = useMeasuredPopoverAnchor();
   return (
     <View style={styles.listLabel}>
@@ -417,7 +432,7 @@ function ListLabel({
       <View ref={menu.anchorRef} collapsable={false}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Agent list options"
+          accessibilityLabel={t("sidebar.agents.listOptionsLabel")}
           onPress={menu.open}
           hitSlop={8}
           style={({ pressed }) => [
@@ -434,7 +449,7 @@ function ListLabel({
       <AgentMenu
         from={menu.anchorRect}
         visible={menu.visible}
-        title="List options"
+        title={t("sidebar.agents.listOptionsTitle")}
         sections={options}
         onClose={menu.close}
       />
@@ -455,10 +470,15 @@ function GroupHeader({
   onToggle: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${collapsed ? "Expand" : "Collapse"} ${label}`}
+      accessibilityLabel={
+        collapsed
+          ? t("sidebar.mobile.agents.expandGroup", { name: label })
+          : t("sidebar.mobile.agents.collapseGroup", { name: label })
+      }
       accessibilityState={{ expanded: !collapsed }}
       onPress={onToggle}
       style={({ pressed }) => [
@@ -509,14 +529,19 @@ function WorkspaceHeader({
   onNewSession: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const count = group.sessions.length;
   return (
     <View style={styles.workspaceRow}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${collapsed ? "Expand" : "Collapse"} ${group.name}`}
+        accessibilityLabel={
+          collapsed
+            ? t("sidebar.agents.expandWorkspace", { name: group.name })
+            : t("sidebar.agents.collapseWorkspace", { name: group.name })
+        }
         accessibilityState={{ expanded: !collapsed }}
-        accessibilityHint="Long press to open the workspace"
+        accessibilityHint={t("sidebar.mobile.agents.workspaceLongPressHint")}
         onPress={onToggle}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -559,13 +584,16 @@ function WorkspaceHeader({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {agentHostLabel(group.host)} · {count} {count === 1 ? "session" : "sessions"}
+            {t("sidebar.mobile.agents.workspaceMeta", {
+              host: agentHostLabel(group.host),
+              count,
+            })}
           </Text>
         </View>
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`New session in ${group.name}`}
+        accessibilityLabel={t("sidebar.agents.newSessionIn", { name: group.name })}
         onPress={onNewSession}
         hitSlop={8}
         style={({ pressed }) => [
@@ -601,20 +629,23 @@ function SessionRow({
   onSetRead: (read: boolean) => void;
 }) {
   const menu = useMeasuredPopoverAnchor();
+  const { t } = useTranslation();
   const { session } = entry.item;
   const unseen = agentSessionHasUnseenTurn(session);
   const items: AgentMenuItem[] = [];
   if (agentSessionCanToggleRead(session, entry.state)) {
     items.push({
       key: "read",
-      label: unseen ? "Mark as read" : "Mark as unread",
+      label: unseen
+        ? t("agents.sessionState.markRead")
+        : t("agents.sessionState.markUnread"),
       icon: unseen ? "checkmark-outline" : "ellipse-outline",
       onSelect: () => onSetRead(unseen),
     });
   }
   items.push({
     key: "workspace",
-    label: "Open workspace",
+    label: t("sidebar.mobile.agents.openWorkspace"),
     icon: "folder-open-outline",
     onSelect: onOpenWorkspace,
   });
@@ -635,7 +666,11 @@ function SessionRow({
       <AgentMenu
         from={menu.anchorRect}
         visible={menu.visible}
-        title={entry.item.session.name || entry.item.session.firstMessage || "New session"}
+        title={
+          entry.item.session.name ||
+          entry.item.session.firstMessage ||
+          t("agents.session.newSession")
+        }
         sections={sections}
         onClose={menu.close}
       />

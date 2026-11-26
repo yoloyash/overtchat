@@ -8,6 +8,7 @@ import {
   type BottomSheetFooterProps,
 } from "@gorhom/bottom-sheet";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   BackHandler,
@@ -210,6 +211,7 @@ export function AgentNotice({
   }[];
   onDismiss?: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii, scheme } = useTheme();
   return (
     <View
@@ -290,7 +292,7 @@ export function AgentNotice({
       {onDismiss && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Dismiss"
+          accessibilityLabel={t("common.actions.dismiss")}
           hitSlop={10}
           onPress={onDismiss}
           style={{ padding: 2 }}
@@ -311,11 +313,17 @@ export function AgentFeedback({
   error?: string | null;
   retry?: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   return (
     <View style={{ padding: 16, gap: 8 }}>
       {loading && <ActivityIndicator color={colors.mutedForeground} />}
-      {!!error && <ErrorNotice message={error} action={retry ? { label: "Retry", onPress: retry } : undefined} />}
+      {!!error && (
+        <ErrorNotice
+          message={error}
+          action={retry ? { label: t("common.actions.retry"), onPress: retry } : undefined}
+        />
+      )}
     </View>
   );
 }
@@ -326,7 +334,7 @@ export function AgentSheet({
   onClose,
   children,
   footer,
-  closeLabel = "Done",
+  closeLabel,
   snapPoints = ["80%"],
 }: {
   title: string;
@@ -337,6 +345,7 @@ export function AgentSheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<BottomSheetModal>(null);
   const presented = useRef(false);
   const { colors, radii } = useTheme();
@@ -424,8 +433,11 @@ export function AgentSheet({
         <View style={{ flex: 1 }}>
           <AgentText title>{title}</AgentText>
         </View>
-        {closeLabel === "Done" ? (
-          <AgentButton label="Done" onPress={() => ref.current?.dismiss()} />
+        {closeLabel === undefined ? (
+          <AgentButton
+            label={t("common.actions.done")}
+            onPress={() => ref.current?.dismiss()}
+          />
         ) : (
           <Pressable
             accessibilityRole="button"

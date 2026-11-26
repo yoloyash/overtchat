@@ -1,6 +1,7 @@
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Feather } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -11,6 +12,7 @@ export function MiniSpeechPlayer({
   speech: ReturnType<typeof useSpeech>;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const {
     activeId,
     status,
@@ -31,14 +33,18 @@ export function MiniSpeechPlayer({
 
   if (error) {
     return <View style={styles.wrap}>
-      <ErrorNotice message={error} onDismiss={stop} action={canRetry ? { label: "Retry playback", onPress: retry } : undefined} />
+      <ErrorNotice message={error} onDismiss={stop} action={canRetry ? { label: t("chat.speech.retryPlayback"), onPress: retry } : undefined} />
     </View>;
   }
 
   const loading = status === "loading";
   const playing = status === "playing";
   const canSeek = duration > 0;
-  const playLabel = loading ? "Loading" : playing ? "Pause" : "Play";
+  const playLabel = loading
+    ? t("chat.mobile.speech.loading")
+    : playing
+      ? t("chat.mobile.speech.pause")
+      : t("chat.mobile.speech.play");
 
   return (
     <View style={styles.wrap}>
@@ -93,7 +99,7 @@ export function MiniSpeechPlayer({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {loading ? "Loading…" : "Streaming…"}
+            {loading ? t("common.states.loading") : t("chat.speech.streaming")}
           </Text>
         )}
 
@@ -111,7 +117,7 @@ export function MiniSpeechPlayer({
           hitSlop={8}
           style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
           accessibilityRole="button"
-          accessibilityLabel="Close player"
+          accessibilityLabel={t("chat.speech.closePlayer")}
         >
           <Feather name="x" size={16} color={colors.mutedForeground} />
         </Pressable>

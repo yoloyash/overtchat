@@ -9,18 +9,12 @@ export const scheduled: Translation["scheduled"] = {
     listLabel: "定时任务",
   },
   empty: {
-    title: "还没有定时任务",
-    description:
-      "在这里创建一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
+    title: "暂无定时任务",
+    description: "在这里创建一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
   },
   actions: {
     newTask: "新建任务",
-    tryAgain: "重试",
     runNow: "立即运行",
-    edit: "编辑",
-    delete: "删除",
-    deleting: "正在删除…",
-    cancel: "取消",
   },
   task: {
     modelRemoved: "模型已移除",
@@ -49,10 +43,10 @@ export const scheduled: Translation["scheduled"] = {
     },
     statusManual: "{{status}} · 手动运行",
     lastRun: {
-      success: "{{time}}完成",
-      error: "{{time}}失败",
-      skipped: "{{time}}跳过",
-      interrupted: "{{time}}停止",
+      success: "{{time}} 完成",
+      error: "{{time}} 失败",
+      skipped: "{{time}} 跳过",
+      interrupted: "{{time}} 停止",
     },
   },
   deleteDialog: {
@@ -77,7 +71,6 @@ export const scheduled: Translation["scheduled"] = {
   alerts: {
     failed: "定时任务运行失败",
     finished: "定时任务已完成",
-    open: "打开",
   },
   frequency: {
     once: "仅一次",
@@ -133,8 +126,6 @@ export const scheduled: Translation["scheduled"] = {
     projectHint: "每次运行都会在该项目中启动，并使用其指令和文件。",
     webSearch: "联网搜索",
     webSearchHint: "允许运行任务时搜索网络并读取网页。",
-    saving: "正在保存…",
-    save: "保存",
     schedule: "创建任务",
   },
   validation: {
@@ -169,7 +160,7 @@ export const scheduled: Translation["scheduled"] = {
     checkFailed: "无法查看定时任务",
     scheduleFailed: "无法创建定时任务",
     updateFailed: "无法更新定时任务",
-    deleteFailed: "无法删除定时任务",
+    deleteFailed: "无法删除任务",
     checked_other: "已查看 {{count}} 个定时任务",
     scheduledNamed: "已创建“{{name}}”",
     scheduled: "已创建定时任务",
@@ -177,5 +168,22 @@ export const scheduled: Translation["scheduled"] = {
     updated: "已更新定时任务",
     deletedNamed: "已删除“{{name}}”",
     deleted: "已删除定时任务",
+  },
+  mobile: {
+    emptyDescription: "在这里添加一个，或在任意对话中说：“每个工作日早上 8 点，给我发送一份新闻简报。”",
+    runOnScheduleLabel: "按计划运行 {{name}}",
+    notFound: "此任务已不存在。",
+    whenSection: "运行时间",
+    runsWithSection: "运行配置",
+    usePhoneTimeZone: "轻点以使用此手机的时区（{{timeZone}}）。",
+    backToTasks: "返回任务列表",
+    deleteTask: "删除任务",
+    deleteDialogMessage: "{{name}} 将停止运行。它生成的对话会被保留。",
+    searchMinutePastHour: "搜索每小时第几分钟",
+    searchTime: "搜索时间",
+    searchDate: "搜索日期",
+    searchDayOfMonth: "搜索每月日期",
+    searchModel: "搜索模型",
+    searchProject: "搜索项目",
   },
 };

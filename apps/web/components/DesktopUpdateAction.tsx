@@ -27,7 +27,7 @@ export function DesktopUpdateAction({ alwaysVisible = false, onServerUpdate }: {
   const busy = pending || ["checking", "downloading", "installing"].includes(state.status);
   const label = desktopUpdateLabel(state);
   const text = downloading || state.status === "installing" ? label
-    : state.status === "error" ? t("app.desktopUpdate.retry")
+    : state.status === "error" ? t("common.actions.retry")
       : alwaysVisible ? state.status === "available" ? t("app.desktopUpdate.download") : label : null;
   const tooltip = state.message || label;
   const Icon = busy ? LoaderCircle : ready || state.status === "error" ? RotateCw

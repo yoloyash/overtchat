@@ -1,6 +1,7 @@
 import { resolveAgentSessionThinking } from "@overtchat/shared/agent-creation";
 import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Alert, Keyboard, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Drawer } from "expo-router/drawer";
@@ -77,12 +78,14 @@ function AgentSession({
   workspace?: string;
   name?: string;
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   // A notification opens a session by id alone; the connection list fills in
   // its folder, and knows the provider's own session id for copying.
   const listing = useAgentSessionListing(id);
   const workspace = workspaceParam || listing?.item.workspaceId || "";
-  const name = nameParam ?? listing?.group.name ?? "Agent chat";
+  const name =
+    nameParam ?? listing?.group.name ?? t("agents.mobile.session.fallbackName");
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const keyboard = useKeyboardState((state) => state.isVisible);
@@ -164,7 +167,7 @@ function AgentSession({
       if (!mounted.current) return false;
       if (command.type === "fork_message") {
         if (!result.forkContext || !snapshot)
-          throw new Error("The agent did not return conversation history.");
+          throw new Error(t("agents.session.noForkHistory"));
         const fork = Crypto.randomUUID();
         saveDraftToSession(`fork:${fork}`, {
           message: "",
@@ -206,7 +209,9 @@ function AgentSession({
     } catch (cause) {
       if (!mounted.current) return false;
       setError(
-        cause instanceof Error ? cause.message : "Couldn't send the command.",
+        cause instanceof Error
+          ? cause.message
+          : t("agents.mobile.errors.commandSendFailed"),
       );
       session.reconnect();
       return false;
@@ -234,19 +239,23 @@ function AgentSession({
       setFollowSignal((value) => value + 1);
       void execute(command, true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Invalid command.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : t("agents.mobile.errors.invalidCommand"),
+      );
     }
   }
 
   const implementPlan = useCallback(
     (plan: string) => {
       Alert.alert(
-        "Implement this plan?",
-        "The agent will begin implementing the plan in this workspace.",
+        t("agents.mobile.session.implementPlanTitle"),
+        t("agents.mobile.session.implementPlanDescription"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.actions.cancel"), style: "cancel" },
           {
-            text: "Implement",
+            text: t("agents.mobile.session.implementPlanConfirm"),
             onPress: () =>
               void execute({
                 type: "implement_plan",
@@ -259,7 +268,7 @@ function AgentSession({
       // The callback reads the current session and command state.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [id, ready, mutation.mutateAsync],
+    [id, ready, mutation.mutateAsync, t],
   );
 
   const renameRef = useRef<BottomSheetModal>(null);
@@ -267,11 +276,14 @@ function AgentSession({
   const title = sessionName || name;
   function confirmCompact() {
     Alert.alert(
-      "Compact context?",
-      "The agent summarizes the conversation so far to free up context. This can't be undone.",
+      t("agents.dialogs.compactTitle"),
+      t("agents.mobile.session.compactDescription"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Compact", onPress: () => void execute({ type: "compact" }) },
+        { text: t("common.actions.cancel"), style: "cancel" },
+        {
+          text: t("agents.dialogs.compactAction"),
+          onPress: () => void execute({ type: "compact" }),
+        },
       ],
     );
   }
@@ -390,7 +402,7 @@ function AgentSession({
           style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
         >
           <ActivityIndicator
-            accessibilityLabel="Loading conversation"
+            accessibilityLabel={t("agents.mobile.session.loadingConversation")}
             color={colors.mutedForeground}
           />
         </View>
@@ -400,13 +412,13 @@ function AgentSession({
         ref={renameRef}
         targetId={id}
         initialTitle={sessionName || null}
-        heading="Rename session"
-        placeholder="Session name"
+        heading={t("agents.session.rename")}
+        placeholder={t("agents.mobile.session.namePlaceholder")}
         maxLength={120}
         onSubmit={(_, next) =>
           void execute({ type: "set_session_name", name: next }).then(
             (sent) => {
-              if (sent) toastSuccess("Renamed");
+              if (sent) toastSuccess(t("agents.mobile.session.renamedToast"));
             },
           )
         }
@@ -427,7 +439,7 @@ function AgentSession({
               snapshot.readOnly.retryable
                 ? [
                     {
-                      label: "Retry interactive session",
+                      label: t("agents.mobile.session.retryInteractive"),
                       disabled:
                         mutation.isPending || session.status !== "connected",
                       onPress: () => void execute({ type: "retry_interactive" }),
@@ -441,10 +453,10 @@ function AgentSession({
           <AgentNotice
             icon="hand-left-outline"
             warning
-            message="The agent is waiting for your response."
+            message={t("agents.mobile.session.waitingForResponse")}
             actions={[
               {
-                label: "Respond",
+                label: t("agents.mobile.session.respond"),
                 primary: true,
                 onPress: () => {
                   Keyboard.dismiss();
@@ -467,10 +479,10 @@ function AgentSession({
           <AgentNotice
             icon="help-circle-outline"
             warning
-            message="Delivery not confirmed. Check the conversation before retrying."
+            message={t("agents.mobile.session.deliveryNotConfirmed")}
             actions={[
               {
-                label: "Already delivered",
+                label: t("agents.mobile.session.alreadyDelivered"),
                 onPress: () =>
                   setDraft(
                     (current) =>
@@ -479,15 +491,18 @@ function AgentSession({
                   ),
               },
               {
-                label: "Send again…",
+                label: t("agents.mobile.session.sendAgainEllipsis"),
                 disabled: !ready,
                 onPress: () =>
                   Alert.alert(
-                    "Send as a new message?",
-                    "Only send again if you checked the conversation and it wasn't delivered. This could otherwise send it twice.",
+                    t("agents.mobile.session.sendAsNewTitle"),
+                    t("agents.mobile.session.sendAsNewDescription"),
                     [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Send again", onPress: () => send(true) },
+                      { text: t("common.actions.cancel"), style: "cancel" },
+                      {
+                        text: t("agents.mobile.session.sendAgain"),
+                        onPress: () => send(true),
+                      },
                     ],
                   ),
               },
@@ -518,7 +533,7 @@ function AgentSession({
           isAdmin={isAdmin}
           onBeforeDictate={stopSpeech}
           provider={snapshot?.provider}
-          modelLabel={model?.label || modelId || "Model"}
+          modelLabel={model?.label || modelId || t("agents.composer.model")}
           thinkingLabel={thinkingLabel(model, thinking)}
           permission={
             mode ? { label: mode.label, dangerous: mode.dangerous === true } : undefined
@@ -599,7 +614,7 @@ function AgentSession({
         />
       )}
       <AgentSheet
-        title="Account usage"
+        title={t("agents.session.accountUsage")}
         visible={!!usage}
         onClose={() => setUsage(undefined)}
       >
@@ -607,21 +622,27 @@ function AgentSession({
         {usage?.windows.map((window) => (
           <View key={window.id}>
             <AgentText>
-              {window.label} · {Math.round(window.usedPercent)}% used
+              {t("agents.mobile.session.usageWindow", {
+                label: window.label,
+                percent: Math.round(window.usedPercent),
+              })}
             </AgentText>
             {window.resetsAt && (
               <AgentText muted>
-                Resets {new Date(window.resetsAt * 1000).toLocaleString()}
+                {t("agents.dialogs.resetsAt", {
+                  time: new Date(window.resetsAt * 1000).toLocaleString(),
+                })}
               </AgentText>
             )}
           </View>
         ))}
         {usage?.credits && (
           <AgentText>
-            Credits:{" "}
-            {usage.credits.unlimited
-              ? "Unlimited"
-              : (usage.credits.balance ?? "Available")}
+            {t("agents.mobile.session.usageCredits", {
+              value: usage.credits.unlimited
+                ? t("agents.dialogs.unlimited")
+                : (usage.credits.balance ?? t("agents.dialogs.available")),
+            })}
           </AgentText>
         )}
         {usage?.unavailableReason && (

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getChatQueueStore, type ChatKind } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
@@ -19,7 +20,7 @@ export function useChats() {
     queryKey: queryKeys.chats(),
     queryFn: async (): Promise<ChatListItem[]> => {
       const res = await authFetch(`${getApiBase()}/api/chats`);
-      if (!res.ok) throw new Error(`Failed to load chats (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.loadChats", { status: res.status }));
       const json = (await res.json()) as { chats: ChatListItem[] };
       return json.chats;
     },
@@ -36,7 +37,7 @@ export function useRenameChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title }),
       });
-      if (!res.ok) throw new Error(`Failed to rename (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.renameFailed", { status: res.status }));
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
   });
@@ -51,7 +52,7 @@ export function useSetChatPinned() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pinned }),
       });
-      if (!res.ok) throw new Error(`Failed to update pin (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.updatePinFailed", { status: res.status }));
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
   });
@@ -64,7 +65,7 @@ export function useDeleteChat() {
       const res = await authFetch(`${getApiBase()}/api/chats/${id}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(`Failed to delete (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.deleteFailed", { status: res.status }));
     },
     onSuccess: (_, id) => {
       getChatQueueStore(qc).deleteChat(id);
@@ -88,7 +89,7 @@ export function useMoveChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),
       });
-      if (!res.ok) throw new Error(`Failed to move (${res.status})`);
+      if (!res.ok) throw new Error(i18n.t("common.mobile.errors.moveFailed", { status: res.status }));
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
   });

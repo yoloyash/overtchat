@@ -123,8 +123,8 @@ export function ProfileEditor({
           disabled={!changed || updatePersonalization.isPending}
         >
           {updatePersonalization.isPending
-            ? t("personalization.profile.saving")
-            : t("personalization.profile.save")}
+            ? t("common.states.saving")
+            : t("common.actions.save")}
         </Button>
       </SettingsActions>
     </form>

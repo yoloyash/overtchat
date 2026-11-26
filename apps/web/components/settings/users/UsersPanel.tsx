@@ -236,7 +236,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                         className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >
                         <Trash2 data-icon="inline-start" />
-                        {t("users.list.delete")}
+                        {t("common.actions.delete")}
                       </Button>
                     </div>
                   )}
@@ -323,7 +323,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   />
                 }
               >
-                {t("users.roleDialog.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 size="sm"
@@ -331,7 +331,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                 onClick={() => void confirmRoleChange()}
               >
                 {setRoleMutation.isPending
-                  ? t("users.roleDialog.updating")
+                  ? t("common.states.updating")
                   : pendingRoleChange?.role === "admin"
                     ? t("users.roleDialog.makeAdmin")
                     : t("users.roleDialog.makeUser")}
@@ -386,7 +386,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   <Button variant="ghost" size="sm" disabled={deleting} />
                 }
               >
-                {t("users.deleteDialog.cancel")}
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -395,8 +395,8 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                 onClick={confirmDelete}
               >
                 {deleting
-                  ? t("users.deleteDialog.deleting")
-                  : t("users.deleteDialog.delete")}
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

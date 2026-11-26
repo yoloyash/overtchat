@@ -1,8 +1,7 @@
 export const connections = {
   page: {
     title: "Agents",
-    description:
-      "Run coding agents in project folders on this server or over SSH.",
+    description: "Run coding agents in project folders on this server or over SSH.",
     supportedAgentsLabel: "Supported agents: {{providers}}.",
     addWorkspace: "Add workspace",
   },
@@ -64,10 +63,8 @@ export const connections = {
     workspaceRemoved: "Workspace removed",
     detachErrorFallback: "The item could not be detached.",
     workspaceAddedWithErrorsTitle: "Workspace added with some agent errors",
-    workspaceAddedWithErrorsDescription_one:
-      "{{count}} agent connected; {{failed}} failed.",
-    workspaceAddedWithErrorsDescription_other:
-      "{{count}} agents connected; {{failed}} failed.",
+    workspaceAddedWithErrorsDescription_one: "{{count}} agent connected; {{failed}} failed.",
+    workspaceAddedWithErrorsDescription_other: "{{count}} agents connected; {{failed}} failed.",
     workspaceAddedTitle: "Agent workspace added",
     workspaceAddedDescription_one: "{{count}} agent discovered and synced.",
     workspaceAddedDescription_other: "{{count}} agents discovered and synced.",
@@ -80,18 +77,13 @@ export const connections = {
       "<name>{{name}}</name> and every agent that uses it will be removed from OvertChat. Files and native agent sessions remain on their machines.",
     workspaceDescription:
       "<name>{{name}}</name> and its agent chats will be removed from OvertChat. Files and native agent sessions remain on the host.",
-    cancel: "Cancel",
-    remove: "Remove",
   },
   dialog: {
-    title: "Add workspace",
     description:
       "Choose a project directory. Available agents and their chats are discovered automatically.",
     machineTitle: "Machine",
     machineDescription: "Where the project is located",
     machineGroupLabel: "Workspace machine",
-    thisServer: "This server",
-    sshHost: "SSH host",
     sshConfigBack: "SSH config",
     sshAliasLabel: "SSH alias",
     useHost: "Use host",
@@ -109,8 +101,6 @@ export const connections = {
     useAutomaticDetection: "Use automatic detection",
     alreadyAttached: "That directory is already in Agent workspaces.",
     chooseFolderPrompt: "Choose a project folder",
-    cancel: "Cancel",
-    submit: "Add workspace",
     validation: {
       invalidSshAlias: "Enter a valid SSH host alias.",
       missingMachine: "Choose a machine first.",
@@ -133,5 +123,66 @@ export const connections = {
     empty: "No SSH aliases found",
     refresh: "Refresh SSH hosts",
     addManually: "Add manually",
+  },
+  mobile: {
+    common: {
+      version: "Version {{version}}",
+    },
+    status: {
+      connectorOnline: "Connector online",
+      connectorOffline: "Connector offline",
+      unavailable: "Status unavailable",
+      online: "Online",
+      offline: "Offline",
+    },
+    list: {
+      refreshLabel: "Refresh connections",
+      connectorVersion: "Connector {{version}}",
+      workspaceCount_one: "{{count}} workspace",
+      workspaceCount_other: "{{count}} workspaces",
+      workspaceCountWithVersion_one: "{{count}} workspace · {{version}}",
+      workspaceCountWithVersion_other: "{{count}} workspaces · {{version}}",
+      noAgentsTitle: "No agents connected",
+      noAgentsDetail: "Add an agent and workspace from the web setup.",
+      emptyTitle: "Connect your computer",
+      emptyDetail: "Pair a Host Connector to use the coding agents installed on your computer.",
+    },
+    setup: {
+      title: "Setup",
+      creatingCommand: "Creating command…",
+      pairComputer: "Pair a computer",
+      pairComputerDetail: "Create a command to run on the computer you want to connect.",
+      manageOnWebTitle: "Manage agents & workspaces",
+      manageOnWebDetail: "Add or remove connections and configure SSH in your browser.",
+    },
+    pairing: {
+      title: "Pairing command",
+      description: "Run this on your computer. Expires {{time}}.",
+      copy: "Copy pairing command",
+      copied: "Command copied",
+    },
+    detail: {
+      title: "Connection",
+      notFound: "This connection no longer exists.",
+      versionNotDetected: "Version not detected",
+      sshHost: "SSH · {{host}}",
+      runsOnComputer: "Runs on the connected computer",
+      offlineHint: "Bring the Host Connector online before testing this agent.",
+      lastVerified: "Last verified",
+      notTestedYet: "Not tested yet",
+      testing: "Testing connection…",
+      testHealthy: "{{name}} connection healthy",
+      workspacesDescription: "Folders this agent can work in.",
+      noWorkspacesTitle: "No workspaces yet",
+      noWorkspacesDetail: "Add a workspace from web settings to start using this agent.",
+      manageOnWebTitle: "Manage on web",
+      manageOnWebDetail: "Edit workspaces, SSH setup, or remove this connection.",
+      testConnection: "Test connection",
+      workspacesTitle: "Workspaces",
+    },
+  },
+  hosts: {
+    sshHost: "SSH host",
+    thisServer: "This server",
   },
 } as const;

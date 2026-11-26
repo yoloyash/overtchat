@@ -1,4 +1,6 @@
 import { isPreviewableImage, type CodeExecutionFile } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
+import { useTranslation } from "react-i18next";
 import { Directory } from "expo-file-system";
 import { useState, type ReactNode } from "react";
 import { Pressable, Text, View, type StyleProp, type TextStyle } from "react-native";
@@ -32,10 +34,10 @@ async function saveFile(file: CodeExecutionFile) {
     const bytes = new Uint8Array(await response.arrayBuffer());
     const directory = await Directory.pickDirectoryAsync();
     directory.createFile(file.name, file.mediaType).write(bytes);
-    toastSuccess("File saved");
+    toastSuccess(i18n.t("chat.mobile.files.saved"));
   } catch (error) {
     if (!(error instanceof Error && /cancel/i.test(error.message)))
-      toastError("Could not save file", error);
+      toastError(i18n.t("chat.mobile.files.saveFailed"), error);
   }
 }
 
@@ -64,6 +66,7 @@ export function CodeExecutionFiles({
   large?: boolean;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const { saving, save } = useSaveFile();
 
   return (
@@ -83,12 +86,12 @@ export function CodeExecutionFiles({
           <Pressable
             disabled={saving !== null}
             accessibilityRole="button"
-            accessibilityLabel={`Save ${file.name}`}
+            accessibilityLabel={t("chat.mobile.files.saveNamed", { name: file.name })}
             onPress={() => void save(file)}
             style={{ alignSelf: "flex-start", paddingVertical: 8 }}
           >
             <Text style={{ color: colors.primary }}>
-              {saving === file.id ? "Saving…" : "Save"}
+              {saving === file.id ? t("common.states.saving") : t("common.actions.save")}
             </Text>
           </Pressable>
         </View>
@@ -108,11 +111,12 @@ export function CodeFileLinkText({
   children?: ReactNode;
 }) {
   const { saving, save } = useSaveFile();
+  const { t } = useTranslation();
   return (
     <Text
       style={style}
       accessibilityRole="link"
-      accessibilityHint={`Saves ${file.name}`}
+      accessibilityHint={t("chat.mobile.files.savesNamed", { name: file.name })}
       onPress={saving === null ? () => void save(file) : undefined}
     >
       {children}

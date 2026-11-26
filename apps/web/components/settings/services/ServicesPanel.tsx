@@ -438,8 +438,8 @@ function CapabilitySection({
           disabled={updateCapability.isPending || testCapability.isPending}
         >
           {updateCapability.isPending
-            ? t("services.actions.saving")
-            : t("services.actions.save")}
+            ? t("common.states.saving")
+            : t("common.actions.save")}
         </Button>
       </SettingsActions>
       {showTestResult && testCapability.isSuccess && (

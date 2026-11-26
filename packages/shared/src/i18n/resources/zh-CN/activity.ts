@@ -32,7 +32,7 @@ export const activity: Translation["activity"] = {
     chatTokensTitle: "{{tokens}} 个对话 token",
   },
   profile: {
-    loadError: "无法加载此活动档案。",
+    loadError: "无法加载此活动主页。",
     returnToLeaderboard: "返回排行榜",
     memberSince: "加入于 {{date}}",
     tokenActivity: "token 活动",

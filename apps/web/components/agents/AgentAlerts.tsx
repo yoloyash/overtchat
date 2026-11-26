@@ -115,7 +115,7 @@ export function AgentAlerts({
               </>
             ),
             icon: <AlertIcon reason={notification.reason} />,
-            action: { label: i18n.t("agents.alerts.open"), onClick: open },
+            action: { label: i18n.t("common.actions.open"), onClick: open },
           });
         };
         if (visible && document.hasFocus()) {

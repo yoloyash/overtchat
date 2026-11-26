@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -154,6 +155,7 @@ export function AgentTranscript({
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(
     new Set(),
@@ -360,9 +362,9 @@ export function AgentTranscript({
   const liveActivity =
     trailing?.type === "activity" && agentActivityIsLive(trailing.entries);
   const runLabel = compacting
-    ? "Compacting context"
+    ? t("agents.mobile.transcript.compactingContext")
     : active && !liveActivity
-      ? "Thinking"
+      ? t("agents.activity.thinking")
       : null;
   const header = (
     <View style={styles.tail}>
@@ -384,13 +386,17 @@ export function AgentTranscript({
       <View style={styles.history}>
         {history.loading ? (
           <ActivityIndicator
-            accessibilityLabel="Loading older messages"
+            accessibilityLabel={t("agents.mobile.transcript.loadingOlder")}
             color={colors.mutedForeground}
           />
         ) : (
           <>
             <AgentText muted>{history.error}</AgentText>
-            <AgentButton label="Retry" icon="refresh" onPress={history.load} />
+            <AgentButton
+              label={t("common.actions.retry")}
+              icon="refresh"
+              onPress={history.load}
+            />
           </>
         )}
       </View>
@@ -461,7 +467,7 @@ export function AgentTranscript({
             textAlign: "center",
           }}
         >
-          What would you like to work on?
+          {t("agents.mobile.transcript.emptyTitle")}
         </Text>
         <Text
           style={{
@@ -472,7 +478,7 @@ export function AgentTranscript({
             textAlign: "center",
           }}
         >
-          Messages run in this workspace on your connected machine.
+          {t("agents.mobile.transcript.emptyDescription")}
         </Text>
       </View>
     );
@@ -520,7 +526,7 @@ export function AgentTranscript({
         <View pointerEvents="box-none" style={styles.jumpContainer}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Jump to latest"
+            accessibilityLabel={t("agents.mobile.transcript.jumpToLatest")}
             hitSlop={8}
             onPress={() => jumpToLatest()}
             style={({ pressed }) => [
@@ -748,11 +754,12 @@ function ImplementPlanButton({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Implement plan"
+      accessibilityLabel={t("agents.messages.implementPlan")}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -775,7 +782,7 @@ function ImplementPlanButton({
           fontSize: 14,
         }}
       >
-        Implement plan
+        {t("agents.messages.implementPlan")}
       </Text>
     </Pressable>
   );

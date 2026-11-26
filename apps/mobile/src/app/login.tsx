@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -56,11 +57,14 @@ function rememberMethod(step: CodeStep) {
 
 export default function LoginScreen() {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const serverUrl = useServerUrl();
   const authClient = getAuthClient();
   const session = authClient.useSession();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
-  const serverNotice = unexpectedSessionMessage(session.error);
+  const serverNotice = unexpectedSessionMessage(session.error)
+    ? t("auth.mobile.unexpectedSessionResponse")
+    : null;
   const signInMethods = useSignInMethods();
   // A server that can't be asked gets the password form, as before.
   const methods = signInMethods.isPending
@@ -91,7 +95,7 @@ export default function LoginScreen() {
         { headers: { [TWO_FACTOR_CLIENT_HEADER]: "1" } },
       );
       if (error) {
-        setError(error.message ?? "Login failed");
+        setError(error.message ?? t("auth.login.failed"));
         return;
       }
       if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
@@ -107,7 +111,7 @@ export default function LoginScreen() {
       }
       await session.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : t("auth.login.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -125,7 +129,7 @@ export default function LoginScreen() {
         setError(ssoErrorMessage(result.error, sso.name));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : t("auth.login.failed"));
     } finally {
       setSubmitting(false);
       setInBrowser(false);
@@ -163,11 +167,18 @@ export default function LoginScreen() {
       rememberMethod(codeStep);
       await session.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not verify the code.");
+      setError(err instanceof Error ? err.message : t("auth.mobile.login.verifyFailed"));
     } finally {
       setSubmitting(false);
     }
   }
+
+  const alternateSteps: readonly CodeStep[] =
+    codeStep === "approval"
+      ? ["totp", "backup"]
+      : codeStep === "totp"
+        ? ["backup", ...(canApprove ? (["approval"] as const) : [])]
+        : ["totp", ...(canApprove ? (["approval"] as const) : [])];
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
@@ -177,11 +188,8 @@ export default function LoginScreen() {
       >
         <View style={styles.content}>
           <View style={styles.brand}>
-            <Text
-              style={[styles.wordmark, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
-            >
-              overtchat
-            </Text>
+            {/* eslint-disable-next-line i18next/no-literal-string -- product name */}
+            <Text style={[styles.wordmark, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}>overtchat</Text>
           </View>
 
           <View
@@ -199,10 +207,10 @@ export default function LoginScreen() {
                 style={[styles.title, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
               >
                 {codeStep === "approval"
-                  ? "Approve this sign-in"
+                  ? t("auth.twoFactor.approval.title")
                   : codeStep
-                    ? "Two-factor authentication"
-                    : "Welcome back"}
+                    ? t("auth.twoFactor.code.title")
+                    : t("auth.login.title")}
               </Text>
               <Text
                 style={[
@@ -211,12 +219,12 @@ export default function LoginScreen() {
                 ]}
               >
                 {codeStep === "approval"
-                  ? "Open OvertChat on a computer or another device where you're signed in, and pick this number."
+                  ? t("auth.mobile.login.approvalDescription")
                   : codeStep === "backup"
-                  ? "Enter one of the backup codes you saved when you set up two-factor."
-                  : codeStep
-                    ? "Enter the 6-digit code from your authenticator app."
-                    : "Sign in to continue."}
+                    ? t("auth.twoFactor.code.backupDescription")
+                    : codeStep
+                      ? t("auth.twoFactor.code.totpDescription")
+                      : t("auth.login.subtitle")}
               </Text>
             </View>
 
@@ -244,7 +252,9 @@ export default function LoginScreen() {
                 <Text
                   style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
                 >
-                  {codeStep === "backup" ? "Backup code" : "Authentication code"}
+                  {codeStep === "backup"
+                    ? t("auth.twoFactor.code.backupLabel")
+                    : t("auth.twoFactor.code.totpLabel")}
                 </Text>
                 <TextInput
                   key={codeStep}
@@ -258,6 +268,7 @@ export default function LoginScreen() {
                   textContentType="oneTimeCode"
                   autoComplete="one-time-code"
                   maxLength={codeStep === "backup" ? 11 : TOTP_CODE_LENGTH + 1}
+                  // eslint-disable-next-line i18next/no-literal-string -- code format placeholder
                   placeholder={codeStep === "backup" ? "xxxxx-xxxxx" : "123456"}
                   placeholderTextColor={colors.mutedForeground}
                   editable={!submitting}
@@ -281,7 +292,7 @@ export default function LoginScreen() {
                   <Text
                     style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
                   >
-                    Email
+                    {t("auth.fields.email")}
                   </Text>
                   <TextInput
                     value={email}
@@ -308,7 +319,7 @@ export default function LoginScreen() {
                   <Text
                     style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
                   >
-                    Password
+                    {t("auth.fields.password")}
                   </Text>
                   <TextInput
                     value={password}
@@ -364,11 +375,11 @@ export default function LoginScreen() {
                 >
                   {codeStep
                     ? submitting
-                      ? "Verifying…"
-                      : "Verify"
+                      ? t("auth.twoFactor.code.verifying")
+                      : t("auth.twoFactor.code.verify")
                     : submitting && !inBrowser
-                      ? "Signing in…"
-                      : "Sign in"}
+                      ? t("auth.login.submitting")
+                      : t("auth.login.submit")}
                 </Text>
               </Pressable>
             )}
@@ -384,7 +395,7 @@ export default function LoginScreen() {
                         { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                       ]}
                     >
-                      or
+                      {t("auth.login.or")}
                     </Text>
                     <View style={[styles.rule, { backgroundColor: colors.border }]} />
                   </View>
@@ -410,7 +421,7 @@ export default function LoginScreen() {
                       },
                     ]}
                   >
-                    Continue with {sso.name}
+                    {t("auth.login.ssoContinue", { provider: sso.name })}
                   </Text>
                 </Pressable>
               </>
@@ -418,12 +429,7 @@ export default function LoginScreen() {
 
             {codeStep ? (
               <View style={styles.links}>
-                {(codeStep === "approval"
-                  ? (["totp", "backup"] as const)
-                  : codeStep === "totp"
-                    ? (["backup", ...(canApprove ? (["approval"] as const) : [])] as const)
-                    : (["totp", ...(canApprove ? (["approval"] as const) : [])] as const)
-                ).map((next) => (
+                {alternateSteps.map((next) => (
                   <Pressable
                     key={next}
                     accessibilityRole="button"
@@ -441,10 +447,10 @@ export default function LoginScreen() {
                       { color: colors.primary, fontFamily: fonts.sansMedium },
                     ]}>
                       {next === "totp"
-                        ? "Use your authenticator app"
+                        ? t("auth.twoFactor.methods.useAuthenticator")
                         : next === "backup"
-                          ? "Use a backup code"
-                          : "Approve on another device"}
+                          ? t("auth.twoFactor.methods.useBackupCode")
+                          : t("auth.twoFactor.methods.approveOnAnotherDevice")}
                     </Text>
                   </Pressable>
                 ))}
@@ -453,16 +459,18 @@ export default function LoginScreen() {
               <Pressable
                 accessibilityRole="button"
                 hitSlop={8}
-                onPress={() => Alert.alert(
-                  "Forgot password?",
-                  "Contact your server administrator to reset your password. Another administrator can also help if you are an admin.\n\nIf all administrators are locked out, the server owner can run overtchat reset-password on the server, or overtchat reset-two-factor for a lost authenticator.",
-                )}
+                onPress={() =>
+                  Alert.alert(
+                    t("auth.login.forgotPassword"),
+                    t("auth.mobile.login.recoveryAlertMessage"),
+                  )
+                }
               >
                 <Text style={[
                   styles.recoveryLink,
                   { color: colors.primary, fontFamily: fonts.sansMedium },
                 ]}>
-                  Forgot password?
+                  {t("auth.login.forgotPassword")}
                 </Text>
               </Pressable>
 
@@ -477,7 +485,7 @@ export default function LoginScreen() {
                     { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                   ]}
                 >
-                  Server: {serverHost}
+                  {t("auth.mobile.login.serverLabel", { origin: serverHost })}
                 </Text>
                 <Pressable
                   accessibilityRole="button"
@@ -490,7 +498,7 @@ export default function LoginScreen() {
                       { color: colors.primary, fontFamily: fonts.sansSemiBold },
                     ]}
                   >
-                    Change
+                    {t("auth.mobile.login.changeServerShort")}
                   </Text>
                 </Pressable>
               </View>

@@ -1,6 +1,7 @@
 import { OvertChatVoiceClient, type VoiceClientCallbacks, type VoiceClientStatus } from "@overtchat/voice-client";
 import type { ChatReasoningLevel, VoiceSessionGrant } from "@overtchat/shared";
 import type { UIMessage } from "ai";
+import { i18n } from "@overtchat/shared/i18n";
 
 export type VoiceState = {
   status: VoiceClientStatus | "idle" | "ending";
@@ -29,7 +30,6 @@ export type VoiceDependencies = {
   onPersisted: () => void;
 };
 const initial: VoiceState = { status: "idle", muted: false, error: null, warning: null, inputLevel: 0, outputLevel: 0, pendingText: null, cleanupPending: false };
-const endingError = "Could not finish ending voice. Check your connection and tap End again.";
 
 /** One explicit foreground call. Closing also fences late grants, audio, and history reads. */
 export class MobileVoiceSession {
@@ -45,6 +45,7 @@ export class MobileVoiceSession {
   private pendingSend = false;
   private heartbeat: ReturnType<typeof setTimeout> | undefined;
   private releasePromise: Promise<void> | null = null;
+  private hasEndingError = false;
   constructor(private readonly deps: VoiceDependencies) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -58,10 +59,11 @@ export class MobileVoiceSession {
     if (this.disposed || this.state.status !== "idle" || this.ending) return Promise.resolve();
     this.stopped = false;
     this.releasePromise = null;
+    this.hasEndingError = false;
     this.patch({ ...initial, status: "connecting" });
     this.starting = this.connect(options).catch(async () => {
       if (!this.active()) return;
-      if (!this.state.error) this.patch({ error: "Could not start voice. Check your connection and voice services, then try again." });
+      if (!this.state.error) this.patch({ error: i18n.t("chat.mobile.voice.startFailed") });
       // Do not await end here: it waits for this startup operation to release late grants.
       void this.end().catch(() => {});
     });
@@ -74,8 +76,8 @@ export class MobileVoiceSession {
     });
     if (!response.ok) {
       if (this.active()) this.patch({ error: response.status === 409
-        ? "This chat already has an active response or voice call. Finish it before starting voice."
-        : "Could not start voice. Check your connection and voice services, then try again." });
+        ? i18n.t("chat.mobile.voice.conflict")
+        : i18n.t("chat.mobile.voice.startFailed") });
       throw new Error("Voice session unavailable");
     }
     const grant = await response.json() as VoiceSessionGrant;
@@ -96,7 +98,7 @@ export class MobileVoiceSession {
       onInputLevel: inputLevel => { if (currentCall()) this.patch({ inputLevel }); },
       onOutputLevel: outputLevel => { if (currentCall()) this.patch({ outputLevel }); },
       onWarning: warning => { if (currentCall()) this.patch({ warning }); },
-      onError: () => { if (currentCall()) this.fail("Voice disconnected or audio was interrupted. Start voice again when ready."); },
+      onError: () => { if (currentCall()) this.fail(i18n.t("chat.mobile.voice.disconnected")); },
     };
     this.client = this.deps.createClient(grant, callbacks);
     void this.readEvents(stream.body, this.events.signal);
@@ -116,6 +118,7 @@ export class MobileVoiceSession {
 
   private fail(message: string) {
     if (!this.active()) return;
+    this.hasEndingError = false;
     this.patch({ error: message });
     void this.end().catch(() => {});
   }
@@ -128,7 +131,7 @@ export class MobileVoiceSession {
       while (this.active() && !signal.aborted) {
         clearTimeout(heartbeat);
         heartbeat = setTimeout(() => {
-          if (!signal.aborted) this.fail("Voice lost its connection. Start voice again when you are connected.");
+          if (!signal.aborted) this.fail(i18n.t("chat.mobile.voice.lostConnection"));
         }, 45_000);
         this.heartbeat = heartbeat;
         const { value, done } = await reader.read();
@@ -153,12 +156,12 @@ export class MobileVoiceSession {
             // Keep updates in stream order; an older refresh must not erase a newer turn.
             await this.refresh(true);
           } else if (event.type === "error") {
-            this.patch({ warning: "The voice response failed. Please try speaking again." });
+            this.patch({ warning: i18n.t("chat.mobile.voice.responseFailed") });
           }
         }
       }
     } catch {
-      if (!signal.aborted) this.fail("Voice lost its connection. Start voice again when you are connected.");
+      if (!signal.aborted) this.fail(i18n.t("chat.mobile.voice.lostConnection"));
     } finally {
       clearTimeout(heartbeat);
       if (this.heartbeat === heartbeat) this.heartbeat = undefined;
@@ -216,9 +219,12 @@ export class MobileVoiceSession {
       }
       this.client = null;
       this.grant = null;
-      this.patch({ status: "idle", error: this.state.error === endingError ? null : this.state.error, warning: null, pendingText: null });
+      const clearEndingError = this.hasEndingError;
+      this.hasEndingError = false;
+      this.patch({ status: "idle", error: clearEndingError ? null : this.state.error, warning: null, pendingText: null });
     })().catch(error => {
-      this.patch({ error: endingError });
+      this.hasEndingError = true;
+      this.patch({ error: i18n.t("chat.mobile.voice.endingError") });
       throw error;
     }).finally(() => {
       this.ending = null;
@@ -243,11 +249,11 @@ export class MobileVoiceSession {
       if (this.active()) this.patch({ pendingText: null });
       return true;
     } catch {
-      if (this.active()) this.patch({ pendingText: null, warning: "Your message was not confirmed. Check the conversation before trying again." });
+      if (this.active()) this.patch({ pendingText: null, warning: i18n.t("chat.mobile.voice.messageNotConfirmed") });
       return false;
     } finally { this.pendingSend = false; }
   }
-  dismissError = () => this.patch({ error: null });
+  dismissError = () => { this.hasEndingError = false; this.patch({ error: null }); };
   dismissWarning = () => this.patch({ warning: null });
   dispose() {
     this.disposed = true;

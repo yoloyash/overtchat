@@ -9,6 +9,8 @@ import {
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
+import { useTranslation } from "react-i18next";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
@@ -130,6 +132,7 @@ function ChatGate({
   newChatProjectId: string | null;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const {
     data: hydration,
     isPending,
@@ -154,7 +157,7 @@ function ChatGate({
             { color: colors.destructive, fontFamily: fonts.sansRegular },
           ]}
         >
-          {error.message || "Couldn't load chat"}
+          {error.message || t("chat.mobile.loadChatFailed")}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -176,7 +179,7 @@ function ChatGate({
               },
             ]}
           >
-            Try again
+            {t("common.actions.tryAgain")}
           </Text>
         </Pressable>
       </View>
@@ -208,6 +211,7 @@ function ChatSurface({
   projectId: string | null;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -399,7 +403,7 @@ function ChatSurface({
     chatQueue.queue.pause();
     void generation
       .cancel()
-      .catch((error) => toastError("Could not stop the response", error));
+      .catch((error) => toastError(i18n.t("chat.errors.stopResponseTitle"), error));
   }, [generation, chatQueue.queue]);
 
   const streaming = status === "streaming" || status === "submitted";
@@ -433,16 +437,16 @@ function ChatSurface({
       : (reasoningControls?.defaultLevel ?? "default");
   const thinkingLevelLabel =
     reasoningOptionsForControls(reasoningControls).length > 1
-      ? reasoningLabel(reasoningLevel)
+      ? reasoningLabel(reasoningLevel, t)
       : undefined;
   const imageAvailable = Boolean(imageCapability?.available && modelSupportsToolCalling(selectedModel));
   const searchAvailable =
     webSearchEnabled && modelSupportsToolCalling(selectedModel);
   const searchUnavailableReason = !webSearchEnabled
-    ? "Web search is disabled in Settings → Tools"
-    : "Unavailable for this model";
+    ? t("chat.composer.unavailable.searchDisabled")
+    : t("chat.mobile.unavailableForModel");
   const openuiAvailable = modelSupportsToolCalling(selectedModel);
-  const openuiUnavailableReason = "Unavailable for this model";
+  const openuiUnavailableReason = t("chat.mobile.unavailableForModel");
   const voiceCapability = capabilitiesData?.capabilities.voice;
   const voiceInstalled = Boolean(voiceCapability?.installed);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -460,18 +464,18 @@ function ChatSurface({
       voiceEligible,
   );
   const voiceUnavailableReason = !voice.available
-    ? "Live voice requires an updated mobile app"
+    ? t("chat.mobile.voice.requiresUpdate")
     : !configured
       ? modelLoading
-        ? "Loading model…"
-        : "Configure a model before starting voice"
+        ? t("chat.composer.loadingModelPlaceholder")
+        : t("chat.composer.unavailable.configureModelBeforeVoice")
       : voiceCapability?.unavailableReason === "stt-unavailable"
-        ? "Speech-to-text is disabled"
+        ? t("chat.composer.unavailable.sttDisabled")
         : voiceCapability?.unavailableReason === "tts-unavailable"
-          ? "Text-to-speech is disabled"
+          ? t("chat.composer.unavailable.ttsDisabled")
           : voiceCapability?.unavailableReason === "not-configured"
-            ? "Voice authentication is not configured"
-            : "Realtime voice is unavailable";
+            ? t("chat.composer.unavailable.voiceAuthNotConfigured")
+            : t("chat.composer.unavailable.voiceUnavailable");
 
   const {
     attachments,
@@ -505,7 +509,7 @@ function ChatSurface({
     addSheetRef.current?.dismiss();
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      toastError("Camera permission required");
+      toastError(i18n.t("chat.mobile.cameraPermissionRequired"));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -520,7 +524,7 @@ function ChatSurface({
     addSheetRef.current?.dismiss();
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      toastError("Photo library permission required");
+      toastError(i18n.t("chat.mobile.photoLibraryPermissionRequired"));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -572,7 +576,7 @@ function ChatSurface({
                 {project && (
                   <Pressable
                     accessibilityRole="link"
-                    accessibilityLabel={`Open project ${project.name}`}
+                    accessibilityLabel={t("chat.mobile.openProject", { name: project.name })}
                     onPress={() => router.push(`/projects/${project.id}`)}
                     hitSlop={8}
                     style={({ pressed }) => [
@@ -600,7 +604,7 @@ function ChatSurface({
                   // Where the chat came from, and the way back to the task.
                   <Pressable
                     accessibilityRole="link"
-                    accessibilityLabel={`Scheduled task: ${scheduledTaskName}`}
+                    accessibilityLabel={t("chat.header.scheduledLabel", { name: scheduledTaskName })}
                     onPress={() => router.push("/scheduled")}
                     hitSlop={8}
                     style={({ pressed }) => [
@@ -622,7 +626,7 @@ function ChatSurface({
                           { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
                         ]}
                       >
-                        Scheduled
+                        {t("chat.header.scheduled")}
                       </Text>
                     )}
                   </Pressable>
@@ -643,7 +647,7 @@ function ChatSurface({
           )}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="New chat"
+            accessibilityLabel={t("sidebar.nav.newChat")}
             onPress={onNewChat}
             hitSlop={10}
             style={styles.headerRight}
@@ -677,6 +681,7 @@ function ChatSurface({
     streaming,
     voice.busy,
     usage,
+    t,
   ]);
 
   function requestBody(
@@ -722,7 +727,7 @@ function ChatSurface({
       if (/abort|connection|fetch|network|socket/i.test(error.message)) {
         void generation.reconcile().catch(() => undefined);
       } else {
-        toastError("Chat error", error);
+        toastError(i18n.t("chat.mobile.chatError"), error);
       }
     }
     lastErrorRef.current = error;
@@ -731,7 +736,7 @@ function ChatSurface({
   async function onRefreshMessages() {
     if (isNew || voice.busy) return;
     const res = await refreshMessages();
-    if (res?.error) toastError("Couldn't refresh messages", res.error);
+    if (res?.error) toastError(i18n.t("chat.mobile.refreshMessagesFailed"), res.error);
     else if (res?.data?.messages && !voiceBusyRef.current)
       setMessages(res.data.messages);
   }
@@ -843,7 +848,7 @@ function ChatSurface({
   });
   const playMessage = useStableEvent(async (id: string, text: string) => {
     if (voice.busy) {
-      toastError("End live voice before playing a message.");
+      toastError(i18n.t("chat.mobile.voice.endBeforePlayback"));
       return;
     }
     await speech.play(id, text);
@@ -943,12 +948,12 @@ function ChatSurface({
             ]}
           >
             {modelsError
-              ? "Couldn't load models"
+              ? t("chat.mobile.loadModelsFailed")
               : modelLoading
-                ? "Loading model…"
+                ? t("chat.composer.loadingModelPlaceholder")
                 : configured
-                  ? "What can I help with?"
-                  : "No models configured"}
+                  ? t("chat.empty.title")
+                  : t("chat.mobile.noModelsTitle")}
           </Text>
           {!configured && !modelsError && !modelLoading && (
             <Text
@@ -960,7 +965,7 @@ function ChatSurface({
                 },
               ]}
             >
-              An admin can add one in Settings → Models.
+              {t("chat.mobile.noModelsHint")}
             </Text>
           )}
           {modelsError && (
@@ -1105,7 +1110,7 @@ function ChatSurface({
         searchAvailable={searchAvailable && !voice.busy}
         searchUnavailableReason={
           voice.busy
-            ? "End voice to require a web search. Voice can still search automatically."
+            ? t("chat.composer.unavailable.searchVoice")
             : searchUnavailableReason
         }
         searchRequested={searchAvailable && !voice.busy && searchRequested}
@@ -1114,7 +1119,7 @@ function ChatSurface({
         }}
         onPickTool={voice.busy ? undefined : onPickTool}
         openuiAvailable={openuiAvailable && !voice.busy}
-        openuiUnavailableReason={voice.busy ? "End voice to request an interactive UI." : openuiUnavailableReason}
+        openuiUnavailableReason={voice.busy ? t("chat.composer.unavailable.openuiVoice") : openuiUnavailableReason}
         openuiRequested={openuiAvailable && !voice.busy && openuiRequested}
         onToggleOpenUIRequested={(next) => {
           if (!voice.busy) setOpenuiRequested(next);

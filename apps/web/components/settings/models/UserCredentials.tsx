@@ -168,7 +168,7 @@ function UserCredentialRow({
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
-              {t("models.userCredentials.cancel")}
+              {t("common.actions.cancel")}
             </Button>
             <Button
               type="submit"
@@ -176,7 +176,7 @@ function UserCredentialRow({
               disabled={setMut.isPending}
               aria-label={t("models.userCredentials.saveLabel", { who })}
             >
-              {t("models.userCredentials.save")}
+              {t("common.actions.save")}
             </Button>
           </div>
         </form>
@@ -191,7 +191,7 @@ function UserCredentialRow({
               aria-label={t("models.userCredentials.removeLabel", { who })}
               onClick={() => void save(true)}
             >
-              {t("models.userCredentials.remove")}
+              {t("common.actions.remove")}
             </Button>
           )}
           <Button

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import {
   buildAgentPromptCommand,
   normalizeAgentSessionCommand,
@@ -112,12 +113,16 @@ export function submissionFingerprint(
 }
 
 export function sessionStatus(snapshot: AgentRuntimeSnapshot): string {
-  if (snapshot.readOnly) return "Read only";
-  if (snapshot.pendingInteraction) return "Waiting for you";
-  if (snapshot.state.isCompacting) return "Compacting";
-  if (snapshot.status === "running") return "Working";
-  if (snapshot.status === "exited") return "Stopped";
-  return "Ready";
+  if (snapshot.readOnly) return i18n.t("agents.mobile.status.readOnly");
+  if (snapshot.pendingInteraction)
+    return i18n.t("agents.mobile.status.waitingForYou");
+  if (snapshot.state.isCompacting)
+    return i18n.t("agents.activity.status.compacting");
+  if (snapshot.status === "running")
+    return i18n.t("agents.activity.status.working");
+  if (snapshot.status === "exited")
+    return i18n.t("agents.mobile.status.stopped");
+  return i18n.t("agents.mobile.status.ready");
 }
 
 // Only attach credentials to images served by the selected OvertChat server.

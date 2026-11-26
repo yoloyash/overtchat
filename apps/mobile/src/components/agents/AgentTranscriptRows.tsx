@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
@@ -60,8 +62,10 @@ function ActivityIcon({
   entries: AgentActivityEntry[];
   status: AgentToolStatus;
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
-  if (status === "running") return <AgentWorkingIndicator label="Working" />;
+  if (status === "running")
+    return <AgentWorkingIndicator label={t("agents.activity.status.working")} />;
   if (status === "failed")
     return <Ionicons name="alert-circle-outline" size={16} color={colors.destructive} />;
   const tools = entries.flatMap((entry) => (entry.type === "tool" ? [entry.tool] : []));
@@ -86,10 +90,13 @@ function AgentThoughtRow({
   live: boolean;
   onToggle?: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const [open, setOpen] = useState(false);
   const preview = agentThoughtPreview(content);
-  const label = live ? "Thinking" : "Thought";
+  const label = live
+    ? t("agents.activity.thinking")
+    : t("agents.activity.thought");
   return (
     <View>
       <Pressable
@@ -148,11 +155,15 @@ function AgentThoughtRow({
 }
 
 /** The live group's one line: the step's verb, and what it is acting on. */
-function liveStepPresentation(step: AgentActivityEntry): {
+function liveStepPresentation(
+  step: AgentActivityEntry,
+  t: TFunction,
+): {
   label: string;
   summary: string | null;
 } {
-  if (step.type === "thinking") return { label: "Thinking", summary: null };
+  if (step.type === "thinking")
+    return { label: t("agents.activity.thinking"), summary: null };
   if (step.type === "subagent") return describeSubagentActivity(step.activity);
   const presentation = describeAgentTool(step.tool);
   return {
@@ -172,12 +183,15 @@ export function AgentActivityGroup({
   /** Called before the group opens or closes. */
   onToggle?: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const summary = describeAgentActivity(entries, active);
   // The last group of a running turn shows the step it is on, not a count.
   const liveActivity =
     active && agentActivityIsLive(entries) ? describeAgentLiveActivity(entries) : null;
-  const liveStep = liveActivity ? liveStepPresentation(liveActivity.step) : null;
+  const liveStep = liveActivity
+    ? liveStepPresentation(liveActivity.step, t)
+    : null;
   const [expanded, setExpanded] = useState(summary.status === "failed");
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const selected = entries.find(
@@ -300,10 +314,14 @@ export function AgentActivityGroup({
         </View>
       )}
       <AgentSheet
-        title={selectedTool ? describeAgentTool(selectedTool).label : "Tool details"}
+        title={
+          selectedTool
+            ? describeAgentTool(selectedTool).label
+            : t("agents.mobile.toolDetails.title")
+        }
         visible={!!selectedTool}
         onClose={() => setSelectedToolId(null)}
-        closeLabel="Close tool details"
+        closeLabel={t("agents.mobile.toolDetails.closeLabel")}
         snapPoints={["60%", "90%"]}
       >
         {selectedTool && <AgentToolDetails tool={selectedTool} active={active} />}
@@ -397,27 +415,28 @@ function Card({
 }
 
 function TaskRow({ task }: { task: AgentTask }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   return (
     <View style={styles.taskRow}>
       <View style={styles.taskIcon}>
         {task.status === "completed" ? (
           <Ionicons
-            accessibilityLabel="Completed"
+            accessibilityLabel={t("agents.context.taskCompleted")}
             name="checkmark-circle"
             size={17}
             color={colors.mutedForeground}
           />
         ) : task.status === "in_progress" ? (
           <ActivityIndicator
-            accessibilityLabel="In progress"
+            accessibilityLabel={t("agents.context.taskInProgress")}
             size="small"
             color={colors.foreground}
             style={{ transform: [{ scale: 0.7 }] }}
           />
         ) : (
           <Ionicons
-            accessibilityLabel="Pending"
+            accessibilityLabel={t("agents.context.taskPending")}
             name="ellipse-outline"
             size={17}
             color={colors.mutedForeground}
@@ -441,12 +460,13 @@ function TaskRow({ task }: { task: AgentTask }) {
 }
 
 export function AgentTaskListCard({ snapshot }: { snapshot: AgentTaskListSnapshot }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const completed = snapshot.tasks.filter((task) => task.status === "completed").length;
   return (
     <Card
       icon="list-outline"
-      title="Tasks"
+      title={t("agents.context.tasks")}
       trailing={
         <Text
           style={{
@@ -475,8 +495,9 @@ export function AgentPlanCard({
   item: Extract<AgentTranscriptItem, { type: "plan" }>;
   footer?: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
-    <Card icon="map-outline" title="Plan">
+    <Card icon="map-outline" title={t("agents.messages.plan")}>
       {!!item.explanation && <AgentText muted>{item.explanation}</AgentText>}
       {item.text ? (
         <MarkdownBody text={item.text} />
@@ -508,6 +529,7 @@ export function AgentErrorCard({
   /** Called before the details open or close. */
   onToggle?: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   const [open, setOpen] = useState(false);
   return (
@@ -538,7 +560,11 @@ export function AgentErrorCard({
         {!!error.details && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={open ? "Hide error details" : "Show error details"}
+            accessibilityLabel={
+              open
+                ? t("agents.mobile.transcript.hideErrorDetails")
+                : t("agents.mobile.transcript.showErrorDetails")
+            }
             accessibilityState={{ expanded: open }}
             hitSlop={8}
             onPress={() => {
@@ -554,7 +580,7 @@ export function AgentErrorCard({
                 fontSize: 12,
               }}
             >
-              Details
+              {t("agents.messages.details")}
             </Text>
             <Ionicons
               name={open ? "chevron-up" : "chevron-down"}

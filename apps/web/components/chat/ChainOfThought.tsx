@@ -497,7 +497,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="min-w-0 truncate font-medium text-foreground">
-          {query || t("chat.activity.searchingEllipsis")}
+          {query || t("common.states.searching")}
         </span>
         {part.state === "output-available" && (
           <span className="shrink-0 text-muted-foreground">
@@ -805,7 +805,7 @@ function Favicon({
 }
 
 function activeLabel(last: ActivityPart | undefined, t: TFunction): string {
-  if (!last) return t("chat.activity.working");
+  if (!last) return t("common.states.working");
   if (last.type === "tool-web_search") {
     const query = last.input?.query?.trim();
     return query

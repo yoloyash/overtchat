@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Linking,
@@ -37,6 +38,7 @@ export function OpenUICard({
   deferred?: boolean;
 }) {
   const { colors, fonts, scheme } = useTheme();
+  const { t } = useTranslation();
   const { height: windowHeight } = useWindowDimensions();
   // Keep an internally scrolling card inside the visible chat area, including
   // when the keyboard reduces the window. Otherwise its bottom can be offscreen
@@ -88,8 +90,8 @@ export function OpenUICard({
         <Text style={{ color: colors.mutedForeground }}>
           {part.errorText ??
             (interrupted
-              ? "Interactive UI generation was interrupted."
-              : "Interactive UI is unavailable. The readable answer is shown below.")}
+              ? t("chat.openui.interrupted")
+              : t("chat.mobile.openui.unavailableFallback"))}
         </Text>
         {text ? <MarkdownBody text={text} /> : null}
       </View>
@@ -99,7 +101,7 @@ export function OpenUICard({
     return isStreaming ? (
       <ActivityIndicator color={colors.mutedForeground} />
     ) : (
-      <MarkdownBody text={text || "Interactive UI is unavailable."} />
+      <MarkdownBody text={text || t("chat.openui.unavailable")} />
     );
   if (!live)
     return (
@@ -115,7 +117,7 @@ export function OpenUICard({
           })}
         >
           <Text style={{ color: colors.primary, fontFamily: fonts.sansMedium }}>
-            Show interactive view
+            {t("chat.mobile.openui.showInteractiveView")}
           </Text>
         </Pressable>
       </View>
@@ -124,7 +126,7 @@ export function OpenUICard({
     <View style={{ marginVertical: 8, width: "100%" }}>
       {!ready && (
         <ActivityIndicator
-          accessibilityLabel="Loading interactive UI"
+          accessibilityLabel={t("chat.mobile.openui.loading")}
           color={colors.mutedForeground}
         />
       )}

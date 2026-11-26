@@ -1,20 +1,14 @@
 import type { Translation } from "../../catalog";
 
 export const projects: Translation["projects"] = {
-  loading: "正在加载…",
   settingsLabel: "项目设置",
   nameInputLabel: "项目名称",
   renameTitle: "重命名项目",
   actionsLabel: "项目操作",
   deleteProject: "删除项目",
   actions: {
-    rename: "重命名",
-    delete: "删除",
-    deleting: "正在删除…",
-    cancel: "取消",
-    save: "保存",
-    saving: "正在保存…",
-    tryAgain: "重试",
+    newChatIn: "在 {{name}} 中新建对话",
+    removeFromProject: "从项目中移除",
   },
   deleteDialog: {
     title: "删除项目？",
@@ -31,10 +25,9 @@ export const projects: Translation["projects"] = {
   },
   chats: {
     heading: "对话",
-    untitled: "未命名",
     filterPlaceholder: "筛选对话",
     empty: {
-      title: "还没有对话",
+      title: "暂无对话",
       description: "在上方发起对话。这里的对话共享此项目的指令和默认模型。",
       noMatches: "没有匹配 <query>{{query}}</query> 的对话。",
     },
@@ -42,22 +35,21 @@ export const projects: Translation["projects"] = {
     pinned: "已置顶",
     responding: "正在回复…",
     actionsLabel: "{{title}} 的操作",
-    removeFromProject: "从项目中移除",
     deleteDialog: {
       title: "删除对话？",
       description: "<title>{{title}}</title> 将被永久删除。",
     },
     toast: {
       deleted: "对话已删除",
-      renameError: "无法重命名对话",
+      renameError: "重命名对话失败",
       removedTitle: "已从项目中移除",
       removedDescription: "该对话已移至你的主列表。",
-      moveError: "无法移动对话",
+      moveError: "移动对话失败",
     },
     errors: {
       deleteFailed: "删除失败",
       renameFallback: "对话标题未更改。",
-      moveFallback: "对话保留在原位置。",
+      moveFallback: "对话仍留在原位置。",
     },
   },
   files: {
@@ -67,13 +59,10 @@ export const projects: Translation["projects"] = {
     addFiles: "添加文件",
     inputLabel: "要添加的项目文件",
     loadError: "无法加载项目文件。",
-    listLabel: "文件",
     pages_other: "{{count}} 页",
     fromChat: "来自 <chatLink>{{chat}}</chatLink>",
     fromUnnamedChat: "来自<chatLink>一个对话</chatLink>",
     removeFileLabel: "从项目中移除 {{filename}}",
-    removeFromProject: "从项目中移除",
-    uploading: "正在上传…",
     footer: "已添加 {{used}}/{{max}} 个文件。需要时，模型会使用文件工具读取和搜索这些文件。",
     toast: {
       limitTitle_other: "每个项目最多可保存 {{count}} 个文件",
@@ -86,6 +75,7 @@ export const projects: Translation["projects"] = {
       addFallback: "文件未添加。",
       removeFallback: "文件仍在项目中。",
     },
+    fallbackFile: "文件",
   },
   instructions: {
     title: "指令",
@@ -124,8 +114,7 @@ export const projects: Translation["projects"] = {
     saveToProjectTitle: "保存到 {{project}}",
     conflictDialog: {
       title: "替换 {{filename}}？",
-      description:
-        "<project>{{project}}</project> 中已有同名文件。替换不会影响历史对话；同时保留会为新文件添加编号后缀。",
+      description: "<project>{{project}}</project> 中已有同名文件。替换不会影响历史对话；同时保留会为新文件添加编号后缀。",
       keepBoth: "同时保留",
       replace: "替换",
     },
@@ -138,6 +127,44 @@ export const projects: Translation["projects"] = {
     errors: {
       uploadFailed: "上传失败（{{status}}）",
       saveFallback: "文件未添加到项目中。",
+    },
+  },
+  mobile: {
+    renamedToast: "已重命名",
+    renameError: "无法重命名项目",
+    changeModelError: "无法更改默认模型",
+    deleteError: "无法删除项目",
+    notFound: "未找到项目",
+    renameProjectLabel: "重命名 {{name}}",
+    chatCount_other: "{{count}} 个对话",
+    settingsHeading: "设置",
+    instructionsPlaceholderDetail: "添加模型应始终遵循的背景信息",
+    accountDefaultWithModel: "账号默认 · {{model}}",
+    chatsHeading: "对话",
+    chatsHeadingCount: "对话 · {{count}}",
+    emptyChatsDescription: "这里的对话共享此项目的指令、文件和默认模型。",
+    deleteDialogMessage: "{{name}} 将被删除。其中的对话会移至你的主列表。",
+    instructions: {
+      saveError: "无法保存指令",
+      sheetSubtitle: "会添加到 {{name}} 的每个对话中：背景信息、语气或模型应始终遵循的偏好。",
+      saveLabel: "保存指令",
+    },
+    files: {
+      heading: "文件",
+      headingCount: "文件 · {{count}} / {{max}}",
+      imageNotAllowedTitle: "{{name}} 是图片",
+      imageNotAllowedMessage: "项目文件仅支持文档和文本。",
+      addError: "无法添加 {{filename}}",
+      removeError: "无法移除 {{filename}}",
+      retryLoadLabel: "重试加载项目文件",
+      loadErrorTap: "无法加载文件，轻点重试。",
+      metaFromChat: " · 来自 <chatLink>{{chat}}</chatLink>",
+      metaFromUnnamedChat: " · 来自<chatLink>一个对话</chatLink>",
+      uploadingLabel: "正在上传 {{name}}",
+      addFilesHint: "模型在此项目的每个对话中都可以读取的参考资料",
+      addFilesExistingDetail: "需要时，模型会读取和搜索这些文件。",
+      removeConfirmTitle: "从项目中移除？",
+      removeConfirmMessage: "{{filename}} 将不再可用于此项目中的对话。已附上该文件的消息仍会保留其副本。",
     },
   },
 };
