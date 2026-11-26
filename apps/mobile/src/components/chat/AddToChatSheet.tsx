@@ -5,6 +5,7 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { forwardRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
@@ -57,7 +58,7 @@ export const AddToChatSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -69,6 +70,7 @@ export const AddToChatSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={renderBackdrop}

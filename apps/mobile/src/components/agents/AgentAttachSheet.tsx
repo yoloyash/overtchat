@@ -7,6 +7,7 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 
@@ -50,7 +51,7 @@ export function AgentAttachSheet({
   }, [visible]);
   const backdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -61,6 +62,7 @@ export function AgentAttachSheet({
   );
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={backdrop}

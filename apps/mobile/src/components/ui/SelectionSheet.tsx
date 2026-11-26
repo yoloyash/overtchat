@@ -7,6 +7,7 @@ import {
   BottomSheetTextInput,
   type BottomSheetScrollViewMethods,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import {
   useCallback,
   useEffect,
@@ -84,7 +85,7 @@ export function SelectionSheet<T extends string>({
   }, [visible]);
   const backdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -99,6 +100,7 @@ export function SelectionSheet<T extends string>({
   );
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       snapPoints={searchable ? ["75%"] : undefined}
       enableDynamicSizing={!searchable}

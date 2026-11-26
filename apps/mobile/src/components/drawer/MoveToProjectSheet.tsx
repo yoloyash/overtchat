@@ -6,6 +6,7 @@ import {
   BottomSheetModal,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { forwardRef, useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,7 +29,7 @@ export const MoveToProjectSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -45,6 +46,7 @@ export const MoveToProjectSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={renderBackdrop}

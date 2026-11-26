@@ -107,6 +107,12 @@ export const common: Translation["common"] = {
     },
   },
   mobile: {
+    sheet: {
+      backdropLabel: "关闭",
+      backdropHint: "轻点即可关闭",
+      handleLabel: "面板拖动条",
+      handleHint: "向上或向下拖动以调整大小",
+    },
     errors: {
       shareChangeFailed: "无法更改对话分享设置。",
       sharePreviewFailed: "无法预览此对话。",

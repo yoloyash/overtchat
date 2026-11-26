@@ -6,6 +6,7 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import type {
   ChatReasoningLevel,
   ModelReasoningControls,
@@ -126,7 +127,7 @@ export const ModelPickerSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -138,6 +139,7 @@ export const ModelPickerSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={modalRef}
       enableDynamicSizing
       maxDynamicContentSize={sheetMaxHeight}

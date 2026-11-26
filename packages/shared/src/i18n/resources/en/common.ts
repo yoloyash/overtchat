@@ -107,6 +107,12 @@ export const common = {
     },
   },
   mobile: {
+    sheet: {
+      backdropLabel: "Close",
+      backdropHint: "Tap to close",
+      handleLabel: "Sheet handle",
+      handleHint: "Drag up or down to resize",
+    },
     errors: {
       shareChangeFailed: "Could not change chat sharing.",
       sharePreviewFailed: "Could not preview this chat.",

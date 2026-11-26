@@ -6,6 +6,7 @@ import {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import {
   MEMORY_KEY_MAX_LENGTH,
   MEMORY_VALUE_MAX_LENGTH,
@@ -61,7 +62,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
+        <SheetBackdrop
           {...props}
           appearsOnIndex={0}
           disappearsOnIndex={-1}
@@ -115,6 +116,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
 
     return (
       <BottomSheetModal
+        handleComponent={SheetHandle}
         ref={sheetRef}
         enableDynamicSizing
         backdropComponent={renderBackdrop}

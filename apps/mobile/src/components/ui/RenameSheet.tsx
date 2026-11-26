@@ -6,6 +6,7 @@ import {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { forwardRef, useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
@@ -42,7 +43,7 @@ export const RenameSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -71,6 +72,7 @@ export const RenameSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={renderBackdrop}
