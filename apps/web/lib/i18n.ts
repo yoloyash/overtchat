@@ -2,6 +2,7 @@ import {
   DEFAULT_APP_LANGUAGE,
   i18n,
   parseAppLanguage,
+  resolveFormatLocale,
   resolveSupportedLocale,
   setLocale,
   type AppLanguage,
@@ -11,7 +12,7 @@ import {
 /** Per-browser language choice, kept with the other device preferences. */
 export const LANGUAGE_STORAGE_KEY = "overtchat_language";
 
-function systemLocales(): readonly string[] {
+export function systemLocales(): readonly string[] {
   if (typeof navigator === "undefined") return [];
   return navigator.languages?.length ? navigator.languages : [navigator.language];
 }
@@ -23,6 +24,15 @@ function storedLanguage(): AppLanguage {
   } catch {
     return DEFAULT_APP_LANGUAGE;
   }
+}
+
+/**
+ * The locale for dates and numbers shown to the person: the active language,
+ * in the browser's regional form when it lists one. In a component, use
+ * `useFormatLocale()` so the text follows a language change.
+ */
+export function formatLocale(): string {
+  return resolveFormatLocale(i18n.language as SupportedLocale, systemLocales());
 }
 
 /** Switches the interface to a saved choice and tells the browser its language. */

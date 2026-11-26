@@ -5,6 +5,7 @@ import {
   SUPPORTED_LOCALES,
   i18n,
   parseAppLanguage,
+  resolveFormatLocale,
   resolveSupportedLocale,
   setLocale,
 } from "../src/i18n/index.ts";
@@ -92,6 +93,15 @@ test("the saved language is validated", () => {
   assert.equal(parseAppLanguage("system"), "system");
   assert.equal(parseAppLanguage("xx"), "system");
   assert.equal(parseAppLanguage(null), "system");
+});
+
+test("dates and numbers use the active language, in the device's regional form", () => {
+  assert.equal(resolveFormatLocale("en", ["en-GB", "zh-CN"]), "en-GB");
+  assert.equal(resolveFormatLocale("zh-CN", ["en-US"]), "zh-CN");
+  assert.equal(resolveFormatLocale("zh-CN", ["en-US", "zh-Hans-SG"]), "zh-Hans-SG");
+  assert.equal(resolveFormatLocale("zh-CN", ["zh_CN"]), "zh-CN");
+  assert.equal(resolveFormatLocale("en", ["zh-TW"]), "en");
+  assert.equal(resolveFormatLocale("en", []), "en");
 });
 
 test("the system language resolves to a supported locale", () => {

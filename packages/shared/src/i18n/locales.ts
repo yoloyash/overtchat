@@ -49,3 +49,17 @@ export function resolveSupportedLocale(
   }
   return DEFAULT_LOCALE;
 }
+
+/**
+ * The locale for dates, times and numbers. It is the active language, in the
+ * device's own regional form when the device lists that language (so English
+ * on a British phone keeps British dates), and never another language: a
+ * Chinese interface does not show "Mar 4".
+ */
+export function resolveFormatLocale(
+  active: SupportedLocale,
+  systemLocales: readonly string[],
+): string {
+  const own = systemLocales.find((tag) => matchSystemLocale(tag) === active);
+  return own ? own.replaceAll("_", "-") : active;
+}
