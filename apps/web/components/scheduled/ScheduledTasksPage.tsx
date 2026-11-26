@@ -27,6 +27,7 @@ import {
   type ScheduledTask,
   type ScheduledTaskRun,
 } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
@@ -103,6 +104,7 @@ function RunChatLink({
 
 function TaskRuns({ task }: { task: ScheduledTask }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const runs = useScheduledTaskRuns(task.id);
   if (runs.isPending) {
     return (
@@ -135,7 +137,7 @@ function TaskRuns({ task }: { task: ScheduledTask }) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2">
               <RunChatLink run={run} className="font-medium text-foreground">
-                {formatScheduledRunTime(run.startedAt, task.timeZone)}
+                {formatScheduledRunTime(run.startedAt, task.timeZone, locale)}
               </RunChatLink>
               <span className="text-muted-foreground">
                 {run.trigger === "manual"
@@ -166,11 +168,12 @@ function TaskRuns({ task }: { task: ScheduledTask }) {
 
 function TaskStatus({ task }: { task: ScheduledTask }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   if (task.enabled && task.nextRunAt) {
     return (
       <span>
         {t("scheduled.status.nextRun", {
-          time: formatScheduledRunTime(task.nextRunAt, task.timeZone),
+          time: formatScheduledRunTime(task.nextRunAt, task.timeZone, locale),
         })}
       </span>
     );
@@ -203,6 +206,7 @@ function TaskRow({
   onEdit: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const updateTask = useUpdateScheduledTask();
   const runTask = useRunScheduledTask();
   const deleteTask = useDeleteScheduledTask();
@@ -256,7 +260,7 @@ function TaskRow({
           <h2 className="truncate text-sm font-medium">{task.name}</h2>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {[
-              describeTaskSchedule(task.schedule),
+              describeTaskSchedule(task.schedule, t, locale),
               modelLabel
                 ? modelLabel
                 : task.modelConfigId === null
@@ -321,7 +325,7 @@ function TaskRow({
               {lastRun.status === "running"
                 ? t("scheduled.runs.runningNow")
                 : t(`scheduled.runs.lastRun.${lastRun.status}`, {
-                    time: formatUpdatedAt(lastRun.startedAt, undefined, {
+                    time: formatUpdatedAt(lastRun.startedAt, t, locale, undefined, {
                       inline: true,
                     }),
                   })}

@@ -25,7 +25,7 @@ export function DesktopUpdateAction({ alwaysVisible = false, onServerUpdate }: {
   const ready = state.status === "ready";
   const downloading = state.status === "downloading";
   const busy = pending || ["checking", "downloading", "installing"].includes(state.status);
-  const label = desktopUpdateLabel(state);
+  const label = desktopUpdateLabel(state, t);
   const text = downloading || state.status === "installing" ? label
     : state.status === "error" ? t("common.actions.retry")
       : alwaysVisible ? state.status === "available" ? t("app.desktopUpdate.download") : label : null;

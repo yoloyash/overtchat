@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import type { Ionicons } from "@expo/vector-icons";
@@ -23,8 +24,9 @@ const icons: Record<
 export function agentRewindMenuItems(
   capabilities: AgentRewindCapabilities,
   onRewind: (mode: AgentRewindMode) => void,
+  t: TFunction,
 ): AgentMenuItem[] {
-  return agentRewindOptions(capabilities).map(({ mode, label }) => ({
+  return agentRewindOptions(capabilities, t).map(({ mode, label }) => ({
     key: `rewind:${mode}`,
     label,
     icon: icons[mode],
@@ -46,7 +48,7 @@ export function AgentRewindMenu({
 }) {
   const { t } = useTranslation();
   const menu = useMeasuredPopoverAnchor();
-  const items = agentRewindMenuItems(capabilities, onRewind);
+  const items = agentRewindMenuItems(capabilities, onRewind, t);
   if (!items.length) return null;
   return (
     <>

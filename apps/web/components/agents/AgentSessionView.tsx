@@ -651,7 +651,7 @@ export function AgentSessionView({
           accepting={supportsImages}
           kind="images"
           onFiles={(files) => composerRef.current?.addFiles(files)}
-          {...agentImageDropLabels(providerLabel)}
+          {...agentImageDropLabels(providerLabel, t)}
         >
           <AgentSessionHeader
             provider={provider}
@@ -745,7 +745,7 @@ export function AgentSessionView({
             activityStartedAt={activityStartedAt}
             error={runtimeError}
             workspaceName={workspaceName}
-            rewindOptions={agentRewindOptions(snapshot.capabilities)}
+            rewindOptions={agentRewindOptions(snapshot.capabilities, t)}
             canForkMessages={snapshot.capabilities.forkMessages === true}
             actionsDisabled={
               exited ||

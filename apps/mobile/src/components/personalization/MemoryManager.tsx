@@ -4,6 +4,7 @@ import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { Memory, PersonalizationSnapshot } from "@overtchat/shared";
 import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
 import {
   useClearMemories,
@@ -29,6 +30,7 @@ export function MemoryManager({
 }) {
   const { colors, radii, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const editorRef = useRef<MemoryEditorSheetRef>(null);
   const deleteSheetRef = useRef<BottomSheetModal>(null);
   const clearSheetRef = useRef<BottomSheetModal>(null);
@@ -200,8 +202,8 @@ export function MemoryManager({
             ]}
           >
             {t("personalization.mobile.memories.usageDetail", {
-              bytes: usage.bytes.toLocaleString(),
-              limit: usage.limit.toLocaleString(),
+              bytes: usage.bytes.toLocaleString(locale),
+              limit: usage.limit.toLocaleString(locale),
               entries: usage.entries,
               entryLimit: usage.entryLimit,
             })}
@@ -334,7 +336,7 @@ export function MemoryManager({
                       ]}
                     >
                       {t("personalization.memories.updated", {
-                        date: new Date(memory.updatedAt).toLocaleDateString(),
+                        date: new Date(memory.updatedAt).toLocaleDateString(locale),
                       })}
                     </Text>
                   </View>

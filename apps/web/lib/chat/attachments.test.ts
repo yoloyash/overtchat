@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   getDataTransferFiles,
   hasDataTransferFiles,
@@ -70,7 +71,7 @@ describe("attachment helpers", () => {
         "text/csv",
         "application/x-unknown",
         undefined,
-      ].map(humanMediaLabel),
+      ].map((mediaType) => humanMediaLabel(mediaType, i18n.t)),
     ).toEqual([
       "PowerPoint presentation",
       "JSON",

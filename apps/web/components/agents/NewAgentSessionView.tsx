@@ -76,8 +76,8 @@ export function NewAgentSessionView({
   const connections = useAgentConnections();
   const catalog = useAgentWorkspaceCatalog(workspaceId, provider);
   const setups = useMemo(
-    () => recentAgentSetups(connections.data ?? []),
-    [connections.data],
+    () => recentAgentSetups(connections.data ?? [], t),
+    [connections.data, t],
   );
   const createSession = useCreateAgentSession();
   const [sendingFirstPrompt, setSendingFirstPrompt] = useState(false);
@@ -275,7 +275,7 @@ export function NewAgentSessionView({
       accepting={supportsImages}
       kind="images"
       onFiles={(files) => composerRef.current?.addFiles(files)}
-      {...agentImageDropLabels(providerMetadata.label)}
+      {...agentImageDropLabels(providerMetadata.label, t)}
     >
       <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
         <SidebarToggle />

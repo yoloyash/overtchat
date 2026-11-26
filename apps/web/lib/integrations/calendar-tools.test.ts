@@ -7,6 +7,7 @@ import {
   groupMessageParts,
   type CalendarToolPart,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { z } from "zod";
 import { INTEGRATIONS } from "@/lib/integrations/schema";
 import { createIntegrationTestDatabase } from "@/lib/integrations/test-database";
@@ -207,7 +208,7 @@ describe("display", () => {
   });
 
   it("shows listed events by time, title and guests, never their descriptions", () => {
-    const display = describeCalendarToolPart(listed);
+    const display = describeCalendarToolPart(listed, i18n.t);
 
     expect(display).toMatchObject({
       action: "events",
@@ -233,26 +234,27 @@ describe("display", () => {
     expect(display.rows[1].href).toBeUndefined();
     expect(display.rows[2].href).toBeUndefined();
     expect(JSON.stringify(display)).not.toContain("private words");
-    expect(calendarActivityLabel(listed, true)).toBe("Checking calendar…");
-    expect(calendarActivityLabel(listed, false)).toBe("Checked calendar");
+    expect(calendarActivityLabel(listed, true, i18n.t)).toBe("Checking calendar…");
+    expect(calendarActivityLabel(listed, false, i18n.t)).toBe("Checked calendar");
   });
 
   it("shows the event that was added, changed or deleted", () => {
     const output = { account: "ada@example.test", calendarId: "primary", event: lunch };
 
     expect(
-      describeCalendarToolPart(part({ type: "tool-calendar_create_event", output })),
+      describeCalendarToolPart(part({ type: "tool-calendar_create_event", output }), i18n.t),
     ).toMatchObject({
       action: "create",
       title: "Added event to calendar",
       rows: [{ title: "Lunch", gone: false }],
     });
     expect(
-      describeCalendarToolPart(part({ type: "tool-calendar_update_event", output })),
+      describeCalendarToolPart(part({ type: "tool-calendar_update_event", output }), i18n.t),
     ).toMatchObject({ action: "update", title: "Changed event" });
 
     const deleted = describeCalendarToolPart(
       part({ type: "tool-calendar_delete_event", output }),
+      i18n.t,
     );
     expect(deleted).toMatchObject({
       action: "delete",
@@ -268,21 +270,21 @@ describe("display", () => {
       state: "input-available",
       input: { title: "Lunch" },
     });
-    expect(describeCalendarToolPart(running)).toMatchObject({
+    expect(describeCalendarToolPart(running, i18n.t)).toMatchObject({
       status: "running",
       title: "Adding event",
       rows: [],
     });
-    expect(calendarActivityLabel(running, false)).toBe(
+    expect(calendarActivityLabel(running, false, i18n.t)).toBe(
       "Google Calendar request did not complete",
     );
 
     const failed = part({ state: "output-error", errorText: "No such calendar." });
-    expect(describeCalendarToolPart(failed)).toMatchObject({
+    expect(describeCalendarToolPart(failed, i18n.t)).toMatchObject({
       status: "error",
       error: "No such calendar.",
     });
-    expect(calendarActivityLabel(failed, false)).toBe(
+    expect(calendarActivityLabel(failed, false, i18n.t)).toBe(
       "Google Calendar request failed",
     );
 
@@ -292,6 +294,7 @@ describe("display", () => {
           type: "tool-calendar_list_calendars",
           output: { calendars: [{ id: "a" }, { id: "b" }] },
         }),
+        i18n.t,
       ),
     ).toMatchObject({ title: "Listed calendars", note: "2 calendars" });
   });

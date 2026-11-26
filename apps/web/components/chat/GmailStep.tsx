@@ -2,6 +2,7 @@
 
 import { Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   describeGmailToolPart,
   type GmailToolPart,
@@ -9,12 +10,12 @@ import {
 } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
 
-function shortDate(iso: string | undefined): string {
+function shortDate(iso: string | undefined, locale: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
     ? ""
-    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    : date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 /**
@@ -24,7 +25,7 @@ function shortDate(iso: string | undefined): string {
  */
 export function GmailStep({ part }: { part: GmailToolPart }) {
   const { t } = useTranslation();
-  const display = describeGmailToolPart(part);
+  const display = describeGmailToolPart(part, t);
 
   const running = display.status === "running";
 
@@ -62,6 +63,7 @@ export function GmailStep({ part }: { part: GmailToolPart }) {
 /** Sender, then subject or attachments, then date: the columns of an inbox. */
 function MessageRow({ row }: { row: GmailToolRow }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const content = (
     <>
       <span
@@ -84,7 +86,7 @@ function MessageRow({ row }: { row: GmailToolRow }) {
         </span>
       </span>
       <span className="shrink-0 tabular-nums text-muted-foreground">
-        {shortDate(row.date)}
+        {shortDate(row.date, locale)}
       </span>
     </>
   );

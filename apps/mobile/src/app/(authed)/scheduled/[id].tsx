@@ -14,6 +14,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   Action,
   Choice,
@@ -101,6 +102,7 @@ export default function ScheduledTaskScreen() {
 function TaskForm({ task }: { task: ScheduledTask | null }) {
   const { colors, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { data: models = [] } = useModelConfigs();
   const { data: projects = [] } = useProjects();
   const createTask = useCreateScheduledTask();
@@ -129,7 +131,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
   const modelKnown = modelOptions.some((option) => option.value === draft.modelConfigId);
 
   function save() {
-    const found = taskDraftProblem(draft);
+    const found = taskDraftProblem(draft, t);
     const schedule = scheduleOfDraft(draft);
     if (found || !schedule) {
       setProblem(found ?? t("scheduled.validation.missingTime"));
@@ -210,7 +212,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
             title={t("scheduled.form.time")}
             searchLabel={t("scheduled.mobile.searchTime")}
             value={draft.time}
-            options={timeOptions(draft.time)}
+            options={timeOptions(draft.time, locale)}
             onChange={(time) => change({ time })}
           />
         )}
@@ -219,7 +221,7 @@ function TaskForm({ task }: { task: ScheduledTask | null }) {
             title={t("scheduled.form.date")}
             searchLabel={t("scheduled.mobile.searchDate")}
             value={draft.date}
-            options={dateOptions(draft.date)}
+            options={dateOptions(draft.date, locale)}
             onChange={(date) => change({ date })}
           />
         )}

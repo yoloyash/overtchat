@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
@@ -25,11 +26,14 @@ export type AgentSessionSearch = {
  * machine has its own host row, so rows cannot tell machines apart; names
  * can, and two machines named alike are filtered together, like folders.
  */
-export function agentSessionHosts(groups: readonly AgentWorkspaceGroup[]): string[] {
+export function agentSessionHosts(
+  groups: readonly AgentWorkspaceGroup[],
+  t: TFunction,
+): string[] {
   const hosts: string[] = [];
   for (const group of groups) {
     if (group.sessions.length === 0) continue;
-    const label = agentHostLabel(group.host);
+    const label = agentHostLabel(group.host, t);
     if (!hosts.includes(label)) hosts.push(label);
   }
   return hosts;
@@ -39,11 +43,12 @@ export function agentSessionHosts(groups: readonly AgentWorkspaceGroup[]): strin
 export function agentSessionWorkspaces(
   groups: readonly AgentWorkspaceGroup[],
   host: string | null,
+  t: TFunction,
 ): string[] {
   const names = new Set<string>();
   for (const group of groups) {
     if (group.sessions.length === 0) continue;
-    if (host && agentHostLabel(group.host) !== host) continue;
+    if (host && agentHostLabel(group.host, t) !== host) continue;
     names.add(group.name);
   }
   return [...names].sort((left, right) => left.localeCompare(right));
@@ -54,10 +59,11 @@ export function agentSessionProviders(
   groups: readonly AgentWorkspaceGroup[],
   host: string | null,
   workspace: string | null,
+  t: TFunction,
 ): AgentProviderId[] {
   const providers = new Set<AgentProviderId>();
   for (const group of groups) {
-    if (host && agentHostLabel(group.host) !== host) continue;
+    if (host && agentHostLabel(group.host, t) !== host) continue;
     if (workspace && group.name !== workspace) continue;
     for (const item of group.sessions) providers.add(item.provider);
   }
@@ -72,7 +78,7 @@ function fold(text: string): string {
 }
 
 /** Every word of the query must appear in a session's title, messages, or setup. */
-function searchableText(entry: AgentAttentionItem): string {
+function searchableText(entry: AgentAttentionItem, t: TFunction): string {
   const { item, group } = entry;
   const { session } = item;
   return fold(
@@ -85,7 +91,7 @@ function searchableText(entry: AgentAttentionItem): string {
       session.attention?.detail,
       group.name,
       group.path,
-      agentHostLabel(group.host),
+      agentHostLabel(group.host, t),
       agentProviderMetadata(item.provider).label,
     ]
       .filter(Boolean)
@@ -102,11 +108,12 @@ export function agentSessionCreatedAt(entry: AgentAttentionItem): number {
 export function searchAgentSessions(
   groups: readonly AgentWorkspaceGroup[],
   search: AgentSessionSearch,
+  t: TFunction,
 ): AgentAttentionItem[] {
   const words = fold(search.query).split(/\s+/).filter(Boolean);
   const results: AgentAttentionItem[] = [];
   for (const group of groups) {
-    if (search.host && agentHostLabel(group.host) !== search.host) continue;
+    if (search.host && agentHostLabel(group.host, t) !== search.host) continue;
     if (search.workspace && group.name !== search.workspace) continue;
     for (const item of group.sessions) {
       if (search.provider && item.provider !== search.provider) continue;
@@ -117,7 +124,7 @@ export function searchAgentSessions(
         since: agentSessionActivityAt(item.session),
       };
       if (words.length > 0) {
-        const text = searchableText(entry);
+        const text = searchableText(entry, t);
         if (!words.every((word) => text.includes(word))) continue;
       }
       results.push(entry);

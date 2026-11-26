@@ -2,11 +2,13 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ArrowLeft } from "lucide-react";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { useActivityProfile } from "@/lib/queries/activity";
-import { PROVIDERS } from "@/lib/providers/catalog";
+import { isProviderId, providerDisplayLabel } from "@/lib/providers/catalog";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { ActivityMetric } from "./ActivityMetric";
 import { formatCompact, formatDate } from "./activity-format";
@@ -20,6 +22,7 @@ const PROFILE_METRIC_KEYS = [
 
 export function ActivityProfile({ userId }: { userId: string }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [timeZone] = useState(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   );
@@ -66,7 +69,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
           </h1>
           <p className="mt-1.5 text-xs text-muted-foreground">
             {t("activity.profile.memberSince", {
-              date: formatDate(data.member.createdAt),
+              date: formatDate(data.member.createdAt, locale),
             })}
           </p>
         </div>
@@ -94,7 +97,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
             <p className="mt-1 text-xs text-muted-foreground">
               {data.trackingStartedAt
                 ? t("activity.profile.trackedSince", {
-                    date: formatDate(data.trackingStartedAt),
+                    date: formatDate(data.trackingStartedAt, locale),
                   })
                 : t("activity.profile.noTrackedResponses")}
             </p>
@@ -146,7 +149,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
                         {model.model}
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {providerLabel(model.providerId)}
+                        {providerLabel(model.providerId, t)}
                       </span>
                     </div>
                     <div
@@ -161,7 +164,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-medium tabular-nums">
-                      {formatCompact(model.generations)}
+                      {formatCompact(model.generations, locale)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {t("activity.profile.models.responsesLabel")}
@@ -177,9 +180,10 @@ export function ActivityProfile({ userId }: { userId: string }) {
   );
 }
 
-function providerLabel(providerId: string): string {
-  return Object.values(PROVIDERS).find((provider) => provider.id === providerId)
-    ?.label ?? providerId.replaceAll("-", " ");
+function providerLabel(providerId: string, t: TFunction): string {
+  return isProviderId(providerId)
+    ? providerDisplayLabel(providerId, t)
+    : providerId.replaceAll("-", " ");
 }
 
 function ProfileSkeleton() {

@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { createHash, randomBytes } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -41,13 +42,14 @@ function page(title: string, detail: string): string {
 </html>`;
 }
 
-const SIGNED_IN = page(
-  "You're signed in",
-  "You can close this tab and go back to OvertChat.",
+// Built when shown, so the page is in the language the app is using.
+const signedInPage = () => page(
+  i18n.t("app.desktopNative.signIn.doneTitle"),
+  i18n.t("app.desktopNative.signIn.doneDetail"),
 );
-const NOT_SIGNED_IN = page(
-  "Sign-in didn't finish",
-  "Go back to OvertChat to see what happened and try again.",
+const notSignedInPage = () => page(
+  i18n.t("app.desktopNative.signIn.failedTitle"),
+  i18n.t("app.desktopNative.signIn.failedDetail"),
 );
 
 let cancelCurrent: (() => void) | null = null;
@@ -99,18 +101,18 @@ export function signInWithBrowser({
           : null;
       // Anything else on this machine can reach the port; only the redirect
       // for this sign-in means something.
-      if (!result || settled) return respond(404, NOT_SIGNED_IN);
+      if (!result || settled) return respond(404, notSignedInPage());
       if ("error" in result) {
-        respond(200, NOT_SIGNED_IN);
+        respond(200, notSignedInPage());
         return finish({ ok: false, error: result.error });
       }
       exchange({ code: result.code, codeVerifier }).then(
         (signedIn) => {
-          respond(200, signedIn ? SIGNED_IN : NOT_SIGNED_IN);
+          respond(200, signedIn ? signedInPage() : notSignedInPage());
           finish(signedIn ? { ok: true } : { ok: false, error: "expired" });
         },
         () => {
-          respond(200, NOT_SIGNED_IN);
+          respond(200, notSignedInPage());
           finish({ ok: false, error: "sign_in_failed" });
         },
       );

@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { buildSourceLookup } from "@/lib/chat/citations";
 import { textOf } from "@/lib/chat/text";
@@ -79,6 +80,7 @@ function MessageBubbleView({
 }) {
   const { colors, radii, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const preferences = useChatPreferences();
   const stats = preferences.messageStats ? readMessageStats(message) : null;
   const [copied, setCopied] = useState(false);
@@ -322,10 +324,10 @@ function MessageBubbleView({
           >
             {[
               stats.totalTokens !== undefined
-                ? t("chat.usage.tokensCount", { count: stats.totalTokens.toLocaleString() })
+                ? t("chat.usage.tokensCount", { count: stats.totalTokens.toLocaleString(locale) })
                 : undefined,
               stats.responseTokens !== undefined
-                ? t("chat.mobile.stats.outputTokens", { count: stats.responseTokens.toLocaleString() })
+                ? t("chat.mobile.stats.outputTokens", { count: stats.responseTokens.toLocaleString(locale) })
                 : undefined,
               stats.tps !== undefined
                 ? t("chat.stats.tpsValue", { value: stats.tps.toFixed(1) })

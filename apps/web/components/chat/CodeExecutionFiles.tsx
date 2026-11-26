@@ -164,7 +164,7 @@ function CodeFileCard({ file }: { file: CodeExecutionFile }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{file.name}</span>
         <span className="block truncate text-xs text-muted-foreground">
-          {humanMediaLabel(file.mediaType)} · {formatSize(file.size)}
+          {humanMediaLabel(file.mediaType, t)} · {formatSize(file.size, t)}
         </span>
       </span>
     </>
@@ -250,7 +250,7 @@ function RunFile({ file }: { file: CodeExecutionFile }) {
     <FileTrigger
       file={file}
       download
-      title={`${file.name} · ${formatSize(file.size)}`}
+      title={`${file.name} · ${formatSize(file.size, t)}`}
       data-code-run-file=""
       className={cn(
         "flex h-8 max-w-56 items-center gap-1.5 rounded-md border bg-background/40 px-2 text-foreground motion-colors hover:bg-accent/60",

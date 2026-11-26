@@ -41,14 +41,14 @@ describe("task form choices", () => {
 
   it("offers today and the days after it, and keeps a date further out", () => {
     const now = new Date(2026, 10, 30, 22, 0);
-    const dates = dateOptions("2026-12-01", now, 3, "en-US");
+    const dates = dateOptions("2026-12-01", "en-US", now, 3);
     expect(dates).toEqual([
       { value: "2026-11-30", label: "Mon, Nov 30, 2026" },
       { value: "2026-12-01", label: "Tue, Dec 1, 2026" },
       { value: "2026-12-02", label: "Wed, Dec 2, 2026" },
     ]);
-    const far = dateOptions("2027-06-01", now, 3, "en-US");
+    const far = dateOptions("2027-06-01", "en-US", now, 3);
     expect(far.at(-1)).toEqual({ value: "2027-06-01", label: "Tue, Jun 1, 2027" });
-    expect(dateOptions("soon", now, 3, "en-US")).toHaveLength(3);
+    expect(dateOptions("soon", "en-US", now, 3)).toHaveLength(3);
   });
 });

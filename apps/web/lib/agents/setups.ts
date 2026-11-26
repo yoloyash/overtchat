@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
@@ -42,6 +43,7 @@ export type AgentSetupAgent = AgentWorkspaceAgent;
  */
 export function recentAgentSetups(
   connections: readonly AgentConnectionListItem[],
+  t: TFunction,
 ): AgentSetup[] {
   const setups: AgentSetup[] = [];
   for (const connection of connections) {
@@ -52,7 +54,7 @@ export function recentAgentSetups(
         workspaceName: workspace.name,
         workspacePath: workspace.path,
         hostKey: agentTargetKey(agentConnectionTarget(connection)),
-        hostLabel: agentHostLabel(connection.host),
+        hostLabel: agentHostLabel(connection.host, t),
         transport: connection.host.transport,
         target: agentConnectionTarget(connection),
         activityAt: Math.max(

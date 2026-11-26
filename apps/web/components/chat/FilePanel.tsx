@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CodeBlock, Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import { Code, Download, Eye, Loader2, X } from "lucide-react";
 import type { PanelFile } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
@@ -57,8 +58,8 @@ export function FilePanel({
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">{file.name}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {humanMediaLabel(file.mediaType)}
-            {file.size !== undefined && ` · ${formatSize(file.size)}`}
+            {humanMediaLabel(file.mediaType, t)}
+            {file.size !== undefined && ` · ${formatSize(file.size, t)}`}
           </p>
         </div>
         {rendered && (
@@ -154,6 +155,7 @@ function TextFile({
   preview: TextPreview;
   source: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
   const { t } = useTranslation();
   const [loaded, setLoaded] = useState<{
     text?: string;
@@ -207,6 +209,7 @@ function TextFile({
       return (
         <div className="mx-auto max-w-3xl px-6 py-5">
           <Streamdown
+            translations={markdownLabels}
             className="font-sans space-y-3 text-[15px] leading-relaxed"
             plugins={MESSAGE_MARKDOWN_PLUGINS}
             mode="static"

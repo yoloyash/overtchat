@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   agentQuestionFields,
   dismissQuestion,
@@ -50,7 +51,7 @@ const request: AgentQuestionRequest = {
 
 describe("shared question projection", () => {
   it("preserves descriptions, provider values, defaults, numeric bounds and explicit false", () => {
-    const fields = agentQuestionFields(request);
+    const fields = agentQuestionFields(request, i18n.t);
     expect(fields[0].options[0].description).toBe("Why this option");
     const values = {
       ...initialQuestionValues(fields),
@@ -83,7 +84,7 @@ describe("shared question projection", () => {
     ).toBe(false);
   });
   it("allows custom answers only when advertised and clears custom text when choosing an option", () => {
-    const field = agentQuestionFields(request)[0];
+    const field = agentQuestionFields(request, i18n.t)[0];
     expect(interactionFormComplete([field], { choice: "Custom" })).toBe(true);
     expect(
       interactionFormComplete([{ ...field, allowOther: false }], {
@@ -116,10 +117,10 @@ describe("shared question projection", () => {
       title: "Comment",
       optional: true,
     };
-    expect(dismissQuestion(input, agentQuestionFields(input))).toEqual({
+    expect(dismissQuestion(input, agentQuestionFields(input, i18n.t))).toEqual({
       value: "",
     });
-    expect(dismissQuestion(request, agentQuestionFields(request))).toEqual({
+    expect(dismissQuestion(request, agentQuestionFields(request, i18n.t))).toEqual({
       cancelled: true,
     });
   });

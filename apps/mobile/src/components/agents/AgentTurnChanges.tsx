@@ -10,6 +10,7 @@ import {
   buildAgentTurnChangesTree,
   formatAgentChangeCount,
 } from "@overtchat/shared/agent-turn-changes";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useTheme } from "@/lib/theme";
 
 function LineCounts({
@@ -58,6 +59,7 @@ export function AgentTurnChangesCard({
   onToggle: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, fonts, radii } = useTheme();
   const tree = useMemo(() => buildAgentTurnChangesTree(changes), [changes]);
   const hasDirectories = useMemo(
@@ -99,7 +101,7 @@ export function AgentTurnChangesCard({
             fontSize: 13,
           }}
         >
-          {agentTurnChangesLabel(changes.total.files)}
+          {agentTurnChangesLabel(changes.total.files, t, locale)}
         </Text>
         {counted && (
           <LineCounts
@@ -220,7 +222,7 @@ export function AgentTurnChangesCard({
         >
           {t("agents.messages.andMoreFiles", {
             count: unlisted,
-            formattedCount: unlisted.toLocaleString("en-US"),
+            formattedCount: unlisted.toLocaleString(locale),
           })}
         </Text>
       )}

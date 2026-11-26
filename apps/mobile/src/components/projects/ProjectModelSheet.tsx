@@ -6,6 +6,7 @@ import {
   BottomSheetModal,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import type { PublicModelConfig } from "@overtchat/shared";
 import * as Haptics from "expo-haptics";
 import { forwardRef, useCallback } from "react";
@@ -43,7 +44,7 @@ export const ProjectModelSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -61,6 +62,7 @@ export const ProjectModelSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       maxDynamicContentSize={height * 0.8}

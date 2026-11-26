@@ -7,6 +7,7 @@ import type { UIMessage } from "ai";
 import { useTheme } from "next-themes";
 import { writeText } from "clipboard-polyfill";
 import { CodeBlock, Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import {
   ChevronLeft,
   ChevronRight,
@@ -72,8 +73,8 @@ export function DocumentPanel({
 }) {
   const { t } = useTranslation();
   const view = useMemo(
-    () => documentView(messages, toolCallId),
-    [messages, toolCallId],
+    () => documentView(messages, toolCallId, t),
+    [messages, toolCallId, t],
   );
   const [showSource, setShowSource] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -323,6 +324,7 @@ function DocumentBody({
   source: boolean;
   writing: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
   const { t } = useTranslation();
   if (source) {
     return (
@@ -341,6 +343,7 @@ function DocumentBody({
       return (
         <div className="mx-auto max-w-3xl px-6 py-5">
           <Streamdown
+            translations={markdownLabels}
             className="font-sans space-y-3 text-[15px] leading-relaxed"
             plugins={MESSAGE_MARKDOWN_PLUGINS}
             mode={writing ? "streaming" : "static"}
@@ -454,7 +457,7 @@ function SvgPreview({ source }: { source: string }) {
   const { t } = useTranslation();
   const prepared = useMemo((): { svg?: string; error?: PreviewError } => {
     try {
-      return { svg: svgPreviewSource(source) };
+      return { svg: svgPreviewSource(source, t) };
     } catch (error) {
       return {
         error:
@@ -463,7 +466,7 @@ function SvgPreview({ source }: { source: string }) {
             : { kind: "svgRenderFailed" },
       };
     }
-  }, [source]);
+  }, [source, t]);
   const loaded = useImage(prepared.svg ?? null);
   if (prepared.error) return <PreviewStatus error={prepared.error} />;
   if (!loaded?.image) return <PreviewStatus error={loaded?.error} />;

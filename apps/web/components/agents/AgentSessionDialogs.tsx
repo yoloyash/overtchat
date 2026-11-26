@@ -6,6 +6,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { ExternalLink, Loader2 } from "lucide-react";
 import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -300,6 +301,7 @@ export function AgentUsageDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   if (!open) return null;
   const activityRows = [
       {
@@ -383,7 +385,7 @@ export function AgentUsageDialog({
                       </div>
                       {window.resetsAt && (
                         <p className="text-xs text-muted-foreground">
-                          {formatResetLabel(window.resetsAt, t)}
+                          {formatResetLabel(window.resetsAt, t, locale)}
                         </p>
                       )}
                     </div>
@@ -414,9 +416,9 @@ export function AgentUsageDialog({
                       <dd className="mt-0.5 font-medium tabular-nums">
                         {row.days
                           ? t("agents.dialogs.streakDays", {
-                              value: row.value.toLocaleString(),
+                              value: row.value.toLocaleString(locale),
                             })
-                          : row.value.toLocaleString()}
+                          : row.value.toLocaleString(locale)}
                       </dd>
                     </div>
                   ))}
@@ -462,25 +464,26 @@ export function AgentSessionStatsDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   if (!open) return null;
   const rows = [
-    ["input", t("agents.dialogs.statsInput"), formatInteger(stats.tokens.input)],
-    ["output", t("agents.dialogs.statsOutput"), formatInteger(stats.tokens.output)],
+    ["input", t("agents.dialogs.statsInput"), formatInteger(stats.tokens.input, locale)],
+    ["output", t("agents.dialogs.statsOutput"), formatInteger(stats.tokens.output, locale)],
     [
       "cacheRead",
       t("agents.dialogs.statsCacheRead"),
-      formatInteger(stats.tokens.cacheRead),
+      formatInteger(stats.tokens.cacheRead, locale),
     ],
-    ["total", t("agents.dialogs.statsTotal"), formatInteger(stats.tokens.total)],
+    ["total", t("agents.dialogs.statsTotal"), formatInteger(stats.tokens.total, locale)],
     [
       "estimatedCost",
       t("agents.dialogs.statsEstimatedCost"),
-      formatCost(stats.cost),
+      formatCost(stats.cost, locale),
     ],
     [
       "toolCalls",
       t("agents.dialogs.statsToolCalls"),
-      formatInteger(stats.toolCalls),
+      formatInteger(stats.toolCalls, locale),
     ],
   ];
 
@@ -517,12 +520,12 @@ export function AgentSessionStatsDialog({
   );
 }
 
-function formatInteger(value: number): string {
-  return new Intl.NumberFormat().format(value);
+function formatInteger(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale).format(value);
 }
 
-function formatCost(value: number): string {
-  return new Intl.NumberFormat(undefined, {
+function formatCost(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: value > 0 && value < 0.01 ? 4 : 2,
@@ -548,7 +551,11 @@ function formatDuration(minutes: number, t: TFunction): string {
   return t("agents.dialogs.durationMinutes", { minutes });
 }
 
-function formatResetLabel(timestampSeconds: number, t: TFunction): string {
+function formatResetLabel(
+  timestampSeconds: number,
+  t: TFunction,
+  locale: string,
+): string {
   const date = new Date(timestampSeconds * 1_000);
   const delta = date.getTime() - Date.now();
   if (delta > 0 && delta < 48 * 60 * 60 * 1_000) {
@@ -556,7 +563,7 @@ function formatResetLabel(timestampSeconds: number, t: TFunction): string {
     return t("agents.dialogs.resetsInHours", { hours });
   }
   return t("agents.dialogs.resetsAt", {
-    time: date.toLocaleString(undefined, {
+    time: date.toLocaleString(locale, {
       month: "short",
       day: "numeric",
       hour: "numeric",

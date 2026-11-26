@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeEvent } from "@overtchat/agent-runtime/providers/types";
 import { projectAgentTranscript } from "@overtchat/shared/agent-presentation";
+import { i18n } from "@overtchat/shared/i18n";
 
 const provider = vi.hoisted(() => ({
   messages: [] as unknown[],
@@ -147,7 +148,7 @@ describe("display transcript lifecycle", () => {
     expect(provider.getMessages).toHaveBeenCalledOnce();
     expect(runtime.snapshot().messages).toEqual(displayed);
     expect(await store.readTranscript("session", "native-session")).toEqual(displayed);
-    expect(projectAgentTranscript(displayed).at(-1)).toMatchObject({ type: "assistant_text" });
+    expect(projectAgentTranscript(displayed, i18n.t, "en-US").at(-1)).toMatchObject({ type: "assistant_text" });
 
     await registry.stopAll();
     await flush();

@@ -15,6 +15,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { formatUpdatedAt } from "@overtchat/shared";
@@ -222,6 +223,7 @@ function ProjectChatRow({
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const renameMut = useRenameChat();
   const moveMut = useMoveChat();
   const [renaming, setRenaming] = useState(false);
@@ -321,7 +323,7 @@ function ProjectChatRow({
               </>
             ) : (
               <time dateTime={new Date(chat.updatedAt).toISOString()}>
-                {formatUpdatedAt(chat.updatedAt, now)}
+                {formatUpdatedAt(chat.updatedAt, t, locale, now)}
               </time>
             )}
           </span>

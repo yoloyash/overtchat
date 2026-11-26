@@ -48,7 +48,7 @@ function ModelList() {
   useRefreshOnFocus(query.refetch);
   const models = query.data?.modelConfigs ?? [];
   const filtered = models.filter((m) =>
-    `${m.label} ${m.model} ${providerLabel(m)}`
+    `${m.label} ${m.model} ${providerLabel(m, t)}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
@@ -178,7 +178,7 @@ function ModelList() {
                     m.modelType === "chat"
                       ? "models.mobile.list.rowDetailChat"
                       : "models.mobile.list.rowDetailImage",
-                    { provider: providerLabel(m) },
+                    { provider: providerLabel(m, t) },
                   )}
                   status={
                     <SettingsStatus

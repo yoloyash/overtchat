@@ -2,6 +2,7 @@ import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { applyAgentRuntimeMessageEvent } from "@overtchat/agent-bridge";
 import { projectAgentTranscript } from "@overtchat/shared/agent-presentation";
+import { i18n } from "@overtchat/shared/i18n";
 import { PiClient } from "./client";
 import { OmpClient } from "../omp/client";
 import type { AgentProcess, AgentProcessExit } from "../runtime/process";
@@ -157,9 +158,9 @@ describe.each(["pi", "omp"] as const)(
           expect(messages()).toHaveLength(4);
           expect(messages()[0]).toEqual(savedDraft);
           expect(
-            projectAgentTranscript(messages()).map((item) => item.type),
+            projectAgentTranscript(messages(), i18n.t, "en-US").map((item) => item.type),
           ).toEqual(["assistant_text", "activity", "assistant_error"]);
-          expect(projectAgentTranscript(messages())[0]).toMatchObject({ text });
+          expect(projectAgentTranscript(messages(), i18n.t, "en-US")[0]).toMatchObject({ text });
         } finally {
           await client.stop();
         }
@@ -190,7 +191,7 @@ describe.each(["pi", "omp"] as const)(
           );
           expect(new Set(ids).size).toBe(2);
           expect(
-            projectAgentTranscript(messages()).map(
+            projectAgentTranscript(messages(), i18n.t, "en-US").map(
               (item) => item.type === "assistant_text" && item.text,
             ),
           ).toEqual(["First", "Second"]);

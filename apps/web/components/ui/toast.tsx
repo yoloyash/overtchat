@@ -62,12 +62,13 @@ export const toast = {
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   return (
     <ToastPrimitive.Provider toastManager={toastManager} limit={4}>
       {children}
       <ToastPrimitive.Portal>
         {/* Under the header row, clear of its controls and of the composer. */}
-        <ToastPrimitive.Viewport className="fixed top-[calc(3.5rem+env(safe-area-inset-top))] right-4 z-[100] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2 outline-none">
+        <ToastPrimitive.Viewport aria-label={t("common.toastRegionLabel")} className="fixed top-[calc(3.5rem+env(safe-area-inset-top))] right-4 z-[100] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2 outline-none">
           <ToastList />
         </ToastPrimitive.Viewport>
       </ToastPrimitive.Portal>

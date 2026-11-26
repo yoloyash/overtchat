@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   BookOpen,
   Brain,
@@ -389,11 +390,12 @@ function ThoughtStep({
 
 /** A model reading a skill's instructions before using it. */
 function SkillStep({ part }: { part: ViewSkillToolPart }) {
+  const { t } = useTranslation();
   const settled = isToolSettled(part);
   return (
     <div className="space-y-1.5">
       <span className="block font-medium text-foreground">
-        {viewSkillActivityLabel(part, !settled)}
+        {viewSkillActivityLabel(part, !settled, t)}
       </span>
       {part.state === "output-error" && (
         <p className="text-destructive">{part.errorText}</p>
@@ -487,7 +489,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
   const { t } = useTranslation();
   const query = part.input?.query?.trim();
   const results = webSearchResults(part.output);
-  const provider = webSearchProviderLabel(part.output);
+  const provider = webSearchProviderLabel(part.output, t);
   const hasAnswer =
     part.output !== undefined &&
     !Array.isArray(part.output) &&
@@ -546,6 +548,7 @@ function ResultRow({ result }: { result: WebSearchResult }) {
 
 function FetchStep({ part }: { part: FetchUrlPart }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
   const running = !isToolSettled(part);
@@ -612,7 +615,7 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
       {page && (
         <span className="shrink-0 text-muted-foreground">
           {t("chat.activity.wordCount", {
-            count: page.wordCount.toLocaleString(),
+            count: page.wordCount.toLocaleString(locale),
           })}
         </span>
       )}
@@ -634,7 +637,7 @@ function ReadFileStep({ part }: { part: ReadFilePart }) {
           {part.state === "output-error"
             ? t("chat.activity.failed")
             : output
-              ? readFileRangeLabel(output)
+              ? readFileRangeLabel(output, t)
               : t("chat.activity.readingEllipsis")}
         </span>
       </div>
@@ -647,6 +650,7 @@ function ReadFileStep({ part }: { part: ReadFilePart }) {
 
 function SearchFilesStep({ part }: { part: SearchFilesPart }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const query = part.input?.query?.trim();
   const output = part.output;
   return (
@@ -661,7 +665,7 @@ function SearchFilesStep({ part }: { part: SearchFilesPart }) {
               ? t("chat.activity.noMatches")
               : t("chat.activity.matches", {
                   count: output.totalMatches,
-                  formattedCount: output.totalMatches.toLocaleString(),
+                  formattedCount: output.totalMatches.toLocaleString(locale),
                 })}
           </span>
         )}
@@ -703,7 +707,7 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
       <div className="flex items-baseline justify-between gap-3">
         {/* eslint-disable-next-line i18next/no-literal-string -- Programming language name */}
         <span className="font-medium text-foreground">Python</span>
-        <span className="shrink-0 text-muted-foreground">{codeRunStatus(part)}</span>
+        <span className="shrink-0 text-muted-foreground">{codeRunStatus(part, t)}</span>
       </div>
       {code && (
         <div className={cn("max-h-64 overflow-auto rounded-lg border bg-background/40 px-2.5 py-2", STEP_CODE_BLOCK)}>
@@ -831,11 +835,11 @@ function activeLabel(last: ActivityPart | undefined, t: TFunction): string {
       : t("chat.activity.searchingFilesEllipsis");
   }
   if (isCodeExecutionPart(last)) return t("chat.activity.runningCode");
-  if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
-  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
-  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true);
+  if (isGmailToolPart(last)) return gmailActivityLabel(last, true, t);
+  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true, t);
+  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true, t);
   if (isScheduledTaskToolPart(last)) {
-    return scheduledTaskActivityLabel(last, true);
+    return scheduledTaskActivityLabel(last, true, t);
   }
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
@@ -898,16 +902,16 @@ function settledLabel(
     return ok ? t("chat.activity.ranCode") : t("chat.activity.codeEndedWithError");
   }
   if (lastTool && isGmailToolPart(lastTool)) {
-    return gmailActivityLabel(lastTool, false);
+    return gmailActivityLabel(lastTool, false, t);
   }
   if (lastTool && isCalendarToolPart(lastTool)) {
-    return calendarActivityLabel(lastTool, false);
+    return calendarActivityLabel(lastTool, false, t);
   }
   if (lastTool && isViewSkillToolPart(lastTool)) {
-    return viewSkillActivityLabel(lastTool, false);
+    return viewSkillActivityLabel(lastTool, false, t);
   }
   if (lastTool && isScheduledTaskToolPart(lastTool)) {
-    return scheduledTaskActivityLabel(lastTool, false);
+    return scheduledTaskActivityLabel(lastTool, false, t);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

@@ -1,12 +1,12 @@
 "use client";
 
 import { Check, CircleAlert, CircleDot, CircleX } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type {
   AgentProviderId,
   AgentSessionListItem,
 } from "@overtchat/agent-bridge";
-import { i18n } from "@overtchat/shared/i18n";
 import {
   agentSessionCanToggleRead,
   agentSessionHasUnseenTurn,
@@ -17,8 +17,11 @@ import { useSetAgentSessionRead } from "@/lib/queries/agentSessionRead";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-export function agentSessionStateLabel(state: AgentSessionState): string {
-  return state === "idle" ? "" : i18n.t(`agents.sessionState.${state}`);
+export function agentSessionStateLabel(
+  state: AgentSessionState,
+  t: TFunction,
+): string {
+  return state === "idle" ? "" : t(`agents.sessionState.${state}`);
 }
 
 /**

@@ -38,7 +38,7 @@ export function AgentQuestionCard({
   onRespond: (response: AgentQuestionResponse) => void;
 }) {
   const { t } = useTranslation();
-  const fields = agentQuestionFields(request);
+  const fields = agentQuestionFields(request, t);
   const [values, setValues] = useState(() => initialQuestionValues(fields));
   const [index, setIndex] = useState(0);
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
@@ -259,7 +259,7 @@ function QuestionOptions({
   const { t } = useTranslation();
   const labelId = useId();
   const navigating = useRef(false);
-  const options = questionOptions(field);
+  const options = questionOptions(field, t);
   if (!options.length) return null;
   const multi = field.type === "multiselect";
   const selectedValue = field.type === "boolean" ? String(value ?? "") : value;

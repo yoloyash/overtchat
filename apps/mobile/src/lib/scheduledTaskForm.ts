@@ -22,7 +22,7 @@ function withCurrent(
 }
 
 /** Times of day a quarter of an hour apart, as 24-hour HH:MM. */
-export function timeOptions(current: string, locale?: string): FormOption[] {
+export function timeOptions(current: string, locale: string): FormOption[] {
   const options: FormOption[] = [];
   for (let hour = 0; hour < 24; hour += 1) {
     for (const minute of [0, 15, 30, 45]) {
@@ -54,7 +54,7 @@ export function dayOfMonthOptions(): FormOption[] {
   }));
 }
 
-function dateLabel(value: string, locale?: string): string | null {
+function dateLabel(value: string, locale: string): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
   return new Intl.DateTimeFormat(locale, {
@@ -69,9 +69,9 @@ function dateLabel(value: string, locale?: string): string | null {
 /** Today and the days after it, as YYYY-MM-DD. */
 export function dateOptions(
   current: string,
+  locale: string,
   now = new Date(),
   days = 90,
-  locale?: string,
 ): FormOption[] {
   const options: FormOption[] = [];
   for (let offset = 0; offset < days; offset += 1) {

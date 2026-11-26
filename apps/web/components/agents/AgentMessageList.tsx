@@ -3,6 +3,7 @@
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertTriangle,
@@ -21,6 +22,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { stripMarkdown } from "@/lib/chat/message";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -169,6 +171,7 @@ export function AgentMessageList({
   onImplementPlan: (plan: string) => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({
       initial: "instant",
@@ -185,8 +188,8 @@ export function AgentMessageList({
   }, [messages, history?.loading, scrollRef]);
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
   const projectedTranscript = useMemo(
-    () => projectAgentTranscript(messages),
-    [messages],
+    () => projectAgentTranscript(messages, t, locale),
+    [messages, t, locale],
   );
   const unsettled = streaming || Boolean(activity || error || question);
   const transcript = useMemo(
@@ -385,7 +388,7 @@ export function AgentMessageList({
                 )
               )}
               {question && <div className="mt-4">{question}</div>}
-              {error && <AgentErrorNotice error={presentAgentError(error)} />}
+              {error && <AgentErrorNotice error={presentAgentError(error, t)} />}
             </div>
           )}
         </div>
@@ -439,6 +442,7 @@ function AgentTranscriptRow({
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
+  const { t } = useTranslation();
   const actionBar = responseActions && (
     <div className="mt-2">
       <MessageActions show alwaysVisible>
@@ -482,7 +486,7 @@ function AgentTranscriptRow({
           className="flex min-h-8 cursor-pointer items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums motion-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-testid="agent-work-summary"
         >
-          {agentWorkLabel(item.durationMs)}
+          {agentWorkLabel(item.durationMs, t)}
           <ChevronRight className={cn("size-3.5 motion-transform", item.expanded && "rotate-90")} />
         </button>
       </div>
@@ -626,7 +630,7 @@ function AgentTurnFooter({
       {item.durationMs !== null && (
         <span className="ml-1 tabular-nums">
           {t("agents.messages.workedFor", {
-            duration: formatAgentElapsed(item.durationMs),
+            duration: formatAgentElapsed(item.durationMs, t),
           })}
         </span>
       )}
@@ -1004,8 +1008,10 @@ function Markdown({
   children: string;
   streaming?: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
   return (
     <Streamdown
+      translations={markdownLabels}
       className={cn(AGENT_MARKDOWN_CLASSES, streaming && "motion-stream-blocks")}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={AGENT_REMARK_PLUGINS}

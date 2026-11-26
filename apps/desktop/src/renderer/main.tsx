@@ -1,6 +1,7 @@
 import "./desktop.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { useTranslation } from "react-i18next";
 import { createHashHistory } from "@tanstack/react-router";
 import { DesktopWindowControls } from "@/components/DesktopWindowControls";
 import { AuthFrame } from "@/components/auth/AuthFrame";
@@ -44,6 +45,11 @@ function applyStoredPreferences(): void {
   }
 }
 
+function Connecting() {
+  const { t } = useTranslation();
+  return <p role="status" className="text-sm text-muted-foreground">{t("app.desktopShell.connecting")}</p>;
+}
+
 const root = createRoot(document.getElementById("root")!);
 
 function render(children: ReactNode): void {
@@ -64,7 +70,7 @@ function render(children: ReactNode): void {
 async function start(): Promise<void> {
   applyStoredPreferences();
   // Keep window controls available while the saved server is being checked.
-  render(<AuthFrame><p role="status" className="text-sm text-muted-foreground">Connecting…</p></AuthFrame>);
+  render(<AuthFrame><Connecting /></AuthFrame>);
   const { server, lastAddress } = await shell.boot();
   if (!server) {
     render(

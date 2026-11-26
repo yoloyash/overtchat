@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import type { AgentSessionStats } from "@overtchat/agent-bridge";
 import { getContextMeterValues } from "@overtchat/shared/context-meter";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ContextRing } from "@/components/ui/ContextRing";
 import { useTheme } from "@/lib/theme";
 import { AgentSheet, AgentText } from "./AgentPrimitives";
@@ -61,6 +62,7 @@ export function AgentContextSheet({
   stale?: boolean;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, fonts } = useTheme();
   const values = contextValues(usage);
   const limit =
@@ -117,7 +119,7 @@ export function AgentContextSheet({
               {value === undefined
                 ? "—"
                 : t("agents.context.tokensUsed", {
-                    used: Math.round(value).toLocaleString(),
+                    used: Math.round(value).toLocaleString(locale),
                   })}
             </Text>
           </View>

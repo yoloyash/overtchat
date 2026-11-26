@@ -12,6 +12,7 @@ import {
   type ScheduledTaskToolTask,
   type TaskSchedule,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   createScheduledTask,
   deleteScheduledTask,
@@ -162,7 +163,7 @@ export function createScheduledTaskTools({
       id: task.id,
       name: task.name,
       prompt: task.prompt,
-      schedule: describeTaskSchedule(task.schedule, "en-US"),
+      schedule: describeTaskSchedule(task.schedule, i18n.t, "en-US"),
       timeZone: task.timeZone,
       enabled: task.enabled,
       nextRuns: task.enabled

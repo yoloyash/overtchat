@@ -35,7 +35,7 @@ export function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(
-    ssoError && sso ? ssoErrorMessage(ssoError, sso.name) : "",
+    ssoError && sso ? ssoErrorMessage(ssoError, sso.name, t) : "",
   );
   const [submitting, setSubmitting] = useState(false);
   // The desktop app's sign-in happens in another program, which the person
@@ -107,7 +107,7 @@ export function LoginForm({
       if (started !== browserSignIn.current) return;
       setSsoPending(false);
       if (result && !signInCancelled(result.error)) {
-        setError(ssoErrorMessage(result.error, sso.name));
+        setError(ssoErrorMessage(result.error, sso.name, t));
       }
       return;
     }
@@ -122,7 +122,7 @@ export function LoginForm({
       disableRedirect: unasked,
     });
     if (error || (unasked && !data?.url)) {
-      setError(ssoErrorMessage(error?.code ?? "", name));
+      setError(ssoErrorMessage(error?.code ?? "", name, t));
       setSsoPending(false);
       return;
     }

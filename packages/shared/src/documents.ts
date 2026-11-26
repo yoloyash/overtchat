@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type { UIMessage } from "ai";
 import type { ToolState } from "./tools";
 
@@ -22,8 +22,8 @@ const DOCUMENT_TYPE_KEYS = {
   mermaid: "chat.documents.types.mermaid",
 } as const;
 
-export function documentTypeLabel(type: DocumentType): string {
-  return i18n.t(DOCUMENT_TYPE_KEYS[type]);
+export function documentTypeLabel(type: DocumentType, t: TFunction): string {
+  return t(DOCUMENT_TYPE_KEYS[type]);
 }
 
 /** Larger than any single model reply, small enough to render and replay. */
@@ -171,6 +171,7 @@ export function documentIdOf(part: DocumentToolPart): string | undefined {
 export function documentView(
   messages: readonly UIMessage[],
   toolCallId: string,
+  t: TFunction,
 ): DocumentView | null {
   const part = findDocumentPart(messages, toolCallId);
   if (!part) return null;
@@ -194,7 +195,7 @@ export function documentView(
       versions: [],
       index: -1,
       draft: {
-        title: input.title?.trim() || i18n.t("chat.documents.untitled"),
+        title: input.title?.trim() || t("chat.documents.untitled"),
         type,
         ...(type === "code" && input.language ? { language: input.language } : {}),
         content: typeof input.content === "string" ? input.content : "",

@@ -81,7 +81,7 @@ export function SidebarChatList({
       </>
     );
   }
-  const groups = groupByDate(chats);
+  const groups = groupByDate(chats, t);
   return (
     <div>
       {groups.map((g) => (

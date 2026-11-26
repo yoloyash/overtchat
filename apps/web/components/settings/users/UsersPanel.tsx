@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Trans, useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { KeyRound, Plus, ShieldOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ type PendingRoleChange = {
 
 export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { data: users = [] } = useUsers();
   const invalidateUsers = useInvalidateUsers();
   const setRoleMutation = useSetUserRole();
@@ -194,7 +196,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                     : t("users.list.twoFactorOff")}
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
-                  {new Date(u.createdAt).toLocaleDateString()}
+                  {new Date(u.createdAt).toLocaleDateString(locale)}
                 </td>
                 <td className="px-3 py-3 text-right">
                   {u.id === currentUserId ? (

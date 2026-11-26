@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { apiError, getErrorMessage } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 
 describe("public error messages", () => {
   it("displays messages explicitly normalized at the API boundary", () => {
     const error = apiError(503, { code: "speech_unreachable" }, "Failed", "stt");
-    expect(getErrorMessage(error)).toBe("Couldn't reach the transcription service. Try again shortly.");
+    expect(getErrorMessage(error, i18n.t("common.errors.generic"))).toBe("Couldn't reach the transcription service. Try again shortly.");
   });
 
   it.each([

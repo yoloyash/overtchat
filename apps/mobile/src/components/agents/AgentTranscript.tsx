@@ -40,6 +40,7 @@ import type {
   AgentRewindMode,
   AgentRuntimeSnapshot,
 } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { MarkdownBody } from "@/components/chat/MarkdownBody";
 import { record, text } from "@/lib/agents/model";
 import { createTranscriptStabilizer } from "@/lib/agents/transcript";
@@ -156,13 +157,14 @@ export function AgentTranscript({
   disabled: boolean;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, fonts } = useTheme();
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(
     new Set(),
   );
   const projectedItems = useMemo(
-    () => projectAgentTranscript(snapshot.messages),
-    [snapshot.messages],
+    () => projectAgentTranscript(snapshot.messages, t, locale),
+    [snapshot.messages, t, locale],
   );
   const unsettled =
     snapshot.status !== "idle" ||
@@ -577,6 +579,7 @@ const TranscriptItem = memo(function TranscriptItem({
   onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const actions =
     actionText === undefined ? null : (
       <ResponseActions
@@ -594,7 +597,7 @@ const TranscriptItem = memo(function TranscriptItem({
     case "work_summary":
       return (
         <AgentWorkSummary
-          label={agentWorkLabel(item.durationMs)}
+          label={agentWorkLabel(item.durationMs, t)}
           expanded={item.expanded}
           onPress={() => onToggleWork(item.key)}
         />
@@ -725,6 +728,7 @@ function ResponseFooter({
   actions: React.ReactNode;
   durationMs: number | null;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   if (!actions && durationMs === null) return null;
   return (
@@ -740,7 +744,7 @@ function ResponseFooter({
             paddingHorizontal: 4,
           }}
         >
-          {agentWorkLabel(durationMs)}
+          {agentWorkLabel(durationMs, t)}
         </Text>
       )}
     </View>

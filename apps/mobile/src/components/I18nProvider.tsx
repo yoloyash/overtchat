@@ -1,12 +1,11 @@
 import { useLocales } from "expo-localization";
+import { useEffect, type ReactNode } from "react";
+import { I18nextProvider, useTranslation } from "react-i18next";
 import {
-  Fragment,
-  useEffect,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
-import { I18nextProvider } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
+  i18n,
+  resolveFormatLocale,
+  type SupportedLocale,
+} from "@overtchat/shared/i18n";
 import { applyLanguage, useLanguagePref } from "@/lib/languagePref";
 
 /**
@@ -22,23 +21,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return <I18nextProvider i18n={i18n}>{children}</I18nextProvider>;
 }
 
-function subscribeToLanguage(onChange: () => void) {
-  i18n.on("languageChanged", onChange);
-  return () => i18n.off("languageChanged", onChange);
-}
-
-const activeLanguage = () => i18n.language;
-
-/**
- * Draws everything inside from scratch when the language changes. Labels made
- * by helpers, or held in a memo cache, would otherwise keep the old language
- * until something else redrew them.
- */
-export function LanguageBoundary({ children }: { children: ReactNode }) {
-  const language = useSyncExternalStore(
-    subscribeToLanguage,
-    activeLanguage,
-    activeLanguage,
+/** The locale for dates and numbers; changes with the language. */
+export function useFormatLocale(): string {
+  // Reading the language here is what ties the caller to a language change.
+  const { i18n: active } = useTranslation();
+  const system = useLocales();
+  return resolveFormatLocale(
+    active.language as SupportedLocale,
+    system.map((locale) => locale.languageTag),
   );
-  return <Fragment key={language}>{children}</Fragment>;
 }

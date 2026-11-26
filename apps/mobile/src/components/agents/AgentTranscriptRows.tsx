@@ -26,6 +26,7 @@ import {
   type AgentToolStatus,
   type AgentTranscriptItem,
 } from "@overtchat/shared/agent-presentation";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { MarkdownBody } from "@/components/chat/MarkdownBody";
 import { useTheme } from "@/lib/theme";
 import { AgentToolDetails, AgentToolRow, agentToolIcon } from "./AgentToolDetails";
@@ -69,10 +70,10 @@ function ActivityIcon({
   if (status === "failed")
     return <Ionicons name="alert-circle-outline" size={16} color={colors.destructive} />;
   const tools = entries.flatMap((entry) => (entry.type === "tool" ? [entry.tool] : []));
-  const categories = new Set(tools.map((tool) => describeAgentTool(tool).category));
+  const categories = new Set(tools.map((tool) => describeAgentTool(tool, t).category));
   const name = tools.length
     ? categories.size === 1
-      ? agentToolIcon(describeAgentTool(tools[0]).category)
+      ? agentToolIcon(describeAgentTool(tools[0], t).category)
       : "construct-outline"
     : entries.some((entry) => entry.type === "subagent")
       ? "people-outline"
@@ -164,10 +165,10 @@ function liveStepPresentation(
 } {
   if (step.type === "thinking")
     return { label: t("agents.activity.thinking"), summary: null };
-  if (step.type === "subagent") return describeSubagentActivity(step.activity);
-  const presentation = describeAgentTool(step.tool);
+  if (step.type === "subagent") return describeSubagentActivity(step.activity, t);
+  const presentation = describeAgentTool(step.tool, t);
   return {
-    label: agentToolStepLabel(presentation.category, agentToolStatus(step.tool, true)),
+    label: agentToolStepLabel(presentation.category, agentToolStatus(step.tool, true), t),
     summary: presentation.summary,
   };
 }
@@ -184,8 +185,9 @@ export function AgentActivityGroup({
   onToggle?: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, fonts } = useTheme();
-  const summary = describeAgentActivity(entries, active);
+  const summary = describeAgentActivity(entries, active, t, locale);
   // The last group of a running turn shows the step it is on, not a count.
   const liveActivity =
     active && agentActivityIsLive(entries) ? describeAgentLiveActivity(entries) : null;
@@ -316,7 +318,7 @@ export function AgentActivityGroup({
       <AgentSheet
         title={
           selectedTool
-            ? describeAgentTool(selectedTool).label
+            ? describeAgentTool(selectedTool, t).label
             : t("agents.mobile.toolDetails.title")
         }
         visible={!!selectedTool}

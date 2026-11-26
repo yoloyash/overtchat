@@ -9,6 +9,7 @@ import {
   type AgentToolActivity,
   type AgentToolCategory,
 } from "@overtchat/shared/agent-presentation";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { toolDetails, type ToolSection } from "@/lib/agents/tool-details";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
@@ -59,7 +60,7 @@ export function AgentToolRow({
 }) {
   const { t } = useTranslation();
   const { colors, fonts } = useTheme();
-  const presentation = describeAgentTool(tool);
+  const presentation = describeAgentTool(tool, t);
   const status = agentToolStatus(tool, active);
   const statusLabel = t(`agents.activity.toolStatus.${status}`);
   return (
@@ -152,7 +153,7 @@ export function AgentToolDetails({
 }) {
   const { t } = useTranslation();
   const status = agentToolStatus(tool, active);
-  const details = toolDetails(tool);
+  const details = toolDetails(tool, t);
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -195,6 +196,7 @@ export function AgentDetailSections({ sections }: { sections: ToolSection[] }) {
 
 function DetailSection({ section }: { section: ToolSection }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, fonts, scheme } = useTheme();
   const [limit, setLimit] = useState(80);
   const [copied, setCopied] = useState(false);
@@ -365,7 +367,7 @@ function DetailSection({ section }: { section: ToolSection }) {
         <AgentButton
           label={t("common.actions.showMore")}
           detail={t("agents.mobile.toolDetails.linesTotal", {
-            formattedCount: lines.length.toLocaleString(),
+            formattedCount: lines.length.toLocaleString(locale),
           })}
           icon="chevron-down"
           onPress={() => setLimit((value) => value + 160)}

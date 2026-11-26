@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
 import { conversationFiles, type CodeExecutionFile } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 
 const chart: CodeExecutionFile = {
   id: "chart",
@@ -51,7 +52,7 @@ describe("conversationFiles", () => {
       message("u2", "user", [
         { type: "file", url: "/api/uploads/notes", mediaType: "text/plain" },
       ]),
-    ]);
+    ], i18n.t);
     expect(files.outputs).toEqual([
       {
         kind: "file",
@@ -69,7 +70,7 @@ describe("conversationFiles", () => {
     const files = conversationFiles([
       message("a1", "assistant", [document("first", "doc", 1), document("other", "doc-2", 1, "Other")]),
       message("a2", "assistant", [document("second", "doc", 2)]),
-    ]);
+    ], i18n.t);
     expect(
       files.outputs.map((output) =>
         output.kind === "document"
@@ -93,7 +94,7 @@ describe("conversationFiles", () => {
     const files = conversationFiles([
       message("a1", "assistant", [run("first", [chart, { ...chart, id: "table", url: "/api/uploads/table", name: "table.csv" }])]),
       message("a2", "assistant", [run("second", [latest])]),
-    ]);
+    ], i18n.t);
     expect(files.outputs.map((output) => output.kind === "file" && output.file.id)).toEqual([
       "chart-2",
       "table",
@@ -122,7 +123,7 @@ describe("conversationFiles", () => {
           output: { images: [{ id: "x", url: "/elsewhere/x", mediaType: "image/png", filename: "x.png" }] },
         },
       ]),
-    ]);
+    ], i18n.t);
     expect(files).toEqual({ outputs: [], uploads: [] });
   });
 });

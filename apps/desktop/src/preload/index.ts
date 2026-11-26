@@ -53,6 +53,24 @@ function integrateTitlebar(): void {
   });
 }
 
+/** Reports the UI's language so native menus and dialogs match it. */
+function reportLanguage(): void {
+  let last: string | null = null;
+  const report = () => {
+    const language = document.documentElement.lang;
+    if (!language || language === last) return;
+    last = language;
+    ipcRenderer.send(IPC.language, language);
+  };
+  window.addEventListener("DOMContentLoaded", () => {
+    report();
+    new MutationObserver(report).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["lang"],
+    });
+  });
+}
+
 /** Reports the UI's resolved theme so the window background matches it. */
 function reportColorScheme(): void {
   let last: string | null = null;
@@ -119,4 +137,5 @@ function exposeBridge(): void {
 
 exposeBridge();
 reportColorScheme();
+reportLanguage();
 if (process.platform === "darwin" || process.platform === "win32") integrateTitlebar();

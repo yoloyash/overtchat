@@ -123,7 +123,7 @@ export function ScheduledTaskDialog({
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    const problem = taskDraftProblem(draft);
+    const problem = taskDraftProblem(draft, t);
     const schedule = scheduleOfDraft(draft);
     if (problem || !schedule) {
       setError(problem ?? t("scheduled.validation.missingTime"));

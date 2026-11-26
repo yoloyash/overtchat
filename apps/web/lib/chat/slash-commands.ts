@@ -7,7 +7,7 @@
 // "and/or" never open the menu.
 
 import type { ComponentType } from "react";
-import { i18n } from "@overtchat/shared/i18n";
+import type { TFunction } from "i18next";
 
 export interface SlashCommandToggleState {
   active: boolean;
@@ -43,8 +43,11 @@ const SLASH_COMMAND_GROUP_KEYS = {
   navigate: "chat.commands.groups.navigate",
 } as const;
 
-export function slashCommandGroupLabel(group: SlashCommandGroup): string {
-  return i18n.t(SLASH_COMMAND_GROUP_KEYS[group]);
+export function slashCommandGroupLabel(
+  group: SlashCommandGroup,
+  t: TFunction,
+): string {
+  return t(SLASH_COMMAND_GROUP_KEYS[group]);
 }
 
 export const SLASH_COMMAND_GROUP_ORDER: readonly SlashCommandGroup[] = [
@@ -209,12 +212,13 @@ export interface SlashCommandGroupView {
 /** Groups commands for rendering, dropping empty groups. */
 export function groupSlashCommands(
   commands: readonly SlashCommand[],
+  t: TFunction,
 ): SlashCommandGroupView[] {
   return SLASH_COMMAND_GROUP_ORDER.flatMap((group) => {
     const inGroup = commands.filter((command) => command.group === group);
     if (inGroup.length === 0) return [];
     return [
-      { group, label: slashCommandGroupLabel(group), commands: inGroup },
+      { group, label: slashCommandGroupLabel(group, t), commands: inGroup },
     ];
   });
 }

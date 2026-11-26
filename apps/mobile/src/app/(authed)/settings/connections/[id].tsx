@@ -5,6 +5,7 @@ import {
   type AgentConnectionListItem,
   type HostConnectorListItem,
 } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { AdminGate } from "@/components/settings/AdminGate";
 import { SettingsStatus } from "@/components/settings/SettingsStatus";
@@ -30,6 +31,7 @@ export default function ConnectionDetails() {
 }
 function Details() {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useSettingsQuery<{ connections: AgentConnectionListItem[] }>(
     "/agent-connections",
@@ -112,7 +114,7 @@ function Details() {
               title={t("connections.mobile.detail.lastVerified")}
               detail={
                 connection.lastValidatedAt
-                  ? new Date(connection.lastValidatedAt).toLocaleString()
+                  ? new Date(connection.lastValidatedAt).toLocaleString(locale)
                   : t("connections.mobile.detail.notTestedYet")
               }
             />

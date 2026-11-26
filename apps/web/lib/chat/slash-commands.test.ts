@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   filterSlashCommandModels,
   filterSlashCommands,
@@ -310,7 +311,7 @@ describe("isSlashCommandAvailable", () => {
 
 describe("groupSlashCommands", () => {
   it("groups commands in the declared group order", () => {
-    const groups = groupSlashCommands(COMMANDS);
+    const groups = groupSlashCommands(COMMANDS, i18n.t);
     expect(groups.map((g) => g.group)).toEqual(["actions", "navigate"]);
     expect(groups[0].commands.map((c) => c.name)).toEqual([
       "search",
@@ -322,13 +323,13 @@ describe("groupSlashCommands", () => {
   });
 
   it("omits groups with no matches", () => {
-    const groups = groupSlashCommands(filterSlashCommands(COMMANDS, "att"));
+    const groups = groupSlashCommands(filterSlashCommands(COMMANDS, "att"), i18n.t);
     expect(groups).toHaveLength(1);
     expect(groups[0].group).toBe("actions");
   });
 
   it("returns nothing when no command matches", () => {
-    expect(groupSlashCommands([])).toEqual([]);
+    expect(groupSlashCommands([], i18n.t)).toEqual([]);
   });
 });
 

@@ -1144,7 +1144,7 @@ function AttachmentChip({
       ? (attachment.error ?? t("chat.composer.uploadFailed"))
       : [
           meta?.pageCount ? t("chat.composer.attachmentPages", { count: meta.pageCount }) : null,
-          meta?.size != null ? formatSize(meta.size) : null,
+          meta?.size != null ? formatSize(meta.size, t) : null,
           meta?.truncated ? t("chat.composer.truncated") : null,
         ]
           .filter(Boolean)

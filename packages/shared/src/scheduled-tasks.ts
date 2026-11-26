@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import type { ToolState } from "./tools";
 
 /**
@@ -130,10 +130,10 @@ function ordinalSuffix(day: number): keyof typeof MONTHLY_ORDINAL_KEYS {
   return (["th", "st", "nd", "rd"] as const)[day % 10] ?? "th";
 }
 
-function list(items: string[]): string {
+function list(items: string[], t: TFunction): string {
   if (items.length <= 1) return items.join("");
-  return i18n.t("scheduled.describe.dayListAnd", {
-    list: items.slice(0, -1).join(i18n.t("scheduled.describe.dayListSep")),
+  return t("scheduled.describe.dayListAnd", {
+    list: items.slice(0, -1).join(t("scheduled.describe.dayListSep")),
     last: items.at(-1),
   });
 }
@@ -142,7 +142,7 @@ function list(items: string[]): string {
 export function formatTaskTime(
   hour: number,
   minute: number,
-  locale?: string,
+  locale: string,
 ): string {
   return new Intl.DateTimeFormat(locale, {
     hour: "numeric",
@@ -154,12 +154,13 @@ export function formatTaskTime(
 /** A schedule in words, such as "Weekdays at 9:00 AM". */
 export function describeTaskSchedule(
   schedule: TaskSchedule,
-  locale?: string,
+  t: TFunction,
+  locale: string,
 ): string {
   if (schedule.frequency === "hourly") {
     return schedule.minute === 0
-      ? i18n.t("scheduled.describe.everyHour")
-      : i18n.t("scheduled.describe.everyHourAt", {
+      ? t("scheduled.describe.everyHour")
+      : t("scheduled.describe.everyHourAt", {
           minute: String(schedule.minute).padStart(2, "0"),
         });
   }
@@ -173,21 +174,21 @@ export function describeTaskSchedule(
         year: "numeric",
         timeZone: "UTC",
       }).format(new Date(Date.UTC(year, month - 1, day)));
-      return i18n.t("scheduled.describe.once", { date, time });
+      return t("scheduled.describe.once", { date, time });
     }
     case "daily":
-      return i18n.t("scheduled.describe.daily", { time });
+      return t("scheduled.describe.daily", { time });
     case "weekdays":
-      return i18n.t("scheduled.describe.weekdays", { time });
+      return t("scheduled.describe.weekdays", { time });
     case "weekly":
       return schedule.daysOfWeek.length === 7
-        ? i18n.t("scheduled.describe.daily", { time })
-        : i18n.t("scheduled.describe.weekly", {
-            days: list(schedule.daysOfWeek.map((day) => i18n.t(DAY_KEYS[day]))),
+        ? t("scheduled.describe.daily", { time })
+        : t("scheduled.describe.weekly", {
+            days: list(schedule.daysOfWeek.map((day) => t(DAY_KEYS[day])), t),
             time,
           });
     case "monthly":
-      return i18n.t(MONTHLY_ORDINAL_KEYS[ordinalSuffix(schedule.dayOfMonth)], {
+      return t(MONTHLY_ORDINAL_KEYS[ordinalSuffix(schedule.dayOfMonth)], {
         day: schedule.dayOfMonth,
         time,
       });
@@ -213,8 +214,11 @@ const RUN_STATUS_KEYS = {
   interrupted: "scheduled.runs.status.interrupted",
 } as const;
 
-export function scheduledTaskRunLabel(status: ScheduledTaskRunStatus): string {
-  return i18n.t(RUN_STATUS_KEYS[status]);
+export function scheduledTaskRunLabel(
+  status: ScheduledTaskRunStatus,
+  t: TFunction,
+): string {
+  return t(RUN_STATUS_KEYS[status]);
 }
 
 export const SCHEDULED_TASK_RUN_TRIGGERS = ["schedule", "manual"] as const;
@@ -389,6 +393,7 @@ export function hasScheduledTaskChange(message: {
 export function scheduledTaskActivityLabel(
   part: ScheduledTaskToolPart,
   active: boolean,
+  t: TFunction,
 ): string {
   const action = part.type.slice("tool-".length) as ScheduledTaskToolName;
   if (active) {
@@ -398,7 +403,7 @@ export function scheduledTaskActivityLabel(
       update_scheduled_task: "scheduled.activity.updating",
       delete_scheduled_task: "scheduled.activity.deleting",
     } as const;
-    return i18n.t(keys[action]);
+    return t(keys[action]);
   }
   const output = toolOutput(part);
   if (!output) {
@@ -408,25 +413,25 @@ export function scheduledTaskActivityLabel(
       update_scheduled_task: "scheduled.activity.updateFailed",
       delete_scheduled_task: "scheduled.activity.deleteFailed",
     } as const;
-    return i18n.t(keys[action]);
+    return t(keys[action]);
   }
   const name = scheduledTaskOfToolPart(part)?.name;
   switch (action) {
     case "list_scheduled_tasks": {
       const count = Array.isArray(output.tasks) ? output.tasks.length : 0;
-      return i18n.t("scheduled.activity.checked", { count });
+      return t("scheduled.activity.checked", { count });
     }
     case "create_scheduled_task":
       return name
-        ? i18n.t("scheduled.activity.scheduledNamed", { name })
-        : i18n.t("scheduled.activity.scheduled");
+        ? t("scheduled.activity.scheduledNamed", { name })
+        : t("scheduled.activity.scheduled");
     case "update_scheduled_task":
       return name
-        ? i18n.t("scheduled.activity.updatedNamed", { name })
-        : i18n.t("scheduled.activity.updated");
+        ? t("scheduled.activity.updatedNamed", { name })
+        : t("scheduled.activity.updated");
     case "delete_scheduled_task":
       return name
-        ? i18n.t("scheduled.activity.deletedNamed", { name })
-        : i18n.t("scheduled.activity.deleted");
+        ? t("scheduled.activity.deletedNamed", { name })
+        : t("scheduled.activity.deleted");
   }
 }

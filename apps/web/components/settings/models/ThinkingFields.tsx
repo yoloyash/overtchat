@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { i18n } from "@overtchat/shared/i18n";
 import Editor from "react-simple-code-editor";
 import type {
   ModelReasoningControls,
@@ -69,7 +69,7 @@ export function ThinkingFields({
           value
             ? t("models.thinking.levelsCustomDescription")
             : automatic
-              ? describeControls(automatic)
+              ? describeControls(automatic, t)
               : t("models.thinking.levelsUnknownDescription")
         }
       >
@@ -133,7 +133,6 @@ function CustomThinkingFields({
   const [text, setText] = useState(() =>
     JSON.stringify(value.requests, null, 2),
   );
-  const [jsonError, setJsonError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [check, setCheck] = useState<
     { result: ThinkingCheckResult } | { error: string } | null
@@ -141,18 +140,18 @@ function CustomThinkingFields({
   const levels = MODEL_REASONING_LEVELS.filter(
     (level) => level in value.requests,
   );
-  const issue = jsonError ?? reasoningOverrideIssue(value);
+  const parsedRequests = parseRequests(text, t);
+  const jsonError = typeof parsedRequests === "string" ? parsedRequests : null;
+  const issue = jsonError ?? reasoningOverrideIssue(value, t);
 
   function editRequests(next: string) {
     setText(next);
     setCheck(null);
-    const parsed = parseRequests(next);
+    const parsed = parseRequests(next, t);
     if (typeof parsed === "string") {
-      setJsonError(parsed);
       onInvalidChange(true);
       return;
     }
-    setJsonError(null);
     onInvalidChange(false);
     onChange({
       requests: parsed,
@@ -275,14 +274,14 @@ function CustomThinkingFields({
           <SelectTrigger id="p-thinking-default">
             <SelectValue>
               {value.defaultLevel
-                ? levelLabel(value.defaultLevel)
+                ? levelLabel(value.defaultLevel, t)
                 : t("models.thinking.chooseLevel")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {levels.map((level) => (
               <SelectItem key={level} value={level}>
-                {levelLabel(level)}
+                {levelLabel(level, t)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -314,7 +313,7 @@ function CustomThinkingFields({
                 )}
                 role="status"
               >
-                {"error" in check ? check.error : describeCheck(check.result)}
+                {"error" in check ? check.error : describeCheck(check.result, t)}
               </p>
             ) : null}
             {suggestedDefault && suggestedDefault !== value.defaultLevel ? (
@@ -327,7 +326,7 @@ function CustomThinkingFields({
                 }
               >
                 {t("models.thinking.useAsDefault", {
-                  level: levelLabel(suggestedDefault),
+                  level: levelLabel(suggestedDefault, t),
                 })}
               </Button>
             ) : null}
@@ -340,6 +339,7 @@ function CustomThinkingFields({
 
 function parseRequests(
   text: string,
+  t: TFunction,
 ): ReasoningOverride["requests"] | string {
   let parsed: unknown;
   try {
@@ -348,58 +348,58 @@ function parseRequests(
     return error instanceof Error ? error.message : String(error);
   }
   if (!isRecord(parsed) || !Object.values(parsed).every(isRecord)) {
-    return i18n.t("models.thinking.requestFieldsMustBeObject");
+    return t("models.thinking.requestFieldsMustBeObject");
   }
   return parsed as ReasoningOverride["requests"];
 }
 
-function describeControls(controls: ModelReasoningControls): string {
+function describeControls(controls: ModelReasoningControls, t: TFunction): string {
   const levels = [
     ...(controls.toggle ? ["on", "off"] : []),
     ...(controls.efforts ?? []),
-  ].map((level) => levelLabel(level as ModelReasoningLevel));
-  return i18n.t("models.thinking.levelsKnownDescription", {
+  ].map((level) => levelLabel(level as ModelReasoningLevel, t));
+  return t("models.thinking.levelsKnownDescription", {
     levels: levels.join(", "),
-    defaultLevel: levelLabel(controls.defaultLevel),
+    defaultLevel: levelLabel(controls.defaultLevel, t),
   });
 }
 
-function describeCheck(result: ThinkingCheckResult): string {
+function describeCheck(result: ThinkingCheckResult, t: TFunction): string {
   if (result.status === "unavailable") {
-    return i18n.t("models.thinking.checkUnavailable");
+    return t("models.thinking.checkUnavailable");
   }
   const parts = [
     ...(result.failed.length
       ? [
-          i18n.t("models.thinking.checkRejected", {
-            levels: listLevels(result.failed),
+          t("models.thinking.checkRejected", {
+            levels: listLevels(result.failed, t),
           }),
         ]
       : []),
     ...result.identical.map(
       (group) =>
-        i18n.t("models.thinking.checkIdentical", {
-          levels: listLevels(group),
+        t("models.thinking.checkIdentical", {
+          levels: listLevels(group, t),
         }),
     ),
   ];
-  if (parts.length === 0) parts.push(i18n.t("models.thinking.checkDistinct"));
+  if (parts.length === 0) parts.push(t("models.thinking.checkDistinct"));
   if (result.matchesDefault.length === 1) {
     parts.push(
-      i18n.t("models.thinking.checkMatchesDefault", {
-        level: levelLabel(result.matchesDefault[0]),
+      t("models.thinking.checkMatchesDefault", {
+        level: levelLabel(result.matchesDefault[0], t),
       }),
     );
   }
   return parts.join(" ");
 }
 
-function listLevels(levels: ModelReasoningLevel[]): string {
-  return levels.map(levelLabel).join(", ");
+function listLevels(levels: ModelReasoningLevel[], t: TFunction): string {
+  return levels.map((level) => levelLabel(level, t)).join(", ");
 }
 
-function levelLabel(level: ModelReasoningLevel): string {
-  return i18n.t(`models.thinking.levels.${level}`);
+function levelLabel(level: ModelReasoningLevel, t: TFunction): string {
+  return t(`models.thinking.levels.${level}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -10,6 +10,7 @@ import {
   type AgentProviderId,
 } from "@overtchat/agent-bridge";
 import { formatUpdatedAt } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import {
   AgentProviderLogo,
@@ -78,12 +79,13 @@ const SORT_KEYS: Record<AgentSessionSort, "sortActivity" | "sortCreated"> = {
  */
 export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const navigate = useNavigate();
   const { data: connections = [], isPending } = useAgentConnections();
   const groups = useMemo(() => groupAgentWorkspaces(connections), [connections]);
-  const hosts = useMemo(() => agentSessionHosts(groups), [groups]);
-  const allWorkspaces = useMemo(() => agentSessionWorkspaces(groups, null), [groups]);
-  const allProviders = useMemo(() => agentSessionProviders(groups, null, null), [groups]);
+  const hosts = useMemo(() => agentSessionHosts(groups, t), [groups, t]);
+  const allWorkspaces = useMemo(() => agentSessionWorkspaces(groups, null, t), [groups, t]);
+  const allProviders = useMemo(() => agentSessionProviders(groups, null, null, t), [groups, t]);
   // What was typed, over which address; the History link or going back changes
   // the address underneath, and the box follows it.
   const [typed, setTyped] = useState({ value: search.q ?? "", over: search.q });
@@ -91,12 +93,12 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   const setQuery = (value: string) => setTyped({ value, over: search.q });
   const [limit, setLimit] = useState(PAGE_SIZE);
   const host = search.host && hosts.includes(search.host) ? search.host : null;
-  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host), [groups, host]);
+  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host, t), [groups, host, t]);
   const workspace =
     search.workspace && workspaces.includes(search.workspace) ? search.workspace : null;
   const providers = useMemo(
-    () => agentSessionProviders(groups, host, workspace),
-    [groups, host, workspace],
+    () => agentSessionProviders(groups, host, workspace, t),
+    [groups, host, workspace, t],
   );
   const provider: AgentProviderId | null =
     search.provider && isAgentProviderId(search.provider) && providers.includes(search.provider)
@@ -116,7 +118,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
 
   /** The agent filter, if it still has sessions in the narrowed scope. */
   function keptProvider(nextHost: string | null, nextWorkspace: string | null) {
-    return provider && agentSessionProviders(groups, nextHost, nextWorkspace).includes(provider)
+    return provider && agentSessionProviders(groups, nextHost, nextWorkspace, t).includes(provider)
       ? provider
       : undefined;
   }
@@ -124,7 +126,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   // Changing the machine drops a folder or agent that has no sessions on it.
   function selectHost(next: string | null) {
     const nextWorkspace =
-      workspace && agentSessionWorkspaces(groups, next).includes(workspace) ? workspace : null;
+      workspace && agentSessionWorkspaces(groups, next, t).includes(workspace) ? workspace : null;
     updateSearch({
       host: next ?? undefined,
       workspace: nextWorkspace ?? undefined,
@@ -151,8 +153,8 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   }, [navigate, query, search.q]);
 
   const results = useMemo(
-    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }),
-    [groups, query, host, workspace, provider, sort],
+    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }, t),
+    [groups, query, host, workspace, provider, sort, t],
   );
   const shown = results.slice(0, limit);
   const buckets = groupByDate(
@@ -160,6 +162,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
       entry,
       updatedAt: sort === "created" ? agentSessionCreatedAt(entry) : entry.since,
     })),
+    t,
     now,
   );
   const totalSessions = groups.reduce((total, group) => total + group.sessions.length, 0);
@@ -350,7 +353,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
           ) : (
             <>
               {buckets.map((bucket) => {
-                const bucketLabel = dateBucketLabel(bucket.key);
+                const bucketLabel = dateBucketLabel(bucket.key, t);
                 return (
                 <section key={bucket.key} aria-label={bucketLabel}>
                   <h2 className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
@@ -361,7 +364,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                       <HistoryRow
                         key={entry.item.session.id}
                         entry={entry}
-                        time={formatUpdatedAt(updatedAt, now)}
+                        time={formatUpdatedAt(updatedAt, t, locale, now)}
                       />
                     ))}
                   </ul>
@@ -392,7 +395,7 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
   const { t } = useTranslation();
   const { item, group, state } = entry;
   const { session, provider } = item;
-  const title = agentSessionRowTitle(entry);
+  const title = agentSessionRowTitle(entry, t);
   const needsOwner = agentSessionNeedsOwner(state);
   // What it is asking, why it failed, or how it last replied.
   const snippet = session.attention
@@ -413,7 +416,7 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
           {state !== "idle" && (
             <span className="sr-only">
               {t("agents.sessionState.prefix", {
-                state: agentSessionStateLabel(state),
+                state: agentSessionStateLabel(state, t),
               })}
             </span>
           )}
@@ -433,7 +436,7 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
           <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <AgentProviderLogo provider={provider} />
             <span className="truncate">
-              {agentProviderMetadata(provider).label} · {group.name} · {agentHostLabel(group.host)}
+              {agentProviderMetadata(provider).label} · {group.name} · {agentHostLabel(group.host, t)}
             </span>
           </span>
           {snippet && (

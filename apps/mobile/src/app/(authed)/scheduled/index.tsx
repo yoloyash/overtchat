@@ -11,6 +11,7 @@ import {
 import { router } from "expo-router";
 import { useState } from "react";
 import { Switch, View } from "react-native";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   Label,
   QueryState,
@@ -33,10 +34,10 @@ import { useTheme } from "@/lib/theme";
 import { toastSuccess } from "@/lib/toast";
 
 /** What a task is waiting for: its next time, or why it has none. */
-function taskStatus(task: ScheduledTask, t: TFunction): string {
+function taskStatus(task: ScheduledTask, t: TFunction, locale: string): string {
   if (task.enabled && task.nextRunAt) {
     return t("scheduled.status.nextRun", {
-      time: formatScheduledRunTime(task.nextRunAt, task.timeZone),
+      time: formatScheduledRunTime(task.nextRunAt, task.timeZone, locale),
     });
   }
   if (task.pausedReason) return task.pausedReason;
@@ -111,6 +112,7 @@ function TaskCard({
 }) {
   const { colors } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { openChat } = useChatSession();
   const updateTask = useUpdateScheduledTask();
   const runTask = useRunScheduledTask();
@@ -131,7 +133,7 @@ function TaskCard({
         <Row
           title={task.name}
           detail={[
-            describeTaskSchedule(task.schedule),
+            describeTaskSchedule(task.schedule, t, locale),
             model ??
               (task.modelConfigId === null
                 ? t("scheduled.task.modelRemoved")
@@ -140,7 +142,7 @@ function TaskCard({
           ]
             .filter(Boolean)
             .join(" · ")}
-          status={<Label muted>{taskStatus(task, t)}</Label>}
+          status={<Label muted>{taskStatus(task, t, locale)}</Label>}
         >
           <Switch
             accessibilityLabel={t("scheduled.mobile.runOnScheduleLabel", {
@@ -171,7 +173,7 @@ function TaskCard({
               lastRun.status === "running"
                 ? t("scheduled.runs.runningNow")
                 : t(`scheduled.runs.lastRun.${lastRun.status}`, {
-                    time: formatUpdatedAt(lastRun.startedAt, undefined, {
+                    time: formatUpdatedAt(lastRun.startedAt, t, locale, undefined, {
                       inline: true,
                     }),
                   })
@@ -217,7 +219,7 @@ function TaskCard({
               runs.data.map((run) => (
                 <Row
                   key={run.id}
-                  title={formatScheduledRunTime(run.startedAt, task.timeZone)}
+                  title={formatScheduledRunTime(run.startedAt, task.timeZone, locale)}
                   detail={runDetail(run, t)}
                   navigation={!!run.chatId}
                   onPress={run.chatId ? () => open(run.chatId as string) : undefined}

@@ -1142,14 +1142,25 @@ confirmations, toasts, and accessibility labels. These stay as they are:
 Writing text:
 
 - In a component or hook, `const { t } = useTranslation()` and `t("key")`.
-  Outside React (a toast raised from a store, a pure helper), call `i18n.t()`
-  at the moment the text is needed. Never translate at module load: a constant
-  table holds ids or keys, and the component that draws it calls `t()`.
-- A language change redraws the app from scratch below `LanguageBoundary`
-  (the router on web, the routes on mobile), keeping the current page. So a
-  helper's label, a `useMemo`, or the React Compiler's cache on mobile cannot
-  show the old language; new code does not need to list the language as a
-  dependency.
+  Never translate at module load: a constant table holds ids or keys, and the
+  component that draws it calls `t()`.
+- A language change takes effect in place: nothing is reloaded or redrawn
+  from scratch, so text must be tied to the language where it is drawn. A
+  helper whose result a component draws takes the translate function as a
+  parameter (`t: TFunction`) and the component passes the one from
+  `useTranslation()`; a memo that builds text lists `t` as a dependency. The
+  mobile client's React Compiler caches a helper's result on its arguments,
+  so a helper that reads the language on its own keeps the old language.
+- `i18n.t()` from `@overtchat/shared/i18n` is for text made at the moment
+  something happens and then handed off: a toast, an alert, a thrown error,
+  text copied or shared. It is also what the server passes to a helper that
+  takes `t`.
+- Dates, times and numbers a person reads are formatted with the locale from
+  `useFormatLocale()` (or `formatLocale()` where `i18n.t()` is allowed): the
+  active language, in the device's regional form when it has one. Never pass
+  `undefined` as the locale, which follows the device even when the person
+  chose another language. A fixed `"en-US"` is only for text a model or the
+  server reads.
 - Name keys for the product surface and the meaning, not the component:
   `settings.appearance.theme.title`. Web and mobile share a key when the text
   and meaning are the same; a different meaning gets its own key even when the

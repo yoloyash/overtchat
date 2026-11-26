@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import Popover, { PopoverPlacement } from "react-native-popover-view";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   ProjectInstructionsSheet,
   type ProjectInstructionsSheetRef,
@@ -50,6 +51,7 @@ export default function ProjectScreen() {
 function ProjectScreenInner({ projectId }: { projectId: string }) {
   const { colors, radii, fonts } = useTheme();
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { startNewChat, openChat } = useChatSession();
 
   const { data: project, isPending, error } = useProject(projectId);
@@ -447,7 +449,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                             },
                           ]}
                         >
-                          {formatUpdatedAt(c.updatedAt, now)}
+                          {formatUpdatedAt(c.updatedAt, t, locale, now)}
                         </Text>
                       </View>
                       <Ionicons

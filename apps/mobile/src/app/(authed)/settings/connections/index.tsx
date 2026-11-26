@@ -8,6 +8,7 @@ import {
   type HostConnectorPairing,
   type AgentConnectionListItem,
 } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { AdminGate } from "@/components/settings/AdminGate";
 import { SettingsStatus } from "@/components/settings/SettingsStatus";
@@ -33,6 +34,7 @@ export default function Connections() {
 }
 function ConnectionList() {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const hosts = useSettingsQuery<{ connectors: HostConnectorListItem[] }>(
     "/host-connectors",
     true,
@@ -219,7 +221,7 @@ function ConnectionList() {
         <Section
           title={t("connections.mobile.pairing.title")}
           description={t("connections.mobile.pairing.description", {
-            time: new Date(pairing.expiresAt).toLocaleTimeString(),
+            time: new Date(pairing.expiresAt).toLocaleTimeString(locale),
           })}
         >
           <Row

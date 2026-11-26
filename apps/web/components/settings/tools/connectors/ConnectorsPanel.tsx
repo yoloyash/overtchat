@@ -3,6 +3,7 @@
 import { Settings2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -84,6 +85,7 @@ function GoogleAccount({
   isAdmin: boolean;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const disconnect = useDisconnectIntegrationAccount("google");
   // What the sign-in dialog starts with, while it is open.
   const [connecting, setConnecting] = useState<IntegrationId[] | null>(null);
@@ -138,7 +140,7 @@ function GoogleAccount({
                   : account
                     ? account.accountEmail
                     : t("tools.connectors.google.signInOnce", {
-                        services: integrationNames(all),
+                        services: integrationNames(all, locale),
                       })}
             </p>
           </div>

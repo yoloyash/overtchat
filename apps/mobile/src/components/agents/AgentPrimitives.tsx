@@ -7,6 +7,7 @@ import {
   BottomSheetTextInput,
   type BottomSheetFooterProps,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -370,7 +371,7 @@ export function AgentSheet({
   }, [visible]);
   const backdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -403,6 +404,7 @@ export function AgentSheet({
   );
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       snapPoints={snapPoints}
       footerComponent={footer ? renderFooter : undefined}

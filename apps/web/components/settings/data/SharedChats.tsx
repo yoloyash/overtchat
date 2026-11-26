@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   sharesQuery,
   shareUrl,
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 
 export function SharedChats() {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const query = useQuery(sharesQuery);
   const change = useChangeChatShare();
   return (
@@ -40,7 +42,7 @@ export function SharedChats() {
                 </a>
                 <p className="text-xs text-muted-foreground">
                   {t("data.sharedChats.updated", {
-                    date: new Date(share.updatedAt).toLocaleDateString(),
+                    date: new Date(share.updatedAt).toLocaleDateString(locale),
                   })}
                 </p>
               </div>

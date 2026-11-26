@@ -41,7 +41,7 @@ export function GmailEmailCard({
   const [expanded, setExpanded] = useLayoutState(false);
   const send = useSendGmailEmail();
   const save = useSaveGmailEmail();
-  const loaded = describeGmailEmail(part, replaced);
+  const loaded = describeGmailEmail(part, t, replaced);
   // What this app did since, which outlives the list recycling the card.
   const done = useSyncExternalStore(
     subscribeGmailEmailResults,
@@ -51,6 +51,7 @@ export function GmailEmailCard({
   const email = done
     ? describeGmailEmail(
         { ...part, output: { ...(part.output as object), ...done } },
+        t,
         replaced,
       )
     : loaded;
@@ -98,7 +99,7 @@ export function GmailEmailCard({
             {email.subject}
           </Text>
           <Text numberOfLines={1} style={[styles.meta, muted]}>
-            {[gmailEmailStatusLabel(email.status), email.recipients]
+            {[gmailEmailStatusLabel(email.status, t), email.recipients]
               .filter(Boolean)
               .join(" · ")}
           </Text>

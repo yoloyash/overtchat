@@ -8,8 +8,9 @@ import {
   API_FORMATS,
   findProvider,
   isProviderId,
-  PROVIDERS,
+  providerDisplayLabel,
 } from "@overtchat/shared/provider-catalog";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AdminGate } from "@/components/settings/AdminGate";
 import {
   SettingsPage,
@@ -84,6 +85,7 @@ function EditorScreen() {
 }
 function Editor({ model }: { model?: SettingsModelConfig }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [draft, setDraft] = useState(() => modelDraft(model));
   const [pricingText, setPricingText] = useState(() =>
     pricingStrings(model?.pricing),
@@ -171,16 +173,19 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
               : [
                   {
                     value: draft.providerId,
-                    label: providerLabel({
-                      providerId: draft.providerId,
-                      displayProvider: model?.displayProvider,
-                    }),
+                    label: providerLabel(
+                      {
+                        providerId: draft.providerId,
+                        displayProvider: model?.displayProvider,
+                      },
+                      t,
+                    ),
                     leading: <SettingsModelIcon provider={draft.providerId} />,
                   },
                 ]),
             ...modelProviders(draft.modelType).map((id) => ({
               value: id as string,
-              label: PROVIDERS[id].label,
+              label: providerDisplayLabel(id, t),
               leading: <SettingsModelIcon provider={id} />,
             })),
           ]}
@@ -311,7 +316,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
                 hint={
                   model?.resolvedContextWindow
                     ? t("models.mobile.editor.contextWindowHintDetected", {
-                        tokens: model.resolvedContextWindow.toLocaleString(),
+                        tokens: model.resolvedContextWindow.toLocaleString(locale),
                       })
                     : t("models.mobile.editor.contextWindowHint")
                 }

@@ -5,6 +5,7 @@ import { Alert } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { SettingsUser } from "@overtchat/shared/admin-settings";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { getAuthClient } from "@/lib/auth/client";
 import { queryKeys } from "@/lib/queries/keys";
 import { useSettingsQuery, settingsRequest } from "@/lib/queries/settings";
@@ -168,6 +169,7 @@ function CreateUser() {
 }
 function ManageUser({ user }: { user: SettingsUser }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const session = getAuthClient().useSession();
   const self = user.id === session.data?.user.id;
   const [reset, setReset] = useState(false);
@@ -195,7 +197,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
         />
         <Row
           title={t("users.mobile.detail.createdLabel")}
-          value={new Date(user.createdAt).toLocaleDateString()}
+          value={new Date(user.createdAt).toLocaleDateString(locale)}
         />
         {self ? (
           <Row

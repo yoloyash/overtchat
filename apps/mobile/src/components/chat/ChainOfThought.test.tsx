@@ -18,6 +18,15 @@ vi.mock("@expo/vector-icons", () => ({
   Ionicons: ({ name }: { name: string }) => <i data-icon={name} />,
   MaterialCommunityIcons: ({ name }: { name: string }) => <i data-icon={name} />,
 }));
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "en-US" }],
+  useLocales: () => [{ languageTag: "en-US" }],
+}));
+vi.mock("expo-secure-store", () => ({
+  getItem: () => null,
+  setItem: () => {},
+  deleteItemAsync: async () => {},
+}));
 vi.mock("@shopify/flash-list", () => ({ useLayoutState: useState }));
 vi.mock("../GmailLogo", () => ({ GmailLogo: () => <i data-icon="gmail" /> }));
 vi.mock("../CalendarLogo", () => ({

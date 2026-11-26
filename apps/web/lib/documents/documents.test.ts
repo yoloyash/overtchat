@@ -13,6 +13,7 @@ import {
   isDocumentOutput,
   type DocumentToolPart,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 
 const plan = { id: "plan", title: "Plan", type: "markdown" as const, content: "one" };
 
@@ -97,19 +98,19 @@ describe("document versions", () => {
 
 describe("document panel view", () => {
   it("shows a saved version with its siblings", () => {
-    expect(documentView(history, "c2")).toMatchObject({
+    expect(documentView(history, "c2", i18n.t)).toMatchObject({
       index: 1,
       versions: [{ version: 1 }, { version: 2 }],
     });
-    expect(documentView(history, "c4")).toMatchObject({ index: 0, versions: [{ id: "other" }] });
-    expect(documentView(history, "missing")).toBeNull();
+    expect(documentView(history, "c4", i18n.t)).toMatchObject({ index: 0, versions: [{ id: "other" }] });
+    expect(documentView(history, "missing", i18n.t)).toBeNull();
   });
 
   it("shows a failed revision as the latest saved version", () => {
-    expect(documentView(history, "c3")).toMatchObject({ index: 1, versions: [{}, {}] });
-    expect(documentView(history, "c3")).not.toHaveProperty("updating");
+    expect(documentView(history, "c3", i18n.t)).toMatchObject({ index: 1, versions: [{}, {}] });
+    expect(documentView(history, "c3", i18n.t)).not.toHaveProperty("updating");
     expect(
-      documentView([assistant("a", [part("x", { state: "output-error", errorText: "bad" })])], "x"),
+      documentView([assistant("a", [part("x", { state: "output-error", errorText: "bad" })])], "x", i18n.t),
     ).toBeNull();
   });
 
@@ -122,13 +123,13 @@ describe("document panel view", () => {
         }),
       ]),
     ];
-    expect(documentView(writing, "draft")).toEqual({
+    expect(documentView(writing, "draft", i18n.t)).toEqual({
       versions: [],
       index: -1,
       draft: { title: "Notes", type: "code", language: "ts", content: "const a" },
     });
     const untitled = [assistant("a", [part("d", { state: "input-streaming", input: { type: "pdf" as never } })])];
-    expect(documentView(untitled, "d")?.draft).toEqual({
+    expect(documentView(untitled, "d", i18n.t)?.draft).toEqual({
       title: "Untitled document",
       type: "markdown",
       content: "",
@@ -142,12 +143,13 @@ describe("document panel view", () => {
         part("c5", { type: "tool-update_document", state: "input-streaming", input: { id: "plan" } }),
       ]),
     ];
-    expect(documentView(messages, "c5")).toMatchObject({ index: 1, updating: true });
+    expect(documentView(messages, "c5", i18n.t)).toMatchObject({ index: 1, updating: true });
     expect(documentIdOf(findDocumentPart(messages, "c5")!)).toBe("plan");
     expect(
       documentView(
         [assistant("a", [part("u", { type: "tool-update_document", state: "input-streaming", input: {} })])],
         "u",
+        i18n.t,
       ),
     ).toBeNull();
   });

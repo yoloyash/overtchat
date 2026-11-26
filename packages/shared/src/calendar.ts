@@ -1,4 +1,4 @@
-import { i18n } from "./i18n/i18n";
+import type { TFunction } from "i18next";
 import { conversationUsesSkill } from "./skills";
 import type { ToolState } from "./tools";
 
@@ -168,15 +168,15 @@ function list(value: unknown): Record<string, unknown>[] {
   return records;
 }
 
-function countCalendars(total: number): string {
-  if (total === 0) return i18n.t("chat.steps.calendar.calendarsZero");
-  return i18n.t("chat.steps.calendar.calendars", { count: total });
+function countCalendars(total: number, t: TFunction): string {
+  if (total === 0) return t("chat.steps.calendar.calendarsZero");
+  return t("chat.steps.calendar.calendars", { count: total });
 }
 
-function countEvents(total: number, more = false): string {
-  if (total === 0) return i18n.t("chat.steps.calendar.eventsZero");
-  if (more) return i18n.t("chat.steps.calendar.eventsMore", { count: total });
-  return i18n.t("chat.steps.calendar.events", { count: total });
+function countEvents(total: number, t: TFunction, more = false): string {
+  if (total === 0) return t("chat.steps.calendar.eventsZero");
+  if (more) return t("chat.steps.calendar.eventsMore", { count: total });
+  return t("chat.steps.calendar.events", { count: total });
 }
 
 /**
@@ -206,6 +206,7 @@ function eventUrl(
 function eventRow(
   event: Record<string, unknown> | undefined,
   account: string | undefined,
+  t: TFunction,
   deleted = false,
 ): CalendarEventRow[] {
   if (!event) return [];
@@ -213,7 +214,7 @@ function eventRow(
   const more = typeof event.moreGuests === "number" ? event.moreGuests : 0;
   return [
     {
-      title: text(event.title) ?? i18n.t("chat.steps.calendar.noTitle"),
+      title: text(event.title) ?? t("chat.steps.calendar.noTitle"),
       start: text(event.start),
       end: text(event.end),
       allDay: event.allDay === true,
@@ -262,6 +263,7 @@ const ACTIVE_TITLE_KEYS = {
  */
 export function describeCalendarToolPart(
   part: CalendarToolPart,
+  t: TFunction,
 ): CalendarToolDisplay {
   const action =
     part.type === "tool-calendar_list_calendars"
@@ -284,10 +286,10 @@ export function describeCalendarToolPart(
   const base = {
     action,
     status,
-    title: i18n.t(TITLE_KEYS[action][status === "running" ? 0 : 1]),
+    title: t(TITLE_KEYS[action][status === "running" ? 0 : 1]),
     error:
       status === "error"
-        ? (text(part.errorText) ?? i18n.t("chat.steps.calendar.requestFailed"))
+        ? (text(part.errorText) ?? t("chat.steps.calendar.requestFailed"))
         : undefined,
   } as const;
   const account = text(output?.account);
@@ -295,7 +297,7 @@ export function describeCalendarToolPart(
   if (action === "calendars") {
     return {
       ...base,
-      note: output ? countCalendars(list(output.calendars).length) : undefined,
+      note: output ? countCalendars(list(output.calendars).length, t) : undefined,
       rows: [],
     };
   }
@@ -306,15 +308,15 @@ export function describeCalendarToolPart(
       ...base,
       detail: text(input?.query),
       note: output
-        ? countEvents(events.length, output.hasMore === true)
+        ? countEvents(events.length, t, output.hasMore === true)
         : undefined,
-      rows: events.flatMap((event) => eventRow(event, account)),
+      rows: events.flatMap((event) => eventRow(event, account, t)),
     };
   }
 
   return {
     ...base,
-    rows: eventRow(record(output?.event), account, action === "delete"),
+    rows: eventRow(record(output?.event), account, t, action === "delete"),
   };
 }
 
@@ -322,14 +324,15 @@ export function describeCalendarToolPart(
 export function calendarActivityLabel(
   part: CalendarToolPart,
   active: boolean,
+  t: TFunction,
 ): string {
-  const display = describeCalendarToolPart(part);
-  if (active) return i18n.t(ACTIVE_TITLE_KEYS[display.action]);
+  const display = describeCalendarToolPart(part, t);
+  if (active) return t(ACTIVE_TITLE_KEYS[display.action]);
   if (display.status === "error") {
-    return i18n.t("chat.steps.calendar.requestFailed");
+    return t("chat.steps.calendar.requestFailed");
   }
   if (display.status === "running") {
-    return i18n.t("chat.steps.calendar.requestIncomplete");
+    return t("chat.steps.calendar.requestIncomplete");
   }
   return display.title;
 }
@@ -361,7 +364,7 @@ function clockTime(value: string | undefined): Date | null {
  */
 export function formatCalendarEventTime(
   event: Pick<CalendarEventRow, "start" | "end" | "allDay">,
-  locale?: string,
+  locale: string,
 ): string {
   const start = clockTime(event.start);
   if (!start) return "";

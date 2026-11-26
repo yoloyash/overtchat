@@ -2,6 +2,7 @@
 
 import { useId, type ReactNode } from "react";
 import { ArrowLeft, File, Files, X } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type {
   ConversationFiles,
@@ -149,14 +150,15 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function FileItem({ file, onOpen }: { file: PanelFile; onOpen: () => void }) {
+  const { t } = useTranslation();
   return (
     <Item
       icon={<MediaIcon mediaType={file.mediaType} filename={file.name} className="size-4" />}
       name={file.name}
       label={
         file.size === undefined
-          ? fileTypeLabel(file)
-          : `${fileTypeLabel(file)} · ${formatSize(file.size)}`
+          ? fileTypeLabel(file, t)
+          : `${fileTypeLabel(file, t)} · ${formatSize(file.size, t)}`
       }
       onOpen={onOpen}
     />
@@ -193,7 +195,7 @@ function Item({
 }
 
 /** A short type such as "PNG" or "CSV", from the extension when it has one. */
-function fileTypeLabel(file: PanelFile): string {
+function fileTypeLabel(file: PanelFile, t: TFunction): string {
   const extension = /\.([a-z0-9]{1,5})$/i.exec(file.name)?.[1];
-  return extension ? extension.toUpperCase() : humanMediaLabel(file.mediaType);
+  return extension ? extension.toUpperCase() : humanMediaLabel(file.mediaType, t);
 }

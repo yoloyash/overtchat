@@ -11,6 +11,7 @@ import {
   isAgentProviderId,
   type AgentConnectionListItem,
 } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -64,7 +65,7 @@ export const agentsHomeRoute = createRoute({
     const connections = await context.queryClient.ensureQueryData(
       agentConnectionListQuery,
     );
-    const [setup] = recentAgentSetups(connections);
+    const [setup] = recentAgentSetups(connections, i18n.t);
     if (setup) {
       throw redirect({
         to: "/agents/new",
@@ -217,7 +218,7 @@ export const agentSessionRoute = createRoute({
     }
     return {
       provider: connection.provider,
-      hostLabel: agentHostLabel(connection.host),
+      host: connection.host,
       workspace,
       initialSessionName: agentSessionDisplayTitle(session) ?? "",
     };
@@ -226,14 +227,15 @@ export const agentSessionRoute = createRoute({
   pendingComponent: ChatPending,
   component: withPages(
     function AgentSessionPage() {
+      const { t } = useTranslation();
       const { id } = agentSessionRoute.useParams();
-      const { provider, hostLabel, workspace, initialSessionName } =
+      const { provider, host, workspace, initialSessionName } =
         agentSessionRoute.useLoaderData();
       return (
         <AgentSessionView
           sessionId={id}
           provider={provider}
-          hostLabel={hostLabel}
+          hostLabel={agentHostLabel(host, t)}
           workspaceId={workspace.id}
           workspaceName={workspace.name}
           workspacePath={workspace.path}

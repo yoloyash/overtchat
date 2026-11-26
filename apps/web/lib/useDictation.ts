@@ -157,7 +157,7 @@ export function useDictation(onResult: (text: string) => void): Dictation {
         if (typeof j?.text !== "string") {
           setError({
             kind: "other",
-            message: speechErrorMessage("stt", "speech_invalid_response"),
+            message: speechErrorMessage("stt", i18n.t, "speech_invalid_response"),
           });
           return;
         }

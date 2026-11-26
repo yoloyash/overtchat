@@ -107,8 +107,8 @@ export function AgentWorkspacePane({
   });
   const changedFiles = gitStatus.data?.files ?? EMPTY_CHANGED_FILES;
   const gitDecorations = useMemo(
-    () => agentWorkspaceGitDecorationMap(changedFiles),
-    [changedFiles],
+    () => agentWorkspaceGitDecorationMap(changedFiles, t),
+    [changedFiles, t],
   );
   const [viewChoices, setViewChoices] = useState<Record<string, FileViewChoice>>(
     {},
@@ -163,7 +163,7 @@ export function AgentWorkspacePane({
           changedFile={changedFile}
           decoration={
             gitDecorations.get(selection.path) ??
-            (selection.gitIgnored ? ignoredGitDecoration : undefined)
+            (selection.gitIgnored ? ignoredGitDecoration(t) : undefined)
           }
           running={running}
         />
@@ -277,7 +277,7 @@ function WorkspaceTabs({
           const name = fileName(file.path);
           const decoration =
             gitDecorations.get(file.path) ??
-            (file.gitIgnored ? ignoredGitDecoration : undefined);
+            (file.gitIgnored ? ignoredGitDecoration(t) : undefined);
           return (
             <div
               key={file.path}
@@ -472,7 +472,7 @@ function ChangedFileRow({
   onSelect: () => void;
 }) {
   const { t } = useTranslation();
-  const decoration = agentWorkspaceGitFileDecoration(file);
+  const decoration = agentWorkspaceGitFileDecoration(file, t);
 
   return (
     <button
@@ -611,7 +611,7 @@ function WorkspaceEntryRow({
   const disabled = entry.kind === "symlink" || entry.symlink;
   const decoration =
     gitDecorations.get(entry.path) ??
-    (entry.ignored ? ignoredGitDecoration : undefined);
+    (entry.ignored ? ignoredGitDecoration(t) : undefined);
   const title = disabled
     ? t("agents.workspace.symlinkNotPreviewable", { path: entry.path })
     : gitDecoratedTitle(entry.path, decoration, t);

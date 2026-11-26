@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const details = parts.map(describeMemoryToolPart);
+  const details = parts.map((part) => describeMemoryToolPart(part, t));
   const running = details.some((detail) => detail.status === "running");
   const failed = details.some((detail) => detail.status === "error");
   const incomplete = details.some(
@@ -58,7 +58,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
             />
           </span>
           <span className="min-w-0 truncate font-medium text-foreground">
-            {memoryToolArtifactLabel(details)}
+            {memoryToolArtifactLabel(details, t)}
           </span>
           <ChevronDown
             className={cn(
@@ -101,7 +101,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
 
 function MemoryDetail({ detail }: { detail: MemoryToolDisplay }) {
   const { t } = useTranslation();
-  const status = memoryToolStatusLabel(detail);
+  const status = memoryToolStatusLabel(detail, t);
   return (
     <div className="space-y-1.5 py-3">
       <div className="flex items-center justify-between gap-3">

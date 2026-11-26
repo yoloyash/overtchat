@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import { agentTurnChangesRow, type AgentTurnChanges } from "@overtchat/agent-bridge";
 import {
   agentTurnChangesLabel,
@@ -33,7 +34,7 @@ const types = (items: Array<{ type: string }>) => items.map((item) => item.type)
 describe("what a turn changed, in the transcript", () => {
   it("shows a turn's changes under its answer and keeps them when the work folds", () => {
     const messages = [user("u"), text("progress"), tool("cmd"), result("cmd"), text("answer"), row("b")];
-    const projected = projectAgentTranscript(messages);
+    const projected = projectAgentTranscript(messages, i18n.t, "en-US");
     expect(projected.at(-1)).toMatchObject({
       type: "turn_changes",
       key: `turn-changes:${"b".repeat(40)}`,
@@ -47,12 +48,12 @@ describe("what a turn changed, in the transcript", () => {
       user("u"),
       { role: "custom", customType: "other", display: false },
       { ...row("b"), changes: { files: "many" } },
-    ]))).toEqual(["message"]);
+    ], i18n.t, "en-US"))).toEqual(["message"]);
   });
 
   it("puts the turn's actions under its changes", () => {
     const messages = [user("u"), text("answer"), row("b"), user("next"), text("plain")];
-    const projected = projectAgentTranscript(messages);
+    const projected = projectAgentTranscript(messages, i18n.t, "en-US");
     const actions = agentResponseActions(projected, false);
     expect([...actions.entries()]).toEqual([
       [projected[2].key, { text: "answer", messageId: "answer" }],
@@ -60,7 +61,7 @@ describe("what a turn changed, in the transcript", () => {
     ]);
     expect(projected[2].type).toBe("turn_changes");
     // A stopped turn without an answer still lists what it changed.
-    const stopped = projectAgentTranscript([user("u"), tool("cmd"), row("c")]);
+    const stopped = projectAgentTranscript([user("u"), tool("cmd"), row("c")], i18n.t, "en-US");
     expect(types(stopped)).toEqual(["message", "activity", "turn_changes"]);
     expect(agentResponseActions(stopped, false).size).toBe(0);
   });
@@ -72,7 +73,7 @@ describe("what a turn changed, in the transcript", () => {
       { role: "turnFooter", content: "answer", messageId: "answer", durationMs: 4000, overtchatTurnId: "turn-1", timestamp: 4 },
       row("b"),
       user("next"),
-    ]);
+    ], i18n.t, "en-US");
     expect(types(projected)).toEqual([
       "message", "assistant_text", "turn_changes", "turn_footer", "message",
     ]);
@@ -143,8 +144,8 @@ describe("changed files tree", () => {
   });
 
   it("words the count and keeps large line counts short", () => {
-    expect(agentTurnChangesLabel(1)).toBe("1 changed file");
-    expect(agentTurnChangesLabel(1200)).toBe("1,200 changed files");
+    expect(agentTurnChangesLabel(1, i18n.t, "en-US")).toBe("1 changed file");
+    expect(agentTurnChangesLabel(1200, i18n.t, "en-US")).toBe("1,200 changed files");
     expect([0, 999, 1000, 1250, 9960, 15499, 999499, 999500, 2400000].map(formatAgentChangeCount))
       .toEqual(["0", "999", "1k", "1.3k", "10k", "15k", "999k", "1m", "2.4m"]);
   });

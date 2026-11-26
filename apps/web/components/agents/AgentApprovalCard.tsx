@@ -25,7 +25,7 @@ export function AgentApprovalCard({
 }) {
   const id = useId();
   const { t } = useTranslation();
-  const approval = approvalDetails(request);
+  const approval = approvalDetails(request, t);
   return (
     <section
       data-testid="agent-approval-card"

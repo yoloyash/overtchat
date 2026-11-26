@@ -1,6 +1,7 @@
 import { createRoute, Link } from "@tanstack/react-router";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { rootRoute } from "./root";
 import { publicShareQuery } from "@/lib/queries/shares";
 import { SharedTranscript } from "@/components/chat/SharedTranscript";
@@ -14,6 +15,7 @@ export const shareRoute = createRoute({
 
 function SharedChatPage() {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { id } = shareRoute.useParams();
   const query = useInfiniteQuery(publicShareQuery(id));
   const client = useQueryClient();
@@ -55,7 +57,7 @@ function SharedChatPage() {
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 {t("app.share.meta", {
-                  date: new Date(data.updatedAt!).toLocaleDateString(),
+                  date: new Date(data.updatedAt!).toLocaleDateString(locale),
                 })}
               </p>
             </div>

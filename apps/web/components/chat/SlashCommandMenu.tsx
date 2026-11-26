@@ -62,8 +62,8 @@ export function SlashCommandMenu({
   const listRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(
-    () => (models ? [] : groupSlashCommands(commands)),
-    [commands, models],
+    () => (models ? [] : groupSlashCommands(commands, t)),
+    [commands, models, t],
   );
 
   // Indexed in render order so `data-index` matches the composer's cursor.

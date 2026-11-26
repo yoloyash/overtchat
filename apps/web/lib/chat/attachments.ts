@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { i18n } from "@overtchat/shared/i18n";
 
 const MIME_ACCEPT = [
@@ -106,37 +107,40 @@ export function getDataTransferFiles(data: DataTransfer): File[] {
   return Array.from(data.files);
 }
 
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return i18n.t("chat.files.sizeBytes", { size: bytes });
+export function formatSize(bytes: number, t: TFunction): string {
+  if (bytes < 1024) return t("chat.files.sizeBytes", { size: bytes });
   if (bytes < 1024 * 1024) {
-    return i18n.t("chat.files.sizeKb", { size: (bytes / 1024).toFixed(1) });
+    return t("chat.files.sizeKb", { size: (bytes / 1024).toFixed(1) });
   }
-  return i18n.t("chat.files.sizeMb", {
+  return t("chat.files.sizeMb", {
     size: (bytes / 1024 / 1024).toFixed(1),
   });
 }
 
-export function humanMediaLabel(mediaType: string | undefined): string {
-  if (!mediaType) return i18n.t("chat.files.media.file");
+export function humanMediaLabel(
+  mediaType: string | undefined,
+  t: TFunction,
+): string {
+  if (!mediaType) return t("chat.files.media.file");
   if (mediaType === "application/pdf") return "PDF";
   if (mediaType.includes("wordprocessingml")) {
-    return i18n.t("chat.files.media.word");
+    return t("chat.files.media.word");
   }
   if (mediaType.includes("spreadsheetml")) {
-    return i18n.t("chat.files.media.excel");
+    return t("chat.files.media.excel");
   }
   if (mediaType.includes("presentationml")) {
-    return i18n.t("chat.files.media.powerpoint");
+    return t("chat.files.media.powerpoint");
   }
   if (mediaType === "text/csv") return "CSV";
   if (mediaType === "application/json") return "JSON";
-  if (mediaType === "application/zip") return i18n.t("chat.files.media.zip");
+  if (mediaType === "application/zip") return t("chat.files.media.zip");
   if (mediaType === "application/octet-stream") {
-    return i18n.t("chat.files.media.file");
+    return t("chat.files.media.file");
   }
   if (mediaType.startsWith("image/")) {
     const type = mediaType.slice(6).replace(/\+xml$/, "").toUpperCase();
-    return i18n.t("chat.files.media.imageType", { type });
+    return t("chat.files.media.imageType", { type });
   }
   if (mediaType.startsWith("text/")) return mediaType.replace(/^text\/(x-)?/, "").toUpperCase();
   return mediaType;

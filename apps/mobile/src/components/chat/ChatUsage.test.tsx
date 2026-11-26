@@ -16,6 +16,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@expo/vector-icons", () => ({
   Ionicons: ({ name }: { name: string }) => <i data-icon={name} />,
 }));
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "en-US" }],
+  useLocales: () => [{ languageTag: "en-US" }],
+}));
+vi.mock("expo-secure-store", () => ({
+  getItem: () => null,
+  setItem: () => {},
+  deleteItemAsync: async () => {},
+}));
 vi.mock("react-native-svg", () => ({
   default: ({ children }: { children?: ReactNode }) => <svg>{children}</svg>,
   Circle: () => <circle />,

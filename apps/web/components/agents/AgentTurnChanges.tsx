@@ -19,6 +19,7 @@ import {
   Folder,
   FolderOpen,
 } from "lucide-react";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { cn } from "@/lib/utils";
 import { AgentDisclosureContext } from "./AgentTranscriptMotion";
 import { useAgentWorkspaceNavigation } from "./AgentWorkspaceNavigationContext";
@@ -57,6 +58,7 @@ function LineCounts({
 /** The files one turn changed, as a folder tree with line counts. */
 export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const navigation = useAgentWorkspaceNavigation();
   const holdDisclosure = useContext(AgentDisclosureContext);
   const tree = useMemo(() => buildAgentTurnChangesTree(changes), [changes]);
@@ -166,7 +168,7 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
       data-testid="agent-turn-changes"
     >
       <div className="flex min-h-9 items-center gap-3 px-3 py-1.5 text-xs">
-        <h3 className="font-medium">{agentTurnChangesLabel(changes.total.files)}</h3>
+        <h3 className="font-medium">{agentTurnChangesLabel(changes.total.files, t, locale)}</h3>
         {counted && (
           <LineCounts
             additions={changes.total.additions}
@@ -206,7 +208,7 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
         <p className="px-3 pb-2 text-xs text-muted-foreground">
           {t("agents.messages.andMoreFiles", {
             count: unlisted,
-            formattedCount: unlisted.toLocaleString(),
+            formattedCount: unlisted.toLocaleString(locale),
           })}
         </p>
       )}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import type { AgentTranscriptItem } from "@overtchat/shared/agent-presentation";
 import { formatAgentElapsed, stabilizeTranscriptItems } from "./transcript";
 
@@ -62,9 +63,9 @@ describe("stable transcript rows", () => {
 
 describe("elapsed time", () => {
   it("formats seconds, minutes, and hours", () => {
-    expect(formatAgentElapsed(-5)).toBe("0s");
-    expect(formatAgentElapsed(42_400)).toBe("42s");
-    expect(formatAgentElapsed(65_000)).toBe("1m 5s");
-    expect(formatAgentElapsed(2 * 3600_000 + 3 * 60_000)).toBe("2h 3m");
+    expect(formatAgentElapsed(-5, i18n.t)).toBe("0s");
+    expect(formatAgentElapsed(42_400, i18n.t)).toBe("42s");
+    expect(formatAgentElapsed(65_000, i18n.t)).toBe("1m 5s");
+    expect(formatAgentElapsed(2 * 3600_000 + 3 * 60_000, i18n.t)).toBe("2h 3m");
   });
 });

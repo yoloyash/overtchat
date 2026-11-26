@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Check, LayoutGrid, Library, List, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +13,8 @@ import type { LibraryItem } from "@/lib/library";
 import { cn } from "@/lib/utils";
 import { serverUrl } from "@/lib/api-url";
 
-function formatLibraryDate(createdAt: number | string): string {
-  return new Date(createdAt).toLocaleDateString(undefined, {
+function formatLibraryDate(createdAt: number | string, locale: string): string {
+  return new Date(createdAt).toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -41,6 +42,7 @@ interface LibraryBrowserProps {
 
 export function LibraryBrowser({ selected, attachedUrls, onToggle }: LibraryBrowserProps) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
@@ -107,10 +109,10 @@ export function LibraryBrowser({ selected, attachedUrls, onToggle }: LibraryBrow
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium" title={item.filename}>{item.filename}</span>
                     <span className="mt-1 block truncate text-xs text-muted-foreground">
-                      {humanMediaLabel(item.mediaType)} · {formatSize(item.size)}
+                      {humanMediaLabel(item.mediaType, t)} · {formatSize(item.size, t)}
                     </span>
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      {attached ? t("library.browser.alreadyAttached") : formatLibraryDate(item.createdAt)}
+                      {attached ? t("library.browser.alreadyAttached") : formatLibraryDate(item.createdAt, locale)}
                     </span>
                   </span>
                   {onToggle && (

@@ -62,9 +62,7 @@ export default function LoginScreen() {
   const authClient = getAuthClient();
   const session = authClient.useSession();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
-  const serverNotice = unexpectedSessionMessage(session.error)
-    ? t("auth.mobile.unexpectedSessionResponse")
-    : null;
+  const serverNotice = unexpectedSessionMessage(session.error, t);
   const signInMethods = useSignInMethods();
   // A server that can't be asked gets the password form, as before.
   const methods = signInMethods.isPending
@@ -126,7 +124,7 @@ export default function LoginScreen() {
       const result = await signInWithProvider(serverUrl, providerSignInDevice);
       if (result.ok) await session.refetch();
       else if (!signInCancelled(result.error)) {
-        setError(ssoErrorMessage(result.error, sso.name));
+        setError(ssoErrorMessage(result.error, sso.name, t));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.login.failed"));

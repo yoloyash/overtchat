@@ -2,9 +2,10 @@
 
 import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
-import { i18n } from "@overtchat/shared/i18n";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   AgentProviderLogo,
   AgentSessionReadToggle,
@@ -29,10 +30,13 @@ import { cn } from "@/lib/utils";
  */
 export type AgentSessionRowContext = "all" | "workspace";
 
-export function agentSessionRowTitle(entry: AgentAttentionItem): string {
+export function agentSessionRowTitle(
+  entry: AgentAttentionItem,
+  t: TFunction,
+): string {
   return (
     agentSessionDisplayTitle(entry.item.session) ||
-    i18n.t("agents.session.newSession")
+    t("agents.session.newSession")
   );
 }
 
@@ -40,6 +44,7 @@ export function agentSessionRowTitle(entry: AgentAttentionItem): string {
 export function agentSessionRowMeta(
   entry: AgentAttentionItem,
   context: AgentSessionRowContext,
+  t: TFunction,
 ): string {
   const { item, group } = entry;
   const { attention } = item.session;
@@ -47,15 +52,20 @@ export function agentSessionRowMeta(
     return [attention.title, attention.detail].filter(Boolean).join(" · ");
   }
   return context === "all"
-    ? `${group.name} · ${agentHostLabel(group.host)}`
+    ? `${group.name} · ${agentHostLabel(group.host, t)}`
     : agentProviderMetadata(item.provider).label;
 }
 
 /** How long a session has been working, or how long ago it last changed. */
-export function agentSessionRowTime(entry: AgentAttentionItem, now: number): string {
+export function agentSessionRowTime(
+  entry: AgentAttentionItem,
+  now: number,
+  t: TFunction,
+  locale: string,
+): string {
   return entry.state === "working"
-    ? formatAgentWorkingTime(now - entry.since)
-    : formatAgentSessionAge(entry.since, now);
+    ? formatAgentWorkingTime(now - entry.since, t)
+    : formatAgentSessionAge(entry.since, now, t, locale);
 }
 
 /** One agent session in the sidebar, in either grouping. */
@@ -71,11 +81,12 @@ export function AgentSessionRow({
   onNavigate?: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
   const { item, group, state } = entry;
   const { session, provider } = item;
-  const title = agentSessionRowTitle(entry);
+  const title = agentSessionRowTitle(entry, t);
   const active = pathname === `/agents/${session.id}`;
   const toggleable = agentSessionCanToggleRead(session, state);
   return (
@@ -88,7 +99,7 @@ export function AgentSessionRow({
           closeMobile();
         }}
         aria-current={active ? "page" : undefined}
-        title={`${title} · ${agentProviderMetadata(provider).label} · ${group.name} · ${agentHostLabel(group.host)}`}
+        title={`${title} · ${agentProviderMetadata(provider).label} · ${group.name} · ${agentHostLabel(group.host, t)}`}
         className={cn(
           // The row stays lit while its menu is open.
           "flex min-w-0 items-start gap-2 rounded-lg py-2 pr-2 pl-4 outline-none motion-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring group-data-[popup-open]:bg-sidebar-accent",
@@ -98,7 +109,7 @@ export function AgentSessionRow({
         {state !== "idle" && (
           <span className="sr-only">
             {t("agents.sessionState.prefix", {
-              state: agentSessionStateLabel(state),
+              state: agentSessionStateLabel(state, t),
             })}
           </span>
         )}
@@ -123,12 +134,12 @@ export function AgentSessionRow({
                   "group-has-[:focus-visible]:invisible [@media(hover:hover)]:group-hover:invisible [@media(hover:none)]:group-has-[:focus-visible]:visible",
               )}
             >
-              {agentSessionRowTime(entry, now)}
+              {agentSessionRowTime(entry, now, t, locale)}
             </span>
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
             <AgentProviderLogo provider={provider} className="size-3" />
-            <span className="truncate">{agentSessionRowMeta(entry, context)}</span>
+            <span className="truncate">{agentSessionRowMeta(entry, context, t)}</span>
           </span>
         </span>
       </Link>

@@ -2,6 +2,7 @@ import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { applyAgentRuntimeMessageEvent } from "@overtchat/agent-bridge";
 import { latestAgentTaskList, projectAgentTranscript } from "@overtchat/shared/agent-presentation";
+import { i18n } from "@overtchat/shared/i18n";
 import { PiClient } from "./client";
 import { OmpClient } from "../omp/client";
 import type { AgentProcess, AgentProcessExit } from "../runtime/process";
@@ -75,7 +76,7 @@ for (const format of formats) describe(format.name, () => {
       process.send({ type: "tool_execution_end", toolName: "todo", toolCallId: "todo-1", result: native });
       process.send({ type: "message_end", message: native });
       expect(messages()).toHaveLength(2);
-      expect(projectAgentTranscript(messages()).map((row) => row.type)).toEqual(["task_list"]);
+      expect(projectAgentTranscript(messages(), i18n.t, "en-US").map((row) => row.type)).toEqual(["task_list"]);
       expect(latestAgentTaskList(messages())?.tasks.map((task) => task.step)).toEqual(["Inspect", "Implement"]);
       expect(latestAgentTaskList(messages())?.tasks.filter((task) => task.status === "completed")).toHaveLength(1);
       process.history = [call, native];
@@ -101,7 +102,7 @@ for (const format of formats) describe(format.name, () => {
         ["other-tool", format.details(true), { toolName: "custom" }],
       ] as const) process.send({ type: "message_end", message: result(id, details, extra) });
       expect(latestAgentTaskList(messages())).toEqual(before);
-      expect(projectAgentTranscript(messages()).flatMap((row) => row.type === "activity" ? row.entries : [])).toHaveLength(3);
+      expect(projectAgentTranscript(messages(), i18n.t, "en-US").flatMap((row) => row.type === "activity" ? row.entries : [])).toHaveLength(3);
     } finally { await client.stop(); }
   });
 });
@@ -130,7 +131,7 @@ describe("OMP task cards", () => {
   ];
   const user = (id: string) => ({ role: "user", id, content: id });
   // The visible rows: user messages by ID and task cards by completed count.
-  const cards = (messages: unknown[]) => projectAgentTranscript(messages).flatMap((row) =>
+  const cards = (messages: unknown[]) => projectAgentTranscript(messages, i18n.t, "en-US").flatMap((row) =>
     row.type === "message" ? [String((row.message as { id: unknown }).id)]
     : row.type === "task_list" ? [`${row.snapshot.tasks.filter((task) => task.status === "completed").length}/3`] : []);
 
@@ -152,18 +153,18 @@ describe("OMP task cards", () => {
       process.send({ type: "todo_reminder" });
       await vi.waitFor(() => expect(cards(messages())).toEqual(["first", "3/3"]));
       process.send({ type: "agent_end" });
-      expect(projectAgentTranscript(messages()).map((row) => row.type)).toEqual(["message", "task_list"]);
+      expect(projectAgentTranscript(messages(), i18n.t, "en-US").map((row) => row.type)).toEqual(["message", "task_list"]);
 
       process.history = [user("first"), ...[0, 1, 2].flatMap((done) => todo(`todo-${done}`, done))];
       const restored = (await client.getMessages()).messages;
-      expect(projectAgentTranscript(restored).map((row) => row.type)).toEqual(["message", "task_list"]);
+      expect(projectAgentTranscript(restored, i18n.t, "en-US").map((row) => row.type)).toEqual(["message", "task_list"]);
       expect(cards(restored)).toEqual(["first", "3/3"]);
     } finally { await client.stop(); }
   });
 
   it("keeps each turn's card in its own turn when the list changes across turns", async () => {
     const { process, client, messages } = setup("omp");
-    const taskKeys = () => projectAgentTranscript(messages()).flatMap((row) => row.type === "task_list" ? [row.key] : []);
+    const taskKeys = () => projectAgentTranscript(messages(), i18n.t, "en-US").flatMap((row) => row.type === "task_list" ? [row.key] : []);
     try {
       process.send({ type: "agent_start" });
       process.send({ type: "message_end", message: user("first") });

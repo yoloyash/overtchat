@@ -20,6 +20,7 @@ import type {
   AgentWorkspaceGitSwitchTarget,
 } from "@overtchat/agent-bridge";
 import { formatUpdatedAt } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { NewAgentWorktreeDialog } from "@/components/agents/NewAgentWorktreeDialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
@@ -80,6 +81,7 @@ export function AgentBranchPicker({
   running: boolean;
 }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [open, setOpen] = useState(false);
   const [worktreeOpen, setWorktreeOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -176,7 +178,7 @@ export function AgentBranchPicker({
         </span>
         {item.committedAt !== null && (
           <span className="shrink-0 text-[11px] text-muted-foreground">
-            {formatUpdatedAt(item.committedAt)}
+            {formatUpdatedAt(item.committedAt, t, locale)}
           </span>
         )}
       </Menu.Item>

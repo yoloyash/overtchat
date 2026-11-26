@@ -1,18 +1,15 @@
 "use client";
 
-import {
-  Fragment,
-  useEffect,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
-import { I18nextProvider } from "react-i18next";
+import { useEffect, type ReactNode } from "react";
+import { I18nextProvider, useTranslation } from "react-i18next";
 import {
   DEFAULT_APP_LANGUAGE,
   parseAppLanguage,
+  resolveFormatLocale,
   type AppLanguage,
+  type SupportedLocale,
 } from "@overtchat/shared/i18n";
-import { LANGUAGE_STORAGE_KEY, applyLanguage, i18n } from "@/lib/i18n";
+import { LANGUAGE_STORAGE_KEY, applyLanguage, i18n, systemLocales } from "@/lib/i18n";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 
 /** The saved language choice, and a setter that applies it everywhere at once. */
@@ -41,23 +38,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return <I18nextProvider i18n={i18n}>{children}</I18nextProvider>;
 }
 
-function subscribeToLanguage(onChange: () => void) {
-  i18n.on("languageChanged", onChange);
-  return () => i18n.off("languageChanged", onChange);
-}
-
-const activeLanguage = () => i18n.language;
-
-/**
- * Draws everything inside from scratch when the language changes. Labels made
- * by helpers, or held in a memo cache, would otherwise keep the old language
- * until something else redrew them.
- */
-export function LanguageBoundary({ children }: { children: ReactNode }) {
-  const language = useSyncExternalStore(
-    subscribeToLanguage,
-    activeLanguage,
-    activeLanguage,
-  );
-  return <Fragment key={language}>{children}</Fragment>;
+/** The locale for dates and numbers; changes with the language. */
+export function useFormatLocale(): string {
+  // Reading the language here is what ties the caller to a language change.
+  const { i18n: active } = useTranslation();
+  return resolveFormatLocale(active.language as SupportedLocale, systemLocales());
 }

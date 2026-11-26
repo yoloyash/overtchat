@@ -1,4 +1,4 @@
-import { i18n } from "@overtchat/shared/i18n";
+import type { TFunction } from "i18next";
 
 const DAY_MS = 86_400_000;
 
@@ -25,8 +25,8 @@ const BUCKET_LABEL_KEYS = {
   older: "sidebar.dateGroups.older",
 } as const;
 
-export function dateBucketLabel(bucket: DateBucket): string {
-  return i18n.t(BUCKET_LABEL_KEYS[bucket]);
+export function dateBucketLabel(bucket: DateBucket, t: TFunction): string {
+  return t(BUCKET_LABEL_KEYS[bucket]);
 }
 
 function startOfDay(now: number): number {
@@ -45,6 +45,7 @@ function bucketFor(ts: number, startOfToday: number): DateBucket {
 
 export function groupByDate<T extends { updatedAt: number }>(
   items: T[],
+  t: TFunction,
   now: number = Date.now(),
 ): { key: DateBucket; label: string; items: T[] }[] {
   const startOfToday = startOfDay(now);
@@ -58,7 +59,7 @@ export function groupByDate<T extends { updatedAt: number }>(
   return ORDER.flatMap((key) => {
     const list = map.get(key);
     return list && list.length
-      ? [{ key, label: dateBucketLabel(key), items: list }]
+      ? [{ key, label: dateBucketLabel(key, t), items: list }]
       : [];
   });
 }

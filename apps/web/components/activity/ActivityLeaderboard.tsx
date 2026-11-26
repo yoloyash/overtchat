@@ -3,6 +3,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ChevronRight } from "lucide-react";
 import {
   ACTIVITY_PERIODS,
@@ -33,6 +34,7 @@ const EMPTY_TOTALS: ActivityTotals = {
 
 export function ActivityLeaderboard() {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [period, setPeriod] = useState<ActivityPeriod>("30d");
   const { data, isPending, isError } = useActivityLeaderboard(period);
   const totals = (data?.entries ?? []).reduce<ActivityTotals>(
@@ -72,7 +74,7 @@ export function ActivityLeaderboard() {
           <p className="mt-1 text-sm text-muted-foreground">
             {data?.trackingStartedAt
               ? t("activity.leaderboard.trackingSince", {
-                  date: formatDate(data.trackingStartedAt),
+                  date: formatDate(data.trackingStartedAt, locale),
                 })
               : t("activity.leaderboard.waitingForTracking")}
           </p>
@@ -172,20 +174,20 @@ export function ActivityLeaderboard() {
                     </span>
                     <span className="block text-xs text-muted-foreground @3xl:hidden">
                       {t("activity.leaderboard.responsesCompact", {
-                        responses: formatCompact(entry.generations),
+                        responses: formatCompact(entry.generations, locale),
                       })}
                     </span>
                   </span>
                 </span>
                 <Value value={entry.totalTokens} />
                 <span className="hidden text-right text-sm tabular-nums text-muted-foreground @3xl:block">
-                  {formatCompact(entry.generations)}
+                  {formatCompact(entry.generations, locale)}
                 </span>
                 <span className="hidden text-right text-sm tabular-nums text-muted-foreground @3xl:block">
-                  {formatCompact(entry.inputTokens)}
+                  {formatCompact(entry.inputTokens, locale)}
                 </span>
                 <span className="hidden text-right text-sm tabular-nums text-muted-foreground @3xl:block">
-                  {formatCompact(entry.outputTokens)}
+                  {formatCompact(entry.outputTokens, locale)}
                 </span>
                 <ChevronRight className="size-4 text-muted-foreground/50 motion-colors group-hover:text-foreground" />
               </Link>
@@ -199,14 +201,15 @@ export function ActivityLeaderboard() {
 
 function Value({ value }: { value: number }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   return (
     <span
       className="text-right text-sm font-semibold tabular-nums"
       title={t("activity.leaderboard.chatTokensTitle", {
-        tokens: formatExact(value),
+        tokens: formatExact(value, locale),
       })}
     >
-      {formatCompact(value)}
+      {formatCompact(value, locale)}
     </span>
   );
 }

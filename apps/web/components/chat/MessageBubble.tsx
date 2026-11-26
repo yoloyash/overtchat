@@ -12,6 +12,7 @@ import {
   type OpenUIFormState,
 } from "@overtchat/shared";
 import { Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import {
   Check,
   Copy,
@@ -279,6 +280,7 @@ function AssistantBubble({
   showStats: boolean;
   stats: MessageStats | null;
 }) {
+  const markdownLabels = useMarkdownLabels();
   const { t } = useTranslation();
   const text = textOf(message);
   const lookup = useMemo(() => buildSourceLookup(message), [message]);
@@ -323,6 +325,7 @@ function AssistantBubble({
               return (
                 <div key={seg.index} data-chat-find-text="">
                   <Streamdown
+                    translations={markdownLabels}
                     className="font-sans space-y-3 text-[15px] leading-relaxed"
                     plugins={MESSAGE_MARKDOWN_PLUGINS}
                     remarkPlugins={REPLY_REMARK_PLUGINS}
@@ -463,7 +466,7 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{label}</div>
         <div className="text-xs text-muted-foreground">
-          {humanMediaLabel(part.mediaType)}
+          {humanMediaLabel(part.mediaType, t)}
         </div>
       </div>
     </a>

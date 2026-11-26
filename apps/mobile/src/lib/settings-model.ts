@@ -1,8 +1,11 @@
+import type { TFunction } from "i18next";
 import { i18n } from "@overtchat/shared/i18n";
 import type { AdminModelConfig } from "@overtchat/shared/admin-settings";
 import {
   EXPLICIT_API_FORMAT_IDS,
   findProvider,
+  isProviderId,
+  providerDisplayLabel,
   PROVIDERS,
   PROVIDER_IDS,
   type ApiFormat,
@@ -91,12 +94,11 @@ export function modelDraft(model?: SettingsModelConfig): ModelDraft {
 }
 export function providerLabel(
   model: Pick<SettingsModelConfig, "providerId" | "displayProvider">,
+  t: TFunction,
 ): string {
-  return (
-    findProvider(model.providerId)?.label ??
-    model.displayProvider ??
-    model.providerId
-  );
+  return isProviderId(model.providerId)
+    ? providerDisplayLabel(model.providerId, t)
+    : (model.displayProvider ?? model.providerId);
 }
 /** Providers the server accepts for each model type. */
 export function modelProviders(modelType: ModelDraft["modelType"]) {

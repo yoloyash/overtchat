@@ -2,12 +2,14 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { htmlPreviewDocument } from "@/lib/chat/code-preview";
 import { MAX_TABLE_ROWS, parseDelimited } from "@/lib/chat/file-preview";
 
 /** A CSV or TSV file as a table, with its first row as the header. */
 export function DelimitedTable({ text, delimiter }: { text: string; delimiter: string }) {
   const { t } = useTranslation();
+  const locale = useFormatLocale();
   const rows = useMemo(() => parseDelimited(text, delimiter), [text, delimiter]);
   if (!rows.length) {
     return <p className="p-6 text-sm text-muted-foreground">{t("chat.files.emptyFile")}</p>;
@@ -42,8 +44,8 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
       {body.length > shown.length && (
         <p className="px-3 py-2 text-xs text-muted-foreground">
           {t("chat.files.tableRowsShown", {
-            shown: MAX_TABLE_ROWS.toLocaleString(),
-            total: body.length.toLocaleString(),
+            shown: MAX_TABLE_ROWS.toLocaleString(locale),
+            total: body.length.toLocaleString(locale),
           })}
         </p>
       )}

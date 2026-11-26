@@ -6,6 +6,7 @@ import type {
 } from "@overtchat/agent-bridge";
 import { AGENT_STATUS_TEXT_LIMIT } from "@overtchat/agent-bridge";
 import { approvalDetails } from "@overtchat/shared/agent-tool-details";
+import { i18n } from "@overtchat/shared/i18n";
 
 type PendingInteraction = NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>;
 
@@ -88,7 +89,7 @@ export function sessionAttention(
   requestedAt: number,
 ): AgentSessionAttention {
   if (request.approvalKind === "tool") {
-    const details = approvalDetails(request);
+    const details = approvalDetails(request, i18n.t);
     const command = details.sections.find((section) => section.label === "Command")?.value;
     const detail = command
       ? shellCommand(command)

@@ -6,13 +6,13 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import type {
   ChatReasoningLevel,
   ModelReasoningControls,
   ModelReasoningLevel,
   PublicModelConfig,
 } from "@overtchat/shared";
-import { i18n } from "@overtchat/shared/i18n";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -127,7 +127,7 @@ export const ModelPickerSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -139,6 +139,7 @@ export const ModelPickerSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={modalRef}
       enableDynamicSizing
       maxDynamicContentSize={sheetMaxHeight}
@@ -560,7 +561,7 @@ const REASONING_LABEL_KEYS = {
 
 export function reasoningLabel(
   level: ChatReasoningLevel,
-  t: TFunction = i18n.t,
+  t: TFunction,
 ): string {
   return t(REASONING_LABEL_KEYS[level]);
 }
