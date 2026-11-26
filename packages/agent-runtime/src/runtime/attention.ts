@@ -7,28 +7,18 @@ import type {
 import { AGENT_STATUS_TEXT_LIMIT } from "@overtchat/agent-bridge";
 import { approvalDetails } from "@overtchat/shared/agent-tool-details";
 import { i18n } from "@overtchat/shared/i18n";
+import { clipText, markdownToPlainText } from "@overtchat/shared";
 
 type PendingInteraction = NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>;
 
 /** Collapses whitespace and clips text to the status limit. */
 export function statusText(value: string): string {
-  const text = value.replace(/\s+/g, " ").trim();
-  return text.length > AGENT_STATUS_TEXT_LIMIT
-    ? `${text.slice(0, AGENT_STATUS_TEXT_LIMIT - 1).trimEnd()}…`
-    : text;
+  return clipText(value, AGENT_STATUS_TEXT_LIMIT);
 }
 
 /** Reduces assistant markdown to the prose a reader sees first. */
 export function previewText(markdown: string): string {
-  return statusText(
-    markdown
-      .replace(/```[^\n]*\n?/g, " ")
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-      .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "")
-      .replace(/(?<!\w)(\*\*|__|\*|_|~~)(?=\S)([^\n]*?\S)\1(?!\w)/g, "$2")
-      .replace(/`/g, ""),
-  );
+  return statusText(markdownToPlainText(markdown));
 }
 
 function messageText(message: unknown): string {
