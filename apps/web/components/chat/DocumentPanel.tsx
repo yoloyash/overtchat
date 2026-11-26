@@ -7,6 +7,7 @@ import type { UIMessage } from "ai";
 import { useTheme } from "next-themes";
 import { writeText } from "clipboard-polyfill";
 import { CodeBlock, Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import {
   ChevronLeft,
   ChevronRight,
@@ -323,6 +324,7 @@ function DocumentBody({
   source: boolean;
   writing: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
   const { t } = useTranslation();
   if (source) {
     return (
@@ -341,6 +343,7 @@ function DocumentBody({
       return (
         <div className="mx-auto max-w-3xl px-6 py-5">
           <Streamdown
+            translations={markdownLabels}
             className="font-sans space-y-3 text-[15px] leading-relaxed"
             plugins={MESSAGE_MARKDOWN_PLUGINS}
             mode={writing ? "streaming" : "static"}

@@ -3,6 +3,7 @@
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertTriangle,
@@ -1007,8 +1008,10 @@ function Markdown({
   children: string;
   streaming?: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
   return (
     <Streamdown
+      translations={markdownLabels}
       className={cn(AGENT_MARKDOWN_CLASSES, streaming && "motion-stream-blocks")}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={AGENT_REMARK_PLUGINS}

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import { useTranslation } from "react-i18next";
 import type { AgentWorkspaceFilePreview } from "@overtchat/agent-bridge";
 import {
@@ -157,6 +158,7 @@ function MarkdownFile({
   path: string;
   content: string;
 }) {
+  const markdownLabels = useMarkdownLabels();
   const remarkPlugins = useMemo(
     () => [...STREAMDOWN_DEFAULT_REMARK_PLUGINS, remarkWorkspaceFileLinks(path)],
     [path],
@@ -182,6 +184,7 @@ function MarkdownFile({
     >
       <div className="mx-auto max-w-3xl px-5 py-4">
         <Streamdown
+          translations={markdownLabels}
           className={MARKDOWN_CLASSES}
           plugins={MESSAGE_MARKDOWN_PLUGINS}
           remarkPlugins={remarkPlugins}

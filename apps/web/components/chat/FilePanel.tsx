@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CodeBlock, Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import { Code, Download, Eye, Loader2, X } from "lucide-react";
 import type { PanelFile } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
@@ -154,6 +155,7 @@ function TextFile({
   preview: TextPreview;
   source: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
   const { t } = useTranslation();
   const [loaded, setLoaded] = useState<{
     text?: string;
@@ -207,6 +209,7 @@ function TextFile({
       return (
         <div className="mx-auto max-w-3xl px-6 py-5">
           <Streamdown
+            translations={markdownLabels}
             className="font-sans space-y-3 text-[15px] leading-relaxed"
             plugins={MESSAGE_MARKDOWN_PLUGINS}
             mode="static"
