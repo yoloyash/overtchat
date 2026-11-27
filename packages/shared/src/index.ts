@@ -39,3 +39,4 @@ export type {
   SharedConversationPage,
 } from "./chat-sharing";
 export * from "./relative-time";
+export * from "./plain-text";

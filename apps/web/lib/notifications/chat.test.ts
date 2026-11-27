@@ -30,6 +30,15 @@ describe("chat notifications", () => {
     });
   });
 
+  it("shows a Markdown reply as plain text", async () => {
+    await notifyChatComplete("user", "chat", "stream", [
+      { type: "text", text: "**Three** stories:\n\n- one\n- `two`" },
+    ]);
+    expect(mocks.send).toHaveBeenCalledWith(
+      expect.objectContaining({ preview: { body: "Three stories: one two" } }),
+    );
+  });
+
   it("names the task when the reply is a scheduled run", async () => {
     await notifyChatComplete("user", "chat", "stream", parts, "Morning news");
     expect(mocks.send).toHaveBeenCalledWith(
@@ -61,7 +70,7 @@ describe("chat notifications", () => {
       title: "A scheduled task failed",
       preview: { title: "Failed: Morning news" },
     });
-    expect(sent.preview.body).toMatch(/^The provider refused\. x+$/);
+    expect(sent.preview.body).toMatch(/^The provider refused\. x+…$/);
     expect(sent.preview.body).toHaveLength(240);
     // Lock screens show the title and body: neither carries the task or error.
     expect(`${sent.title} ${sent.body}`).not.toMatch(/Morning|provider/);

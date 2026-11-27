@@ -1,4 +1,5 @@
 import { i18n } from "@overtchat/shared/i18n";
+import { clipText } from "@overtchat/shared";
 import type {
   AgentProviderId,
   AgentSessionAttention,
@@ -98,9 +99,10 @@ export function agentNotificationText(
   } else {
     body = event.turn?.error;
   }
-  body = body?.replace(/\s+/g, " ").trim() || place;
-  if (body.length > BODY_LIMIT) body = `${body.slice(0, BODY_LIMIT - 1).trimEnd()}…`;
-  return { title, body };
+  return {
+    title,
+    body: clipText(body ?? "", BODY_LIMIT) || clipText(place, BODY_LIMIT),
+  };
 }
 
 /**

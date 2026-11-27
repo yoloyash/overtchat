@@ -1,5 +1,10 @@
 import "server-only";
+import { clipText, markdownToPlainText } from "@overtchat/shared";
+import { chatReplyPreview } from "./preview";
 import { sendPushNotification } from "./sender";
+
+/** What a phone's expanded notification has room for. */
+const PREVIEW_LIMIT = 240;
 
 export function notifyChatComplete(
   userId: string,
@@ -9,14 +14,7 @@ export function notifyChatComplete(
   /** The scheduled task whose run this reply is. */
   taskName?: string,
 ) {
-  // Only visible answer text, never reasoning or tool inputs/results.
-  const body = parts
-    .filter((part) => part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text as string)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 240);
+  const body = chatReplyPreview(parts, PREVIEW_LIMIT);
   return sendPushNotification({
     userId,
     kind: "chat",
@@ -50,7 +48,7 @@ export function notifyScheduledRunFailed(run: {
     body: "Tap to see what happened.",
     preview: {
       title: `Failed: ${run.taskName}`,
-      body: run.error.replace(/\s+/g, " ").trim().slice(0, 240),
+      body: clipText(markdownToPlainText(run.error), PREVIEW_LIMIT),
     },
     channelId: "chat-responses",
   });

@@ -146,6 +146,12 @@ test.beforeAll(async () => {
     }
     replies += 1;
     res.setHeader("Content-Type", "text/event-stream");
+    const prompt = JSON.stringify(body.messages.at(-1));
+    if (prompt.includes("Markdown")) {
+      send(res, `## Reply ${replies}\n\n**Ready** with \`code\` and [a link](https://example.com):\n\n`);
+      pending.push(() => send(res, "| Name | Value |\n| --- | --- |\n| a | 1 |", true));
+      return;
+    }
     send(res, `Reply ${replies} is `);
     pending.push(() => send(res, "ready.", true));
   });
@@ -231,4 +237,16 @@ test("offers alerts in a chat once a reply has finished unseen", async ({ page }
   await focus(page, false);
   await finish(page);
   await expect.poll(() => shown).toMatchObject([{ title: "Your response is ready", body: "Reply 3 is ready." }]);
+});
+
+test("shows a Markdown reply as the text a reader sees", async ({ page }) => {
+  const { shown } = await setup(page, { system: true });
+  await ask(page, "Markdown");
+  await focus(page, false);
+  await finish(page);
+  await expect
+    .poll(() => shown)
+    .toMatchObject([
+      { title: "Your response is ready", body: "Reply 1 Ready with code and a link: Name Value a 1" },
+    ]);
 });
