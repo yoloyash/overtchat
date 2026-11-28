@@ -22,6 +22,8 @@ import {
   CHAT_ID_PLACEHOLDER,
   modelHeadersFromRows,
 } from "@/lib/model-config/headers";
+import type { AvailableModel } from "@/lib/model-config/client";
+import { parseModelIds } from "@/lib/model-config/model-ids";
 import {
   ModelConfigSchema,
   supportsLocalReasoningConfig,
@@ -34,6 +36,7 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   useAdminModelConfigs,
   useCreateModelConfig,
+  useCreateModelConfigs,
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
 import { findProvider, isProviderId, PROVIDERS } from "@/lib/providers/catalog";
@@ -118,19 +121,36 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     };
   });
 
+  // The models this provider and endpoint already serve.
+  const sameEndpointModels = useMemo(() => {
+    const endpoint = draft.baseUrl.trim().replace(/\/+$/, "");
+    return list.filter(
+      (model) =>
+        model.providerId === draft.providerId &&
+        model.baseUrl.trim().replace(/\/+$/, "") === endpoint,
+    );
+  }, [list, draft.providerId, draft.baseUrl]);
+
   const previouslyUsedApiKeys = useMemo(() => {
     if (isEditing) return [];
-    const endpoint = draft.baseUrl.trim().replace(/\/+$/, "");
-    const keys = list
-      .filter(
-        (model) =>
-          model.providerId === draft.providerId &&
-          model.baseUrl.trim().replace(/\/+$/, "") === endpoint,
-      )
+    const keys = [...sameEndpointModels]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .flatMap(({ apiKey }) => (apiKey?.trim() ? [apiKey] : []));
     return [...new Set(keys)];
-  }, [isEditing, list, draft.providerId, draft.baseUrl]);
+  }, [isEditing, sameEndpointModels]);
+
+  const addedModelIds = useMemo(
+    () =>
+      new Set(
+        sameEndpointModels
+          .filter(
+            (model) =>
+              model.modelType === "chat" && model.apiFormat === draft.apiFormat,
+          )
+          .map((model) => model.model),
+      ),
+    [sameEndpointModels, draft.apiFormat],
+  );
 
   const [headerRows, setHeaderRows] = useState<Pair[]>(() =>
     pairs(existing?.headers ?? {}, false),
@@ -167,12 +187,26 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const [catalogPricing, setCatalogPricing] = useState<
     CatalogModelPricing | null | undefined
   >();
+  const [fetchedModels, setFetchedModels] = useState<AvailableModel[]>([]);
 
   const createMut = useCreateModelConfig();
+  const createManyMut = useCreateModelConfigs();
   const updateMut = useUpdateModelConfig();
-  const saving = createMut.isPending || updateMut.isPending;
+  const saving =
+    createMut.isPending || createManyMut.isPending || updateMut.isPending;
 
   const isImage = draft.modelType === "image";
+  // New chat models can be added several at a time: `draft.model` then lists
+  // them, and each takes its own settings from the provider.
+  const multiple = !isEditing && !isImage;
+  const modelIds = useMemo(
+    () =>
+      multiple ? parseModelIds(draft.model) : draft.model ? [draft.model] : [],
+    [multiple, draft.model],
+  );
+  const several = modelIds.length > 1;
+  /** The one model that the settings below the connection describe. */
+  const model = several ? "" : (modelIds[0] ?? "");
   const perUser = !isImage && draft.credentialScope === "user";
   const isCustomImage = isImage && draft.providerId === "custom";
   const isOpenRouterImage = isImage && draft.providerId === "openrouter";
@@ -196,14 +230,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const canSave =
     !saving &&
-    !(thinkingInvalid && draft.reasoningOverride !== null) &&
     !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
-    !!draft.model &&
-    pricingIsValid &&
+    modelIds.length > 0 &&
     !headersError &&
     (isImage || !providerOptionsError) &&
-    !(requiresKey && !draft.apiKey && !perUser);
+    !(requiresKey && !draft.apiKey && !perUser) &&
+    // Several models take these from the provider; the fields are hidden.
+    (several ||
+      (pricingIsValid &&
+        !(thinkingInvalid && draft.reasoningOverride !== null)));
   const stillEditingOriginalConnection =
     existing !== undefined &&
     draft.providerId === existing.providerId &&
@@ -247,7 +283,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       baseUrl: draft.baseUrl,
       apiKey: draft.apiKey ?? "",
       headers,
-      model: draft.model,
+      model,
       providerOptions: parsedOptions,
       toolCallingEnabled: draft.toolCallingEnabled,
     };
@@ -257,7 +293,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     draft.baseUrl,
     draft.apiKey,
     headers,
-    draft.model,
+    model,
     draft.toolCallingEnabled,
     providerOptionsText,
     providerOptionsError,
@@ -281,17 +317,6 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       }
     }
 
-    const pricing =
-      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
-    if (draft.pricing !== null && pricing === null) {
-      setSaveError(
-        isImage
-          ? t("models.editor.errors.invalidImagePricing")
-          : t("models.editor.errors.invalidChatPricing"),
-      );
-      return;
-    }
-
     if (!isProviderId(draft.providerId)) {
       setSaveError(
         t("models.editor.errors.updateAppForProvider", {
@@ -306,11 +331,70 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       return;
     }
 
+    if (several) {
+      // Each model is saved as adding it alone would save it, with the
+      // settings that describe one model left at what the provider reports.
+      const inputs: ModelConfigInput[] = [];
+      for (const id of modelIds) {
+        const fetched = fetchedModels.find((item) => item.id === id);
+        const parsed = ModelConfigSchema.safeParse({
+          ...draft,
+          headers,
+          providerOptions,
+          model: id,
+          label: defaultLabelFor(id),
+          pricing: null,
+          contextWindow: null,
+          reasoningOverride: null,
+          discoveredContextWindow: fetched?.contextWindow ?? null,
+          discoveredCapabilities: fetched?.capabilities ?? null,
+          toolCallingEnabled:
+            fetched?.capabilities?.toolCalling ??
+            fetched?.catalogCapabilities?.toolCalling ??
+            true,
+        });
+        if (!parsed.success) {
+          setSaveError(
+            t("models.editor.errors.invalidModel", {
+              model: id,
+              error:
+                parsed.error.issues[0]?.message ??
+                t("models.editor.errors.invalidInput"),
+            }),
+          );
+          return;
+        }
+        inputs.push(parsed.data);
+      }
+      try {
+        await createManyMut.mutateAsync(inputs);
+        toast.success({
+          title: t("models.toast.createdSeveral", { count: inputs.length }),
+        });
+        void navigate({ to: "/settings/models" });
+      } catch (err) {
+        setSaveError(getErrorMessage(err, t("models.toast.saveFailed")));
+      }
+      return;
+    }
+
+    const pricing =
+      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+    if (draft.pricing !== null && pricing === null) {
+      setSaveError(
+        isImage
+          ? t("models.editor.errors.invalidImagePricing")
+          : t("models.editor.errors.invalidChatPricing"),
+      );
+      return;
+    }
+
     const parsed = ModelConfigSchema.safeParse({
       ...draft,
       headers,
       pricing,
-      label: draft.label.trim() || defaultLabelFor(draft.model),
+      model,
+      label: draft.label.trim() || defaultLabelFor(model),
       discoveredContextWindow:
         detectedContextWindow === undefined
           ? draft.discoveredContextWindow
@@ -446,6 +530,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             apiKeyOptional={perUser}
             providerLabel={existing?.displayProvider}
             previouslyUsedApiKeys={previouslyUsedApiKeys}
+            multiple={multiple}
+            addedModelIds={addedModelIds}
+            onFetchedModels={setFetchedModels}
             draft={{
               providerId: draft.providerId,
               apiFormat: draft.apiFormat,
@@ -526,7 +613,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             onChange={setHeaderRows}
           />
 
-          {!isImage && (
+          {!isImage && !several && (
             <>
               <SettingsRow
                 title={t("models.editor.toolCallingTitle")}
@@ -558,7 +645,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 controlAlign="end"
               >
                 <ConnectionTester
-                  key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${draft.toolCallingEnabled}|${providerOptionsText}|${JSON.stringify(headers)}`}
+                  key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${model}|${draft.toolCallingEnabled}|${providerOptionsText}|${JSON.stringify(headers)}`}
                   args={pingArgs}
                   disabled={(requiresKey && !draft.apiKey) || !!headersError}
                 />
@@ -589,31 +676,33 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               : t("models.editor.chatAvailabilityDescription")
           }
         >
-          <SettingsRow
-            title={t("models.editor.displayNameTitle")}
-            description={
-              isImage
-                ? t("models.editor.displayNameImageDescription")
-                : t("models.editor.displayNameChatDescription")
-            }
-            htmlFor="p-label"
-            align="center"
-            controlAlign="end"
-          >
-            <Input
-              id="p-label"
-              className="w-full"
-              placeholder={
-                draft.model
-                  ? defaultLabelFor(draft.model)
-                  : t("models.editor.displayNamePlaceholder")
+          {!several && (
+            <SettingsRow
+              title={t("models.editor.displayNameTitle")}
+              description={
+                isImage
+                  ? t("models.editor.displayNameImageDescription")
+                  : t("models.editor.displayNameChatDescription")
               }
-              value={draft.label}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, label: e.target.value }))
-              }
-            />
-          </SettingsRow>
+              htmlFor="p-label"
+              align="center"
+              controlAlign="end"
+            >
+              <Input
+                id="p-label"
+                className="w-full"
+                placeholder={
+                  model
+                    ? defaultLabelFor(model)
+                    : t("models.editor.displayNamePlaceholder")
+                }
+                value={draft.label}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, label: e.target.value }))
+                }
+              />
+            </SettingsRow>
+          )}
 
           {!isImage && (
             <SettingsRow
@@ -710,10 +799,11 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
         {!isImage && (
           <>
-            {supportsLocalReasoningConfig(
-              draft.providerId,
-              draft.apiFormat,
-            ) && (
+            {!several &&
+              supportsLocalReasoningConfig(
+                draft.providerId,
+                draft.apiFormat,
+              ) && (
               <ThinkingFields
                 automatic={
                   (detectedCapabilities === undefined
@@ -730,14 +820,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                   (draft.providerId === "vllm" ||
                     draft.providerId === "llamacpp") &&
                   draft.baseUrl &&
-                  draft.model
+                  model
                     ? {
                         providerId: draft.providerId,
                         apiFormat: draft.apiFormat,
                         baseUrl: draft.baseUrl,
                         apiKey: draft.apiKey,
                         headers,
-                        model: draft.model,
+                        model,
                       }
                     : undefined
                 }
@@ -770,6 +860,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 setProviderOptionsError(err);
               }}
               defaultOpen={advancedDefaultOpen}
+              sharedOnly={several}
             />
           </>
         )}
@@ -789,7 +880,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               ? t("common.states.saving")
               : isEditing
                 ? t("common.actions.saveChanges")
-                : t("models.page.addModel")}
+                : several
+                  ? t("models.editor.addModels", { count: modelIds.length })
+                  : t("models.page.addModel")}
           </Button>
         </SettingsActions>
       </form>

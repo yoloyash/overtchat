@@ -28,10 +28,10 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
     );
     await page.locator("#p-api-key").fill(process.env.GEMINI_API_KEY!);
 
-    // #p-model renders as <select> when the probe succeeds, plain <input> on fallback.
+    // #p-model is a list button when the probe succeeds, a text field on fallback.
     const modelField = page.locator("#p-model");
     await modelField.waitFor({ state: "visible", timeout: 15000 });
-    if (await modelField.evaluate((el) => el.tagName.toLowerCase() === "input")) {
+    if (await modelField.evaluate((el) => el.tagName.toLowerCase() !== "button")) {
       await modelField.fill("gemini-2.5-flash-lite");
     } else {
       await modelField.click();
