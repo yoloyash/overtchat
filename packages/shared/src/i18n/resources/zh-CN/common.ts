@@ -133,7 +133,7 @@ export const common: Translation["common"] = {
       saveDefaultModel: "无法保存默认模型",
       loadCapabilities: "无法加载服务器功能。",
       loadSignInOptions: "无法加载登录选项。",
-      loadTwoFactorStatus: "无法加载双重验证状态。",
+      loadTwoFactorStatus: "无法加载两步验证状态。",
     },
   },
 };
