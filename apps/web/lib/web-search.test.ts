@@ -156,13 +156,16 @@ describe("configured web search provider", () => {
     const [rawUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(rawUrl).toBe("https://api.keenable.ai/v1/search/public");
     expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({
+    expect(init.headers).toMatchObject({
+      Accept: "application/json",
       "Content-Type": "application/json",
       "X-Keenable-Title": "OvertChat",
     });
+    expect(init.headers).not.toHaveProperty("X-API-Key");
     expect(JSON.parse(String(init.body))).toEqual({
       query: "query",
       max_results: 3,
+      moderation: "moderate",
     });
   });
 
@@ -218,7 +221,7 @@ describe("configured web search provider", () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(String(input));
       if (url.hostname === "api.keenable.ai") {
-        return Response.json({ error: "rate limited" }, { status: 429 });
+        return Response.json({ error: "forbidden" }, { status: 403 });
       }
       return Response.json({
         results: [

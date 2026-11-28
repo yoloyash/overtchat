@@ -684,7 +684,10 @@ Search API**. The API key is optional: without a `keen_` key, OvertChat calls
 `POST /v1/search` and sends `X-API-Key`. The keyless endpoint is limited per IP
 ([rate limits](https://docs.keenable.ai/rate-limits.md)). A Keenable failure
 uses the existing fallback chain (configured SearXNG, then Firecrawl, Exa and
-DuckDuckGo). Provider labels identify the backend that actually answered.
+DuckDuckGo), built with Web Basics' `createKeenableSearchProvider`. Provider
+labels identify the backend that actually answered. Changing the search
+provider clears the saved key, so a key saved for one provider is never sent to
+another.
 
 Keenable is never selected automatically: bundled SearXNG stays the default,
 and the existing providers' search order is unchanged. Keenable handles search
