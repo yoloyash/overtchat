@@ -1,12 +1,11 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-
 import { startPi } from "./client";
-import { probePiConnection } from "./probe";
+import { probePiConnection, probePiTarget } from "./probe";
+import { piProviderAdapter } from "../providers/pi";
 import { configureLocalTestProcessSpawner } from "../runtime/local-process.test-helper";
 
 const runIntegration = process.env.RUN_PI_INTEGRATION === "1";
@@ -21,6 +20,47 @@ const fixtureDirectory = path.join(
 beforeAll(configureLocalTestProcessSpawner);
 
 describe.runIf(runIntegration)("installed Pi integration", () => {
+  it.each([
+    {
+      path: "connection probe",
+      discover: (executable: string) => probePiTarget({ transport: "local" }, executable),
+    },
+    {
+      path: "workspace catalog",
+      discover: (executable: string, cwd: string) =>
+        piProviderAdapter.fetchCatalog({ transport: "local" }, { executable, cwd }),
+    },
+  ])(
+    "includes an extension model in the $path",
+    async ({ discover }) => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "overtchat-pi-models-"));
+      const agentDir = path.join(root, "agent");
+      const extensions = path.join(agentDir, "extensions");
+      try {
+        fs.mkdirSync(extensions, { recursive: true });
+        fs.copyFileSync(
+          path.join(fixtureDirectory, "rpc-provider.js"),
+          path.join(extensions, "rpc-provider.js"),
+        );
+        vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+        vi.stubEnv("PI_OFFLINE", "1");
+        vi.stubEnv("OPENAI_API_KEY", "overtchat-test-key");
+
+        const { models } = await discover(process.env.PI_COMMAND ?? "pi", root);
+        expect(models.find(({ id }) => id === "overtchat-test/extension-model"))
+          .toMatchObject({
+            provider: "pi",
+            label: "Extension Model",
+            metadata: { provider: "overtchat-test", modelId: "extension-model" },
+          });
+      } finally {
+        vi.unstubAllEnvs();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+    150_000,
+  );
+
   it(
     "starts RPC mode and discovers usable models",
     async () => {
