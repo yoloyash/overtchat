@@ -1,13 +1,22 @@
 "use client";
 
+import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Folder, Server, Wifi } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { agentProviderMetadata, type AgentProviderId } from "@overtchat/agent-bridge";
+import {
+  agentProviderMetadata,
+  type AgentConnectionListItem,
+  type AgentDiscoveryTarget,
+  type AgentProviderId,
+} from "@overtchat/agent-bridge";
+import { AddAgentWorkspaceDialog } from "@/components/settings/connections/AddAgentWorkspaceDialog";
 import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -16,10 +25,15 @@ import {
   agentSetupForWorkspace,
   agentSetupHosts,
   agentSetupWorkspaces,
+  recentAgentSetups,
   type AgentSetup,
   type AgentSetupAgent,
 } from "@/lib/agents/setups";
-import { useAgentProviderSnapshot } from "@/lib/queries/agentConnections";
+import { agentTargetKey } from "@/lib/agents/workspaces";
+import {
+  agentConnectionListQuery,
+  useAgentProviderSnapshot,
+} from "@/lib/queries/agentConnections";
 import { AgentProviderLogo } from "./AgentSessionStatus";
 
 /** A borderless pill, so the pickers read as settings rather than form fields. */
@@ -28,13 +42,17 @@ const PILL =
 
 const POPUP = "w-auto max-w-[min(28rem,calc(100vw-2rem))]";
 
+/** The folder list's last row. Every folder's value is an absolute path. */
+const ADD_WORKSPACE = "add-workspace";
+
 /**
  * Switches a new session to another machine, a folder on it, then any agent
  * the machine has. The machine is only offered when there is more than one.
- * Every list is ordered by last use.
+ * Every list is ordered by last use. The folder list ends with adding one.
  */
 export function AgentSetupPicker({
   setups: allSetups,
+  connections,
   workspaceId,
   provider,
   lockedProvider = null,
@@ -42,6 +60,8 @@ export function AgentSetupPicker({
   focusWorkspace = false,
 }: {
   setups: AgentSetup[];
+  /** What is already attached, for the dialog that adds a folder. */
+  connections: AgentConnectionListItem[];
   workspaceId: string;
   provider: AgentProviderId;
   /** Keep this agent and offer only its machines and folders. */
@@ -53,6 +73,9 @@ export function AgentSetupPicker({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [addingWorkspace, setAddingWorkspace] = useState(false);
+  const workspaceTrigger = useRef<HTMLButtonElement>(null);
   const setups = lockedProvider
     ? allSetups.filter((setup) => setup.provider === lockedProvider)
     : allSetups;
@@ -89,6 +112,24 @@ export function AgentSetupPicker({
       },
       replace: true,
     });
+  }
+
+  /** Opens the folder just added, with the agent already chosen when it has it. */
+  function openAdded(added: { target: AgentDiscoveryTarget; path: string }) {
+    // The list reloads before this runs; this render's setups predate the folder.
+    const latest = recentAgentSetups(
+      queryClient.getQueryData(agentConnectionListQuery.queryKey) ?? [],
+      t,
+    );
+    open(
+      agentSetupForWorkspace(
+        latest,
+        agentTargetKey(added.target),
+        added.path,
+        provider,
+        undefined,
+      ),
+    );
   }
 
   return (
@@ -128,7 +169,11 @@ export function AgentSetupPicker({
       <Select
         value={current.workspacePath}
         // The agent stays if the machine has it; otherwise the folder's last-used agent.
-        onValueChange={(path) =>
+        onValueChange={(path) => {
+          if (path === ADD_WORKSPACE) {
+            setAddingWorkspace(true);
+            return;
+          }
           open(
             path
               ? agentSetupForWorkspace(
@@ -139,10 +184,11 @@ export function AgentSetupPicker({
                   snapshot,
                 )
               : undefined,
-          )
-        }
+          );
+        }}
       >
         <SelectTrigger
+          ref={workspaceTrigger}
           size="sm"
           aria-label={t("agents.setup.workspace")}
           title={t("agents.setup.workspace")}
@@ -173,8 +219,32 @@ export function AgentSetupPicker({
               )}
             </SelectItem>
           ))}
+          {/* A fork moves only between the folders its agent already has. */}
+          {!lockedProvider && (
+            <>
+              <SelectSeparator />
+              {/* No icon: the folders above have none, and the names line up. */}
+              <SelectItem value={ADD_WORKSPACE}>
+                {t("agents.setup.addWorkspace")}
+              </SelectItem>
+            </>
+          )}
         </SelectContent>
       </Select>
+      {!lockedProvider && (
+        // Keyed by machine, so the dialog opens on the one selected now.
+        <AddAgentWorkspaceDialog
+          key={current.hostKey}
+          connectorId={current.target.connectorId}
+          connections={connections}
+          open={addingWorkspace}
+          onOpenChange={setAddingWorkspace}
+          initialTarget={current.target}
+          onAdded={openAdded}
+          // The row that opened it is gone by the time it closes.
+          finalFocus={workspaceTrigger}
+        />
+      )}
       {!lockedProvider && (
         <Select
           value={provider}

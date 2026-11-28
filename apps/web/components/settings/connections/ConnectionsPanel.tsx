@@ -465,7 +465,7 @@ export function ConnectionsPanel({
 
       {connector && (
         <AddAgentWorkspaceDialog
-          connector={connector}
+          connectorId={connector.id}
           connections={connections}
           open={addOpen}
           onOpenChange={setAddDialogOpen}

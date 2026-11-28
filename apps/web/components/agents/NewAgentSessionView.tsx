@@ -326,6 +326,7 @@ export function NewAgentSessionView({
             {setups.some((setup) => setup.workspaceId === workspaceId) ? (
               <AgentSetupPicker
                 setups={setups}
+                connections={connections.data ?? []}
                 workspaceId={workspaceId}
                 provider={provider}
                 // A fork keeps its agent: its history and launch settings belong to it.

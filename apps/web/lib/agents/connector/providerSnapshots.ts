@@ -380,7 +380,8 @@ export async function provisionAgentWorkspace(input: {
   name?: string;
   /** Marks the folder as a Git worktree created from this workspace path. */
   worktreeParentPath?: string;
-}): Promise<AgentWorkspaceSyncResult> {
+  // `path` is the folder as the machine resolved it, which is what is stored.
+}): Promise<AgentWorkspaceSyncResult & { path: string }> {
   const snapshot = await getAgentProviderSnapshot(input.target);
   const providersById = new Map(
     readyProviders(snapshot).map((installation) => [
@@ -413,11 +414,12 @@ export async function provisionAgentWorkspace(input: {
           },
     path: input.path,
   });
-  const result: AgentWorkspaceSyncResult = {
+  const result: AgentWorkspaceSyncResult & { path: string } = {
     providers: providers.length,
     created: 0,
     refreshed: 0,
     failures: [],
+    path: workspace.path,
   };
   for (const installation of providers) {
     try {

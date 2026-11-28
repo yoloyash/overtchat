@@ -136,6 +136,7 @@ export const agents = {
   setup: {
     machine: "Machine",
     workspace: "Workspace",
+    addWorkspace: "Add workspace…",
     agent: "Agent",
     notDetected: "Not detected",
   },

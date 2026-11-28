@@ -125,6 +125,7 @@ export const agents: Translation["agents"] = {
   setup: {
     machine: "机器",
     workspace: "工作区",
+    addWorkspace: "添加工作区…",
     agent: "智能体",
     notDetected: "未检测到",
   },
