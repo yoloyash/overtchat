@@ -261,6 +261,27 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
 
 export type ModelConfigInput = z.infer<typeof ModelConfigSchema>;
 
+/** How many models one bulk add may carry. */
+export const MAX_MODELS_PER_ADD = 100;
+
+/**
+ * Several chat models added together. Image models are added one at a time,
+ * because only one can be enabled.
+ */
+export const ModelConfigsSchema = z.object({
+  modelConfigs: z
+    .array(ModelConfigSchema)
+    .min(1, "Choose at least one model")
+    .max(
+      MAX_MODELS_PER_ADD,
+      `Add up to ${MAX_MODELS_PER_ADD} models at a time`,
+    )
+    .refine(
+      (models) => models.every((model) => model.modelType === "chat"),
+      "Only chat models can be added together",
+    ),
+});
+
 /**
  * The connection to validate a model config with before save. A per-user model
  * may have no key of its own (each person brings one), so a placeholder stands

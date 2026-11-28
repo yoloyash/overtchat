@@ -125,6 +125,39 @@ it("appends new models and preserves order when an old editor submits a configur
   ).toEqual(["hidden-model", "chat-model", created.id]);
 });
 
+it("adds several models after the existing ones in the given order, or none of them", async () => {
+  modelConfigDb.reorderModelConfigs(["hidden-model", "chat-model"]);
+  const input = (model: string) =>
+    ModelConfigSchema.parse({
+      label: model,
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "https://example.test/v1",
+      model,
+    });
+
+  const created = modelConfigDb.createModelConfigs([
+    input("zeta"),
+    input("alpha"),
+    input("mid"),
+  ]);
+  expect(created.map((model) => model.model)).toEqual(["zeta", "alpha", "mid"]);
+  expect(
+    (await modelConfigDb.listModelConfigs()).map((model) => model.model),
+  ).toEqual(["hidden", "chat", "zeta", "alpha", "mid"]);
+
+  // One row the table rejects takes the rest of its batch with it.
+  expect(() =>
+    modelConfigDb.createModelConfigs([
+      input("kept-out"),
+      { ...input("broken"), label: null as unknown as string },
+    ]),
+  ).toThrow();
+  expect(
+    (await modelConfigDb.listModelConfigs()).map((model) => model.model),
+  ).toEqual(["hidden", "chat", "zeta", "alpha", "mid"]);
+});
+
 it("keeps request headers through saves that omit them and clears them on null", async () => {
   const model = {
     label: "Gateway",

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { ModelCapabilities } from "@overtchat/shared";
-import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -35,8 +36,10 @@ import {
   fetchModelsForProvider,
   type AvailableModel,
 } from "@/lib/model-config/client";
+import { formatModelIds, parseModelIds } from "@/lib/model-config/model-ids";
 import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import {
   API_FORMATS,
   EXPLICIT_API_FORMAT_IDS,
@@ -77,7 +80,18 @@ export interface ConnectionFieldsProps {
   apiKeyOptional?: boolean;
   /** Names a provider that the desktop app's bundled catalog predates. */
   providerLabel?: string;
+  /**
+   * Several models can be picked from the fetched list, or typed with commas
+   * between them; `draft.model` then holds them all.
+   */
+  multiple?: boolean;
+  /** Models this connection already has, marked in the fetched list. */
+  addedModelIds?: ReadonlySet<string>;
+  /** The fetched list, for callers that save what it reports for each model. */
+  onFetchedModels?: (models: AvailableModel[]) => void;
 }
+
+const NO_MODEL_IDS: ReadonlySet<string> = new Set();
 
 export function ConnectionFields({
   draft,
@@ -93,6 +107,9 @@ export function ConnectionFields({
   imageModel = false,
   apiKeyOptional = false,
   providerLabel,
+  multiple = false,
+  addedModelIds = NO_MODEL_IDS,
+  onFetchedModels,
 }: ConnectionFieldsProps) {
   const { t } = useTranslation();
   // Undefined in a desktop app older than the provider; the server validates it.
@@ -119,42 +136,63 @@ export function ConnectionFields({
     draft.apiKey,
   ].join("\n");
 
-  function clearProbeState() {
-    lastAutoProbeKeyRef.current = "";
-    setModels([]);
-    setProbeError("");
-    setModelMode("manual");
-    onDiscoveredContextWindow?.(undefined);
-    onCatalogContextWindow?.(undefined);
-    onDiscoveredCapabilities?.(undefined);
-    onCatalogCapabilities?.(undefined);
-    onCatalogPricing?.(undefined);
-    onCapabilitySuggestion?.(undefined);
-  }
+  const selectedIds = useMemo(
+    () =>
+      multiple ? parseModelIds(draft.model) : draft.model ? [draft.model] : [],
+    [multiple, draft.model],
+  );
 
-  const selectDiscoveredModel = useCallback(
-    (model: AvailableModel) => {
-      onChange({ model: model.id });
-      onDiscoveredContextWindow?.(model.contextWindow);
-      onCatalogContextWindow?.(model.catalogContextWindow);
-      onDiscoveredCapabilities?.(model.capabilities);
-      onCatalogCapabilities?.(model.catalogCapabilities);
-      onCatalogPricing?.(model.catalogPricing);
-      onCapabilitySuggestion?.({
-        ...model.catalogCapabilities,
-        ...model.capabilities,
-      });
+  /**
+   * Tells the caller what discovery knows about the one model being
+   * configured, or nothing when there is no single fetched model.
+   */
+  const reportDiscovered = useCallback(
+    (model: AvailableModel | undefined) => {
+      onDiscoveredContextWindow?.(model?.contextWindow);
+      onCatalogContextWindow?.(model?.catalogContextWindow);
+      onDiscoveredCapabilities?.(model?.capabilities);
+      onCatalogCapabilities?.(model?.catalogCapabilities);
+      onCatalogPricing?.(model?.catalogPricing);
+      onCapabilitySuggestion?.(
+        model
+          ? { ...model.catalogCapabilities, ...model.capabilities }
+          : undefined,
+      );
     },
     [
       onCapabilitySuggestion,
       onCatalogCapabilities,
       onCatalogContextWindow,
       onCatalogPricing,
-      onChange,
       onDiscoveredCapabilities,
       onDiscoveredContextWindow,
     ],
   );
+
+  function clearProbeState() {
+    lastAutoProbeKeyRef.current = "";
+    setModels([]);
+    onFetchedModels?.([]);
+    setProbeError("");
+    setModelMode("manual");
+    reportDiscovered(undefined);
+  }
+
+  const selectDiscoveredModel = useCallback(
+    (model: AvailableModel) => {
+      onChange({ model: model.id });
+      reportDiscovered(model);
+    },
+    [onChange, reportDiscovered],
+  );
+
+  /** Sets the picked models; one fetched model is configured like a single pick. */
+  function selectModels(ids: string[]) {
+    onChange({ model: formatModelIds(ids) });
+    reportDiscovered(
+      ids.length === 1 ? models.find((model) => model.id === ids[0]) : undefined,
+    );
+  }
 
   const probe = useCallback(
     async (connection: ConnectionDraft) => {
@@ -182,40 +220,29 @@ export function ConnectionFields({
             })
           : allModels;
         setModels(discovered);
-        const current = discovered.find((model) => model.id === draft.model);
+        onFetchedModels?.(discovered);
+        const current = selectedIds.map((id) =>
+          discovered.find((model) => model.id === id),
+        );
         if (discovered.length === 0) {
-          onDiscoveredContextWindow?.(undefined);
-          onCatalogContextWindow?.(undefined);
-          onDiscoveredCapabilities?.(undefined);
-          onCatalogCapabilities?.(undefined);
-          onCatalogPricing?.(undefined);
-          onCapabilitySuggestion?.(undefined);
+          reportDiscovered(undefined);
           setModelMode("manual");
-        } else if (!draft.model) {
-          selectDiscoveredModel(discovered[0]);
+        } else if (selectedIds.length === 0) {
+          // Picking several starts from nothing, so the first pick is not
+          // added to a model nobody chose.
+          if (multiple) reportDiscovered(undefined);
+          else selectDiscoveredModel(discovered[0]);
           setModelMode("list");
-        } else if (current) {
-          onDiscoveredContextWindow?.(current.contextWindow);
-          onCatalogContextWindow?.(current.catalogContextWindow);
-          onDiscoveredCapabilities?.(current.capabilities);
-          onCatalogCapabilities?.(current.catalogCapabilities);
-          onCatalogPricing?.(current.catalogPricing);
-          onCapabilitySuggestion?.({
-            ...current.catalogCapabilities,
-            ...current.capabilities,
-          });
+        } else if (current.every(Boolean)) {
+          reportDiscovered(current.length === 1 ? current[0] : undefined);
           setModelMode("list");
         } else {
-          onDiscoveredContextWindow?.(undefined);
-          onCatalogContextWindow?.(undefined);
-          onDiscoveredCapabilities?.(undefined);
-          onCatalogCapabilities?.(undefined);
-          onCatalogPricing?.(undefined);
-          onCapabilitySuggestion?.(undefined);
+          reportDiscovered(undefined);
           setModelMode("manual");
         }
       } catch (e) {
         setModels([]);
+        onFetchedModels?.([]);
         // A transient fetch failure is not evidence that a previously
         // discovered limit changed. Connection edits clear it separately.
         setModelMode("manual");
@@ -225,15 +252,12 @@ export function ConnectionFields({
       }
     },
     [
-      draft.model,
       imageModel,
-      onCapabilitySuggestion,
-      onCatalogCapabilities,
-      onCatalogContextWindow,
-      onCatalogPricing,
-      onDiscoveredCapabilities,
-      onDiscoveredContextWindow,
+      multiple,
+      onFetchedModels,
+      reportDiscovered,
       selectDiscoveredModel,
+      selectedIds,
     ],
   );
 
@@ -258,12 +282,52 @@ export function ConnectionFields({
   const matchingModelIds = modelQuery
     ? modelIds.filter((id) => contains(id, modelQuery))
     : modelIds;
-  const currentModelWasFetched = models.some(
-    (model) => model.id === draft.model,
-  );
-  const currentModelIsManual =
-    models.length > 0 && draft.model && !currentModelWasFetched;
+  const fetchedIds = useMemo(() => new Set(modelIds), [modelIds]);
+  const unlistedIds =
+    models.length > 0 ? selectedIds.filter((id) => !fetchedIds.has(id)) : [];
+  const currentModelWasFetched =
+    selectedIds.length > 0 && unlistedIds.length === 0;
+  const repeatedIds = multiple
+    ? selectedIds.filter((id) => addedModelIds.has(id))
+    : [];
   const showList = modelMode === "list" && models.length > 0;
+
+  function enterManually(text: string) {
+    setModelMode("manual");
+    reportDiscovered(undefined);
+    onChange({ model: text });
+  }
+
+  const fetchedModelsPopup = (
+    <ComboboxContent aria-label={t("models.connection.fetchedModelsLabel")}>
+      <ComboboxInput
+        placeholder={t("models.connection.searchModelsPlaceholder")}
+        aria-label={t("models.connection.searchModelsLabel")}
+      />
+      <ComboboxEmpty>{t("models.connection.noMatchingModels")}</ComboboxEmpty>
+      <ComboboxList>
+        {(id: string) => {
+          const added = multiple && addedModelIds.has(id);
+          return (
+            <ComboboxItem
+              key={id}
+              value={id}
+              // Still removable when it was typed first and then listed.
+              disabled={added && !selectedIds.includes(id)}
+            >
+              <ModelBrandIcon iconId={modelIconForModel(id)} />
+              <span className="min-w-0 truncate">{id}</span>
+              {added && (
+                <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">
+                  {t("models.connection.alreadyAdded")}
+                </span>
+              )}
+            </ComboboxItem>
+          );
+        }}
+      </ComboboxList>
+    </ComboboxContent>
+  );
 
   return (
     <>
@@ -461,14 +525,55 @@ export function ConnectionFields({
         description={
           imageModel
             ? t("models.connection.modelImageDescription")
-            : t("models.connection.modelChatDescription")
+            : multiple
+              ? t("models.connection.modelsChatDescription")
+              : t("models.connection.modelChatDescription")
         }
         htmlFor="p-model"
+        // The picked models and notes can make this control tall.
+        align="start"
         controlAlign="end"
       >
         <div className="w-full space-y-2">
           <div className="flex flex-col gap-2 @lg:flex-row">
-            {showList ? (
+            {showList && multiple ? (
+              <Combobox
+                multiple
+                items={modelIds}
+                // Filtered here so every opening starts a fresh search, even
+                // when it interrupts the previous close animation.
+                filteredItems={matchingModelIds}
+                inputValue={modelQuery}
+                onInputValueChange={setModelQuery}
+                onOpenChange={(open) => {
+                  if (open) setModelQuery("");
+                }}
+                value={selectedIds}
+                onValueChange={selectModels}
+                autoHighlight
+              >
+                <ComboboxTrigger id="p-model" className="w-full min-w-0 flex-1">
+                  {selectedIds.length === 1 && (
+                    <ModelBrandIcon iconId={modelIconForModel(selectedIds[0])} />
+                  )}
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-left",
+                      selectedIds.length === 0 && "text-muted-foreground",
+                    )}
+                  >
+                    {selectedIds.length === 0
+                      ? t("models.connection.chooseModels")
+                      : selectedIds.length === 1
+                        ? selectedIds[0]
+                        : t("models.connection.modelsSelected", {
+                            count: selectedIds.length,
+                          })}
+                  </span>
+                </ComboboxTrigger>
+                {fetchedModelsPopup}
+              </Combobox>
+            ) : showList ? (
               <Combobox
                 items={modelIds}
                 // Filtered here so every opening starts a fresh search, even
@@ -487,30 +592,43 @@ export function ConnectionFields({
                 }}
                 autoHighlight
               >
-                <ComboboxTrigger id="p-model" className="min-w-0 flex-1">
+                <ComboboxTrigger id="p-model" className="w-full min-w-0 flex-1">
                   <ModelBrandIcon iconId={modelIconForModel(draft.model)} />
                   <span className="min-w-0 flex-1 truncate text-left">
                     {draft.model}
                   </span>
                 </ComboboxTrigger>
-                <ComboboxContent aria-label={t("models.connection.fetchedModelsLabel")}>
-                  <ComboboxInput
-                    placeholder={t("models.connection.searchModelsPlaceholder")}
-                    aria-label={t("models.connection.searchModelsLabel")}
-                  />
-                  <ComboboxEmpty>
-                    {t("models.connection.noMatchingModels")}
-                  </ComboboxEmpty>
-                  <ComboboxList>
-                    {(id: string) => (
-                      <ComboboxItem key={id} value={id}>
-                        <ModelBrandIcon iconId={modelIconForModel(id)} />
-                        <span className="min-w-0 truncate">{id}</span>
-                      </ComboboxItem>
-                    )}
-                  </ComboboxList>
-                </ComboboxContent>
+                {fetchedModelsPopup}
               </Combobox>
+            ) : multiple ? (
+              // Wraps, so a typed or pasted list of IDs stays readable.
+              <Textarea
+                id="p-model"
+                rows={1}
+                className="min-h-8 min-w-0 flex-1 resize-none py-1.5 font-mono text-xs md:text-xs"
+                placeholder={
+                  provider?.modelPlaceholder ??
+                  // eslint-disable-next-line i18next/no-literal-string -- model ID placeholder
+                  "model-id"
+                }
+                required
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                value={draft.model}
+                onChange={(e) => enterManually(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter saves, as it does in the one-line field.
+                  if (
+                    e.key !== "Enter" ||
+                    e.shiftKey ||
+                    e.nativeEvent.isComposing
+                  )
+                    return;
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }}
+              />
             ) : (
               <Input
                 id="p-model"
@@ -534,16 +652,7 @@ export function ConnectionFields({
                 }
                 required
                 value={draft.model}
-                onChange={(e) => {
-                  setModelMode("manual");
-                  onDiscoveredContextWindow?.(undefined);
-                  onCatalogContextWindow?.(undefined);
-                  onDiscoveredCapabilities?.(undefined);
-                  onCatalogCapabilities?.(undefined);
-                  onCatalogPricing?.(undefined);
-                  onCapabilitySuggestion?.(undefined);
-                  onChange({ model: e.target.value });
-                }}
+                onChange={(e) => enterManually(e.target.value)}
               />
             )}
             <Button
@@ -607,19 +716,71 @@ export function ConnectionFields({
                 className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 onClick={() => {
                   setModelMode("list");
-                  if (!currentModelWasFetched) {
+                  if (multiple) {
+                    selectModels(
+                      selectedIds.filter((id) => fetchedIds.has(id)),
+                    );
+                  } else if (!currentModelWasFetched) {
                     selectDiscoveredModel(models[0]);
                   }
                 }}
               >
-                {t("models.connection.chooseFetchedModel")}
+                {multiple
+                  ? t("models.connection.chooseFetchedModels")
+                  : t("models.connection.chooseFetchedModel")}
               </button>
             )}
           </div>
 
-          {currentModelIsManual && (
+          {showList && multiple && selectedIds.length > 1 && (
+            <ul
+              aria-label={t("models.connection.selectedModelsLabel")}
+              className="flex flex-wrap gap-1.5"
+            >
+              {selectedIds.map((id) => (
+                <li
+                  key={id}
+                  className="flex max-w-full items-center gap-1 rounded-md border bg-muted/30 py-0.5 pr-0.5 pl-1.5 font-mono text-xs"
+                >
+                  <span className="min-w-0 truncate">{id}</span>
+                  <button
+                    type="button"
+                    aria-label={t("models.connection.removeModel", {
+                      model: id,
+                    })}
+                    className="shrink-0 rounded-sm p-0.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
+                    onClick={() =>
+                      selectModels(selectedIds.filter((item) => item !== id))
+                    }
+                  >
+                    <X className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {unlistedIds.length > 0 && (
             <p className="text-xs leading-5 text-muted-foreground">
-              {t("models.connection.manualModelNotice")}
+              {selectedIds.length === 1
+                ? t("models.connection.manualModelNotice")
+                : t("models.connection.manualModelsNotice", {
+                    models: unlistedIds.join(", "),
+                  })}
+            </p>
+          )}
+          {repeatedIds.length > 0 && (
+            <p className="text-xs leading-5 text-muted-foreground">
+              {t("models.connection.repeatedModelsNotice", {
+                models: repeatedIds.join(", "),
+              })}
+            </p>
+          )}
+          {multiple && selectedIds.length > 1 && (
+            <p className="text-xs leading-5 text-muted-foreground">
+              {t("models.connection.severalModelsNotice", {
+                count: selectedIds.length,
+              })}
             </p>
           )}
         </div>

@@ -50,6 +50,11 @@ export interface AdvancedFieldsProps {
   ) => void;
   /** Open by default when editing a model that already has these fields populated. */
   defaultOpen?: boolean;
+  /**
+   * Several models are being added together: show only what they share, and
+   * leave each model's context window and pricing to the provider.
+   */
+  sharedOnly?: boolean;
 }
 
 export function AdvancedFields({
@@ -65,6 +70,7 @@ export function AdvancedFields({
   providerOptionsText,
   onProviderOptionsTextChange,
   defaultOpen,
+  sharedOnly = false,
 }: AdvancedFieldsProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(Boolean(defaultOpen));
@@ -106,35 +112,37 @@ export function AdvancedFields({
     >
       {open ? (
         <>
-          <SettingsRow
-            title={t("models.advanced.contextWindowTitle")}
-            description={t("models.advanced.contextWindowDescription")}
-            htmlFor="p-context-window"
-            align="center"
-            controlAlign="end"
-          >
-            <Input
-              id="p-context-window"
-              type="number"
-              min={1}
-              step={1}
-              inputMode="numeric"
-              className="w-full font-mono"
-              placeholder={
-                contextWindowPlaceholder === undefined &&
-                resolvedContextWindow === undefined
-                  ? t("models.advanced.contextWindowPlaceholder")
-                  : String(
-                      contextWindowPlaceholder ?? resolvedContextWindow,
-                    )
-              }
-              value={contextWindow ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                onContextWindowChange(value === "" ? null : Number(value));
-              }}
-            />
-          </SettingsRow>
+          {!sharedOnly && (
+            <SettingsRow
+              title={t("models.advanced.contextWindowTitle")}
+              description={t("models.advanced.contextWindowDescription")}
+              htmlFor="p-context-window"
+              align="center"
+              controlAlign="end"
+            >
+              <Input
+                id="p-context-window"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                className="w-full font-mono"
+                placeholder={
+                  contextWindowPlaceholder === undefined &&
+                  resolvedContextWindow === undefined
+                    ? t("models.advanced.contextWindowPlaceholder")
+                    : String(
+                        contextWindowPlaceholder ?? resolvedContextWindow,
+                      )
+                }
+                value={contextWindow ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  onContextWindowChange(value === "" ? null : Number(value));
+                }}
+              />
+            </SettingsRow>
+          )}
 
           <SettingsRow
             title={t("models.advanced.systemPromptTitle")}
@@ -152,11 +160,13 @@ export function AdvancedFields({
             />
           </SettingsRow>
 
-          <PricingRow
-            pricing={pricing}
-            catalogPricing={catalogPricing}
-            onPricingChange={onPricingChange}
-          />
+          {!sharedOnly && (
+            <PricingRow
+              pricing={pricing}
+              catalogPricing={catalogPricing}
+              onPricingChange={onPricingChange}
+            />
+          )}
 
           <SettingsRow
             title={t("models.advanced.providerOptionsTitle")}

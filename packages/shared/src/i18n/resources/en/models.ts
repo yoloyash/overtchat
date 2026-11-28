@@ -54,6 +54,9 @@ export const models = {
     taskModelUnchanged: "The task model was not changed.",
     saved: "Model saved",
     created: "Model created",
+    createdSeveral_one: "{{count}} model added",
+    createdSeveral_other: "{{count}} models added",
+    severalNeedServerUpdate: "Update the server to add several models at once.",
     saveFailed: "Failed to save model",
   },
   health: {
@@ -133,6 +136,8 @@ export const models = {
       "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count.",
     usageCostOpenRouterNotice: "No rates are needed for OpenRouter image models.",
     perUserSaveFirst: "Save this model, then set each person's own key or endpoint under People.",
+    addModels_one: "Add {{count}} model",
+    addModels_other: "Add {{count}} models",
     errors: {
       invalidProviderOptions: "Provider options must be a valid JSON object: {{error}}",
       invalidJson: "Invalid JSON",
@@ -140,6 +145,7 @@ export const models = {
       invalidChatPricing: "Enter all four pricing rates as nonnegative numbers.",
       updateAppForProvider: "Update the app to edit models that use {{provider}}.",
       invalidInput: "Invalid input",
+      invalidModel: "{{model}}: {{error}}",
       tooManyHeaders: "A model can send at most {{max}} request headers",
       emptyHeaderName: "Request header names cannot be empty",
       invalidHeaderName: "\"{{name}}\" is not a valid request header name",
@@ -182,6 +188,14 @@ export const models = {
     modelTitle: "Model",
     modelImageDescription: "Choose an image model or enter its ID manually.",
     modelChatDescription: "Choose a fetched model or enter an id.",
+    modelsChatDescription:
+      "Choose one or more fetched models, or enter IDs separated by commas.",
+    chooseModels: "Choose models",
+    modelsSelected_one: "{{count}} model selected",
+    modelsSelected_other: "{{count}} models selected",
+    alreadyAdded: "Added",
+    selectedModelsLabel: "Models to add",
+    removeModel: "Remove {{model}}",
     fetchedModelsLabel: "Fetched models",
     noMatchingModels: "No matching models.",
     refresh: "Refresh",
@@ -194,8 +208,17 @@ export const models = {
     manualFetchHint: "Refresh to load available models.",
     enterManually: "Enter manually",
     chooseFetchedModel: "Choose fetched model",
+    chooseFetchedModels: "Choose fetched models",
     manualModelNotice:
       "The current model id was not returned by the endpoint, so it is being kept as a manual entry.",
+    manualModelsNotice:
+      "The endpoint did not return these IDs, so they are kept as typed: {{models}}",
+    repeatedModelsNotice:
+      "Already added: {{models}}. Adding again makes a second copy.",
+    severalModelsNotice_one:
+      "Adding {{count}} model with its default name, tool calling, thinking, context window and pricing. Edit a model afterwards to change these.",
+    severalModelsNotice_other:
+      "Adding {{count}} models with their default name, tool calling, thinking, context window and pricing. Edit a model afterwards to change these.",
     searchModelsPlaceholder: "Search models",
     searchModelsLabel: "Search models",
   },
