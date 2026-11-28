@@ -342,7 +342,10 @@ export async function reconcileAgentWorkspace({
   target,
   path,
   installations,
-}: ReconcileAgentWorkspaceInput): Promise<AgentWorkspaceReconcileResult> {
+}: ReconcileAgentWorkspaceInput): Promise<
+  // The folder as the machine resolved it; an older server leaves it out.
+  AgentWorkspaceReconcileResult & { path?: string }
+> {
   const response = await fetch(apiUrl("/api/agent-workspaces"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -353,8 +356,11 @@ export async function reconcileAgentWorkspace({
     }),
   });
   if (!response.ok) throw await responseError(response);
-  return ((await response.json()) as { result: AgentWorkspaceReconcileResult })
-    .result;
+  return (
+    (await response.json()) as {
+      result: AgentWorkspaceReconcileResult & { path?: string };
+    }
+  ).result;
 }
 
 export function useCreateAgentWorkspaceGroup() {

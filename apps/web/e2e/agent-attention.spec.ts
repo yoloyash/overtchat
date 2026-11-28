@@ -40,7 +40,7 @@ test("agents mode shows what each agent needs and tracks what was seen", async (
   const workspace = page.getByRole("combobox", { name: "Workspace" });
   await expect(workspace).toContainText("api");
   await workspace.click();
-  await expect(page.getByRole("option")).toHaveCount(2);
+  await expect(page.getByRole("option")).toHaveText(["api", "site", "Add workspace…"]);
   await page.getByRole("option", { name: "site" }).click();
   await page.waitForURL("**/agents/new?workspaceId=claude-site&provider=claude");
   // Back on this machine, the agent list holds the agents that have the folder,
@@ -300,6 +300,96 @@ test("the Agents home explains how to start when no folder is connected", async 
   await expect(page.getByRole("heading", { name: "Start an agent in a folder" })).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Add workspace" }).click();
   await page.waitForURL("**/settings/connections?add=1");
+});
+
+test("a new session adds a folder from the workspace list and opens it", async ({
+  page,
+}) => {
+  const connections = agentAttentionFixture();
+  await setupAgentAttention(page, connections);
+  await page.route("**/api/agent-connections/discover", (route) =>
+    route.fulfill({
+      json: {
+        installations: [
+          { provider: "claude", executable: "claude", version: "1", shellMode: "login" },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/agent-connections/directories", (route) => {
+    const { path } = route.request().postDataJSON() as { path?: string };
+    return route.fulfill({
+      json: {
+        directory: path
+          ? { path, parent: "/srv", directories: [] }
+          : { path: "/srv", parent: "/", directories: [{ name: "docs", path: "/srv/docs" }] },
+      },
+    });
+  });
+  const added: unknown[] = [];
+  await page.route("**/api/agent-workspaces", (route) => {
+    added.push(route.request().postDataJSON());
+    // The machine resolves the folder, here through a link, and that is what is stored.
+    connections[2]!.workspaces.push({
+      id: "claude-docs",
+      name: "docs",
+      path: "/data/docs",
+      sessions: [],
+    });
+    return route.fulfill({
+      status: 201,
+      json: {
+        result: { providers: 1, created: 1, refreshed: 0, failures: [], path: "/data/docs" },
+      },
+    });
+  });
+
+  await sidebarView(page).getByRole("button", { name: /^Agents/ }).click();
+  await page.waitForURL("**/agents/new?workspaceId=codex-app&provider=codex");
+  await page.getByRole("combobox", { name: "Machine" }).click();
+  await page.getByRole("option", { name: "home-server" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=claude-api&provider=claude");
+
+  // The list ends with adding a folder, which stays on the page.
+  const workspace = page.getByRole("combobox", { name: "Workspace" });
+  await workspace.click();
+  await page.getByRole("option", { name: "Add workspace…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add workspace" });
+  await expect(dialog).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/agents/new");
+  // It opens on the machine the session was going to start on.
+  await expect(dialog.getByRole("radio", { name: "SSH host" })).toBeChecked();
+  await expect(dialog.getByText("ssh home-server", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "docs", exact: true }).click();
+  await expect(dialog.getByTitle("/srv/docs", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Add workspace", exact: true }).click();
+
+  // The new session moves to the folder, with the agent it already had.
+  await page.waitForURL("**/agents/new?workspaceId=claude-docs&provider=claude");
+  await expect(dialog).toBeHidden();
+  await expect(workspace).toContainText("docs");
+  await expect(page.getByRole("heading", { name: "New Claude Code session" })).toBeVisible();
+  expect(added).toEqual([
+    {
+      target: { connectorId: "connector", transport: "ssh", sshAlias: "home-server" },
+      path: "/srv/docs",
+      installations: [
+        { provider: "claude", executable: "claude", version: "1", shellMode: "login" },
+      ],
+    },
+  ]);
+
+  // Opened again on this machine, the dialog starts there.
+  await page.getByRole("combobox", { name: "Machine" }).click();
+  await page.getByRole("option", { name: "This machine" }).click();
+  await page.waitForURL("**/agents/new?workspaceId=codex-app&provider=codex");
+  await workspace.click();
+  await page.getByRole("option", { name: "Add workspace…" }).click();
+  await expect(dialog.getByRole("radio", { name: "This server" })).toBeChecked();
+  // Closing it leaves the keyboard on the folder list it came from.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(workspace).toBeFocused();
 });
 
 test("history searches every session and filters by machine, folder and agent", async ({

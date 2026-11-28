@@ -58,6 +58,27 @@ describe("atomic agent workspace route", () => {
     });
   });
 
+  it("returns the folder as the machine resolved it", async () => {
+    mocks.reconcile.mockResolvedValue({
+      providers: 1,
+      created: 1,
+      refreshed: 0,
+      failures: [],
+      path: "/srv/overtchat",
+    });
+    const response = await POST(
+      request({
+        target: { connectorId: "connector", transport: "local" },
+        path: "/srv/overtchat/",
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      result: { path: "/srv/overtchat" },
+    });
+  });
+
   it("does not reconcile an unavailable connector", async () => {
     mocks.getConnector.mockReturnValue(null);
     const response = await POST(

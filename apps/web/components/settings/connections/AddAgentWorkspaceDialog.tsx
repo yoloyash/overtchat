@@ -38,7 +38,6 @@ import {
   type AgentProviderId,
   type AgentSshHostCandidate,
   type DetectedAgentInstallation,
-  type HostConnectorListItem,
 } from "@overtchat/agent-bridge";
 import { agentConnectionMatchesTarget } from "@/lib/agents/workspaces";
 import {
@@ -59,21 +58,35 @@ type Transport = "local" | "ssh";
 type RemoteMode = "detected" | "manual";
 
 export function AddAgentWorkspaceDialog({
-  connector,
+  connectorId,
   connections,
   open,
   onOpenChange,
+  initialTarget,
+  onAdded,
+  finalFocus,
 }: {
-  connector: HostConnectorListItem;
+  connectorId: string;
   connections: AgentConnectionListItem[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The machine the dialog opens on; this server when omitted. */
+  initialTarget?: AgentDiscoveryTarget;
+  /** Runs once the folder is attached and the connection list has reloaded. */
+  onAdded?: (workspace: { target: AgentDiscoveryTarget; path: string }) => void;
+  /** What takes focus on close, when what opened the dialog no longer exists. */
+  finalFocus?: React.RefObject<HTMLElement | null>;
 }) {
   const { t } = useTranslation();
   const createMutation = useCreateAgentWorkspaceGroup();
-  const [transport, setTransport] = useState<Transport>("local");
+  const initialTransport: Transport = initialTarget?.transport ?? "local";
+  const initialSshAlias =
+    initialTarget?.transport === "ssh" ? initialTarget.sshAlias : null;
+  const [transport, setTransport] = useState<Transport>(initialTransport);
   const [remoteMode, setRemoteMode] = useState<RemoteMode>("detected");
-  const [selectedSshAlias, setSelectedSshAlias] = useState<string | null>(null);
+  const [selectedSshAlias, setSelectedSshAlias] = useState<string | null>(
+    initialSshAlias,
+  );
   const [manualSshAlias, setManualSshAlias] = useState("");
   const [manualPathEntry, setManualPathEntry] = useState(false);
   const [manualPath, setManualPath] = useState("");
@@ -85,20 +98,20 @@ export function AddAgentWorkspaceDialog({
 
   const target = useMemo<AgentDiscoveryTarget | null>(() => {
     if (transport === "local") {
-      return { connectorId: connector.id, transport: "local" };
+      return { connectorId, transport: "local" };
     }
     return selectedSshAlias
       ? {
-          connectorId: connector.id,
+          connectorId,
           transport: "ssh",
           sshAlias: selectedSshAlias,
         }
       : null;
-  }, [connector.id, selectedSshAlias, transport]);
+  }, [connectorId, selectedSshAlias, transport]);
 
   const selectingSshHost = transport === "ssh" && selectedSshAlias === null;
   const sshHosts = useAgentSshHosts(
-    connector.id,
+    connectorId,
     open && selectingSshHost && remoteMode === "detected",
   );
   const directories = useAgentTargetDirectories(
@@ -137,9 +150,9 @@ export function AddAgentWorkspaceDialog({
   }
 
   function reset() {
-    setTransport("local");
+    setTransport(initialTransport);
     setRemoteMode("detected");
-    setSelectedSshAlias(null);
+    setSelectedSshAlias(initialSshAlias);
     setManualSshAlias("");
     resetTargetDetails();
     setCustomProvider("pi");
@@ -169,7 +182,7 @@ export function AddAgentWorkspaceDialog({
 
   function submitManualHost() {
     const parsed = agentDiscoveryTargetSchema.safeParse({
-      connectorId: connector.id,
+      connectorId,
       transport: "ssh",
       sshAlias: manualSshAlias,
     });
@@ -243,6 +256,7 @@ export function AddAgentWorkspaceDialog({
       }
       reset();
       onOpenChange(false);
+      onAdded?.({ target, path: result.path ?? chosenPath });
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -265,6 +279,7 @@ export function AddAgentWorkspaceDialog({
           className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
         />
         <Dialog.Popup
+          finalFocus={finalFocus}
           className={cn(
             "fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none",
             motionClasses.dialog,
