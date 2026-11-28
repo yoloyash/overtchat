@@ -519,7 +519,7 @@ export const chat: Translation["chat"] = {
     subtitleActive: "{{model}} · 实时语音",
     muteMicrophone: "静音麦克风",
     unmuteMicrophone: "取消静音麦克风",
-    stopAssistant: "停止助手",
+    stopAssistant: "停止朗读",
     endVoiceFailedTitle: "无法结束语音",
   },
   dictation: {

@@ -306,7 +306,7 @@ export const app: Translation["app"] = {
       max: "最高",
     },
     reasoningOptionDefault: "{{level}}（默认）",
-    clearDefault: "取消默认",
+    clearDefault: "清除默认",
     setAsDefault: "设为默认",
     clearDefaultTitle: "新对话将使用第一个可用模型",
     setAsDefaultTitle: "新对话默认使用 {{model}}",
