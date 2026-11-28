@@ -23,10 +23,13 @@ export * from "./code-execution";
 export * from "./calendar";
 export * from "./gmail";
 export * from "./skills";
+export * from "./scheduled-tasks";
+export * from "./scheduled-task-client";
 export * from "./conversation-files";
 export * from "./openui";
 export * from "./errors";
 export * from "./two-factor";
+export * from "./sign-in";
 export * from "./chat-continuation";
 export * from "./chat-queue";
 export * from "./chat-generation";
@@ -36,3 +39,4 @@ export type {
   SharedConversationPage,
 } from "./chat-sharing";
 export * from "./relative-time";
+export * from "./plain-text";

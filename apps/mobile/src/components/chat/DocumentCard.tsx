@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import {
-  DOCUMENT_TYPE_LABELS,
   DOCUMENT_TYPES,
   isDocumentOutput,
   type DocumentToolPart,
@@ -27,6 +27,7 @@ export function DocumentCard({
   streaming: boolean;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const viewer = useDocumentViewer();
   const output = isDocumentOutput(part.output) ? part.output : undefined;
   const creating = part.type === "tool-create_document";
@@ -40,14 +41,16 @@ export function DocumentCard({
     output?.title ??
     part.input?.title?.trim() ??
     (creating ? undefined : part.input?.id?.trim()) ??
-    "Untitled document";
+    t("chat.documents.untitled");
 
   if (part.state === "output-error") {
     return (
       <View style={styles.errorRow} accessibilityLiveRegion="polite">
         <Ionicons name="alert-circle-outline" size={16} color={colors.mutedForeground} />
         <Text style={[styles.errorText, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-          {creating ? "Could not create" : "Could not update"} {title}
+          {creating
+            ? t("chat.documents.couldNotCreate", { title })
+            : t("chat.documents.couldNotUpdate", { title })}
         </Text>
       </View>
     );
@@ -57,18 +60,26 @@ export function DocumentCard({
   const status = pending
     ? live
       ? creating
-        ? "Writing…"
-        : "Updating…"
+        ? t("chat.documents.writing")
+        : t("common.states.updating")
       : creating
-        ? "Stopped before it was saved"
-        : "Update stopped"
-    : `${DOCUMENT_TYPE_LABELS[type]} · ${creating ? "Created" : "Updated"} · Version ${output?.version ?? 1}`;
+        ? t("chat.documents.stoppedBeforeSaved")
+        : t("chat.documents.updateStopped")
+    : creating
+      ? t("chat.documents.cardStatusCreated", {
+          type: t(`chat.documents.types.${type}`),
+          version: output?.version ?? 1,
+        })
+      : t("chat.documents.cardStatusUpdated", {
+          type: t(`chat.documents.types.${type}`),
+          version: output?.version ?? 1,
+        });
   const openable = Boolean(viewer && (output || (live && creating)));
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${status}`}
+      accessibilityLabel={t("chat.mobile.documents.cardLabel", { title, status })}
       accessibilityState={{ disabled: !openable, selected: viewer?.activeToolCallId === part.toolCallId }}
       disabled={!openable}
       onPress={() => viewer?.open(part.toolCallId)}

@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { AgentApprovalCard } from "@/components/agents/AgentApprovalCard";
 import { approvalDetails } from "@overtchat/shared/agent-tool-details";
 import type { AgentQuestionRequest } from "@overtchat/shared/agent-interaction";
@@ -29,7 +31,7 @@ const request: AgentQuestionRequest = {
 afterEach(() => vi.unstubAllGlobals());
 
 it("separates a long provider warning from the command without duplicating either", () => {
-  const result = approvalDetails(request);
+  const result = approvalDetails(request, i18n.t);
   expect(result.title).toBe("Run command?");
   expect(result.message).toBe(warning);
   expect(result.sections).toEqual([
@@ -57,7 +59,7 @@ it("preserves edit previews, unknown tool arguments, and other providers' choice
         newText: "new",
       },
     },
-  });
+  }, i18n.t);
   expect(edit.title).toBe("Allow file changes?");
   expect(edit.message).toBe("");
   expect(edit.sections).toEqual([
@@ -72,7 +74,7 @@ it("preserves edit previews, unknown tool arguments, and other providers' choice
     approveValue: "yes",
     alwaysValue: "persist",
     denyValue: "no",
-  });
+  }, i18n.t);
   expect(other.title).toBe("Grant network access");
   expect(other.sections).toContainEqual({
     label: "Network · Enabled",
@@ -106,11 +108,13 @@ it("keeps the card inline, bounds its details, submits exact choices and disable
   try {
     await act(async () =>
       root.render(
-        <AgentApprovalCard
-          request={request}
-          pending={false}
-          onRespond={respond}
-        />,
+        <I18nextProvider i18n={i18n}>
+          <AgentApprovalCard
+            request={request}
+            pending={false}
+            onRespond={respond}
+          />
+        </I18nextProvider>,
       ),
     );
     expect(container.querySelector('[role="dialog"]')).toBeNull();
@@ -131,12 +135,14 @@ it("keeps the card inline, bounds its details, submits exact choices and disable
     }
     await act(async () =>
       root.render(
-        <AgentApprovalCard
-          request={request}
-          pending
-          error="Try again"
-          onRespond={respond}
-        />,
+        <I18nextProvider i18n={i18n}>
+          <AgentApprovalCard
+            request={request}
+            pending
+            error="Try again"
+            onRespond={respond}
+          />
+        </I18nextProvider>,
       ),
     );
     expect(

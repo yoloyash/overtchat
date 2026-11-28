@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { ModelBrandIconId } from "./models";
 
 export const PROVIDER_IDS = [
@@ -133,36 +134,55 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   },
 };
 
+export function providerDisplayLabel(
+  providerId: ProviderId,
+  t: TFunction,
+): string {
+  return providerId === "custom"
+    ? t("models.providers.custom")
+    : PROVIDERS[providerId].label;
+}
+
+const API_FORMAT_DESCRIPTION_KEYS = {
+  "openai-images": "models.connection.apiFormatDescriptions.openai-images",
+  "openai-chat": "models.connection.apiFormatDescriptions.openai-chat",
+  "openai-responses": "models.connection.apiFormatDescriptions.openai-responses",
+  "anthropic-messages":
+    "models.connection.apiFormatDescriptions.anthropic-messages",
+} as const;
+
 export const API_FORMATS: Record<
   ExplicitApiFormat,
-  { id: ExplicitApiFormat; label: string; description: string }
+  { id: ExplicitApiFormat; label: string }
 > = {
   "openai-images": {
     id: "openai-images",
     label: "OpenAI Images",
-    description: "For OpenAI-compatible /images/generations endpoints.",
   },
   "openai-chat": {
     id: "openai-chat",
     label: "OpenAI Chat Completions",
-    description: "For OpenAI-compatible /chat/completions endpoints.",
   },
   "openai-responses": {
     id: "openai-responses",
     label: "OpenAI Responses",
-    description: "For Open Responses-compatible /responses endpoints.",
   },
   "anthropic-messages": {
     id: "anthropic-messages",
     label: "Anthropic Messages",
-    description: "For Anthropic-compatible /messages endpoints.",
   },
 };
+
+export function apiFormatDescription(
+  format: ExplicitApiFormat,
+  t: TFunction,
+): string {
+  return t(API_FORMAT_DESCRIPTION_KEYS[format]);
+}
 
 export const EXPLICIT_API_FORMAT_IDS = Object.keys(
   API_FORMATS,
 ) as ExplicitApiFormat[];
-
 export function getProvider(providerId: ProviderId): ProviderDefinition {
   return PROVIDERS[providerId];
 }

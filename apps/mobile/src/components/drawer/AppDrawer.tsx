@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { FlashList } from "@shopify/flash-list";
@@ -17,6 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { agentAttentionCounts } from "@overtchat/shared/agent-attention";
+import { unreadRunChatIds } from "@overtchat/shared";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import {
@@ -27,7 +30,7 @@ import {
 import { getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useChatSession } from "@/lib/chat/session";
-import { groupByDate, type DateBucket } from "@/lib/dateGroups";
+import { DATE_BUCKET_KEYS, groupByDate } from "@/lib/dateGroups";
 import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import {
   useCreateProject,
@@ -36,6 +39,10 @@ import {
 } from "@/lib/queries/projects";
 import { useAgentConnections } from "@/lib/queries/agents";
 import { useCapabilities } from "@/lib/queries/capabilities";
+import {
+  useScheduledTaskActivity,
+  useScheduledTasksSupported,
+} from "@/lib/queries/scheduledTasks";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 import { useChatActions } from "@/components/chat/useChatActions";
@@ -51,11 +58,12 @@ type ListEntry =
   | { kind: "pinned-chat"; key: string; chat: ChatListItem; isActive: boolean }
   | { kind: "project-empty"; key: string }
   | { kind: "new-project"; key: string }
-  | { kind: "date-header"; key: string; label: DateBucket }
+  | { kind: "date-header"; key: string; label: string }
   | { kind: "chat-row"; key: string; chat: ChatListItem; isActive: boolean };
 
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const {
     activeChatId: sessionChatId,
     openChat: openSession,
@@ -67,6 +75,10 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const { data: projects } = useProjects();
   const { data: capabilities } = useCapabilities();
   const pinningSupported = capabilities?.capabilities.chatPinning === true;
+  const scheduledTasksSupported = useScheduledTasksSupported();
+  const { data: scheduledRuns } = useScheduledTaskActivity();
+  // Chats that finished scheduled runs wrote and nobody has opened.
+  const unreadChats = useMemo(() => unreadRunChatIds(scheduledRuns), [scheduledRuns]);
   const session = getAuthClient().useSession();
   const user = session.data?.user;
   // Agents are an administrator's feature, as on the web; everyone else keeps
@@ -108,7 +120,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const wasFetching = useRef(false);
   useEffect(() => {
     if (wasFetching.current && !isFetching && userRefreshing.current) {
-      if (error) toastError("Couldn't refresh chats", error);
+      if (error) toastError(i18n.t("sidebar.mobile.refreshChatsError"), error);
       userRefreshing.current = false;
     }
     wasFetching.current = isFetching;
@@ -155,7 +167,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
     const pinned = (chats ?? []).filter((chat) => chat.pinned);
     if (pinned.length > 0) {
-      out.push({ kind: "section", key: "s-pinned", label: "Pinned" });
+      out.push({ kind: "section", key: "s-pinned", label: t("sidebar.sections.pinned") });
       for (const chat of pinned) {
         out.push({
           kind: "pinned-chat",
@@ -167,7 +179,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     }
 
     if (projectList.length > 0) {
-      out.push({ kind: "section", key: "s-projects", label: "Projects" });
+      out.push({ kind: "section", key: "s-projects", label: t("sidebar.sections.projects") });
       for (const p of projectList) {
         const isOpen = !!expanded[p.id];
         const isActive = activeProjectId === p.id;
@@ -200,7 +212,11 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
     if (unprojected.length > 0) {
       for (const g of groupByDate(unprojected)) {
-        out.push({ kind: "date-header", key: `dh-${g.label}`, label: g.label });
+        out.push({
+          kind: "date-header",
+          key: `dh-${g.bucket}`,
+          label: t(DATE_BUCKET_KEYS[g.bucket]),
+        });
         for (const c of g.items) {
           out.push({
             kind: "chat-row",
@@ -213,7 +229,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     }
 
     return out;
-  }, [chats, projects, expanded, chatsByProject, unprojected, activeChatId, activeProjectId]);
+  }, [chats, projects, expanded, chatsByProject, unprojected, activeChatId, activeProjectId, t]);
 
   function toggleProject(id: string) {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -251,7 +267,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
           props.navigation.closeDrawer();
           router.push(`/projects/${id}`);
         },
-        onError: (e) => toastError("Couldn't create project", e),
+        onError: (e) => toastError(t("sidebar.mobile.createProjectError"), e),
       },
     );
   }
@@ -272,7 +288,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
           <View style={styles.header}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="New chat"
+              accessibilityLabel={t("sidebar.nav.newChat")}
               onPress={startNewChatHere}
               style={({ pressed }) => [
                 styles.newChat,
@@ -289,12 +305,12 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                   { color: colors.foreground, fontFamily: fonts.sansSemiBold },
                 ]}
               >
-                New chat
+                {t("sidebar.nav.newChat")}
               </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Search chats"
+              accessibilityLabel={t("sidebar.nav.searchChats")}
               onPress={() => {
                 props.navigation.closeDrawer();
                 router.push("/search");
@@ -316,6 +332,41 @@ export function AppDrawer(props: DrawerContentComponentProps) {
             </Pressable>
           </View>
 
+          {scheduledTasksSupported && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                unreadChats.size > 0
+                  ? t("sidebar.mobile.scheduledUnread", { count: unreadChats.size })
+                  : t("scheduled.page.title")
+              }
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push("/scheduled");
+              }}
+              style={({ pressed }) => [
+                styles.scheduled,
+                {
+                  backgroundColor: pressed ? colors.accent : "transparent",
+                  borderRadius: radii.md,
+                },
+              ]}
+            >
+              <Ionicons name="calendar-outline" size={20} color={colors.foreground} />
+              <Text
+                style={[
+                  styles.newChatText,
+                  { flex: 1, color: colors.foreground, fontFamily: fonts.sansSemiBold },
+                ]}
+              >
+                {t("scheduled.page.title")}
+              </Text>
+              {unreadChats.size > 0 && (
+                <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+              )}
+            </Pressable>
+          )}
+
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.list}>
@@ -326,19 +377,20 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                   <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
                 ) : error ? (
                   <Text style={[styles.empty, { color: colors.destructive, fontFamily: fonts.sansRegular }]}>
-                    Couldn't load chats
+                    {t("sidebar.mobile.loadChatsError")}
                   </Text>
                 ) : null
               }
               ListFooterComponent={
                 !isPending && !error && entries.length === 1 ? (
                   <Text style={[styles.empty, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-                    No chats yet
+                    {t("sidebar.sections.noChatsYet")}
                   </Text>
                 ) : null
               }
               keyExtractor={(e) => e.key}
               getItemType={(e) => e.kind}
+              extraData={unreadChats}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               refreshing={isFetching && !isPending}
@@ -381,6 +433,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                         onPin={chatActions.togglePin}
                         pinPending={chatActions.pinPending}
                         pinningSupported={pinningSupported}
+                        unread={unreadChats.has(entry.chat.id)}
                         onMove={chatActions.openMove}
                         onDelete={chatActions.openDeleteConfirm}
                       />
@@ -396,7 +449,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                           },
                         ]}
                       >
-                        No chats yet
+                        {t("sidebar.sections.noChatsYet")}
                       </Text>
                     );
                   case "new-project":
@@ -430,6 +483,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                         onPin={chatActions.togglePin}
                         pinPending={chatActions.pinPending}
                         pinningSupported={pinningSupported}
+                        unread={unreadChats.has(entry.chat.id)}
                         onMove={chatActions.openMove}
                         onDelete={chatActions.openDeleteConfirm}
                       />
@@ -462,12 +516,12 @@ export function AppDrawer(props: DrawerContentComponentProps) {
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {user?.email ?? "Signed in"}
+            {user?.email ?? t("sidebar.mobile.signedInFallback")}
           </Text>
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Settings"
+          accessibilityLabel={t("app.pages.settings.title")}
           onPress={() => {
             props.navigation.closeDrawer();
             router.push("/settings");
@@ -491,10 +545,11 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
 function NewProjectButton({ onPress }: { onPress: () => void }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="New project"
+      accessibilityLabel={t("sidebar.sections.newProject")}
       onPress={onPress}
       style={({ pressed }) => [
         styles.newProject,
@@ -511,7 +566,7 @@ function NewProjectButton({ onPress }: { onPress: () => void }) {
           { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
         ]}
       >
-        New project
+        {t("sidebar.sections.newProject")}
       </Text>
     </Pressable>
   );
@@ -533,11 +588,16 @@ function ProjectRow({
   onNewChat: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   return (
     <View style={styles.projectRow}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={expanded ? "Collapse project" : "Expand project"}
+        accessibilityLabel={
+          expanded
+            ? t("sidebar.mobile.collapseProject")
+            : t("sidebar.mobile.expandProject")
+        }
         onPress={onToggle}
         hitSlop={6}
         style={({ pressed }) => [
@@ -556,7 +616,7 @@ function ProjectRow({
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open project ${project.name}`}
+        accessibilityLabel={t("sidebar.mobile.openProject", { name: project.name })}
         onPress={onOpen}
         style={({ pressed }) => [
           styles.projectName,
@@ -585,7 +645,7 @@ function ProjectRow({
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`New chat in ${project.name}`}
+        accessibilityLabel={t("projects.actions.newChatIn", { name: project.name })}
         onPress={onNewChat}
         hitSlop={8}
         style={({ pressed }) => [
@@ -611,6 +671,7 @@ function ChatRow({
   onPin,
   pinPending,
   pinningSupported,
+  unread = false,
   onMove,
   onDelete,
 }: {
@@ -622,10 +683,13 @@ function ChatRow({
   onPin: (item: ChatListItem) => void;
   pinPending: boolean;
   pinningSupported: boolean;
+  /** A scheduled run wrote this chat and it has not been opened. */
+  unread?: boolean;
   onMove: (item: ChatListItem) => void;
   onDelete: (item: ChatListItem) => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const menu = useMeasuredPopoverAnchor();
 
   return (
@@ -650,24 +714,39 @@ function ChatRow({
           },
         ]}
       >
+        {unread && (
+          <View
+            accessible
+            accessibilityLabel={t("sidebar.chat.newResult")}
+            style={[styles.unreadDot, { backgroundColor: colors.primary }]}
+          />
+        )}
+        {item.scheduledTaskName && (
+          <Ionicons
+            name="calendar-outline"
+            size={14}
+            color={colors.mutedForeground}
+            accessibilityLabel={t("sidebar.chat.scheduledTask")}
+          />
+        )}
         <Text
           numberOfLines={1}
           style={[
             styles.rowText,
             {
               color: isActive ? colors.accentForeground : colors.foreground,
-              fontFamily: fonts.sansRegular,
+              fontFamily: unread ? fonts.sansSemiBold : fonts.sansRegular,
             },
           ]}
         >
-          {item.title?.trim() || "Untitled"}
+          {item.title?.trim() || t("common.states.untitled")}
         </Text>
         {item.pinned && (
           <Ionicons
             name="pin"
             size={14}
             color={colors.mutedForeground}
-            accessibilityLabel="Pinned chat"
+            accessibilityLabel={t("sidebar.mobile.pinnedChatLabel")}
           />
         )}
       </Pressable>
@@ -776,6 +855,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   rowIndented: { marginLeft: 24 },
+  unreadDot: { width: 7, height: 7, borderRadius: 4 },
+  scheduled: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 8,
+    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
   rowText: { flex: 1, fontSize: 14 },
   empty: { fontSize: 13, paddingHorizontal: 16, paddingVertical: 24, textAlign: "center" },
   footer: {

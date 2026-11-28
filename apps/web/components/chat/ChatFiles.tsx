@@ -2,10 +2,11 @@
 
 import { useId, type ReactNode } from "react";
 import { ArrowLeft, File, Files, X } from "lucide-react";
-import {
-  DOCUMENT_TYPE_LABELS,
-  type ConversationFiles,
-  type PanelFile,
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+import type {
+  ConversationFiles,
+  PanelFile,
 } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { formatSize, humanMediaLabel } from "@/lib/chat/attachments";
@@ -13,10 +14,6 @@ import { cn } from "@/lib/utils";
 import { MediaIcon } from "./attachment-icons";
 import { DOCUMENT_ICONS } from "./DocumentCard";
 import { SidePanel, SidePanelHeader } from "./SidePanel";
-
-function countLabel(count: number): string {
-  return count === 1 ? "1 file" : `${count} files`;
-}
 
 /** Shows and hides the side panel with the conversation's files. */
 export function ChatFilesButton({
@@ -28,14 +25,15 @@ export function ChatFilesButton({
   open: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Button
       variant="ghost"
       size="sm"
       className={cn("max-md:h-10", open && "bg-accent text-foreground hover:bg-accent")}
-      aria-label={countLabel(count)}
+      aria-label={t("chat.files.count", { count })}
       aria-expanded={open}
-      title={open ? "Hide files" : "Show files"}
+      title={open ? t("chat.files.hideFiles") : t("chat.files.showFiles")}
       onClick={onToggle}
     >
       <File className="size-4" />
@@ -46,12 +44,13 @@ export function ChatFilesButton({
 
 /** Returns from a file or document to the panel's list of files. */
 export function BackToFilesButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
   return (
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label="Back to files"
-      title="Back to files"
+      aria-label={t("chat.files.backToFiles")}
+      title={t("chat.files.backToFiles")}
       onClick={onClick}
     >
       <ArrowLeft />
@@ -71,23 +70,24 @@ export function ChatFilesPanel({
   onOpenDocument: (toolCallId: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { outputs, uploads } = files;
   const count = outputs.length + uploads.length;
   return (
-    <SidePanel aria-label="Files" data-files-panel="" variant="docked" onClose={onClose}>
+    <SidePanel aria-label={t("chat.files.filesPanelLabel")} data-files-panel="" variant="docked" onClose={onClose}>
       <SidePanelHeader>
         <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <Files className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-medium">Files</h2>
-          <p className="truncate text-xs text-muted-foreground">{countLabel(count)}</p>
+          <h2 className="truncate text-sm font-medium">{t("chat.files.title")}</h2>
+          <p className="truncate text-xs text-muted-foreground">{t("chat.files.count", { count })}</p>
         </div>
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Close files"
-          title="Close files"
+          aria-label={t("chat.files.closeFiles")}
+          title={t("chat.files.closeFiles")}
           onClick={onClose}
         >
           <X />
@@ -96,11 +96,11 @@ export function ChatFilesPanel({
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
         {count === 0 && (
           <p className="px-2 py-8 text-center text-sm text-muted-foreground">
-            Files you attach and files the assistant makes appear here.
+            {t("chat.files.empty")}
           </p>
         )}
         {outputs.length > 0 && (
-          <Group label="Outputs">
+          <Group label={t("chat.files.outputs")}>
             {outputs.map((output) => {
               if (output.kind === "file") {
                 return (
@@ -117,8 +117,8 @@ export function ChatFilesPanel({
                 <Item
                   key={document.id}
                   icon={<Icon className="size-4" />}
-                  name={document.title || "Untitled"}
-                  label={DOCUMENT_TYPE_LABELS[document.type]}
+                  name={document.title || t("common.states.untitled")}
+                  label={t(`chat.documents.types.${document.type}`)}
                   onOpen={() => onOpenDocument(document.toolCallId)}
                 />
               );
@@ -126,7 +126,7 @@ export function ChatFilesPanel({
           </Group>
         )}
         {uploads.length > 0 && (
-          <Group label="Uploads">
+          <Group label={t("chat.files.uploads")}>
             {uploads.map((file) => (
               <FileItem key={file.id} file={file} onOpen={() => onOpenFile(file)} />
             ))}
@@ -150,14 +150,15 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function FileItem({ file, onOpen }: { file: PanelFile; onOpen: () => void }) {
+  const { t } = useTranslation();
   return (
     <Item
       icon={<MediaIcon mediaType={file.mediaType} filename={file.name} className="size-4" />}
       name={file.name}
       label={
         file.size === undefined
-          ? fileTypeLabel(file)
-          : `${fileTypeLabel(file)} · ${formatSize(file.size)}`
+          ? fileTypeLabel(file, t)
+          : `${fileTypeLabel(file, t)} · ${formatSize(file.size, t)}`
       }
       onOpen={onOpen}
     />
@@ -194,7 +195,7 @@ function Item({
 }
 
 /** A short type such as "PNG" or "CSV", from the extension when it has one. */
-function fileTypeLabel(file: PanelFile): string {
+function fileTypeLabel(file: PanelFile, t: TFunction): string {
   const extension = /\.([a-z0-9]{1,5})$/i.exec(file.name)?.[1];
-  return extension ? extension.toUpperCase() : humanMediaLabel(file.mediaType);
+  return extension ? extension.toUpperCase() : humanMediaLabel(file.mediaType, t);
 }

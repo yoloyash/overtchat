@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   type NativeScrollEvent,
@@ -21,9 +22,9 @@ import {
   Text,
   View,
 } from "react-native";
+import { sameMap, sameSet, useStable } from "@/lib/equal";
 import { useTheme } from "@/lib/theme";
-import type { useSpeech } from "@/lib/useSpeech";
-import { MessageBubble } from "./MessageBubble";
+import { MessageBubble, type MessageSpeech } from "./MessageBubble";
 import {
   contextStatusLabel,
   isManualCompactionMessage,
@@ -55,6 +56,11 @@ function recentOpenUICards(messages: UIMessage[]): Set<string> {
   return keys;
 }
 
+/** Form states are small nested values, compared as written. */
+function sameSerialized(a: ReadonlyMap<string, unknown>, b: ReadonlyMap<string, unknown>) {
+  return a.size === b.size && JSON.stringify([...a]) === JSON.stringify([...b]);
+}
+
 export function MessageList({
   messages,
   streaming,
@@ -82,7 +88,7 @@ export function MessageList({
   contextStatus?: ContextStatus | null;
   error: Error | undefined;
   editingId: string | null;
-  speech: ReturnType<typeof useSpeech>;
+  speech: MessageSpeech;
   refreshing?: boolean;
   onRefresh?: () => void;
   onReconnect?: () => void;
@@ -96,11 +102,21 @@ export function MessageList({
   localAnchorRequestKey: number;
   readOnly?: boolean;
 }) {
-  const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
-  const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
-  const replacedEmails = useMemo(() => replacedGmailEmailIds(messages), [messages]);
-  const liveOpenUI = useMemo(() => recentOpenUICards(messages), [messages]);
+  // Every streamed update is a new list of messages, so these are rebuilt each
+  // time. Holding on to the earlier one while its content is unchanged keeps
+  // the messages that receive them from rendering again.
+  const openuiStates = useStable(
+    useMemo(() => collectOpenUIStates(messages), [messages]),
+    sameSerialized,
+  );
+  const codeFiles = useStable(useMemo(() => codeExecutionFileIndex(messages), [messages]), sameMap);
+  const replacedEmails = useStable(
+    useMemo(() => replacedGmailEmailIds(messages), [messages]),
+    sameSet,
+  );
+  const liveOpenUI = useStable(useMemo(() => recentOpenUICards(messages), [messages]), sameSet);
   const { colors, fonts } = useTheme();
+  const { t, i18n } = useTranslation();
   const latestMessage = messages.at(-1);
   const latestMessageId = latestMessage?.id;
   const latestMessageRole = latestMessage?.role;
@@ -112,6 +128,7 @@ export function MessageList({
     () => ({
       contextStatus,
       editingId,
+      language: i18n.language,
       readOnly,
       replacedEmails,
       speechActiveId: speech.activeId,
@@ -121,6 +138,7 @@ export function MessageList({
     [
       contextStatus,
       editingId,
+      i18n.language,
       readOnly,
       replacedEmails,
       speech.activeId,
@@ -151,7 +169,7 @@ export function MessageList({
     <>
       {!error && !contextStatus && status === "submitted" && lastIsUser && (
         <Text
-          accessibilityLabel="Assistant is responding"
+          accessibilityLabel={t("chat.messages.assistantResponding")}
           accessibilityLiveRegion="polite"
           style={[
             styles.pending,
@@ -161,7 +179,7 @@ export function MessageList({
           …
         </Text>
       )}
-      {error && <ErrorNotice message={error} fallback="Couldn't complete the response. Please try again." action={onReconnect ? { label: "Reconnect", onPress: onReconnect } : undefined} />}
+      {error && <ErrorNotice message={error} fallback={t("chat.errors.responseFailed")} action={onReconnect ? { label: t("chat.messages.reconnect"), onPress: onReconnect } : undefined} />}
 
     </>
   );
@@ -218,7 +236,7 @@ export function MessageList({
                   fontSize: 12,
                 }}
               >
-                {contextStatusLabel(visibleContextStatus)}
+                {contextStatusLabel(visibleContextStatus, t)}
               </Text>
             </View>
           );
@@ -260,7 +278,7 @@ export function MessageList({
         <View style={styles.scrollToBottomContainer} pointerEvents="box-none">
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Scroll to bottom"
+            accessibilityLabel={t("chat.messages.scrollToBottom")}
             hitSlop={8}
             onPress={() => listRef.current?.scrollToEnd({ animated: true })}
             style={({ pressed }) => [

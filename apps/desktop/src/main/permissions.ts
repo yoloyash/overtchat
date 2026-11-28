@@ -1,4 +1,4 @@
-import { app, session, systemPreferences } from "electron";
+import { app, Notification, session, systemPreferences } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { APP_ORIGIN, originOf } from "./protocol";
@@ -60,4 +60,14 @@ export function configurePermissions(): void {
       if (state === "completed" && process.platform === "darwin") app.dock?.downloadFinished(target);
     });
   });
+}
+
+/**
+ * macOS asks whether the app may notify the first time the app reaches for
+ * notifications, and shows nothing until that is answered. Agent alerts only
+ * notify with the window in the background, where the question is easy to
+ * miss. Reaching for notifications at startup asks it with the app in front.
+ */
+export function requestNotificationAccess(): void {
+  if (process.platform === "darwin") Notification.isSupported();
 }

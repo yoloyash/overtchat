@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Trans, useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { KeyRound, Plus, ShieldOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
+import { signInMethodsQuery } from "@/lib/queries/auth";
 import {
   useInvalidateUsers,
   useSetUserRole,
@@ -37,9 +41,14 @@ type PendingRoleChange = {
 };
 
 export function UsersPanel({ currentUserId }: { currentUserId: string }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { data: users = [] } = useUsers();
   const invalidateUsers = useInvalidateUsers();
   const setRoleMutation = useSetUserRole();
+  // With passwords off there is nothing to reset; accounts sign in elsewhere.
+  const { data: methods } = useQuery(signInMethodsQuery);
+  const passwords = methods?.password !== false;
   const [addOpen, setAddOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [twoFactorTarget, setTwoFactorTarget] = useState<UserRow | null>(null);
@@ -59,7 +68,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       userId: pendingDelete.id,
     });
     if (error) {
-      setDeleteError(error.message ?? "Failed to delete user.");
+      setDeleteError(error.message ?? t("users.toast.deleteErrorFallback"));
       setDeleting(false);
       return;
     }
@@ -67,7 +76,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     setPendingDelete(null);
     setDeleting(false);
     toast.success({
-      title: "User deleted",
+      title: t("users.toast.deletedTitle"),
       description: email,
     });
   }
@@ -83,14 +92,16 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       toast.success({
         title:
           pendingRoleChange.role === "admin"
-            ? "Administrator access granted"
-            : "Administrator access removed",
+            ? t("users.toast.adminGrantedTitle")
+            : t("users.toast.adminRemovedTitle"),
         description: pendingRoleChange.user.email,
       });
       setPendingRoleChange(null);
     } catch (cause) {
       setRoleError(
-        cause instanceof Error ? cause.message : "The role could not be changed.",
+        cause instanceof Error
+          ? cause.message
+          : t("users.toast.roleChangeErrorFallback"),
       );
     }
   }
@@ -98,29 +109,41 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Users"
-        description="Manage who can sign in to this server."
+        title={t("users.page.title")}
+        description={t("users.page.description")}
         action={
           <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus /> Add user
+            <Plus /> {t("users.page.addUser")}
           </Button>
         }
       />
 
       <SettingsSection
-        title="People"
-        description={`${users.length} user${users.length === 1 ? "" : "s"} configured.`}
+        title={t("users.list.title")}
+        description={t("users.list.configured", { count: users.length })}
         contentClassName="overflow-x-auto divide-y-0"
       >
         <table className="w-full min-w-[48rem] text-sm">
           <thead className="border-b bg-muted/30 text-xs text-muted-foreground uppercase tracking-wide">
             <tr>
-              <th className="px-3 py-2.5 text-left font-medium">Name</th>
-              <th className="px-3 py-2.5 text-left font-medium">Email</th>
-              <th className="px-3 py-2.5 text-left font-medium">Role</th>
-              <th className="px-3 py-2.5 text-left font-medium">Two-factor</th>
-              <th className="px-3 py-2.5 text-left font-medium">Created</th>
-              <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+              <th className="px-3 py-2.5 text-left font-medium">
+                {t("users.list.columns.name")}
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium">
+                {t("users.list.columns.email")}
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium">
+                {t("users.list.columns.role")}
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium">
+                {t("users.list.columns.twoFactor")}
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium">
+                {t("users.list.columns.created")}
+              </th>
+              <th className="px-3 py-2.5 text-right font-medium">
+                {t("users.list.columns.actions")}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -133,7 +156,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                 <td className="px-3 py-3">
                   {u.id === currentUserId ? (
                     <span className="text-muted-foreground">
-                      {formatRole(u.role)}
+                      {t(`users.roles.${normalizeRole(u.role)}`)}
                     </span>
                   ) : (
                     <Select
@@ -147,39 +170,52 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                       }}
                     >
                       <SelectTrigger
-                        aria-label={`Role for ${u.email}`}
+                        aria-label={t("users.list.roleForLabel", {
+                          email: u.email,
+                        })}
                         className="w-28"
                       >
-                        <SelectValue>{formatRole(u.role)}</SelectValue>
+                        <SelectValue>
+                          {t(`users.roles.${normalizeRole(u.role)}`)}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="user">
+                          {t("users.roles.user")}
+                        </SelectItem>
+                        <SelectItem value="admin">
+                          {t("users.roles.admin")}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   )}
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
-                  {u.twoFactorEnabled ? "On" : "Off"}
+                  {u.twoFactorEnabled
+                    ? t("users.list.twoFactorOn")
+                    : t("users.list.twoFactorOff")}
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
-                  {new Date(u.createdAt).toLocaleDateString()}
+                  {new Date(u.createdAt).toLocaleDateString(locale)}
                 </td>
                 <td className="px-3 py-3 text-right">
                   {u.id === currentUserId ? (
                     <span className="text-xs text-muted-foreground">
-                      Current user
+                      {t("users.list.currentUser")}
                     </span>
                   ) : (
                     <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setResetTarget(u)}
-                      >
-                        <KeyRound data-icon="inline-start" /> Reset password
-                      </Button>
+                      {passwords && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setResetTarget(u)}
+                        >
+                          <KeyRound data-icon="inline-start" />{" "}
+                          {t("users.list.resetPassword")}
+                        </Button>
+                      )}
                       {u.twoFactorEnabled && (
                         <Button
                           type="button"
@@ -187,7 +223,8 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                           size="sm"
                           onClick={() => setTwoFactorTarget(u)}
                         >
-                          <ShieldOff data-icon="inline-start" /> Reset two-factor
+                          <ShieldOff data-icon="inline-start" />{" "}
+                          {t("users.list.resetTwoFactor")}
                         </Button>
                       )}
                       <Button
@@ -201,7 +238,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                         className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >
                         <Trash2 data-icon="inline-start" />
-                        Delete
+                        {t("common.actions.delete")}
                       </Button>
                     </div>
                   )}
@@ -244,7 +281,10 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
-            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+            className={cn(
+              "fixed inset-0 z-40 bg-black/40",
+              motionClasses.overlay,
+            )}
           />
           <AlertDialog.Popup
             className={cn(
@@ -254,29 +294,21 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               {pendingRoleChange?.role === "admin"
-                ? "Grant administrator access?"
-                : "Remove administrator access?"}
+                ? t("users.roleDialog.grantTitle")
+                : t("users.roleDialog.removeTitle")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              {pendingRoleChange?.role === "admin" ? (
-                <>
-                  <span className="font-medium text-foreground">
-                    {pendingRoleChange.user.email}
-                  </span>{" "}
-                  will be able to manage users, models, and agent workspaces,
-                  including running code and opening SSH connections from this
-                  server.
-                </>
-              ) : (
-                <>
-                  <span className="font-medium text-foreground">
-                    {pendingRoleChange?.user.email}
-                  </span>{" "}
-                  will lose administrator features. Their active agent runs
-                  will stop.
-                </>
-              )}{" "}
-              They will be signed out on all devices.
+              <Trans
+                i18nKey={
+                  pendingRoleChange?.role === "admin"
+                    ? "users.roleDialog.grantDescription"
+                    : "users.roleDialog.removeDescription"
+                }
+                values={{ email: pendingRoleChange?.user.email ?? "" }}
+                components={{
+                  email: <span className="font-medium text-foreground" />,
+                }}
+              />
             </AlertDialog.Description>
             {roleError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">
@@ -293,7 +325,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   />
                 }
               >
-                Cancel
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 size="sm"
@@ -301,10 +333,10 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                 onClick={() => void confirmRoleChange()}
               >
                 {setRoleMutation.isPending
-                  ? "Updating…"
+                  ? t("common.states.updating")
                   : pendingRoleChange?.role === "admin"
-                    ? "Make admin"
-                    : "Make user"}
+                    ? t("users.roleDialog.makeAdmin")
+                    : t("users.roleDialog.makeUser")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -322,7 +354,10 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
-            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+            className={cn(
+              "fixed inset-0 z-40 bg-black/40",
+              motionClasses.overlay,
+            )}
           />
           <AlertDialog.Popup
             className={cn(
@@ -331,14 +366,16 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Delete user?
+              {t("users.deleteDialog.title")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {pendingDelete?.email}
-              </span>{" "}
-              will no longer be able to sign in. Existing chats and projects are
-              not deleted.
+              <Trans
+                i18nKey="users.deleteDialog.description"
+                values={{ email: pendingDelete?.email ?? "" }}
+                components={{
+                  email: <span className="font-medium text-foreground" />,
+                }}
+              />
             </AlertDialog.Description>
             {deleteError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">
@@ -351,7 +388,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   <Button variant="ghost" size="sm" disabled={deleting} />
                 }
               >
-                Cancel
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -359,7 +396,9 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                 disabled={deleting}
                 onClick={confirmDelete}
               >
-                {deleting ? "Deleting…" : "Delete"}
+                {deleting
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -367,11 +406,6 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
       </AlertDialog.Root>
     </SettingsPage>
   );
-}
-
-function formatRole(role: string | null | undefined): string {
-  if (role === "admin") return "Admin";
-  return "User";
 }
 
 function normalizeRole(role: string | null | undefined): UserRole {

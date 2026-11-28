@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import Editor from "react-simple-code-editor";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,12 +13,12 @@ import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import { cn } from "@/lib/utils";
 import { SettingsRow, SettingsSection } from "../SettingsRows";
 
-function parseProviderOptions(text: string): string | null {
+function parseProviderOptions(text: string, t: TFunction): string | null {
   if (!text.trim()) return null;
   try {
     const parsed = JSON.parse(text);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return "Must be a JSON object";
+      return t("models.advanced.providerOptionsMustBeObject");
     }
     return null;
   } catch (e) {
@@ -48,6 +50,11 @@ export interface AdvancedFieldsProps {
   ) => void;
   /** Open by default when editing a model that already has these fields populated. */
   defaultOpen?: boolean;
+  /**
+   * Several models are being added together: show only what they share, and
+   * leave each model's context window and pricing to the provider.
+   */
+  sharedOnly?: boolean;
 }
 
 export function AdvancedFields({
@@ -63,9 +70,11 @@ export function AdvancedFields({
   providerOptionsText,
   onProviderOptionsTextChange,
   defaultOpen,
+  sharedOnly = false,
 }: AdvancedFieldsProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(Boolean(defaultOpen));
-  const providerOptionsError = parseProviderOptions(providerOptionsText);
+  const providerOptionsError = parseProviderOptions(providerOptionsText, t);
 
   function handleProviderOptionsBlur() {
     if (!providerOptionsText.trim() || providerOptionsError) return;
@@ -81,8 +90,8 @@ export function AdvancedFields({
 
   return (
     <SettingsSection
-      title="Advanced"
-      description="Optional prompt and provider-specific behavior for this model."
+      title={t("models.advanced.title")}
+      description={t("models.advanced.description")}
       action={
         <Button
           type="button"
@@ -91,7 +100,7 @@ export function AdvancedFields({
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
         >
-          {open ? "Hide" : "Show"}
+          {open ? t("models.advanced.hide") : t("models.advanced.show")}
           <ChevronDown
             className={cn(
               "motion-transform",
@@ -103,62 +112,66 @@ export function AdvancedFields({
     >
       {open ? (
         <>
-          <SettingsRow
-            title="Context window"
-            description="Maximum tokens this model can hold. Older conversation is automatically summarized to leave room for replies. Leave blank to use the detected or catalog value."
-            htmlFor="p-context-window"
-            align="center"
-            controlAlign="end"
-          >
-            <Input
-              id="p-context-window"
-              type="number"
-              min={1}
-              step={1}
-              inputMode="numeric"
-              className="w-full font-mono"
-              placeholder={
-                contextWindowPlaceholder === undefined &&
-                resolvedContextWindow === undefined
-                  ? "Automatically detected"
-                  : String(
-                      contextWindowPlaceholder ?? resolvedContextWindow,
-                    )
-              }
-              value={contextWindow ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                onContextWindowChange(value === "" ? null : Number(value));
-              }}
-            />
-          </SettingsRow>
+          {!sharedOnly && (
+            <SettingsRow
+              title={t("models.advanced.contextWindowTitle")}
+              description={t("models.advanced.contextWindowDescription")}
+              htmlFor="p-context-window"
+              align="center"
+              controlAlign="end"
+            >
+              <Input
+                id="p-context-window"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                className="w-full font-mono"
+                placeholder={
+                  contextWindowPlaceholder === undefined &&
+                  resolvedContextWindow === undefined
+                    ? t("models.advanced.contextWindowPlaceholder")
+                    : String(
+                        contextWindowPlaceholder ?? resolvedContextWindow,
+                      )
+                }
+                value={contextWindow ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  onContextWindowChange(value === "" ? null : Number(value));
+                }}
+              />
+            </SettingsRow>
+          )}
 
           <SettingsRow
-            title="System prompt"
+            title={t("models.advanced.systemPromptTitle")}
             align="start"
-            description="Optional instructions sent before each chat."
+            description={t("models.advanced.systemPromptDescription")}
             htmlFor="p-system-prompt"
           >
             <Textarea
               id="p-system-prompt"
               rows={4}
               className="min-h-28 resize-y"
-              placeholder="You are a helpful assistant…"
+              placeholder={t("models.advanced.systemPromptPlaceholder")}
               value={systemPrompt}
               onChange={(e) => onSystemPromptChange(e.target.value)}
             />
           </SettingsRow>
 
-          <PricingRow
-            pricing={pricing}
-            catalogPricing={catalogPricing}
-            onPricingChange={onPricingChange}
-          />
+          {!sharedOnly && (
+            <PricingRow
+              pricing={pricing}
+              catalogPricing={catalogPricing}
+              onPricingChange={onPricingChange}
+            />
+          )}
 
           <SettingsRow
-            title="Provider options"
+            title={t("models.advanced.providerOptionsTitle")}
             align="start"
-            description="Optional AI SDK options for the selected provider."
+            description={t("models.advanced.providerOptionsDescription")}
             htmlFor="p-provider-options"
           >
             <div className="space-y-2">
@@ -174,7 +187,7 @@ export function AdvancedFields({
                   onValueChange={(next) =>
                     onProviderOptionsTextChange(
                       next,
-                      parseProviderOptions(next),
+                      parseProviderOptions(next, t),
                     )
                   }
                   highlight={(code) => code}
@@ -187,7 +200,7 @@ export function AdvancedFields({
                   spellCheck={false}
                   autoCorrect="off"
                   autoCapitalize="off"
-                  aria-label="Provider options JSON"
+                  aria-label={t("models.advanced.providerOptionsAriaLabel")}
                   aria-invalid={providerOptionsError ? true : undefined}
                   style={{
                     fontFamily:
@@ -205,8 +218,7 @@ export function AdvancedFields({
                   </p>
                 ) : (
                   <p className="text-muted-foreground">
-                    Must be a JSON object using the selected provider&apos;s AI
-                    SDK option keys.
+                    {t("models.advanced.providerOptionsHint")}
                   </p>
                 )}
               </div>
@@ -230,10 +242,11 @@ export function PricingRow({
   /** Image usage has no cache tokens, so image models edit input and output only. */
   cacheRates?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <SettingsRow
-      title="Pricing"
-      description="USD per 1M tokens. Catalog rates apply automatically unless custom rates are enabled."
+      title={t("models.advanced.pricing.title")}
+      description={t("models.advanced.pricing.description")}
       align={pricing || catalogPricing ? "start" : "center"}
       controlAlign="end"
     >
@@ -241,17 +254,18 @@ export function PricingRow({
         <div className="flex min-h-8 items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">
             {pricing
-              ? "Custom rates"
+              ? t("models.advanced.pricing.customRates")
               : catalogPricing
-                ? "models.dev"
-                : "No catalog pricing"}
+                ? // eslint-disable-next-line i18next/no-literal-string -- catalog site name
+                  "models.dev"
+                : t("models.advanced.pricing.noCatalogPricing")}
           </span>
           <div className="flex items-center gap-2">
             <label
               htmlFor="p-custom-pricing"
               className="text-xs text-muted-foreground"
             >
-              Custom pricing
+              {t("models.advanced.pricing.customPricingLabel")}
             </label>
             <Switch
               id="p-custom-pricing"
@@ -267,7 +281,7 @@ export function PricingRow({
                     : { ...draft, cacheRead: "0", cacheWrite: "0" },
                 );
               }}
-              aria-label="Custom pricing"
+              aria-label={t("models.advanced.pricing.customPricingLabel")}
             />
           </div>
         </div>
@@ -275,7 +289,7 @@ export function PricingRow({
           <div className="mt-3 grid grid-cols-2 gap-3">
             <PricingInput
               id="p-price-input"
-              label="Input"
+              label={t("models.advanced.pricing.input")}
               value={pricing?.input ?? String(catalogPricing?.input ?? "")}
               readOnly={!pricing}
               onChange={(input) =>
@@ -284,7 +298,7 @@ export function PricingRow({
             />
             <PricingInput
               id="p-price-output"
-              label="Output"
+              label={t("models.advanced.pricing.output")}
               value={pricing?.output ?? String(catalogPricing?.output ?? "")}
               readOnly={!pricing}
               onChange={(output) =>
@@ -295,7 +309,7 @@ export function PricingRow({
               <>
                 <PricingInput
                   id="p-price-cache-read"
-                  label="Cache read"
+                  label={t("models.advanced.pricing.cacheRead")}
                   value={
                     pricing?.cacheRead ??
                     String(catalogPricing?.cacheRead ?? "")
@@ -307,7 +321,7 @@ export function PricingRow({
                 />
                 <PricingInput
                   id="p-price-cache-write"
-                  label="Cache write"
+                  label={t("models.advanced.pricing.cacheWrite")}
                   value={
                     pricing?.cacheWrite ??
                     String(catalogPricing?.cacheWrite ?? "")
@@ -325,12 +339,12 @@ export function PricingRow({
           <p className="text-xs text-muted-foreground">
             {catalogPricing?.tiered
               ? pricing
-                ? "Flat custom rates replace catalog context tiers."
-                : "Context tiers apply automatically."
+                ? t("models.advanced.pricing.tieredCustomHint")
+                : t("models.advanced.pricing.tieredCatalogHint")
               : pricing
-                ? "These rates apply to future generations."
+                ? t("models.advanced.pricing.customHint")
                 : !catalogPricing
-                  ? "Enable custom pricing to enter rates for this model."
+                  ? t("models.advanced.pricing.noCatalogHint")
                   : null}
           </p>
           {pricing ? (
@@ -341,7 +355,9 @@ export function PricingRow({
               onClick={() => onPricingChange(null)}
             >
               <RotateCcw />
-              {catalogPricing ? "Use catalog pricing" : "Remove custom pricing"}
+              {catalogPricing
+                ? t("models.advanced.pricing.useCatalogPricing")
+                : t("models.advanced.pricing.removeCustomPricing")}
             </Button>
           ) : null}
         </div>

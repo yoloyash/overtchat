@@ -19,7 +19,6 @@ const mocks = vi.hoisted(() => ({
   setThinkingLevel: vi.fn(),
   setMode: vi.fn(),
   fetchCatalog: vi.fn(),
-  checkResume: vi.fn(),
   launches: [] as Array<Record<string, unknown>>,
   eventSubscriber: null as ((event: AgentRuntimeEvent) => void) | null,
 }));
@@ -55,7 +54,8 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     probeTarget: vi.fn(),
     listWorkspaceSessions: vi.fn(),
     fetchCatalog: mocks.fetchCatalog,
-    checkResume: mocks.checkResume,
+    followsMovedSessions: provider === "omp",
+    sessionMoveEvent: (event: AgentRuntimeEvent) => event.type === "notice",
     startSession: (_target: unknown, launch: Record<string, unknown>) => {
       mocks.launches.push(launch);
       return {
@@ -80,9 +80,13 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
         stop: mocks.stop,
       };
     },
-    sessionIdentity: () => ({
-      providerSessionId: "provider-session",
-      providerSessionPath: "/sessions/provider-session.jsonl",
+    sessionIdentity: (state: Record<string, unknown>) => ({
+      providerSessionId:
+        typeof state.sessionId === "string" ? state.sessionId : "provider-session",
+      providerSessionPath:
+        typeof state.sessionFile === "string"
+          ? state.sessionFile
+          : "/sessions/provider-session.jsonl",
       sessionName: null,
     }),
     createEventClassifier: () => ({
@@ -356,32 +360,86 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
-  it("refuses a resume the provider reports as held elsewhere before starting anything", async () => {
-    mocks.checkResume.mockRejectedValueOnce(new Error("This session is still open in another Oh My Pi process."));
-    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
-    const descriptor = {
+  it("follows a resumed session into the copy its provider continues in", async () => {
+    const displayed = [{ id: "old", role: "user", content: "Before the move" }];
+    const continued = [...displayed, { id: "new", role: "assistant", content: "After the move" }];
+    mocks.getState.mockResolvedValue({
+      sessionId: "continued-session",
+      sessionFile: "/sessions/continued-session.jsonl",
+    });
+    mocks.getMessages.mockResolvedValue({ messages: continued });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadTranscript: async () => displayed,
+    });
+    const runtime = await registry.getOrStart({
       sessionId: "session", connectionId: "connection", workspaceId: "workspace",
-      provider: "omp" as const, target: { transport: "local" as const }, executable: "omp", cwd: "/workspace",
+      provider: "omp", target: { transport: "local" }, executable: "omp", cwd: "/workspace",
       providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
       launchConfig: {},
-    };
-    await expect(registry.getOrStart(descriptor)).rejects.toThrow("still open in another");
-    expect(mocks.checkResume).toHaveBeenCalledWith(
-      { transport: "local" },
+    });
+
+    expect(mocks.launches).toEqual([
       expect.objectContaining({
-        executable: "omp",
-        cwd: "/workspace",
         resume: { providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl" },
       }),
-    );
-    expect(mocks.launches).toEqual([]);
+    ]);
+    expect(runtime.movedSession()).toEqual({
+      providerSessionId: "continued-session",
+      providerSessionPath: "/sessions/continued-session.jsonl",
+    });
+    // The stored transcript belongs to the session that was asked for.
+    expect(runtime.snapshot().messages).toEqual(continued);
     expect(mocks.stop).not.toHaveBeenCalled();
-    expect(registry.get("session")).toBeNull();
+    await registry.stopAll();
+  });
 
-    // A provider that cannot tell lets the resume proceed as before.
-    mocks.checkResume.mockResolvedValueOnce(undefined);
-    const runtime = await registry.getOrStart(descriptor);
-    expect(runtime.snapshot().sessionId).toBe("session");
+  it("still refuses a different session from a provider that never moves one", async () => {
+    mocks.getState.mockResolvedValue({ sessionId: "other-session" });
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    await expect(registry.getOrStart({
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "codex", target: { transport: "local" }, executable: "codex", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    })).rejects.toThrow("Codex opened a different session than requested.");
+    expect(mocks.stop).toHaveBeenCalledOnce();
+    expect(registry.get("session")).toBeNull();
+  });
+
+  it("reports a session its provider moves while it runs, once", async () => {
+    const sessionMoved = vi.fn();
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [], sessionMoved });
+    const runtime = await registry.getOrStart({
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "omp", target: { transport: "local" }, executable: "omp", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    expect(runtime.movedSession()).toBeNull();
+    await runtime.refreshState();
+    expect(sessionMoved).not.toHaveBeenCalled();
+
+    // The provider announces the move mid-turn; the runtime does not wait for
+    // the turn to end, and leaves the turn's own state alone.
+    mocks.getState.mockResolvedValue({
+      sessionId: "continued-session",
+      sessionFile: "/sessions/continued-session.jsonl",
+      isStreaming: false,
+    });
+    mocks.eventSubscriber?.({ type: "agent_start" });
+    mocks.eventSubscriber?.({ type: "notice", source: "session-persistence" });
+    await vi.waitFor(() => expect(sessionMoved).toHaveBeenCalledOnce());
+    expect(runtime.snapshot().status).toBe("running");
+    await runtime.refreshState();
+    await runtime.refreshState();
+
+    expect(sessionMoved).toHaveBeenCalledOnce();
+    expect(sessionMoved).toHaveBeenCalledWith("session", runtime);
+    expect(runtime.movedSession()).toEqual({
+      providerSessionId: "continued-session",
+      providerSessionPath: "/sessions/continued-session.jsonl",
+    });
     await registry.stopAll();
   });
 

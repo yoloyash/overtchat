@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { View } from "react-native";
 import { UserAvatar } from "@/components/ui/UserAvatar";
@@ -13,9 +14,10 @@ import {
 } from "@/components/settings/SettingsUI";
 import { toastSuccess } from "@/lib/toast";
 export default function Profile() {
+  const { t } = useTranslation();
   const session = getAuthClient().useSession();
   return (
-    <SettingsPage title="Profile">
+    <SettingsPage title={t("profile.title")}>
       {session.data && (
         <ProfileForm
           initialName={session.data.user.name}
@@ -35,6 +37,7 @@ function ProfileForm({
   initialImage: string;
   refresh: () => unknown;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName);
   const [image, setImage] = useState(initialImage);
   const [saved, setSaved] = useState({
@@ -46,7 +49,10 @@ function ProfileForm({
   useUnsavedChanges(dirty);
   return (
     <>
-      <Section title="Identity" description="Visible to people on this server.">
+      <Section
+        title={t("profile.identity.title")}
+        description={t("profile.mobile.identityDescription")}
+      >
         <View
           style={{ alignItems: "center", paddingTop: 20, paddingBottom: 6 }}
         >
@@ -54,7 +60,7 @@ function ProfileForm({
         </View>
         <Field
           editable={!action.busy}
-          label="Display name"
+          label={t("profile.displayName.title")}
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
@@ -62,20 +68,20 @@ function ProfileForm({
         />
         <Field
           editable={!action.busy}
-          label="Avatar URL"
+          label={t("profile.avatarUrl.title")}
           value={image}
           onChangeText={setImage}
           keyboardType="url"
-          hint="Optional direct link to an image."
+          hint={t("profile.mobile.avatarUrlHint")}
         />
       </Section>
       {action.error && <Label error>{action.error}</Label>}
       <Action
-        title={action.busy ? "Saving…" : "Save profile"}
+        title={action.busy ? t("common.states.saving") : t("profile.save")}
         disabled={action.busy || !dirty}
         onPress={() =>
           void action.run(async () => {
-            if (!name.trim()) throw new Error("Enter a display name.");
+            if (!name.trim()) throw new Error(t("profile.mobile.errors.nameRequired"));
             if (image.trim()) {
               let valid = false;
               try {
@@ -85,7 +91,8 @@ function ProfileForm({
               } catch {
                 /* Show the field error below. */
               }
-              if (!valid) throw new Error("Use an HTTP or HTTPS image URL.");
+              if (!valid)
+                throw new Error(t("profile.mobile.errors.invalidAvatarUrl"));
             }
             const next = { name: name.trim(), image: image.trim() };
             const { error } = await getAuthClient().updateUser({
@@ -93,12 +100,14 @@ function ProfileForm({
               image: next.image || null,
             });
             if (error)
-              throw new Error(error.message ?? "Couldn’t save your profile.");
+              throw new Error(
+                error.message ?? t("profile.mobile.errors.saveFailed"),
+              );
             setName(next.name);
             setImage(next.image);
             setSaved(next);
             void refresh();
-            toastSuccess("Profile saved");
+            toastSuccess(t("profile.mobile.saved"));
           })
         }
       />

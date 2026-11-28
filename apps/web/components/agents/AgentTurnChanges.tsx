@@ -1,6 +1,7 @@
 "use client";
 
 import { useContext, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { AgentTurnChanges } from "@overtchat/agent-bridge";
 import {
   agentTurnChangesDirectories,
@@ -18,6 +19,7 @@ import {
   Folder,
   FolderOpen,
 } from "lucide-react";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { cn } from "@/lib/utils";
 import { AgentDisclosureContext } from "./AgentTranscriptMotion";
 import { useAgentWorkspaceNavigation } from "./AgentWorkspaceNavigationContext";
@@ -36,10 +38,11 @@ function LineCounts({
   deletions: number;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <span
       role="group"
-      aria-label={`${additions} added, ${deletions} removed`}
+      aria-label={t("agents.messages.lineCounts", { additions, deletions })}
       className={cn("inline-flex shrink-0 items-center gap-1.5 font-mono tabular-nums", className)}
     >
       <span aria-hidden="true" className="text-emerald-700 dark:text-emerald-300">
@@ -54,6 +57,8 @@ function LineCounts({
 
 /** The files one turn changed, as a folder tree with line counts. */
 export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const navigation = useAgentWorkspaceNavigation();
   const holdDisclosure = useContext(AgentDisclosureContext);
   const tree = useMemo(() => buildAgentTurnChangesTree(changes), [changes]);
@@ -128,7 +133,10 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
       </>
     );
     const title = node.previousPath
-      ? `${node.path} (renamed from ${node.previousPath})`
+      ? t("agents.messages.renamedFrom", {
+          path: node.path,
+          previousPath: node.previousPath,
+        })
       : node.path;
     const workspacePath = node.workspacePath;
     return (
@@ -137,7 +145,7 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
           <button
             type="button"
             title={title}
-            aria-label={`Open ${node.path}`}
+            aria-label={t("agents.files.openFilePath", { path: node.path })}
             style={style}
             className={cn(rowClass, pressableClass)}
             onClick={() => navigation.openFile({ path: workspacePath })}
@@ -155,12 +163,12 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
 
   return (
     <section
-      aria-label="Changed files"
+      aria-label={t("agents.messages.changedFilesLabel")}
       className="overflow-hidden rounded-lg border bg-muted/15"
       data-testid="agent-turn-changes"
     >
       <div className="flex min-h-9 items-center gap-3 px-3 py-1.5 text-xs">
-        <h3 className="font-medium">{agentTurnChangesLabel(changes.total.files)}</h3>
+        <h3 className="font-medium">{agentTurnChangesLabel(changes.total.files, t, locale)}</h3>
         {counted && (
           <LineCounts
             additions={changes.total.additions}
@@ -170,8 +178,16 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
         {hasDirectories && (
           <button
             type="button"
-            aria-label={allOpen ? "Collapse all folders" : "Expand all folders"}
-            title={allOpen ? "Collapse all folders" : "Expand all folders"}
+            aria-label={
+              allOpen
+                ? t("agents.messages.collapseAllFolders")
+                : t("agents.messages.expandAllFolders")
+            }
+            title={
+              allOpen
+                ? t("agents.messages.collapseAllFolders")
+                : t("agents.messages.expandAllFolders")
+            }
             className="ml-auto flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground motion-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
             onClick={(event) => {
               holdDisclosure(event.currentTarget);
@@ -190,7 +206,10 @@ export function AgentTurnChangesCard({ changes }: { changes: AgentTurnChanges })
       <ul className="px-1 pb-1">{rows.map(renderRow)}</ul>
       {unlisted > 0 && (
         <p className="px-3 pb-2 text-xs text-muted-foreground">
-          and {unlisted.toLocaleString("en-US")} more {unlisted === 1 ? "file" : "files"}
+          {t("agents.messages.andMoreFiles", {
+            count: unlisted,
+            formattedCount: unlisted.toLocaleString(locale),
+          })}
         </p>
       )}
     </section>

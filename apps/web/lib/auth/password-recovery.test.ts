@@ -269,6 +269,22 @@ describe("administrator password recovery", () => {
     ).toEqual({ preferred_name: "Keep my settings" });
   });
 
+  it("gives a member who has no password their first one", async () => {
+    db.$client.prepare("DELETE FROM account WHERE user_id = ?").run(member.id);
+    const response = await request(
+      "/admin/reset-user-password",
+      {
+        userId: member.id,
+        currentPassword: initialPassword,
+        newPassword: replacement,
+      },
+      admin,
+      true,
+    );
+    expect(response.status).toBe(200);
+    await signIn("member@example.com", replacement);
+  });
+
   it("checks current server-side role rather than an earlier session", async () => {
     const before = snapshot(member.id);
     db.$client
@@ -292,9 +308,13 @@ describe("administrator password recovery", () => {
 });
 
 describe("operator password recovery", () => {
-  it("does not create a password credential for an account without one", async () => {
+  it("gives an account that only signed in through the provider its first password", async () => {
     db.$client.prepare("DELETE FROM account WHERE user_id = ?").run(member.id);
-    const before = snapshot(member.id);
+    db.$client
+      .prepare(
+        "INSERT INTO account (id, account_id, provider_id, user_id, updated_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("provider-link", "provider-subject", "oidc", member.id, Date.now());
     expect(
       (
         await managementPOST(
@@ -304,8 +324,24 @@ describe("operator password recovery", () => {
           }),
         )
       ).status,
-    ).toBe(409);
-    expect(snapshot(member.id)).toEqual(before);
+    ).toBe(200);
+    expect(
+      db.$client
+        .prepare(
+          "SELECT provider_id, account_id FROM account WHERE user_id = ? ORDER BY provider_id",
+        )
+        .all(member.id),
+    ).toEqual([
+      { provider_id: "credential", account_id: member.id },
+      { provider_id: "oidc", account_id: "provider-subject" },
+    ]);
+    // Like any recovery, it ends the sessions the account had.
+    expect(
+      db.$client
+        .prepare("SELECT id FROM session WHERE user_id = ?")
+        .all(member.id),
+    ).toEqual([]);
+    await signIn("member@example.com", replacement);
   });
   it("recovers the sole administrator without a user login", async () => {
     const response = await managementPOST(

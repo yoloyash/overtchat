@@ -2,6 +2,8 @@
 
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import type { TFunction } from "i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +21,12 @@ import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AdminModelConfig } from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
-import { findProvider, modelIconForModel } from "@/lib/providers/catalog";
+import {
+  findProvider,
+  isProviderId,
+  modelIconForModel,
+  providerDisplayLabel,
+} from "@/lib/providers/catalog";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
@@ -41,6 +48,7 @@ import { motionClasses } from "@/lib/motion";
 const ACTIVE_CHAT_MODEL = "__active-chat-model__";
 
 export function ModelsPanel() {
+  const { t } = useTranslation();
   const { data: models = [] } = useAdminModelConfigs();
   const deleteMut = useDeleteModelConfig();
   const taskModelMut = useSetTaskModel();
@@ -65,7 +73,7 @@ export function ModelsPanel() {
       await reorderMut.mutateAsync(modelIds);
     } catch (error) {
       toast.error({
-        title: getErrorMessage(error, "Couldn't save model order"),
+        title: getErrorMessage(error, t("models.toast.reorderFailed")),
       });
     }
   }
@@ -80,16 +88,17 @@ export function ModelsPanel() {
         m.model,
         m.baseUrl,
         host,
-        providerLabel(m),
+        providerLabel(m, t),
         m.enabled ? "enabled" : "disabled",
-        m.taskModel ? "task" : "",
+        m.taskModel ? `task ${t("models.item.taskBadge")}` : "",
         m.modelType,
+        m.modelType === "image" ? t("models.item.imageBadge") : "",
       ]
         .join(" ")
         .toLowerCase()
         .includes(q);
     });
-  }, [models, query]);
+  }, [models, query, t]);
 
   async function toggleEnabled(m: AdminModelConfig, next: boolean) {
     setTogglingId(m.id);
@@ -117,9 +126,14 @@ export function ModelsPanel() {
         },
       });
     } catch (err) {
-      const message = getErrorMessage(err, "Failed to update model");
+      const message = getErrorMessage(
+        err,
+        t("models.toast.updateFailedFallback"),
+      );
       toast.error({
-        title: `Failed to ${next ? "enable" : "disable"} model`,
+        title: next
+          ? t("models.toast.enableFailed")
+          : t("models.toast.disableFailed"),
         description: message,
       });
     } finally {
@@ -135,11 +149,11 @@ export function ModelsPanel() {
       await deleteMut.mutateAsync(pendingDelete.id);
       setPendingDelete(null);
       toast.success({
-        title: "Model deleted",
+        title: t("models.toast.deleted"),
         description: label,
       });
     } catch (err) {
-      setDeleteError(getErrorMessage(err, "Failed to delete model"));
+      setDeleteError(getErrorMessage(err, t("models.toast.deleteFailed")));
     }
   }
 
@@ -151,8 +165,8 @@ export function ModelsPanel() {
       await taskModelMut.mutateAsync(modelConfigId);
     } catch (err) {
       toast.error({
-        title: "Failed to update task model",
-        description: getErrorMessage(err, "The task model was not changed."),
+        title: t("models.toast.taskModelUpdateFailed"),
+        description: getErrorMessage(err, t("models.toast.taskModelUnchanged")),
       });
     }
   }
@@ -160,12 +174,12 @@ export function ModelsPanel() {
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Models"
-        description="Manage chat, image, and background task models. One image model can be enabled at a time."
+        title={t("models.page.title")}
+        description={t("models.page.description")}
         action={
           models.length > 0 ? (
             <Button render={<Link to="/settings/models/new" />} size="sm">
-              <Plus /> Add model
+              <Plus /> {t("models.page.addModel")}
             </Button>
           ) : undefined
         }
@@ -173,12 +187,12 @@ export function ModelsPanel() {
 
       {models.length > 0 && (
         <SettingsSection
-          title="Background tasks"
-          description="Choose how lightweight model work is handled across this server."
+          title={t("models.backgroundTasks.title")}
+          description={t("models.backgroundTasks.description")}
         >
           <SettingsRow
-            title="Task model"
-            description="Used to generate chat titles. A fast, inexpensive, non-reasoning model works best."
+            title={t("models.backgroundTasks.taskModelTitle")}
+            description={t("models.backgroundTasks.taskModelDescription")}
             align="center"
             controlAlign="end"
           >
@@ -187,14 +201,19 @@ export function ModelsPanel() {
               onValueChange={(value) => void selectTaskModel(value)}
               disabled={taskModelMut.isPending}
             >
-              <SelectTrigger aria-label="Task model" className="w-full">
+              <SelectTrigger
+                aria-label={t("models.backgroundTasks.taskModelTitle")}
+                className="w-full"
+              >
                 <SelectValue>
-                  {taskModel ? taskModel.label : "Same as chat model"}
+                  {taskModel
+                    ? taskModel.label
+                    : t("models.backgroundTasks.sameAsChatModel")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ACTIVE_CHAT_MODEL}>
-                  Same as chat model
+                  {t("models.backgroundTasks.sameAsChatModel")}
                 </SelectItem>
                 <SelectSeparator />
                 {models
@@ -209,7 +228,7 @@ export function ModelsPanel() {
                         <span>{model.label}</span>
                         {!model.enabled && (
                           <span className="text-xs text-muted-foreground">
-                            Not in chat
+                            {t("models.backgroundTasks.notInChat")}
                           </span>
                         )}
                       </SelectItem>
@@ -228,41 +247,46 @@ export function ModelsPanel() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search models"
+              placeholder={t("models.page.searchPlaceholder")}
               className="pl-8"
-              aria-label="Search models"
+              aria-label={t("models.page.searchLabel")}
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            {models.length} configured
+            {t("models.page.configuredCount", { count: models.length })}
           </p>
         </div>
       )}
 
       {models.length === 0 ? (
         <div className="border-y border-dashed px-6 py-14 text-center">
-          <p className="text-sm text-muted-foreground">No models configured.</p>
+          <p className="text-sm text-muted-foreground">
+            {t("models.page.empty")}
+          </p>
           <Button
             render={<Link to="/settings/models/new" />}
             className="mt-4"
             size="sm"
           >
-            <Plus /> Add your first model
+            <Plus /> {t("models.page.addFirstModel")}
           </Button>
         </div>
       ) : filteredModels.length === 0 ? (
         <div className="border-y px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">
-            No models match{" "}
-            <span className="text-foreground">{query.trim()}</span>.
+            <Trans
+              i18nKey="models.page.noMatches"
+              values={{ query: query.trim() }}
+              components={{ query: <span className="text-foreground" /> }}
+            />
           </p>
         </div>
       ) : (
         <div>
           <p className="mb-3 text-xs text-muted-foreground">
             {query.trim()
-              ? "Clear search to change model order."
-              : "Use the arrows to set the model order for everyone."}
+              ? t("models.page.reorderClearSearch")
+              : t("models.page.reorderHint")}
           </p>
           <div className="@container divide-y divide-border/70 border-y">
             {filteredModels.map((m) => {
@@ -288,12 +312,12 @@ export function ModelsPanel() {
                         </span>
                         {m.taskModel && (
                           <span className="rounded-full border bg-accent/50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                            Task
+                            {t("models.item.taskBadge")}
                           </span>
                         )}
                         {m.modelType === "image" && (
                           <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            Image
+                            {t("models.item.imageBadge")}
                           </span>
                         )}
                         {m.modelType !== "image" && (
@@ -304,7 +328,7 @@ export function ModelsPanel() {
                         )}
                       </div>
                       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <span>{providerLabel(m)}</span>
+                        <span>{providerLabel(m, t)}</span>
                         <span
                           aria-hidden="true"
                           className="text-muted-foreground/50"
@@ -324,8 +348,10 @@ export function ModelsPanel() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Move ${m.label} up`}
-                        title="Move up"
+                        aria-label={t("models.item.moveUpLabel", {
+                          label: m.label,
+                        })}
+                        title={t("models.item.moveUpTitle")}
                         disabled={
                           reorderMut.isPending ||
                           !!query.trim() ||
@@ -338,8 +364,10 @@ export function ModelsPanel() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Move ${m.label} down`}
-                        title="Move down"
+                        aria-label={t("models.item.moveDownLabel", {
+                          label: m.label,
+                        })}
+                        title={t("models.item.moveDownTitle")}
                         disabled={
                           reorderMut.isPending ||
                           !!query.trim() ||
@@ -352,13 +380,17 @@ export function ModelsPanel() {
                     </div>
                     <div className="flex items-center justify-end gap-2 @2xl:min-w-16">
                       <span className="hidden text-xs text-muted-foreground @2xl:inline">
-                        {m.enabled ? "On" : "Off"}
+                        {m.enabled ? t("models.item.on") : t("models.item.off")}
                       </span>
                       <Switch
                         checked={m.enabled}
                         disabled={togglingId !== null}
                         onCheckedChange={(next) => void toggleEnabled(m, next)}
-                        aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
+                        aria-label={
+                          m.enabled
+                            ? t("models.item.disableLabel", { label: m.label })
+                            : t("models.item.enableLabel", { label: m.label })
+                        }
                       />
                     </div>
                     <div className="h-6 w-px bg-border" aria-hidden="true" />
@@ -367,11 +399,13 @@ export function ModelsPanel() {
                         render={<Link to="/settings/models/$id" params={{ id: m.id }} />}
                         variant="outline"
                         size="sm"
-                        aria-label={`Edit ${m.label}`}
-                        title={`Edit ${m.label}`}
+                        aria-label={t("models.item.editLabel", {
+                          label: m.label,
+                        })}
+                        title={t("models.item.editLabel", { label: m.label })}
                       >
                         <Pencil data-icon="inline-start" />
-                        Edit
+                        {t("common.actions.edit")}
                       </Button>
                       <Button
                         type="button"
@@ -381,12 +415,14 @@ export function ModelsPanel() {
                           setDeleteError("");
                           setPendingDelete(m);
                         }}
-                        aria-label={`Delete ${m.label}`}
-                        title={`Delete ${m.label}`}
+                        aria-label={t("models.item.deleteLabel", {
+                          label: m.label,
+                        })}
+                        title={t("models.item.deleteLabel", { label: m.label })}
                         className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >
                         <Trash2 data-icon="inline-start" />
-                        Delete
+                        {t("common.actions.delete")}
                       </Button>
                     </div>
                   </div>
@@ -420,15 +456,20 @@ export function ModelsPanel() {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Delete model?
+              {t("models.deleteDialog.title")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {pendingDelete?.label}
-              </span>{" "}
-              will be removed from chat. Existing chats keep their messages.
-              {pendingDelete?.taskModel &&
-                " Background tasks will return to using the active chat model."}
+              <Trans
+                i18nKey={
+                  pendingDelete?.taskModel
+                    ? "models.deleteDialog.descriptionTaskModel"
+                    : "models.deleteDialog.description"
+                }
+                values={{ name: pendingDelete?.label ?? "" }}
+                components={{
+                  name: <span className="font-medium text-foreground" />,
+                }}
+              />
             </AlertDialog.Description>
             {deleteError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">
@@ -442,7 +483,7 @@ export function ModelsPanel() {
                 disabled={deleteMut.isPending}
                 onClick={() => setPendingDelete(null)}
               >
-                Cancel
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -450,7 +491,9 @@ export function ModelsPanel() {
                 disabled={deleteMut.isPending}
                 onClick={confirmDelete}
               >
-                {deleteMut.isPending ? "Deleting…" : "Delete"}
+                {deleteMut.isPending
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -461,12 +504,10 @@ export function ModelsPanel() {
 }
 
 /** The desktop app can list providers that its bundled catalog predates. */
-function providerLabel(model: AdminModelConfig): string {
-  return (
-    findProvider(model.providerId)?.label ??
-    model.displayProvider ??
-    model.providerId
-  );
+function providerLabel(model: AdminModelConfig, t: TFunction): string {
+  return isProviderId(model.providerId)
+    ? providerDisplayLabel(model.providerId, t)
+    : (model.displayProvider ?? model.providerId);
 }
 
 function hostnameOf(url: string): string {

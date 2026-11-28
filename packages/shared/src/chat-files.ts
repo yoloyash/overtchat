@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { ToolState } from "./tools";
 
 export const READ_FILE_TOOL_NAME = "read_file" as const;
@@ -75,9 +76,13 @@ export function compactCount(value: number): string {
 }
 
 /** Short description of the range a read_file call returned. */
-export function readFileRangeLabel(output: ReadFileOutput): string {
+export function readFileRangeLabel(output: ReadFileOutput, t: TFunction): string {
   if (output.offset === 0 && output.end >= output.totalCharacters) {
-    return "whole file";
+    return t("chat.activity.wholeFile");
   }
-  return `${compactCount(output.offset)}–${compactCount(output.end)} of ${compactCount(output.totalCharacters)} chars`;
+  return t("chat.activity.readFileRange", {
+    offset: compactCount(output.offset),
+    end: compactCount(output.end),
+    total: compactCount(output.totalCharacters),
+  });
 }

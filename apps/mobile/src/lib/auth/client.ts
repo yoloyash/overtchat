@@ -38,3 +38,12 @@ export function getAuthClient(): AuthClient {
 export function resetAuthClient() {
   cached = null;
 }
+
+/**
+ * The signed-in session. Components call this instead of the client's own
+ * hook: a hook reached through a call is one the React Compiler cannot follow,
+ * so it leaves the whole calling component unoptimized.
+ */
+export function useAuthSession() {
+  return getAuthClient().useSession();
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   Bot,
   Brain,
@@ -39,57 +40,72 @@ type SettingsPath =
   | "/settings/connections"
   | "/settings/users";
 
+type NavItemId =
+  | "general"
+  | "personalization"
+  | "tools"
+  | "profile"
+  | "security"
+  | "data"
+  | "models"
+  | "services"
+  | "agents"
+  | "users";
+
+type NavGroupId = "preferences" | "account" | "administration";
+
 type Item = {
+  id: NavItemId;
   href: SettingsPath;
-  label: string;
   icon: typeof Cpu;
   beta?: boolean;
 };
 
 type Group = {
-  label: string;
+  id: NavGroupId;
   items: Item[];
 };
 
 const PREFERENCE_ITEMS: Item[] = [
-  { href: "/settings/general", label: "General", icon: Settings2 },
-  { href: "/settings/personalization", label: "Personalization", icon: Brain },
-  { href: "/settings/tools", label: "Tools", icon: Wrench },
+  { id: "general", href: "/settings/general", icon: Settings2 },
+  { id: "personalization", href: "/settings/personalization", icon: Brain },
+  { id: "tools", href: "/settings/tools", icon: Wrench },
 ];
 
 const ACCOUNT_ITEMS: Item[] = [
-  { href: "/settings/profile", label: "Profile", icon: UserRound },
-  { href: "/settings/account", label: "Security", icon: KeyRound },
-  { href: "/settings/data", label: "Data", icon: Database },
+  { id: "profile", href: "/settings/profile", icon: UserRound },
+  { id: "security", href: "/settings/account", icon: KeyRound },
+  { id: "data", href: "/settings/data", icon: Database },
 ];
 
 const ADMIN_ITEMS: Item[] = [
-  { href: "/settings/models", label: "Models", icon: Cpu },
+  { id: "models", href: "/settings/models", icon: Cpu },
   {
+    id: "services",
     href: "/settings/services",
-    label: "Services",
     icon: ServerCog,
   },
   {
+    id: "agents",
     href: "/settings/connections",
-    label: "Agents",
     icon: Bot,
     beta: true,
   },
-  { href: "/settings/users", label: "Users", icon: Users },
+  { id: "users", href: "/settings/users", icon: Users },
 ];
 
 const USER_GROUPS: Group[] = [
-  { label: "Preferences", items: PREFERENCE_ITEMS },
-  { label: "Account", items: ACCOUNT_ITEMS },
+  { id: "preferences", items: PREFERENCE_ITEMS },
+  { id: "account", items: ACCOUNT_ITEMS },
 ];
 
 const ADMIN_GROUP: Group = {
-  label: "Administration",
+  id: "administration",
   items: ADMIN_ITEMS,
 };
 
 export function SettingsNav() {
+  const { t } = useTranslation();
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
@@ -103,7 +119,7 @@ export function SettingsNav() {
   const CurrentIcon = currentItem.icon;
 
   return (
-    <nav aria-label="Settings" className="w-full md:space-y-4">
+    <nav aria-label={t("settings.nav.ariaLabel")} className="w-full md:space-y-4">
       <div className="md:hidden">
         <Select
           value={currentItem.href}
@@ -111,23 +127,23 @@ export function SettingsNav() {
             if (href && href !== currentItem.href) void navigate({ to: href });
           }}
         >
-          <SelectTrigger aria-label="Settings page" className="w-full">
+          <SelectTrigger aria-label={t("settings.nav.pageSelectLabel")} className="w-full">
             <SelectValue>
               <CurrentIcon className="size-3.5" />
-              <span>{currentItem.label}</span>
+              <span>{t(`settings.nav.items.${currentItem.id}`)}</span>
               {currentItem.beta && <BetaBadge />}
             </SelectValue>
           </SelectTrigger>
           <SelectContent align="start">
             {groups.map((group) => (
-              <SelectGroup key={group.label}>
-                <SelectLabel>{group.label}</SelectLabel>
+              <SelectGroup key={group.id}>
+                <SelectLabel>{t(`settings.nav.groups.${group.id}`)}</SelectLabel>
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   return (
                     <SelectItem key={item.href} value={item.href}>
                       <Icon className="size-3.5" />
-                      <span>{item.label}</span>
+                      <span>{t(`settings.nav.items.${item.id}`)}</span>
                       {item.beta && <BetaBadge />}
                     </SelectItem>
                   );
@@ -139,8 +155,8 @@ export function SettingsNav() {
       </div>
       {groups.map((group) => (
         <Section
-          key={group.label}
-          label={group.label}
+          key={group.id}
+          label={t(`settings.nav.groups.${group.id}`)}
           items={group.items}
           pathname={pathname}
           className="hidden md:block"
@@ -176,6 +192,7 @@ function Section({
 }
 
 function NavLink({ item, pathname }: { item: Item; pathname: string }) {
+  const { t } = useTranslation();
   const active = isActive(item, pathname);
   const Icon = item.icon;
   return (
@@ -190,7 +207,7 @@ function NavLink({ item, pathname }: { item: Item; pathname: string }) {
       )}
     >
       <Icon className="size-3.5 shrink-0" />
-      <span>{item.label}</span>
+      <span>{t(`settings.nav.items.${item.id}`)}</span>
       {item.beta && <BetaBadge />}
       <LinkPendingIndicator to={item.href} />
     </Link>

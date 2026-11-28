@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type RefObject } from "react";
 import { Reply } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { normalizeQuoteText } from "@overtchat/shared";
 
@@ -91,6 +92,7 @@ export function QuoteSelectionButton({
   scrollRef: RefObject<HTMLElement | null>;
   onQuote: (text: string) => void;
 }) {
+  const { t } = useTranslation();
   const [position, setPosition] = useState<Position | null>(null);
 
   useEffect(() => {
@@ -148,7 +150,7 @@ export function QuoteSelectionButton({
         setPosition(null);
       }}
     >
-      <Reply /> Reply
+      <Reply /> {t("chat.messages.reply")}
     </Button>
   );
 }

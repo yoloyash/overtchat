@@ -2,6 +2,8 @@ import React, { act, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { ChatMessageQueue } from "@overtchat/shared";
 
 vi.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
@@ -99,7 +101,7 @@ it("edits and deletes pending messages and invokes cancellation before sending o
   });
   queue.enqueue({ id: "one", text: "Original", files: [], body: {} });
   queue.enqueue({ id: "two", text: "Delete", files: [], body: {} });
-  await act(async () => root.render(<Surface queue={queue} />));
+  await act(async () => root.render(<I18nextProvider i18n={i18n}><Surface queue={queue} /></I18nextProvider>));
   await act(async () => button("Edit queued message").click());
   const textarea = container.querySelector("textarea")!;
   await act(async () => {

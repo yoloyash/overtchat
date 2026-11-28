@@ -1,14 +1,18 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { htmlPreviewDocument } from "@/lib/chat/code-preview";
 import { MAX_TABLE_ROWS, parseDelimited } from "@/lib/chat/file-preview";
 
 /** A CSV or TSV file as a table, with its first row as the header. */
 export function DelimitedTable({ text, delimiter }: { text: string; delimiter: string }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const rows = useMemo(() => parseDelimited(text, delimiter), [text, delimiter]);
   if (!rows.length) {
-    return <p className="p-6 text-sm text-muted-foreground">This file is empty.</p>;
+    return <p className="p-6 text-sm text-muted-foreground">{t("chat.files.emptyFile")}</p>;
   }
   const [header, ...body] = rows;
   const shown = body.slice(0, MAX_TABLE_ROWS);
@@ -39,7 +43,10 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
       </table>
       {body.length > shown.length && (
         <p className="px-3 py-2 text-xs text-muted-foreground">
-          Showing the first {MAX_TABLE_ROWS.toLocaleString()} of {body.length.toLocaleString()} rows.
+          {t("chat.files.tableRowsShown", {
+            shown: MAX_TABLE_ROWS.toLocaleString(locale),
+            total: body.length.toLocaleString(locale),
+          })}
         </p>
       )}
     </div>
@@ -48,9 +55,10 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
 
 /** An HTML file running in a sandboxed frame with no access to the app. */
 export function HtmlFilePreview({ name, html }: { name: string; html: string }) {
+  const { t } = useTranslation();
   return (
     <iframe
-      title={`${name} preview`}
+      title={t("chat.files.previewTitle", { name })}
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       srcDoc={htmlPreviewDocument(html)}

@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Menu } from "@base-ui/react/menu";
 import type { UIMessage } from "ai";
 import { useTheme } from "next-themes";
 import { writeText } from "clipboard-polyfill";
 import { CodeBlock, Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,7 +22,6 @@ import {
 } from "lucide-react";
 import {
   canExportToWord,
-  DOCUMENT_TYPE_LABELS,
   documentFilename,
   documentMediaType,
   documentView,
@@ -70,9 +71,10 @@ export function DocumentPanel({
   onBack?: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const view = useMemo(
-    () => documentView(messages, toolCallId),
-    [messages, toolCallId],
+    () => documentView(messages, toolCallId, t),
+    [messages, toolCallId, t],
   );
   const [showSource, setShowSource] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -92,11 +94,14 @@ export function DocumentPanel({
   const Icon = DOCUMENT_ICONS[document.type];
   const status = view.draft
     ? writing
-      ? "Writing…"
-      : "Not saved"
+      ? t("chat.documents.writing")
+      : t("chat.documents.notSaved")
     : view.updating && streaming
-      ? `Version ${saved.version} · Updating…`
-      : `Version ${saved.version} of ${view.versions.at(-1)!.version}`;
+      ? t("chat.documents.versionUpdating", { version: saved.version })
+      : t("chat.documents.versionOf", {
+          version: saved.version,
+          total: view.versions.at(-1)!.version,
+        });
 
   function save(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
@@ -132,8 +137,8 @@ export function DocumentPanel({
       save(await response.blob(), documentFilename(shown, "docx"));
     } catch {
       toast.error({
-        title: "Could not export the document",
-        description: "Check your connection and try again.",
+        title: t("chat.documents.exportFailedTitle"),
+        description: t("chat.errors.checkConnection"),
       });
     } finally {
       setExporting(false);
@@ -142,7 +147,7 @@ export function DocumentPanel({
 
   return (
     <SidePanel
-      aria-label={`Document: ${document.title}`}
+      aria-label={t("chat.documents.panelLabel", { title: document.title })}
       data-document-panel=""
       variant={variant}
       onClose={onClose}
@@ -161,7 +166,7 @@ export function DocumentPanel({
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">{document.title}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {DOCUMENT_TYPE_LABELS[document.type]}
+            {t(`chat.documents.types.${document.type}`)}
             {document.type === "code" && document.language
               ? ` · ${document.language}`
               : ""}{" "}
@@ -170,12 +175,12 @@ export function DocumentPanel({
         </div>
         <div className="order-last flex w-full items-center gap-0.5 @md/panel:order-none @md/panel:w-auto">
           {view.versions.length > 1 && !view.draft && (
-            <div className="flex items-center" role="group" aria-label="Versions">
+            <div className="flex items-center" role="group" aria-label={t("chat.documents.versions")}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Previous version"
-                title="Previous version"
+                aria-label={t("chat.documents.previousVersion")}
+                title={t("chat.documents.previousVersion")}
                 disabled={view.index <= 0}
                 onClick={() => onSelect(view.versions[view.index - 1].toolCallId)}
               >
@@ -184,8 +189,8 @@ export function DocumentPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Next version"
-                title="Next version"
+                aria-label={t("chat.documents.nextVersion")}
+                title={t("chat.documents.nextVersion")}
                 disabled={view.index >= view.versions.length - 1}
                 onClick={() => onSelect(view.versions[view.index + 1].toolCallId)}
               >
@@ -198,8 +203,8 @@ export function DocumentPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={showSource ? "Show preview" : "Show source"}
-                title={showSource ? "Show preview" : "Show source"}
+                aria-label={showSource ? t("chat.files.showPreview") : t("chat.files.showSource")}
+                title={showSource ? t("chat.files.showPreview") : t("chat.files.showSource")}
                 aria-pressed={showSource}
                 disabled={writing}
                 onClick={() => setShowSource((value) => !value)}
@@ -210,13 +215,13 @@ export function DocumentPanel({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Copy document"
-              title="Copy document"
+              aria-label={t("chat.documents.copyDocument")}
+              title={t("chat.documents.copyDocument")}
               disabled={writing}
               onClick={() => {
                 void writeText(document.content)
-                  .then(() => toast.success("Document copied"))
-                  .catch(() => toast.error("Could not copy the document"));
+                  .then(() => toast.success(t("chat.documents.documentCopied")))
+                  .catch(() => toast.error(t("chat.documents.copyDocumentFailed")));
               }}
             >
               <Copy />
@@ -228,8 +233,8 @@ export function DocumentPanel({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Download document"
-                      title="Download"
+                      aria-label={t("chat.documents.downloadDocument")}
+                      title={t("common.actions.download")}
                       disabled={writing || exporting}
                     />
                   }
@@ -253,6 +258,7 @@ export function DocumentPanel({
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
                         <FileDown className="size-3.5 shrink-0 text-muted-foreground" />
+                        {/* eslint-disable-next-line i18next/no-literal-string -- Format name and file extension */}
                         <span>Markdown (.md)</span>
                       </Menu.Item>
                       <Menu.Item
@@ -260,6 +266,7 @@ export function DocumentPanel({
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
                         <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                        {/* eslint-disable-next-line i18next/no-literal-string -- Product name and file extension */}
                         <span>Word (.docx)</span>
                       </Menu.Item>
                     </Menu.Popup>
@@ -270,8 +277,8 @@ export function DocumentPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Download document"
-                title={`Download ${documentFilename(document)}`}
+                aria-label={t("chat.documents.downloadDocument")}
+                title={t("chat.files.downloadNamed", { name: documentFilename(document) })}
                 disabled={writing}
                 onClick={download}
               >
@@ -287,8 +294,8 @@ export function DocumentPanel({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Close document"
-          title="Close document"
+          aria-label={t("chat.documents.closeDocument")}
+          title={t("chat.documents.closeDocument")}
           onClick={onClose}
         >
           <X />
@@ -317,6 +324,8 @@ function DocumentBody({
   source: boolean;
   writing: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
+  const { t } = useTranslation();
   if (source) {
     return (
       <div className="[&_[data-streamdown=code-block-header]]:hidden">
@@ -334,6 +343,7 @@ function DocumentBody({
       return (
         <div className="mx-auto max-w-3xl px-6 py-5">
           <Streamdown
+            translations={markdownLabels}
             className="font-sans space-y-3 text-[15px] leading-relaxed"
             plugins={MESSAGE_MARKDOWN_PLUGINS}
             mode={writing ? "streaming" : "static"}
@@ -345,7 +355,7 @@ function DocumentBody({
     case "html":
       return (
         <iframe
-          title={`${document.title} preview`}
+          title={t("chat.files.previewTitle", { name: document.title })}
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
           srcDoc={htmlPreviewDocument(document.content)}
@@ -376,9 +386,19 @@ function sourceLanguage(document: ShownDocument): string {
 
 type LoadedImage = { url: string; width: number; height: number };
 
+type PreviewError =
+  | {
+      kind:
+        | "imageNoDimensions"
+        | "imageRenderFailed"
+        | "svgRenderFailed"
+        | "diagramRenderFailed";
+    }
+  | { kind: "raw"; message: string };
+
 function useImage(svg: string | null) {
   const [state, setState] = useState<
-    { source: string; image?: LoadedImage; error?: string } | null
+    { source: string; image?: LoadedImage; error?: PreviewError } | null
   >(null);
   useEffect(() => {
     if (svg === null) return;
@@ -391,7 +411,8 @@ function useImage(svg: string | null) {
       .then(() => {
         if (cancelled) return;
         if (!image.naturalWidth || !image.naturalHeight) {
-          throw new Error("This image has no usable dimensions.");
+          setState({ source: svg, error: { kind: "imageNoDimensions" } });
+          return;
         }
         setState({
           source: svg,
@@ -402,7 +423,10 @@ function useImage(svg: string | null) {
         if (!cancelled) {
           setState({
             source: svg,
-            error: reason instanceof Error ? reason.message : "Unable to render this image.",
+            error:
+              reason instanceof Error
+                ? { kind: "raw", message: reason.message }
+                : { kind: "imageRenderFailed" },
           });
         }
       });
@@ -414,43 +438,51 @@ function useImage(svg: string | null) {
   return state?.source === svg ? state : null;
 }
 
-function PreviewStatus({ error }: { error?: string }) {
+function PreviewStatus({ error }: { error?: PreviewError }) {
+  const { t } = useTranslation();
   return error ? (
     <p className="p-4 text-sm text-destructive" role="status">
-      {error}
+      {error.kind === "raw"
+        ? error.message
+        : t(`chat.documents.${error.kind}`)}
     </p>
   ) : (
     <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground" role="status">
-      <Loader2 className={cn("size-4", motionClasses.spinner)} /> Rendering…
+      <Loader2 className={cn("size-4", motionClasses.spinner)} /> {t("chat.documents.rendering")}
     </div>
   );
 }
 
 function SvgPreview({ source }: { source: string }) {
-  const prepared = useMemo(() => {
+  const { t } = useTranslation();
+  const prepared = useMemo((): { svg?: string; error?: PreviewError } => {
     try {
-      return { svg: svgPreviewSource(source) };
+      return { svg: svgPreviewSource(source, t) };
     } catch (error) {
       return {
-        error: error instanceof Error ? error.message : "Unable to render this SVG.",
+        error:
+          error instanceof Error
+            ? { kind: "raw", message: error.message }
+            : { kind: "svgRenderFailed" },
       };
     }
-  }, [source]);
+  }, [source, t]);
   const loaded = useImage(prepared.svg ?? null);
   if (prepared.error) return <PreviewStatus error={prepared.error} />;
   if (!loaded?.image) return <PreviewStatus error={loaded?.error} />;
   return (
     <div className="flex size-full min-h-[24rem] flex-col">
-      <DiagramViewport image={loaded.image} alt="SVG preview" fullscreen />
+      <DiagramViewport image={loaded.image} alt={t("chat.documents.svgPreviewAlt")} fullscreen />
     </div>
   );
 }
 
 function MermaidPreview({ source }: { source: string }) {
+  const { t } = useTranslation();
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
   const [rendered, setRendered] = useState<
-    { key: string; svg?: string; error?: string } | null
+    { key: string; svg?: string; error?: PreviewError } | null
   >(null);
   const key = `${dark}:${source}`;
   useEffect(() => {
@@ -463,7 +495,10 @@ function MermaidPreview({ source }: { source: string }) {
         if (!cancelled) {
           setRendered({
             key,
-            error: reason instanceof Error ? reason.message : "Unable to render this diagram.",
+            error:
+              reason instanceof Error
+                ? { kind: "raw", message: reason.message }
+                : { kind: "diagramRenderFailed" },
           });
         }
       });
@@ -477,7 +512,7 @@ function MermaidPreview({ source }: { source: string }) {
   if (!loaded?.image) return <PreviewStatus error={loaded?.error} />;
   return (
     <div className="flex size-full min-h-[24rem] flex-col">
-      <DiagramViewport image={loaded.image} alt="Diagram preview" fullscreen />
+      <DiagramViewport image={loaded.image} alt={t("chat.documents.diagramPreviewAlt")} fullscreen />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -37,6 +38,7 @@ const FORMAT_LABELS: Record<string, string> = {
 };
 
 export function DataForm() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -55,7 +57,8 @@ export function DataForm() {
       const body = (await res.json()) as ImportResult | { error?: string };
       if (!res.ok) {
         setImportError(
-          (body as { error?: string }).error ?? `Import failed (${res.status})`,
+          (body as { error?: string }).error ??
+            t("data.import.failedWithStatus", { status: res.status }),
         );
         return;
       }
@@ -64,18 +67,24 @@ export function DataForm() {
       qc.invalidateQueries({ queryKey: libraryKeys.all() });
       qc.invalidateQueries({ queryKey: projectKeys.list() });
       qc.invalidateQueries({ queryKey: personalizationKeys.all() });
+      const format = FORMAT_LABELS[result.format] ?? result.format;
       toast.success({
-        title: "Import complete",
-        description: `Imported ${result.importedChats} chat${
-          result.importedChats === 1 ? "" : "s"
-        }${
-          result.importedMemories
-            ? ` and ${result.importedMemories} memor${result.importedMemories === 1 ? "y" : "ies"}`
-            : ""
-        } from ${FORMAT_LABELS[result.format] ?? result.format}.`,
+        title: t("data.import.completeTitle"),
+        description: result.importedMemories
+          ? t("data.import.completeWithMemories", {
+              chats: t("data.import.chatCount", { count: result.importedChats }),
+              memories: t("data.import.memoryCount", {
+                count: result.importedMemories,
+              }),
+              format,
+            })
+          : t("data.import.completeChats", {
+              count: result.importedChats,
+              format,
+            }),
       });
     } catch (err) {
-      setImportError(getErrorMessage(err, "Import failed."));
+      setImportError(getErrorMessage(err, t("data.import.failed")));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -85,8 +94,8 @@ export function DataForm() {
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Data"
-        description="Import chats from other platforms, or export your own."
+        title={t("data.title")}
+        description={t("data.description")}
       />
       <SharedChats />
 
@@ -102,12 +111,12 @@ export function DataForm() {
       />
 
       <SettingsSection
-        title="Import"
-        description="Supports ChatGPT, Claude.ai, OpenWebUI, and overtchat exports."
+        title={t("data.import.title")}
+        description={t("data.import.description")}
       >
         <SettingsRow
-          title="Import file"
-          description="Choose a downloaded JSON or ZIP file. Imports preserve visible chat text and reasoning, but not attachments, images, or branches."
+          title={t("data.import.fileTitle")}
+          description={t("data.import.fileDescription")}
           align="center"
           controlAlign="end"
         >
@@ -119,7 +128,7 @@ export function DataForm() {
               onClick={() => fileRef.current?.click()}
             >
               <Upload data-icon="inline-start" />
-              {importing ? "Importing…" : "Choose file"}
+              {importing ? t("data.import.importing") : t("data.import.chooseFile")}
             </Button>
 
             {importError && (
@@ -130,18 +139,18 @@ export function DataForm() {
       </SettingsSection>
 
       <SettingsSection
-        title="Export"
-        description="Download every chat as a single overtchat JSON file."
+        title={t("data.export.title")}
+        description={t("data.export.description")}
       >
         <SettingsRow
-          title="Export file"
-          description="Use this file for backup or a lossless re-import."
+          title={t("data.export.fileTitle")}
+          description={t("data.export.fileDescription")}
           align="center"
           controlAlign="end"
         >
           <Button type="button" variant="outline" render={<a href={apiUrl("/api/export")} />}>
             <Download data-icon="inline-start" />
-            Download export
+            {t("data.export.download")}
           </Button>
         </SettingsRow>
       </SettingsSection>

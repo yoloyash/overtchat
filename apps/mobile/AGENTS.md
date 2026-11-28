@@ -78,6 +78,12 @@ and native validation are documented in
 `docs/development.md#authentication-upgrade-validation`. Changing servers must
 also reset the cached auth client.
 
+Signing in with the server's identity provider opens the system browser
+session (`src/lib/auth/providerSignIn.ts`) and returns through
+`overtchat://login` with a one-time code, which only the app that started the
+sign-in can trade for its session. Never load the provider in a web view. See
+`docs/development.md#identity-provider-sign-in-validation`.
+
 `src/polyfills.js` must load before the AI SDK streaming stack. Test streaming
 on both Android and iOS after changing the transport or its polyfills.
 
@@ -87,6 +93,17 @@ blocks of a few hundred lines. The `enriched-markdown` block in `package.json`
 selects the renderer's native features; `npm ci` downloads its highlight
 grammars in a postinstall step that needs the npm registry and github.com, and
 a change to the block takes effect on the next native build.
+
+The React Compiler is on (`experiments.reactCompiler`) and memoizes components
+and hooks, but it silently skips one whose code breaks a rule it relies on: a
+ref read or written while rendering, `try` with `finally`, a hook reached
+through a call such as `getAuthClient().useSession()` (use `useAuthSession`).
+A skipped component gives its children new callbacks and objects on every
+render. `src/reactCompilerCoverage.test.ts` fails when a file outside its known
+list is skipped; fix the code instead of adding to the list. A streamed update
+replaces every part of the message being written with a new object, so rows
+drawn from parts compare them by content (`src/lib/equal.ts`), and handlers
+passed to memoized children go through `useStableEvent`.
 
 Navigation headers and safe-area behavior are owned by Expo Router. Android
 drawer behavior currently relies on `predictiveBackGestureEnabled: false` in

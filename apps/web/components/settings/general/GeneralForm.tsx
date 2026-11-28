@@ -3,6 +3,14 @@
 import { useSyncExternalStore } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useTranslation } from "react-i18next";
+import {
+  LOCALE_NATIVE_NAMES,
+  SUPPORTED_LOCALES,
+  parseAppLanguage,
+  type AppLanguage,
+} from "@overtchat/shared/i18n";
+import { useLanguagePreference } from "@/components/I18nProvider";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
   Select,
@@ -35,22 +43,29 @@ import {
   DEFAULT_SESSION_COST_ENABLED,
   SESSION_COST_STORAGE_KEY,
 } from "@/lib/chat/session-cost";
+import {
+  DEFAULT_EXPAND_ACTIVITY,
+  EXPAND_ACTIVITY_STORAGE_KEY,
+} from "@/lib/chat/activity-expansion";
 
 type ThemeValue = "light" | "dark" | "system";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
-const OPTIONS: Array<{ value: ThemeValue; label: string; icon: typeof Sun }> = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+const OPTIONS: Array<{ value: ThemeValue; icon: typeof Sun }> = [
+  { value: "light", icon: Sun },
+  { value: "dark", icon: Moon },
+  { value: "system", icon: Monitor },
 ];
+
+const LANGUAGES: AppLanguage[] = ["system", ...SUPPORTED_LOCALES];
 
 const subscribe = () => () => {};
 const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
 export function GeneralForm() {
+  const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(
     subscribe,
@@ -70,11 +85,23 @@ export function GeneralForm() {
     SESSION_COST_STORAGE_KEY,
     DEFAULT_SESSION_COST_ENABLED,
   );
+  const [expandActivity, setExpandActivity] = useLocalStorage<boolean>(
+    EXPAND_ACTIVITY_STORAGE_KEY,
+    DEFAULT_EXPAND_ACTIVITY,
+  );
   const [fontId, setFontId] = useLocalStorage<FontId>(
     FONT_STORAGE_KEY,
     DEFAULT_FONT_ID,
   );
   const currentFont = mounted ? fontId : DEFAULT_FONT_ID;
+  const [language, setLanguage] = useLanguagePreference();
+  // Font and language names stay in their own words; only "System" is translated.
+  const fontLabel = (id: FontId, label: string) =>
+    id === "system" ? t("settings.appearance.font.system") : label;
+  const languageLabel = (value: AppLanguage) =>
+    value === "system"
+      ? t("settings.appearance.language.system")
+      : LOCALE_NATIVE_NAMES[value];
 
   function selectFont(next: FontId) {
     setFontId(next);
@@ -89,30 +116,30 @@ export function GeneralForm() {
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="General"
-        description="Preferences saved for this browser."
+        title={t("settings.general.title")}
+        description={t("settings.general.description")}
       />
 
       <SettingsSection
-        title="Appearance"
-        description="Choose how OvertChat looks and reads."
+        title={t("settings.appearance.title")}
+        description={t("settings.appearance.description")}
       >
         <SettingsRow
-          title="Theme"
-          description="Use a fixed theme or follow the system setting."
+          title={t("settings.appearance.theme.title")}
+          description={t("settings.appearance.theme.description")}
           align="center"
           controlAlign="end"
         >
           <SettingsChoiceGroup
-            label="Theme"
+            label={t("settings.appearance.theme.title")}
             value={current}
             onValueChange={setTheme}
-            options={OPTIONS.map(({ value, label, icon: Icon }) => ({
+            options={OPTIONS.map(({ value, icon: Icon }) => ({
               value,
               label: (
                 <>
                   <Icon aria-hidden="true" />
-                  <span>{label}</span>
+                  <span>{t(`settings.appearance.theme.${value}`)}</span>
                 </>
               ),
             }))}
@@ -120,16 +147,16 @@ export function GeneralForm() {
         </SettingsRow>
 
         <SettingsRow
-          title="Accent color"
-          description="Tint the interface on this device. Olive is the default."
+          title={t("settings.appearance.accent.title")}
+          description={t("settings.appearance.accent.description")}
           controlAlign="end"
         >
           <AccentPicker />
         </SettingsRow>
 
         <SettingsRow
-          title="Interface font"
-          description="Choose the font used throughout the app."
+          title={t("settings.appearance.font.title")}
+          description={t("settings.appearance.font.description")}
           htmlFor="interface-font"
           align="center"
           controlAlign="end"
@@ -140,7 +167,10 @@ export function GeneralForm() {
           >
             <SelectTrigger id="interface-font" className="w-full">
               <SelectValue>
-                {FONT_OPTIONS.find((font) => font.id === currentFont)?.label}
+                {fontLabel(
+                  currentFont,
+                  FONT_OPTIONS.find((font) => font.id === currentFont)?.label ?? "",
+                )}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -152,7 +182,35 @@ export function GeneralForm() {
                     fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)",
                   }}
                 >
-                  {label}
+                  {fontLabel(id, label)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          title={t("settings.appearance.language.title")}
+          description={t("settings.appearance.language.description")}
+          htmlFor="interface-language"
+          align="center"
+          controlAlign="end"
+        >
+          <Select
+            value={language}
+            onValueChange={(next) => setLanguage(parseAppLanguage(next))}
+          >
+            <SelectTrigger id="interface-language" className="w-full">
+              <SelectValue>{languageLabel(language)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((value) => (
+                <SelectItem
+                  key={value}
+                  value={value}
+                  lang={value === "system" ? undefined : value}
+                >
+                  {languageLabel(value)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -161,12 +219,28 @@ export function GeneralForm() {
       </SettingsSection>
 
       <SettingsSection
-        title="Messages"
-        description="Choose which details appear in your conversations."
+        title={t("settings.general.messages.title")}
+        description={t("settings.general.messages.description")}
       >
         <SettingsRow
-          title="Message stats"
-          description="Show token counts and speed stats on assistant messages."
+          title={t("settings.general.messages.expandActivity.title")}
+          description={t("settings.general.messages.expandActivity.description")}
+          htmlFor="expand-activity"
+          align="center"
+          controlAlign="end"
+          layout="toggle"
+        >
+          <Switch
+            id="expand-activity"
+            checked={expandActivity}
+            onCheckedChange={(next) => setExpandActivity(next)}
+            aria-label={t("settings.general.messages.expandActivity.title")}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title={t("settings.general.messages.messageStats.title")}
+          description={t("settings.general.messages.messageStats.description")}
           htmlFor="message-stats"
           align="center"
           controlAlign="end"
@@ -176,13 +250,13 @@ export function GeneralForm() {
             id="message-stats"
             checked={messageStatsEnabled}
             onCheckedChange={(next) => setMessageStatsEnabled(next)}
-            aria-label="Show message stats"
+            aria-label={t("settings.general.messages.messageStats.toggle")}
           />
         </SettingsRow>
 
         <SettingsRow
-          title="Context meter"
-          description="Show context-window usage in the chat header."
+          title={t("settings.general.messages.contextMeter.title")}
+          description={t("settings.general.messages.contextMeter.description")}
           htmlFor="context-meter"
           align="center"
           controlAlign="end"
@@ -192,13 +266,13 @@ export function GeneralForm() {
             id="context-meter"
             checked={contextMeterEnabled}
             onCheckedChange={(next) => setContextMeterEnabled(next)}
-            aria-label="Show context meter"
+            aria-label={t("settings.general.messages.contextMeter.toggle")}
           />
         </SettingsRow>
 
         <SettingsRow
-          title="Session cost"
-          description="Show session cost in the chat header."
+          title={t("settings.general.messages.sessionCost.title")}
+          description={t("settings.general.messages.sessionCost.description")}
           htmlFor="session-cost"
           align="center"
           controlAlign="end"
@@ -208,7 +282,7 @@ export function GeneralForm() {
             id="session-cost"
             checked={sessionCostEnabled}
             onCheckedChange={(next) => setSessionCostEnabled(next)}
-            aria-label="Show session cost"
+            aria-label={t("settings.general.messages.sessionCost.toggle")}
           />
         </SettingsRow>
       </SettingsSection>

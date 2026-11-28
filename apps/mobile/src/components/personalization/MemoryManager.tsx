@@ -1,8 +1,10 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { Memory, PersonalizationSnapshot } from "@overtchat/shared";
 import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
 import {
   useClearMemories,
@@ -27,6 +29,8 @@ export function MemoryManager({
   usage: PersonalizationSnapshot["contextUsage"];
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const editorRef = useRef<MemoryEditorSheetRef>(null);
   const deleteSheetRef = useRef<BottomSheetModal>(null);
   const clearSheetRef = useRef<BottomSheetModal>(null);
@@ -59,30 +63,36 @@ export function MemoryManager({
     if (!deleteTarget || deleteMemory.isPending) return;
     deleteMemory.mutate(deleteTarget.id, {
       onSuccess: () => {
-        toastSuccess("Memory deleted");
+        toastSuccess(t("personalization.memories.deleteDialog.deletedToast"));
         setDeleteTarget(null);
       },
-      onError: (error) => toastError("Couldn't delete memory", error),
+      onError: (error) => toastError(t("personalization.mobile.memories.deleteError"), error),
     });
   }
 
   function confirmClear() {
     if (clearMemories.isPending) return;
     clearMemories.mutate(undefined, {
-      onSuccess: () => toastSuccess("Memories cleared"),
-      onError: (error) => toastError("Couldn't clear memories", error),
+      onSuccess: () => toastSuccess(t("personalization.memories.clearedToast")),
+      onError: (error) => toastError(t("personalization.mobile.memories.clearError"), error),
     });
   }
 
   return (
     <>
       <PersonalizationSection
-        title="Saved memories"
-        description="Models can change these entries when you explicitly ask them to remember or forget something. Your profile and memories share a 4 KiB context budget."
+        title={t("personalization.memories.title")}
+        description={t("personalization.mobile.memories.description")}
       >
         <View style={styles.memoryToolbar}>
           <View
-            accessibilityLabel={`${usagePercent}% used, ${usage.bytes} of ${usage.limit} context bytes, ${usage.entries} of ${usage.entryLimit} memories`}
+            accessibilityLabel={t("personalization.mobile.memories.usageAccessibility", {
+              percent: usagePercent,
+              bytes: usage.bytes,
+              limit: usage.limit,
+              entries: usage.entries,
+              entryLimit: usage.entryLimit,
+            })}
             style={[
               styles.usagePill,
               {
@@ -101,14 +111,14 @@ export function MemoryManager({
                 },
               ]}
             >
-              {usagePercent}% used
+              {t("personalization.memories.usageBadge", { percent: usagePercent })}
             </Text>
           </View>
           <View style={styles.memoryToolbarActions}>
             {memories.length > 0 ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Clear all memories"
+                accessibilityLabel={t("personalization.mobile.memories.clearAllLabel")}
                 onPress={() => clearSheetRef.current?.present()}
                 style={({ pressed }) => [
                   styles.compactButton,
@@ -128,13 +138,13 @@ export function MemoryManager({
                     },
                   ]}
                 >
-                  Clear all
+                  {t("personalization.memories.clearDialog.trigger")}
                 </Text>
               </Pressable>
             ) : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Add memory"
+              accessibilityLabel={t("personalization.memories.add")}
               onPress={() => editorRef.current?.present()}
               style={({ pressed }) => [
                 styles.compactButton,
@@ -160,7 +170,7 @@ export function MemoryManager({
                   },
                 ]}
               >
-                Add
+                {t("common.actions.add")}
               </Text>
             </Pressable>
           </View>
@@ -191,8 +201,12 @@ export function MemoryManager({
               },
             ]}
           >
-            {usage.bytes.toLocaleString()} of {usage.limit.toLocaleString()} bytes
-            · {usage.entries} of {usage.entryLimit} memories
+            {t("personalization.mobile.memories.usageDetail", {
+              bytes: usage.bytes.toLocaleString(locale),
+              limit: usage.limit.toLocaleString(locale),
+              entries: usage.entries,
+              entryLimit: usage.entryLimit,
+            })}
           </Text>
         </View>
 
@@ -205,10 +219,10 @@ export function MemoryManager({
               style={styles.searchIcon}
             />
             <TextInput
-              accessibilityLabel="Search memories"
+              accessibilityLabel={t("personalization.memories.searchLabel")}
               value={memoryQuery}
               onChangeText={setMemoryQuery}
-              placeholder="Search memories"
+              placeholder={t("personalization.memories.searchPlaceholder")}
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
               style={[
@@ -238,7 +252,7 @@ export function MemoryManager({
                 { color: colors.foreground, fontFamily: fonts.sansMedium },
               ]}
             >
-              Nothing remembered yet
+              {t("personalization.memories.emptyTitle")}
             </Text>
             <Text
               style={[
@@ -249,7 +263,7 @@ export function MemoryManager({
                 },
               ]}
             >
-              Ask OvertChat to remember something, or add it manually.
+              {t("personalization.memories.emptyDescription")}
             </Text>
           </View>
         ) : filteredMemories.length === 0 ? (
@@ -263,7 +277,9 @@ export function MemoryManager({
                 },
               ]}
             >
-              No memories match “{memoryQuery.trim()}”.
+              {t("personalization.mobile.memories.noMatches", {
+                query: memoryQuery.trim(),
+              })}
             </Text>
           </View>
         ) : (
@@ -319,13 +335,17 @@ export function MemoryManager({
                         },
                       ]}
                     >
-                      Updated {new Date(memory.updatedAt).toLocaleDateString()}
+                      {t("personalization.memories.updated", {
+                        date: new Date(memory.updatedAt).toLocaleDateString(locale),
+                      })}
                     </Text>
                   </View>
                   <View style={styles.memoryActions}>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Edit ${memory.key}`}
+                      accessibilityLabel={t("personalization.memories.editAriaLabel", {
+                        key: memory.key,
+                      })}
                       hitSlop={8}
                       onPress={() => editorRef.current?.present(memory)}
                       style={({ pressed }) => [
@@ -341,7 +361,9 @@ export function MemoryManager({
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Delete ${memory.key}`}
+                      accessibilityLabel={t("personalization.memories.deleteDialog.ariaLabel", {
+                        key: memory.key,
+                      })}
                       hitSlop={8}
                       onPress={() => requestDelete(memory)}
                       style={({ pressed }) => [
@@ -366,17 +388,17 @@ export function MemoryManager({
       <MemoryEditorSheet ref={editorRef} />
       <ConfirmSheet
         ref={deleteSheetRef}
-        title="Delete this memory?"
-        message="OvertChat will no longer include it in future conversations."
-        confirmLabel="Delete"
+        title={t("personalization.memories.deleteDialog.title")}
+        message={t("personalization.memories.deleteDialog.description")}
+        confirmLabel={t("common.actions.delete")}
         destructive
         onConfirm={confirmDelete}
       />
       <ConfirmSheet
         ref={clearSheetRef}
-        title="Clear all memories?"
-        message="This permanently deletes every saved memory. Your profile fields are not affected."
-        confirmLabel="Clear all"
+        title={t("personalization.memories.clearDialog.title")}
+        message={t("personalization.memories.clearDialog.description")}
+        confirmLabel={t("personalization.memories.clearDialog.trigger")}
         destructive
         onConfirm={confirmClear}
       />

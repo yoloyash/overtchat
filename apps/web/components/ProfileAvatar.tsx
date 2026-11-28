@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 const AVATAR_STYLES = [
@@ -29,10 +30,11 @@ export function ProfileAvatar({
   size?: "sm" | "md" | "lg";
   tone?: "color" | "muted";
 }) {
+  const { t } = useTranslation();
   return (
     <span
       role="img"
-      aria-label={`${name} avatar`}
+      aria-label={t("app.shell.avatarLabel", { name })}
       className={cn(
         "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold",
         tone === "muted"

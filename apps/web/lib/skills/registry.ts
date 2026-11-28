@@ -3,12 +3,13 @@ import { asSchema, type Tool } from "ai";
 import {
   CALENDAR_COMMAND,
   CALENDAR_COMMAND_PATTERN,
-  CHAT_SKILL_NAMES,
+  chatSkillName,
   GMAIL_COMMAND,
   GMAIL_COMMAND_PATTERN,
   OPENUI_PRESENT_TOOL_NAME,
   type ChatSkillId,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   CALENDAR_TOOL_PROMPT,
   calendarAccess,
@@ -24,6 +25,11 @@ import {
   gmailToolPrompt,
 } from "@/lib/integrations/gmail-tools";
 import { OPENUI_TOOL_PROMPT } from "@/lib/openui/tools";
+import {
+  createScheduledTaskTools,
+  SCHEDULED_TASKS_SKILL_DESCRIPTION,
+  scheduledTasksPrompt,
+} from "@/lib/scheduled-tasks/tools";
 
 /** One tool as a skill describes it to a model, since it is not in the tool list. */
 export interface SkillToolSpec {
@@ -70,6 +76,21 @@ export interface ResolveChatSkillsOptions {
   interactiveUi: { offered: boolean; alwaysOn: boolean };
   /** Whether the client shows an email a model wrote as a card to send from. */
   gmailCompose: boolean;
+  /**
+   * Nobody is watching this turn. An email is then never sent by the model,
+   * whatever the account allows: it waits as a card.
+   */
+  unattended?: boolean;
+  /**
+   * The chat may set up scheduled tasks: on this chat's model, with times on
+   * the user's own clock. Null where it may not.
+   */
+  scheduledTasks?: {
+    timeZone?: string;
+    modelConfigId: string;
+    /** The name of the project the chat is in. */
+    project?: string;
+  } | null;
 }
 
 /** The skills a user's chats may load, with the tools each may run. */
@@ -77,6 +98,8 @@ export async function resolveChatSkills({
   userId,
   interactiveUi,
   gmailCompose,
+  unattended = false,
+  scheduledTasks = null,
 }: ResolveChatSkillsOptions): Promise<ChatSkill[]> {
   const skills: ChatSkill[] = [];
 
@@ -84,14 +107,17 @@ export async function resolveChatSkills({
   if (gmail.status !== "unavailable") {
     const options = {
       compose: gmailCompose,
-      send: gmail.status === "available" && gmail.sendWithoutAsking === true,
+      send:
+        !unattended &&
+        gmail.status === "available" &&
+        gmail.sendWithoutAsking === true,
     };
     const tools: Record<string, Tool> =
       gmail.status === "available" ? createGmailTools(userId, options) : {};
     const offered = gmailOfferedToolNames(options);
     skills.push({
       id: "gmail",
-      name: CHAT_SKILL_NAMES.gmail,
+      name: chatSkillName("gmail", i18n.t),
       description:
         "Search, read and organize the user's own Gmail, and write emails for them to send. Load it when a request needs their mail.",
       content:
@@ -120,7 +146,7 @@ export async function resolveChatSkills({
       calendar.status === "available" ? createCalendarTools(userId) : {};
     skills.push({
       id: "calendar",
-      name: CHAT_SKILL_NAMES.calendar,
+      name: chatSkillName("calendar", i18n.t),
       description:
         "Read the user's own Google Calendar and add, change or delete events. Load it when a request needs their schedule.",
       content:
@@ -138,12 +164,32 @@ export async function resolveChatSkills({
   if (interactiveUi.offered) {
     skills.push({
       id: "interactive_ui",
-      name: CHAT_SKILL_NAMES.interactive_ui,
+      name: chatSkillName("interactive_ui", i18n.t),
       description: `Present an answer as an interactive interface with charts, data tables, forms, dashboards, KPI cards, carousels, tabs or step-by-step guides, rendered by ${OPENUI_PRESENT_TOOL_NAME}. Load it when the user asks for an interactive interface or when such components clearly help.`,
       content: OPENUI_TOOL_PROMPT,
       tools: {},
       toolSpecs: [],
       alwaysOn: interactiveUi.alwaysOn,
+    });
+  }
+
+  if (scheduledTasks) {
+    const tools = createScheduledTaskTools({
+      userId,
+      timeZone: scheduledTasks.timeZone,
+      modelConfigId: scheduledTasks.modelConfigId,
+    });
+    skills.push({
+      id: "scheduled_tasks",
+      name: chatSkillName("scheduled_tasks", i18n.t),
+      description: SCHEDULED_TASKS_SKILL_DESCRIPTION,
+      content: scheduledTasksPrompt(
+        scheduledTasks.timeZone,
+        scheduledTasks.project,
+      ),
+      tools,
+      toolSpecs: await describeTools(tools),
+      alwaysOn: false,
     });
   }
 

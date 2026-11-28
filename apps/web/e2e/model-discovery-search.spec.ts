@@ -59,9 +59,9 @@ test("searches a long fetched model list and keeps OpenRouter away from older cl
   await page.locator("#p-base-url").fill(baseUrl);
   await page.locator("#p-api-key").fill("router-key");
 
-  // Discovery selects the first model; search narrows the long list.
+  // Search narrows the long list.
   const trigger = page.locator("#p-model");
-  await expect(trigger).toContainText("anthropic/claude-haiku-4.5");
+  await expect(trigger).toContainText("Choose models");
   await trigger.click();
   const search = page.getByRole("combobox", { name: "Search models" });
   await expect(search).toBeFocused();
@@ -71,7 +71,9 @@ test("searches a long fetched model list and keeps OpenRouter away from older cl
   await search.press("Enter");
   await expect(trigger).toContainText("vendor/model-42");
 
-  // Reopening right away starts a new search.
+  // The list stays open for more picks. Reopening right away starts a new
+  // search.
+  await search.press("Escape");
   await trigger.click();
   await expect(search).toHaveValue("");
   await expect(page.getByRole("option")).toHaveCount(models.length);

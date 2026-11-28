@@ -2,6 +2,7 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,7 @@ const SETUP_GUIDE_URL =
 
 /** The server's own Google OAuth client, which every user's sign-in goes through. */
 export function GoogleAccessDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const { data: client, error } = useIntegrationOauthClient("google", true);
 
   return (
@@ -43,30 +45,36 @@ export function GoogleAccessDialog({ onClose }: { onClose: () => void }) {
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Google access
+            {t("tools.connectors.googleAccess.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Everyone on this server signs in to Google through an OAuth client
-            from your own Google Cloud project. Create one of type Desktop
-            app, enter it here, and add each person&apos;s Google address to
-            the project&apos;s test users.{" "}
-            <a
-              href={SETUP_GUIDE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-foreground underline underline-offset-4"
-            >
-              Setup guide
-            </a>
+            <Trans
+              i18nKey="tools.connectors.googleAccess.description"
+              components={{
+                guide: (
+                  <a
+                    href={SETUP_GUIDE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-foreground underline underline-offset-4"
+                  />
+                ),
+              }}
+            />
           </Dialog.Description>
           {error ? (
             <SettingsNotice tone="error" className="mt-5">
-              {getErrorMessage(error, "Unable to load Google access.")}
+              {getErrorMessage(
+                error,
+                t("tools.connectors.googleAccess.loadError"),
+              )}
             </SettingsNotice>
           ) : client ? (
             <GoogleAccessForm client={client} onClose={onClose} />
           ) : (
-            <SettingsNotice className="mt-5">Loading…</SettingsNotice>
+            <SettingsNotice className="mt-5">
+              {t("common.states.loading")}
+            </SettingsNotice>
           )}
         </Dialog.Popup>
       </Dialog.Portal>
@@ -81,6 +89,7 @@ function GoogleAccessForm({
   client: IntegrationOauthClient;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const save = useSaveIntegrationOauthClient("google");
   const remove = useDeleteIntegrationOauthClient("google");
   const [clientId, setClientId] = useState(client.clientId ?? "");
@@ -96,10 +105,15 @@ function GoogleAccessForm({
     setError("");
     try {
       await save.mutateAsync({ clientId, clientSecret });
-      toast.success({ title: "Google access saved" });
+      toast.success({ title: t("tools.connectors.googleAccess.savedTitle") });
       onClose();
     } catch (error) {
-      setError(getErrorMessage(error, "Could not save Google access."));
+      setError(
+        getErrorMessage(
+          error,
+          t("tools.connectors.googleAccess.saveErrorFallback"),
+        ),
+      );
     }
   }
 
@@ -108,10 +122,15 @@ function GoogleAccessForm({
     setError("");
     try {
       await remove.mutateAsync();
-      toast.success({ title: "Google access removed" });
+      toast.success({ title: t("tools.connectors.googleAccess.removedTitle") });
       onClose();
     } catch (error) {
-      setError(getErrorMessage(error, "Could not remove Google access."));
+      setError(
+        getErrorMessage(
+          error,
+          t("tools.connectors.googleAccess.removeErrorFallback"),
+        ),
+      );
     }
   }
 
@@ -119,8 +138,7 @@ function GoogleAccessForm({
     return (
       <div className="mt-5 space-y-4">
         <p className="text-sm">
-          Remove Google access? Everyone&apos;s Google connection on this server
-          will be deleted, and nobody can connect until it is set up again.
+          {t("tools.connectors.googleAccess.confirmRemoval")}
         </p>
         {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
         <SettingsActions bordered={false}>
@@ -131,7 +149,7 @@ function GoogleAccessForm({
             disabled={busy}
             onClick={() => setConfirmingRemoval(false)}
           >
-            Cancel
+            {t("common.actions.cancel")}
           </Button>
           <Button
             type="button"
@@ -140,7 +158,9 @@ function GoogleAccessForm({
             disabled={busy}
             onClick={() => void onRemove()}
           >
-            {remove.isPending ? "Removing…" : "Remove"}
+            {remove.isPending
+              ? t("common.states.removing")
+              : t("common.actions.remove")}
           </Button>
         </SettingsActions>
       </div>
@@ -150,7 +170,9 @@ function GoogleAccessForm({
   return (
     <form onSubmit={onSubmit} className="mt-5 space-y-4">
       <div className="space-y-1.5">
-        <Label htmlFor="google-client-id">Client ID</Label>
+        <Label htmlFor="google-client-id">
+          {t("tools.connectors.googleAccess.clientIdLabel")}
+        </Label>
         <Input
           id="google-client-id"
           autoComplete="off"
@@ -162,19 +184,22 @@ function GoogleAccessForm({
         />
         {configured && (
           <p className="text-xs leading-5 text-muted-foreground">
-            A different client ID disconnects everyone until they sign in
-            again.
+            {t("tools.connectors.googleAccess.clientIdChangeWarning")}
           </p>
         )}
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="google-client-secret">Client secret</Label>
+        <Label htmlFor="google-client-secret">
+          {t("tools.connectors.googleAccess.clientSecretLabel")}
+        </Label>
         <PasswordInput
           id="google-client-secret"
           autoComplete="off"
           required={!client.clientSecretSet}
           placeholder={
-            client.clientSecretSet ? "Leave empty to keep the stored secret" : ""
+            client.clientSecretSet
+              ? t("tools.connectors.googleAccess.clientSecretPlaceholder")
+              : ""
           }
           value={clientSecret}
           onChange={(event) => setClientSecret(event.target.value)}
@@ -195,7 +220,7 @@ function GoogleAccessForm({
               setConfirmingRemoval(true);
             }}
           >
-            Remove
+            {t("common.actions.remove")}
           </Button>
         ) : (
           <span />
@@ -208,10 +233,12 @@ function GoogleAccessForm({
             disabled={busy}
             onClick={onClose}
           >
-            Cancel
+            {t("common.actions.cancel")}
           </Button>
           <Button type="submit" size="sm" disabled={busy}>
-            {save.isPending ? "Saving…" : "Save"}
+            {save.isPending
+              ? t("common.states.saving")
+              : t("common.actions.save")}
           </Button>
         </div>
       </SettingsActions>

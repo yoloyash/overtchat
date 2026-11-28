@@ -68,5 +68,8 @@ cross-workspace or release-sensitive changes.
 - Workspace packages export TypeScript source directly. Do not introduce a
   package build step unless all consumers and Turbo dependencies are updated
   together.
+- Interface text in the web, desktop and mobile clients goes through the shared
+  translation catalog; see `docs/development.md#translations`. Text for models
+  and text the server authors stays English.
 - Add a scoped `AGENTS.md` only when a subtree has distinct ownership,
   invariants, or validation.

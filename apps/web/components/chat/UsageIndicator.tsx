@@ -2,6 +2,8 @@
 
 import { Popover } from "@base-ui/react/popover";
 import { CircleDollarSign } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { combinePricedUsage } from "@overtchat/shared/usage";
 import {
   getContextMeterValues,
@@ -83,6 +85,8 @@ function CostSection({
   usage: UsageTotals;
   className?: string;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const partial = getCostCoverage(usage) === "partial";
   const cost = formatNanoUsd(usage.totalCostNanoUsd);
   return (
@@ -97,23 +101,23 @@ function CostSection({
             {partial ? `${cost}+` : cost}
           </div>
           <div className="mt-0.5 text-muted-foreground">
-            {partial ? "Known cost" : "Cost"}
+            {partial ? t("chat.usage.knownCost") : t("chat.usage.cost")}
           </div>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2">
-        <DetailRow label="Input" value={formatInteger(usage.inputTokens)} />
-        <DetailRow label="Output" value={formatInteger(usage.outputTokens)} />
+        <DetailRow label={t("chat.usage.input")} value={formatInteger(usage.inputTokens, locale)} />
+        <DetailRow label={t("chat.usage.output")} value={formatInteger(usage.outputTokens, locale)} />
         {usage.cacheReadTokens > 0 ? (
           <DetailRow
-            label="Cache read"
-            value={formatInteger(usage.cacheReadTokens)}
+            label={t("chat.usage.cacheRead")}
+            value={formatInteger(usage.cacheReadTokens, locale)}
           />
         ) : null}
         {usage.cacheWriteTokens > 0 ? (
           <DetailRow
-            label="Cache write"
-            value={formatInteger(usage.cacheWriteTokens)}
+            label={t("chat.usage.cacheWrite")}
+            value={formatInteger(usage.cacheWriteTokens, locale)}
           />
         ) : null}
       </div>
@@ -129,6 +133,8 @@ export function UsageIndicator({
   side = "bottom",
   className,
 }: UsageIndicatorProps) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const contextUnavailable = contextUsage?.usedTokens === null;
   const context = contextUsage
     ? getContextMeterValues(
@@ -159,23 +165,30 @@ export function UsageIndicator({
     context
       ? context.percentage === undefined
         ? contextUnavailable
-          ? "context usage unavailable"
-          : "context limit unknown"
-        : `${context.percentage}% context used`
+          ? t("chat.usage.contextUsageUnavailable")
+          : t("chat.usage.contextLimitUnknown")
+        : t("chat.usage.contextPercentUsed", { percentage: context.percentage })
       : undefined,
     total && cost
       ? total.partial
-        ? `known session cost ${cost}`
-        : `session cost ${cost}`
+        ? t("chat.usage.knownSessionCost", { cost })
+        : t("chat.usage.sessionCost", { cost })
       : undefined,
-  ].filter(Boolean);
+  ].filter((detail): detail is string => Boolean(detail));
+  const triggerAriaLabel =
+    triggerDetails.length >= 2
+      ? t("chat.usage.triggerBoth", {
+          first: triggerDetails[0],
+          second: triggerDetails[1],
+        })
+      : t("chat.usage.triggerSingle", { first: triggerDetails[0] ?? "" });
 
   return (
     <Popover.Root>
       <Popover.Trigger
         type="button"
-        aria-label={`Usage: ${triggerDetails.join("; ")}. Show details`}
-        title="Usage"
+        aria-label={triggerAriaLabel}
+        title={t("chat.usage.title")}
         className={cn(
           "inline-flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium tabular-nums text-muted-foreground outline-none motion-colors hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:bg-accent data-[popup-open]:text-foreground max-md:h-9",
           compact && "w-8 justify-center px-0 max-md:size-10",
@@ -218,13 +231,13 @@ export function UsageIndicator({
             )}
           >
             <Popover.Title className="mb-4 text-sm font-semibold text-foreground">
-              Usage
+              {t("chat.usage.title")}
             </Popover.Title>
 
             {context ? (
-              <section aria-label="Context">
+              <section aria-label={t("chat.usage.context")}>
                 <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="font-medium text-foreground">Context</h3>
+                  <h3 className="font-medium text-foreground">{t("chat.usage.context")}</h3>
                   <span
                     className={cn(
                       "font-mono text-sm font-semibold",
@@ -238,11 +251,13 @@ export function UsageIndicator({
                   <>
                     <div
                       role="progressbar"
-                      aria-label="Context used"
+                      aria-label={t("chat.usage.contextUsed")}
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-valuenow={Math.min(100, context.percentage)}
-                      aria-valuetext={`${context.percentage}% used`}
+                      aria-valuetext={t("chat.usage.percentUsed", {
+                        percentage: context.percentage,
+                      })}
                       className={cn(
                         "mt-2 h-1.5 overflow-hidden rounded-full bg-muted",
                         contextTone(context),
@@ -254,20 +269,30 @@ export function UsageIndicator({
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-4 text-muted-foreground">
-                      <span>{formatInteger(context.usedTokens)} used</span>
                       <span>
-                        {formatInteger(context.remainingTokens ?? 0)} remaining
+                        {t("chat.usage.tokensUsed", {
+                          count: formatInteger(context.usedTokens, locale),
+                        })}
+                      </span>
+                      <span>
+                        {t("chat.usage.tokensRemaining", {
+                          count: formatInteger(context.remainingTokens ?? 0, locale),
+                        })}
                       </span>
                     </div>
                   </>
                 ) : (
                   <div className="mt-2 flex items-center justify-between gap-4 text-muted-foreground">
                     {contextUnavailable ? (
-                      <span>Context usage unavailable. Waiting for a reading from the agent.</span>
+                      <span>{t("chat.usage.contextUnavailableDetail")}</span>
                     ) : (
                       <>
-                        <span>{formatInteger(context.usedTokens)} tokens</span>
-                        <span>Limit unknown</span>
+                        <span>
+                          {t("chat.usage.tokensCount", {
+                            count: formatInteger(context.usedTokens, locale),
+                          })}
+                        </span>
+                        <span>{t("chat.usage.limitUnknown")}</span>
                       </>
                     )}
                   </div>
@@ -277,8 +302,10 @@ export function UsageIndicator({
 
             {session ? (
               <CostSection
-                title="Session"
-                summary={`${formatInteger(session.totalTokens)} tokens`}
+                title={t("chat.usage.session")}
+                summary={t("chat.usage.tokensCount", {
+                  count: formatInteger(session.totalTokens, locale),
+                })}
                 usage={session}
                 className={cn(context && "mt-4 border-t pt-4")}
               />
@@ -286,8 +313,11 @@ export function UsageIndicator({
 
             {images ? (
               <CostSection
-                title="Images"
-                summary={`${formatInteger(images.generations)} ${images.generations === 1 ? "image" : "images"}`}
+                title={t("chat.usage.images")}
+                summary={t("chat.usage.imageCount", {
+                  count: images.generations,
+                  formattedCount: formatInteger(images.generations, locale),
+                })}
                 usage={images}
                 className={cn((context || session) && "mt-4 border-t pt-4")}
               />

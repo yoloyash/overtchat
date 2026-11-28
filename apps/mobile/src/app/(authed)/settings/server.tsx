@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Alert } from "react-native";
 import { getServerUrl, clearServerUrl } from "@/lib/server-url";
 import { getAuthClient, resetAuthClient } from "@/lib/auth/client";
@@ -12,28 +13,29 @@ import {
   useAction,
 } from "@/components/settings/SettingsUI";
 export default function Server() {
+  const { t } = useTranslation();
   const session = getAuthClient().useSession();
   const server = getServerUrl() ?? "";
   const action = useAction();
   return (
-    <SettingsPage title="Server">
-      <Section title="Connected server">
-        <Row title="Address" detail={server} />
-        <WebRow title="Open server in browser" path="/" />
+    <SettingsPage title={t("settings.mobile.index.server")}>
+      <Section title={t("settings.mobile.server.connectedServer")}>
+        <Row title={t("settings.mobile.server.address")} detail={server} />
+        <WebRow title={t("settings.mobile.server.openInBrowser")} path="/" />
       </Section>
-      <Section description="Changing servers signs you out on this device.">
+      <Section description={t("settings.mobile.server.changeDescription")}>
         <Row
-          title="Change server"
+          title={t("settings.mobile.server.changeServer")}
           icon="swap-horizontal-outline"
           disabled={action.busy}
           onPress={() =>
             Alert.alert(
-              "Change server?",
-              "You’ll be signed out on this device before choosing another server.",
+              t("settings.mobile.server.confirmTitle"),
+              t("settings.mobile.server.confirmMessage"),
               [
-                { text: "Cancel", style: "cancel" },
+                { text: t("common.actions.cancel"), style: "cancel" },
                 {
-                  text: "Continue",
+                  text: t("common.actions.continue"),
                   onPress: () =>
                     void action.run(async () => {
                       await getAuthCookie()
@@ -44,7 +46,8 @@ export default function Server() {
                       const result = await getAuthClient().signOut();
                       if (result.error)
                         throw new Error(
-                          result.error.message ?? "Couldn’t sign out.",
+                          result.error.message ??
+                            t("settings.mobile.index.signOutFailed"),
                         );
                       await clearServerUrl();
                       resetAuthClient();

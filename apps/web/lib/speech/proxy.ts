@@ -4,6 +4,7 @@ import {
   type SpeechErrorCode,
   type SpeechService,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { getServerCapability } from "@/lib/db/serverCapabilities";
 
 type SpeechConfig = Pick<
@@ -30,7 +31,7 @@ function speechFailure(
   status: number,
 ): Response {
   const response = Response.json(
-    { error: speechErrorMessage(service, code), code },
+    { error: speechErrorMessage(service, i18n.t, code), code },
     {
       status,
       headers: { "Cache-Control": "no-store" },

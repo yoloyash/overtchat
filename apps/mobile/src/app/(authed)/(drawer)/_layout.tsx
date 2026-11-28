@@ -1,4 +1,6 @@
 import { Drawer } from "expo-router/drawer";
+import { DrawerToggleButton } from "expo-router/build/react-navigation/drawer";
+import { useTranslation } from "react-i18next";
 import { getFocusedRouteNameFromRoute } from "expo-router/react-navigation";
 import { AppDrawer } from "@/components/drawer/AppDrawer";
 import { useTheme } from "@/lib/theme";
@@ -6,6 +8,7 @@ import { useTheme } from "@/lib/theme";
 export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
 
 export default function DrawerLayout() {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   return (
     <Drawer
@@ -17,6 +20,11 @@ export default function DrawerLayout() {
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.foreground,
         headerShadowVisible: false,
+        // The library's own labels for these two are English only.
+        overlayAccessibilityLabel: t("sidebar.mobile.closeMenu"),
+        headerLeft: (props) => (
+          <DrawerToggleButton {...props} accessibilityLabel={t("sidebar.mobile.openMenu")} />
+        ),
       }}
       // Android Back returns to the screen the user came from, so leaving an
       // agent conversation lands on the list or chat that opened it.

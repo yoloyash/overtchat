@@ -1,5 +1,6 @@
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -118,6 +119,7 @@ export function AgentComposer({
   /** Stops text-to-speech before dictation so playback is not transcribed. */
   onBeforeDictate?: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -197,9 +199,11 @@ export function AgentComposer({
     }));
     try {
       if (!supportsImages)
-        throw new Error("The selected model does not support images.");
+        throw new Error(t("agents.mobile.composer.modelNoImages"));
       if (draft.images.length + files.length > MAX_AGENT_IMAGES)
-        throw new Error(`Attach up to ${MAX_AGENT_IMAGES} images.`);
+        throw new Error(
+          t("agents.mobile.composer.maxImages", { count: MAX_AGENT_IMAGES }),
+        );
       let total = draft.images.reduce((sum, image) => sum + image.size, 0);
       for (const file of files) {
         if (
@@ -207,13 +211,15 @@ export function AgentComposer({
             file.type as (typeof AGENT_IMAGE_MEDIA_TYPES)[number],
           )
         )
-          throw new Error("Use PNG, JPEG, GIF, or WebP images.");
+          throw new Error(t("agents.mobile.composer.supportedImageTypes"));
         const size = new File(file.uri).size;
         if (size > MAX_AGENT_IMAGE_BYTES)
-          throw new Error(`${file.name} exceeds 10 MB.`);
+          throw new Error(
+            t("agents.mobile.composer.imageExceedsLimit", { name: file.name }),
+          );
         total += size;
         if (total > MAX_AGENT_IMAGE_TOTAL_BYTES)
-          throw new Error("Image attachments must total 20 MB or less.");
+          throw new Error(t("agents.mobile.composer.totalImagesExceedLimit"));
       }
       // Show the picked images right away; each one settles as it uploads.
       setPendingImages(pending);
@@ -237,7 +243,9 @@ export function AgentComposer({
       }
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Couldn't attach images.",
+        cause instanceof Error
+          ? cause.message
+          : t("agents.mobile.composer.attachImagesFailed"),
       );
     } finally {
       uploadLock.current = false;
@@ -251,7 +259,7 @@ export function AgentComposer({
         camera &&
         !(await ImagePicker.requestCameraPermissionsAsync()).granted
       )
-        throw new Error("Camera permission is required.");
+        throw new Error(t("agents.mobile.composer.cameraPermissionRequired"));
       const result = camera
         ? await ImagePicker.launchCameraAsync({
             mediaTypes: ["images"],
@@ -273,7 +281,9 @@ export function AgentComposer({
         );
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Couldn't open photos.",
+        cause instanceof Error
+          ? cause.message
+          : t("agents.mobile.composer.openPhotosFailed"),
       );
     }
   }
@@ -309,13 +319,13 @@ export function AgentComposer({
       />
       {dictation.error && (
         <ErrorNotice
-          message={dictationErrorMessage(dictation.error, isAdmin)}
+          message={dictationErrorMessage(dictation.error, isAdmin, t)}
           onDismiss={dictation.clearError}
           action={
             dictation.error.kind === "empty" || dictation.error.kind === "other" ||
             (dictation.error.kind === "stt_unavailable" &&
               !["speech_disabled", "speech_not_configured", "speech_provider_auth"].includes(dictation.error.code ?? ""))
-              ? { label: "Record again", onPress: toggleMic }
+              ? { label: t("agents.mobile.composer.recordAgain"), onPress: toggleMic }
               : undefined
           }
         />
@@ -429,12 +439,16 @@ export function AgentComposer({
           <TextInput
             ref={inputRef}
             testID="agent-composer-input"
-            accessibilityLabel="Message agent"
+            accessibilityLabel={t("agents.mobile.composer.inputLabel")}
             multiline
             editable={!sending && dictation.status !== "transcribing"}
             value={draft.message}
             onChangeText={(message) => setDraft({ ...draft, message })}
-            placeholder={running ? "Queue a follow-up…" : "Message your agent, or type /"}
+            placeholder={
+              running
+                ? t("agents.mobile.composer.queuePlaceholder")
+                : t("agents.mobile.composer.placeholder")
+            }
             placeholderTextColor={colors.mutedForeground}
             style={[
               styles.input,
@@ -444,14 +458,14 @@ export function AgentComposer({
         </TextInputWrapper>
         <View style={styles.controls}>
           <ControlButton
-            label="Attach images"
+            label={t("agents.composer.attachImages")}
             icon="add"
             disabled={disabled || sending || uploading || !supportsImages}
             onPress={() => setAttachOpen(true)}
           />
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Model, effort, and permissions"
+            accessibilityLabel={t("agents.mobile.composer.settingsLabel")}
             accessibilityValue={{ text: settingsLabel }}
             accessibilityState={{ disabled }}
             disabled={disabled}
@@ -489,7 +503,9 @@ export function AgentComposer({
           </Pressable>
           {permission && onPermissions && (
             <ControlButton
-              label={`Permissions: ${permission.label}`}
+              label={t("agents.composer.permissionsSelected", {
+                mode: permission.label,
+              })}
               icon={permission.dangerous ? "shield-outline" : "shield-checkmark-outline"}
               tint={permission.dangerous ? colors.destructive : undefined}
               bare
@@ -504,10 +520,10 @@ export function AgentComposer({
           <ControlButton
             label={
               dictation.status === "recording"
-                ? "Stop dictation"
+                ? t("agents.mobile.composer.stopDictation")
                 : dictation.status === "transcribing"
-                  ? "Transcribing"
-                  : "Start dictation"
+                  ? t("agents.mobile.composer.transcribing")
+                  : t("agents.mobile.composer.startDictation")
             }
             icon={dictation.status === "recording" ? "stop" : "mic"}
             danger={dictation.status === "recording"}
@@ -521,7 +537,7 @@ export function AgentComposer({
           />
           {running && (
             <ControlButton
-              label="Stop agent"
+              label={t("agents.mobile.composer.stopAgent")}
               icon="stop"
               filled
               disabled={!(canStop ?? !disabled) || sending}
@@ -530,7 +546,11 @@ export function AgentComposer({
           )}
           {showSend && (
             <ControlButton
-              label={running ? "Queue message" : "Send message"}
+              label={
+                running
+                  ? t("agents.mobile.composer.queueMessage")
+                  : t("agents.composer.sendMessage")
+              }
               icon="arrow-up"
               primary
               loading={sending || uploading}
@@ -558,6 +578,7 @@ function AttachmentThumbnail({
   pendingUri?: string;
   onRemove?: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, radii } = useTheme();
   const cookie = useAuthCookie();
   const [localFailed, setLocalFailed] = useState(false);
@@ -569,7 +590,7 @@ function AttachmentThumbnail({
   // Prefer the on-device copy; restored drafts may outlive it.
   const source =
     local && !local.startsWith("/") && !localFailed ? { uri: local } : remote;
-  const label = image?.filename ?? "Uploading image";
+  const label = image?.filename ?? t("agents.mobile.composer.uploadingImage");
   return (
     <View
       style={[
@@ -583,7 +604,11 @@ function AttachmentThumbnail({
     >
       <Pressable
         accessibilityRole="imagebutton"
-        accessibilityLabel={pendingUri ? "Uploading image" : `Preview ${label}`}
+        accessibilityLabel={
+          pendingUri
+            ? t("agents.mobile.composer.uploadingImage")
+            : t("agents.mobile.composer.previewImage", { label })
+        }
         accessibilityState={{ busy: !!pendingUri }}
         disabled={!!pendingUri || !source}
         onPress={() => setOpen(true)}
@@ -609,7 +634,9 @@ function AttachmentThumbnail({
       {onRemove && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Remove ${label}`}
+          accessibilityLabel={t("agents.composer.removeAttachment", {
+            filename: label,
+          })}
           hitSlop={8}
           onPress={onRemove}
           style={styles.remove}

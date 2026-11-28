@@ -8,6 +8,7 @@ import {
   type ComponentProps,
   type CSSProperties,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { usePaneResize } from "@/lib/usePaneResize";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,7 @@ export function SidePanel({
   children,
   ...props
 }: ComponentProps<"aside"> & { variant: "docked" | "overlay"; onClose: () => void }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLElement>(null);
   // Width of the row the panel shares with the chat.
   const [rowWidth, setRowWidth] = useState<number | null>(null);
@@ -91,7 +93,7 @@ export function SidePanel({
       {sized && (
         <div
           {...resize.separatorProps}
-          aria-label="Resize panel"
+          aria-label={t("chat.files.resizePanel")}
           tabIndex={0}
           data-testid="side-panel-resize-handle"
           className="group absolute inset-y-0 -left-1 z-10 hidden w-2 touch-none cursor-col-resize outline-none select-none lg:block"

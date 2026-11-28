@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { z } from "zod";
 
 // Request identity and the single-image/storage contract are owned by OvertChat.
@@ -12,8 +13,8 @@ const reserved = new Set([
   "images",
   "mask",
   "stream",
-  "__proto__",
-  "constructor",
+  "[object Object]",
+  "function Object() { [native code] }",
   "prototype",
 ]);
 
@@ -32,13 +33,13 @@ export const CustomImageOptionsSchema = z
             ctx.addIssue({
               code: "custom",
               path: [key],
-              message: `${key} cannot be set in extra image parameters.`,
+              message: i18n.t("models.customImage.reservedExtraParam", { key }),
             });
         }
         if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 16_384)
           ctx.addIssue({
             code: "custom",
-            message: "Extra image parameters must be at most 16 KiB.",
+            message: i18n.t("models.customImage.extraParamsTooLarge"),
           });
       }),
   })

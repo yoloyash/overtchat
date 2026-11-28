@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
@@ -57,11 +58,12 @@ export function SlashCommandMenu({
   onActiveIndexChange,
   onSelect,
 }: Props) {
+  const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(
-    () => (models ? [] : groupSlashCommands(commands)),
-    [commands, models],
+    () => (models ? [] : groupSlashCommands(commands, t)),
+    [commands, models, t],
   );
 
   // Indexed in render order so `data-index` matches the composer's cursor.
@@ -100,14 +102,16 @@ export function SlashCommandMenu({
         ref={listRef}
         id={id}
         role="listbox"
-        aria-label={models ? "Select model" : "Commands"}
+        aria-label={models ? t("chat.commands.selectModel") : t("chat.commands.commands")}
         className="max-h-72 overflow-y-auto p-1.5"
       >
         {isEmpty && (
           <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">
             {models
-              ? "No models match this search."
-              : `No commands match ${query ? `“/${query}”` : "your search"}.`}
+              ? t("chat.commands.noModelsMatch")
+              : query
+                ? t("chat.commands.noCommandsMatchQuery", { query })
+                : t("chat.commands.noCommandsMatch")}
           </p>
         )}
 
@@ -145,7 +149,7 @@ export function SlashCommandMenu({
               aria-hidden
               className="px-2.5 pt-1.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
             >
-              {group.label}
+              {t(`chat.commands.groups.${group.group}`)}
             </div>
             {group.commands.map((command) => {
               const index = rowIndexes.get(`command:${command.name}`) ?? 0;

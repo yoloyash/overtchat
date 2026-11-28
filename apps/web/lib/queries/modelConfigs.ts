@@ -6,6 +6,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { i18n } from "@overtchat/shared/i18n";
 import { modelConfigKeys } from "@/lib/queries/keys";
 import type {
   AdminModelConfig,
@@ -77,6 +78,28 @@ export function useCreateModelConfig() {
   });
 }
 
+/** Adds several chat models as one change: all of them are saved, or none. */
+export function useCreateModelConfigs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (modelConfigs: ModelConfigInput[]) => {
+      const r = await fetch(apiUrl("/api/model-configs/bulk"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...adminHeaders() },
+        body: JSON.stringify({ modelConfigs }),
+      });
+      // A server from before this route answers for `/api/model-configs/[id]`.
+      if (r.status === 404 || r.status === 405)
+        throw new Error(i18n.t("models.toast.severalNeedServerUpdate"));
+      if (!r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+    },
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
 export function useUpdateModelConfig() {
   const qc = useQueryClient();
   return useMutation({
@@ -123,7 +146,7 @@ export function useReorderModels() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.error ?? "Couldn't save model order");
+        throw new Error(body.error ?? i18n.t("models.toast.reorderFailed"));
       }
     },
     onSettled: () => qc.invalidateQueries({ queryKey: modelConfigKeys.all() }),

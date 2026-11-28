@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import { Code, Copy, Download, Expand, Loader2, Play, X } from "lucide-react";
 import { writeText } from "clipboard-polyfill";
 import { CodeBlock, type CustomRendererProps } from "streamdown";
@@ -21,13 +22,16 @@ export function CodePreviewBlock({
   language,
   isIncomplete,
 }: CustomRendererProps) {
+  const { t } = useTranslation();
   const isSvg = language === "svg";
   const label = isSvg ? "SVG" : "HTML";
   const tooLarge = code.length > MAX_PREVIEW_LENGTH;
   const [image, setImage] = useState<SvgImage | null>(null);
   const [failure, setFailure] = useState<{
     source: string;
-    message: string;
+    error:
+      | { kind: "svgNoDimensions" | "svgPreviewFailed" }
+      | { kind: "raw"; message: string };
   } | null>(null);
   const [showSource, setShowSource] = useState(false);
   // Capture a completed document on click; streaming never runs HTML scripts.
@@ -38,9 +42,11 @@ export function CodePreviewBlock({
   const readyImage =
     image && code.startsWith(image.source.trimEnd()) ? image : null;
   const error = tooLarge
-    ? "This block is too large to preview. You can still copy or download its source."
+    ? t("chat.codePreview.tooLarge")
     : failure?.source === code
-      ? failure.message
+      ? failure.error.kind === "raw"
+        ? failure.error.message
+        : t(`chat.codePreview.${failure.error.kind}`)
       : null;
   const canPreview = !error && (isSvg ? !!readyImage : !isIncomplete);
 
@@ -59,7 +65,7 @@ export function CodePreviewBlock({
     const loader = new Image();
     async function loadImage() {
       url = URL.createObjectURL(
-        new Blob([svgPreviewSource(code, isIncomplete)], {
+        new Blob([svgPreviewSource(code, t, isIncomplete)], {
           type: "image/svg+xml",
         }),
       );
@@ -67,7 +73,8 @@ export function CodePreviewBlock({
       await loader.decode();
       if (cancelled) return;
       if (!loader.naturalWidth || !loader.naturalHeight) {
-        throw new Error("This SVG has no usable dimensions.");
+        setFailure({ source: code, error: { kind: "svgNoDimensions" } });
+        return;
       }
       published = true;
       setImage({
@@ -83,10 +90,10 @@ export function CodePreviewBlock({
         if (!cancelled && !isIncomplete) {
           setFailure({
             source: code,
-            message:
+            error:
               reason instanceof Error
-                ? reason.message
-                : "Unable to preview this SVG.",
+                ? { kind: "raw", message: reason.message }
+                : { kind: "svgPreviewFailed" },
           });
         }
       });
@@ -96,7 +103,7 @@ export function CodePreviewBlock({
       cancelAnimationFrame(frame);
       if (url && !published) URL.revokeObjectURL(url);
     };
-  }, [code, isSvg, isIncomplete, tooLarge]);
+  }, [code, isSvg, isIncomplete, tooLarge, t]);
 
   function download() {
     const url = URL.createObjectURL(
@@ -127,15 +134,15 @@ export function CodePreviewBlock({
             {isSvg && (isIncomplete || !readyImage) && !error && (
               <Loader2
                 className="mr-2 size-3.5 animate-spin motion-reduce:animate-none"
-                aria-label="Rendering SVG"
+                aria-label={t("chat.codePreview.renderingSvg")}
               />
             )}
             {isSvg && (
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={showSource ? "Show SVG" : "Show source"}
-                title={showSource ? "Show SVG" : "Show source"}
+                aria-label={showSource ? t("chat.codePreview.showSvg") : t("chat.codePreview.showSource")}
+                title={showSource ? t("chat.codePreview.showSvg") : t("chat.codePreview.showSource")}
                 aria-pressed={showSource}
                 onClick={() => setShowSource(!showSource)}
               >
@@ -145,12 +152,12 @@ export function CodePreviewBlock({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`Copy ${label} source`}
-              title={`Copy ${label} source`}
+              aria-label={t("chat.codePreview.copySource", { format: label })}
+              title={t("chat.codePreview.copySource", { format: label })}
               onClick={() => {
                 void writeText(code)
-                  .then(() => toast.success(`${label} source copied`))
-                  .catch(() => toast.error("Could not copy source"));
+                  .then(() => toast.success(t("chat.codePreview.sourceCopied", { format: label })))
+                  .catch(() => toast.error(t("chat.codePreview.copySourceFailed")));
               }}
             >
               <Copy />
@@ -158,8 +165,8 @@ export function CodePreviewBlock({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`Download ${label}`}
-              title={`Download ${label}`}
+              aria-label={t("chat.codePreview.download", { format: label })}
+              title={t("chat.codePreview.download", { format: label })}
               onClick={download}
             >
               <Download />
@@ -170,8 +177,8 @@ export function CodePreviewBlock({
                   ref={triggerRef}
                   variant="ghost"
                   size={isSvg ? "icon-sm" : "sm"}
-                  aria-label={isSvg ? "View SVG fullscreen" : "Preview HTML"}
-                  title={isSvg ? "View SVG fullscreen" : "Preview HTML"}
+                  aria-label={isSvg ? t("chat.codePreview.viewSvgFullscreen") : t("chat.codePreview.previewHtml")}
+                  title={isSvg ? t("chat.codePreview.viewSvgFullscreen") : t("chat.codePreview.previewHtml")}
                   disabled={!canPreview}
                   onClick={() => {
                     if (!isSvg) setDocument(htmlPreviewDocument(code));
@@ -184,7 +191,7 @@ export function CodePreviewBlock({
               ) : (
                 <>
                   <Play />
-                  Preview
+                  {t("chat.codePreview.preview")}
                 </>
               )}
             </Dialog.Trigger>
@@ -207,7 +214,7 @@ export function CodePreviewBlock({
         )}
         {isSvg && readyImage && !error && (
           <div hidden={showSource}>
-            <DiagramViewport image={readyImage} alt="Generated SVG" />
+            <DiagramViewport image={readyImage} alt={t("chat.codePreview.generatedSvgAlt")} />
           </div>
         )}
       </div>
@@ -219,15 +226,15 @@ export function CodePreviewBlock({
         >
           <div className="flex shrink-0 items-center justify-between border-b px-3 py-2">
             <Dialog.Title className="text-sm font-medium">
-              {label} preview
+              {t("chat.codePreview.previewTitle", { format: label })}
             </Dialog.Title>
             <Dialog.Close
               render={
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Close preview"
-                  title="Close preview"
+                  aria-label={t("chat.codePreview.closePreview")}
+                  title={t("chat.codePreview.closePreview")}
                 />
               }
             >
@@ -236,21 +243,21 @@ export function CodePreviewBlock({
           </div>
           <Dialog.Description className="sr-only">
             {isSvg
-              ? "Drag to pan. Scroll or pinch to zoom."
-              : "Interactive preview of the generated HTML page."}
+              ? t("chat.codePreview.svgFullscreenInstructions")
+              : t("chat.codePreview.htmlFullscreenInstructions")}
           </Dialog.Description>
           {isSvg
             ? readyImage && (
                 <DiagramViewport
                   image={readyImage}
-                  alt="Generated SVG"
+                  alt={t("chat.codePreview.generatedSvgAlt")}
                   fullscreen
                 />
               )
             : document &&
               fullscreen && (
                 <iframe
-                  title="HTML preview"
+                  title={t("chat.codePreview.htmlPreviewTitle")}
                   sandbox="allow-scripts"
                   referrerPolicy="no-referrer"
                   srcDoc={document}

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { SettingsModelIcon } from "@/components/settings/SettingsModelIcon";
 import { useState } from "react";
 import { Alert } from "react-native";
@@ -7,8 +8,9 @@ import {
   API_FORMATS,
   findProvider,
   isProviderId,
-  PROVIDERS,
+  providerDisplayLabel,
 } from "@overtchat/shared/provider-catalog";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AdminGate } from "@/components/settings/AdminGate";
 import {
   SettingsPage,
@@ -46,6 +48,7 @@ type Discovered = {
   contextWindow?: number;
   capabilities?: ModelCapabilities;
 };
+const PRICING_KEYS = ["input", "output", "cacheRead", "cacheWrite"] as const;
 export default function ModelEditor() {
   return (
     <AdminGate>
@@ -54,6 +57,7 @@ export default function ModelEditor() {
   );
 }
 function EditorScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useSettingsQuery<{ modelConfigs: SettingsModelConfig[] }>(
     "/model-configs?admin=1",
@@ -62,20 +66,26 @@ function EditorScreen() {
   const model = query.data?.modelConfigs.find((m) => m.id === id);
   return (
     <SettingsPage
-      title={id === "new" ? "Add model" : (model?.label ?? "Model")}
+      title={
+        id === "new"
+          ? t("models.page.addModel")
+          : (model?.label ?? t("models.connection.modelTitle"))
+      }
     >
       {id === "new" || model ? (
         <Editor key={id} model={model} />
       ) : (
         <>
           <QueryState query={query} />
-          {query.data && <Label>Model no longer exists.</Label>}
+          {query.data && <Label>{t("models.mobile.editor.notFound")}</Label>}
         </>
       )}
     </SettingsPage>
   );
 }
 function Editor({ model }: { model?: SettingsModelConfig }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [draft, setDraft] = useState(() => modelDraft(model));
   const [pricingText, setPricingText] = useState(() =>
     pricingStrings(model?.pricing),
@@ -117,31 +127,31 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
   return (
     <>
       <Section
-        title="Availability"
+        title={t("models.mobile.editor.availabilityTitle")}
         description={
           draft.modelType === "image"
-            ? "Enabling this image model disables the other image model."
+            ? t("models.mobile.editor.imageAvailabilityDescription")
             : undefined
         }
       >
         <Toggle
           disabled={busy}
-          title="Enabled"
+          title={t("models.editor.enabledTitle")}
           value={draft.enabled}
           onChange={(enabled) => patch({ enabled })}
         />
       </Section>
       <Section
-        title="Connection"
-        description="Configured models are shared by everyone on this server."
+        title={t("models.editor.connectionTitle")}
+        description={t("models.mobile.editor.connectionDescription")}
       >
         <Choice
           disabled={busy}
-          title="Model type"
+          title={t("models.editor.modelTypeSection")}
           value={draft.modelType}
           options={[
-            { value: "chat", label: "Chat" },
-            { value: "image", label: "Image" },
+            { value: "chat", label: t("models.editor.typeChat") },
+            { value: "image", label: t("models.editor.typeImage") },
           ]}
           onChange={(modelType) => {
             const next = changeModelType(draft, modelType);
@@ -153,7 +163,8 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
         />
         <Choice
           disabled={busy}
-          title="Provider"
+          title={t("models.connection.providerTitle")}
+          searchLabel={t("models.mobile.editor.searchProvider")}
           value={draft.providerId}
           options={[
             // Keep a provider from a newer server selectable as-is.
@@ -162,16 +173,19 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
               : [
                   {
                     value: draft.providerId,
-                    label: providerLabel({
-                      providerId: draft.providerId,
-                      displayProvider: model?.displayProvider,
-                    }),
+                    label: providerLabel(
+                      {
+                        providerId: draft.providerId,
+                        displayProvider: model?.displayProvider,
+                      },
+                      t,
+                    ),
                     leading: <SettingsModelIcon provider={draft.providerId} />,
                   },
                 ]),
             ...modelProviders(draft.modelType).map((id) => ({
               value: id as string,
-              label: PROVIDERS[id].label,
+              label: providerDisplayLabel(id, t),
               leading: <SettingsModelIcon provider={id} />,
             })),
           ]}
@@ -186,7 +200,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
         {draft.providerId === "custom" && (
           <Choice
             disabled={busy}
-            title="API format"
+            title={t("models.connection.apiFormatTitle")}
             value={draft.apiFormat}
             options={customApiFormats(draft.modelType).map((id) => ({
               value: id,
@@ -197,21 +211,21 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
         )}
         <Field
           editable={!busy}
-          label="Endpoint"
+          label={t("models.connection.endpointTitle")}
           value={draft.baseUrl}
           onChangeText={(baseUrl) => connection({ baseUrl })}
           keyboardType="url"
-          hint="Address reachable from your OvertChat server."
+          hint={t("models.mobile.editor.endpointHint")}
         />
         <Field
           editable={!busy}
-          label="API key"
+          label={t("models.connection.apiKeyTitle")}
           value={draft.apiKey ?? ""}
           onChangeText={(apiKey) => connection({ apiKey })}
           secureTextEntry
         />
         <Row
-          title="Discover models"
+          title={t("models.mobile.editor.discoverModels")}
           icon="search-outline"
           disabled={busy}
           onPress={() =>
@@ -223,14 +237,15 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
               );
               setDiscovered(data.models);
               if (!data.models.length)
-                setResult("No models found. Enter a model ID manually.");
+                setResult(t("models.mobile.editor.noModelsDiscovered"));
             })
           }
         />
         {discovered.length > 0 && (
           <Choice
             disabled={busy}
-            title="Discovered models"
+            title={t("models.mobile.editor.discoveredModels")}
+            searchLabel={t("models.mobile.editor.searchDiscoveredModels")}
             value={draft.model}
             options={discovered.map((m) => ({
               value: m.id,
@@ -248,7 +263,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
         )}
         <Field
           editable={!busy}
-          label="Model ID"
+          label={t("models.mobile.editor.modelIdLabel")}
           value={draft.model}
           onChangeText={(model) =>
             patch({
@@ -258,12 +273,13 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
             })
           }
           placeholder={
+            // eslint-disable-next-line i18next/no-literal-string -- technical model ID placeholder
             findProvider(draft.providerId)?.modelPlaceholder ?? "model-id"
           }
         />
         <Field
           editable={!busy}
-          label="Display name"
+          label={t("models.editor.displayNameTitle")}
           value={draft.label}
           onChangeText={(label) => patch({ label })}
           autoCapitalize="words"
@@ -271,7 +287,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
         {draft.modelType === "chat" && (
           <Toggle
             disabled={busy}
-            title="Tool calling"
+            title={t("models.editor.toolCallingTitle")}
             value={draft.toolCallingEnabled}
             onChange={(toolCallingEnabled) => patch({ toolCallingEnabled })}
           />
@@ -279,10 +295,12 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
       </Section>
 
       {draft.modelType === "chat" && (
-        <Section title="Advanced">
+        <Section title={t("models.advanced.title")}>
           <Row
             title={
-              advanced ? "Hide advanced settings" : "Show advanced settings"
+              advanced
+                ? t("models.mobile.editor.hideAdvanced")
+                : t("models.mobile.editor.showAdvanced")
             }
             expanded={advanced}
             onPress={() => setAdvanced(!advanced)}
@@ -291,15 +309,21 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
             <>
               <Field
                 editable={!busy}
-                label="Context window"
+                label={t("models.advanced.contextWindowTitle")}
                 value={context}
                 onChangeText={setContext}
                 keyboardType="number-pad"
-                hint={`Leave blank for automatic detection${model?.resolvedContextWindow ? ` (${model.resolvedContextWindow.toLocaleString()} tokens)` : ""}.`}
+                hint={
+                  model?.resolvedContextWindow
+                    ? t("models.mobile.editor.contextWindowHintDetected", {
+                        tokens: model.resolvedContextWindow.toLocaleString(locale),
+                      })
+                    : t("models.mobile.editor.contextWindowHint")
+                }
               />
               <Field
                 editable={!busy}
-                label="System prompt"
+                label={t("models.advanced.systemPromptTitle")}
                 value={draft.systemPrompt ?? ""}
                 onChangeText={(systemPrompt) =>
                   patch({ systemPrompt: systemPrompt || null })
@@ -309,7 +333,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
               />
               <Field
                 editable={!busy}
-                label="Provider options (JSON)"
+                label={t("models.mobile.editor.providerOptionsLabel")}
                 value={options}
                 onChangeText={setOptions}
                 multiline
@@ -317,7 +341,7 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
               />
               <Toggle
                 disabled={busy}
-                title="Custom pricing"
+                title={t("models.advanced.pricing.customPricingLabel")}
                 value={draft.pricing !== null}
                 onChange={(enabled) => {
                   const pricing = enabled
@@ -333,20 +357,12 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
                 }}
               />
               {draft.pricing &&
-                (["input", "output", "cacheRead", "cacheWrite"] as const).map(
-                  (key) => (
+                PRICING_KEYS.map((key) => (
                     <Field
                       editable={!busy}
                       key={key}
-                      label={
-                        {
-                          input: "Input price",
-                          output: "Output price",
-                          cacheRead: "Cache read price",
-                          cacheWrite: "Cache write price",
-                        }[key]
-                      }
-                      hint="USD per 1 million tokens"
+                      label={t(`models.mobile.editor.pricing.${key}`)}
+                      hint={t("models.mobile.editor.pricing.unitHint")}
                       keyboardType="decimal-pad"
                       value={pricingText[key]}
                       onChangeText={(text) => {
@@ -370,15 +386,16 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
       )}
       {draft.modelType === "image" && draft.providerId === "custom" && (
         <Section
-          title="Image options"
-          description="Size, response format, editing support, and extra request fields."
+          title={t("models.mobile.editor.imageOptionsTitle")}
+          description={t("models.mobile.editor.imageOptionsDescription")}
         >
           <Field
             editable={!busy}
-            label="Provider options (JSON)"
+            label={t("models.mobile.editor.providerOptionsLabel")}
             value={options}
             onChangeText={setOptions}
             multiline
+            // eslint-disable-next-line i18next/no-literal-string -- JSON example placeholder
             placeholder='{ "size": "auto" }'
           />
         </Section>
@@ -388,7 +405,11 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
       {draft.modelType === "chat" && (
         <Action
           secondary
-          title={action.busy ? "Working…" : "Test connection"}
+          title={
+            action.busy
+              ? t("common.states.working")
+              : t("models.connectionTester.testConnection")
+          }
           disabled={busy}
           onPress={() =>
             void action.run(async () => {
@@ -397,13 +418,23 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
                 "POST",
                 parseModelDraft(draft, options, context),
               );
-              setResult(`Connected in ${data.elapsedMs} ms.`);
+              setResult(
+                t("models.mobile.editor.connectedInMs", {
+                  elapsedMs: data.elapsedMs,
+                }),
+              );
             })
           }
         />
       )}
       <Action
-        title={created ? "Model created" : busy ? "Saving…" : "Save model"}
+        title={
+          created
+            ? t("models.toast.created")
+            : busy
+              ? t("common.states.saving")
+              : t("models.mobile.editor.save")
+        }
         disabled={busy || created}
         onPress={() =>
           void action.run(async () => {
@@ -423,32 +454,34 @@ function Editor({ model }: { model?: SettingsModelConfig }) {
             setContext(String(input.contextWindow ?? ""));
             setPricingText(pricingStrings(input.pricing));
             setCreated(!model);
-            toastSuccess(model ? "Model saved" : "Model created");
+            toastSuccess(
+              model ? t("models.toast.saved") : t("models.toast.created"),
+            );
           })
         }
       />
       {created && (
         <Action
           secondary
-          title="Back to models"
+          title={t("models.editor.backLabel")}
           onPress={() => router.back()}
         />
       )}
       {model && (
-        <Section title="Manage model">
+        <Section title={t("models.mobile.editor.manageTitle")}>
           <Row
-            title="Delete model"
+            title={t("models.mobile.editor.deleteAction")}
             icon="trash-outline"
             destructive
             disabled={busy || changed}
             onPress={() =>
               Alert.alert(
-                "Delete model?",
-                `${model.label} will no longer be available for new requests. Existing chats remain.`,
+                t("models.deleteDialog.title"),
+                t("models.mobile.editor.deleteMessage", { label: model.label }),
                 [
-                  { text: "Cancel", style: "cancel" },
+                  { text: t("common.actions.cancel"), style: "cancel" },
                   {
-                    text: "Delete",
+                    text: t("common.actions.delete"),
                     style: "destructive",
                     onPress: () =>
                       void action.run(async () => {

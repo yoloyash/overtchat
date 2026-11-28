@@ -46,6 +46,7 @@ CLAUDE.md
 !/scripts/dev.test.mjs
 !/scripts/readme-media.mjs
 !/scripts/readme-android.mjs
+!/scripts/i18n-untranslated.mjs
 /.readme-media/
 /apps/web/scripts/seed.ts
 

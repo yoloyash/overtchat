@@ -127,6 +127,8 @@ export function commitChatTurn({
   truncateFromMessageId,
   continueMessage,
   userMessage,
+  title,
+  scheduledTaskName,
 }: {
   chatId: string;
   modelConfigId?: string;
@@ -140,6 +142,10 @@ export function commitChatTurn({
   truncateFromMessageId?: string;
   continueMessage?: UIMessage;
   userMessage?: { id: string; parts: AnyPart[]; metadata?: Record<string, unknown> };
+  /** The title of the chat this turn creates, in place of a generated one. */
+  title?: string;
+  /** The scheduled task whose run creates the chat. */
+  scheduledTaskName?: string;
 }): CommitChatTurnResult {
   return db.transaction((tx) => {
     const duplicate = tx
@@ -215,7 +221,13 @@ export function commitChatTurn({
 
     if (!existing) {
       tx.insert(chats)
-        .values({ id: chatId, userId, projectId, title: null })
+        .values({
+          id: chatId,
+          userId,
+          projectId,
+          title: title ?? null,
+          scheduledTaskName: scheduledTaskName ?? null,
+        })
         .run();
     }
 

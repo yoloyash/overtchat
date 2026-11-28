@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type {
   AgentInteractionValue,
   AgentRuntimeSnapshot,
@@ -215,6 +216,7 @@ export function isAgentQuestion(
 
 export function agentQuestionFields(
   request: AgentQuestionRequest,
+  t: TFunction,
 ): InteractionFormField[] {
   if (request.method === "form") return interactionFormFields(request.fields);
   return [
@@ -223,7 +225,7 @@ export function agentQuestionFields(
       label:
         typeof request.title === "string"
           ? request.title
-          : "Your agent needs input",
+          : t("agents.questions.defaultTitle"),
       description:
         typeof request.message === "string" ? request.message : undefined,
       type:
@@ -288,11 +290,11 @@ export function dismissQuestion(
   return { cancelled: true };
 }
 
-export function questionOptions(field: InteractionFormField) {
+export function questionOptions(field: InteractionFormField, t: TFunction) {
   return field.type === "boolean"
     ? [
-        { value: "true", label: "Yes", description: undefined },
-        { value: "false", label: "No", description: undefined },
+        { value: "true", label: t("agents.questions.yes"), description: undefined },
+        { value: "false", label: t("agents.questions.no"), description: undefined },
       ]
     : field.options;
 }

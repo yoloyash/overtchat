@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { UIMessage } from "ai";
 import {
   codeExecutionFileIndex,
@@ -26,6 +27,7 @@ export function SharedTranscript({
   hasMore?: boolean;
   loadingMore?: boolean;
 }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(50);
   const [documentTarget, setDocumentTarget] = useState<string | null>(null);
   const closeDocument = useCallback(() => setDocumentTarget(null), []);
@@ -64,7 +66,9 @@ export function SharedTranscript({
         <article
           key={message.id}
           aria-label={
-            message.role === "user" ? "User message" : "Assistant message"
+            message.role === "user"
+              ? t("chat.messages.userMessage")
+              : t("chat.messages.assistantMessage")
           }
         >
           <MessageBubble
@@ -85,7 +89,9 @@ export function SharedTranscript({
           disabled={loadingMore}
           onClick={onLoadMore ?? (() => setVisible((count) => count + 50))}
         >
-          {loadingMore ? "Loading messages…" : "Show more messages"}
+          {loadingMore
+            ? t("chat.messages.loadingMore")
+            : t("chat.messages.showMoreMessages")}
         </Button>
       )}
     </div>

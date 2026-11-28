@@ -2,6 +2,8 @@
 
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import type { TFunction } from "i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,8 @@ import {
   CHAT_ID_PLACEHOLDER,
   modelHeadersFromRows,
 } from "@/lib/model-config/headers";
+import type { AvailableModel } from "@/lib/model-config/client";
+import { parseModelIds } from "@/lib/model-config/model-ids";
 import {
   ModelConfigSchema,
   supportsLocalReasoningConfig,
@@ -32,6 +36,7 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   useAdminModelConfigs,
   useCreateModelConfig,
+  useCreateModelConfigs,
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
 import { findProvider, isProviderId, PROVIDERS } from "@/lib/providers/catalog";
@@ -65,6 +70,7 @@ type ModelEditorDraft = Omit<ModelConfigInput, "pricing"> & {
 };
 
 export function ModelEditor({ modelId }: ModelEditorProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: list = [] } = useAdminModelConfigs();
   const existing: AdminModelConfig | undefined = modelId
@@ -115,26 +121,43 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     };
   });
 
+  // The models this provider and endpoint already serve.
+  const sameEndpointModels = useMemo(() => {
+    const endpoint = draft.baseUrl.trim().replace(/\/+$/, "");
+    return list.filter(
+      (model) =>
+        model.providerId === draft.providerId &&
+        model.baseUrl.trim().replace(/\/+$/, "") === endpoint,
+    );
+  }, [list, draft.providerId, draft.baseUrl]);
+
   const previouslyUsedApiKeys = useMemo(() => {
     if (isEditing) return [];
-    const endpoint = draft.baseUrl.trim().replace(/\/+$/, "");
-    const keys = list
-      .filter(
-        (model) =>
-          model.providerId === draft.providerId &&
-          model.baseUrl.trim().replace(/\/+$/, "") === endpoint,
-      )
+    const keys = [...sameEndpointModels]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .flatMap(({ apiKey }) => (apiKey?.trim() ? [apiKey] : []));
     return [...new Set(keys)];
-  }, [isEditing, list, draft.providerId, draft.baseUrl]);
+  }, [isEditing, sameEndpointModels]);
+
+  const addedModelIds = useMemo(
+    () =>
+      new Set(
+        sameEndpointModels
+          .filter(
+            (model) =>
+              model.modelType === "chat" && model.apiFormat === draft.apiFormat,
+          )
+          .map((model) => model.model),
+      ),
+    [sameEndpointModels, draft.apiFormat],
+  );
 
   const [headerRows, setHeaderRows] = useState<Pair[]>(() =>
     pairs(existing?.headers ?? {}, false),
   );
   const { headers, error: headersError } = useMemo(
-    () => modelHeadersFromRows(headerRows),
-    [headerRows],
+    () => modelHeadersFromRows(headerRows, t),
+    [headerRows, t],
   );
   const [providerOptionsText, setProviderOptionsText] = useState(() =>
     existing?.providerOptions
@@ -164,12 +187,26 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const [catalogPricing, setCatalogPricing] = useState<
     CatalogModelPricing | null | undefined
   >();
+  const [fetchedModels, setFetchedModels] = useState<AvailableModel[]>([]);
 
   const createMut = useCreateModelConfig();
+  const createManyMut = useCreateModelConfigs();
   const updateMut = useUpdateModelConfig();
-  const saving = createMut.isPending || updateMut.isPending;
+  const saving =
+    createMut.isPending || createManyMut.isPending || updateMut.isPending;
 
   const isImage = draft.modelType === "image";
+  // New chat models can be added several at a time: `draft.model` then lists
+  // them, and each takes its own settings from the provider.
+  const multiple = !isEditing && !isImage;
+  const modelIds = useMemo(
+    () =>
+      multiple ? parseModelIds(draft.model) : draft.model ? [draft.model] : [],
+    [multiple, draft.model],
+  );
+  const several = modelIds.length > 1;
+  /** The one model that the settings below the connection describe. */
+  const model = several ? "" : (modelIds[0] ?? "");
   const perUser = !isImage && draft.credentialScope === "user";
   const isCustomImage = isImage && draft.providerId === "custom";
   const isOpenRouterImage = isImage && draft.providerId === "openrouter";
@@ -193,14 +230,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const canSave =
     !saving &&
-    !(thinkingInvalid && draft.reasoningOverride !== null) &&
     !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
-    !!draft.model &&
-    pricingIsValid &&
+    modelIds.length > 0 &&
     !headersError &&
     (isImage || !providerOptionsError) &&
-    !(requiresKey && !draft.apiKey && !perUser);
+    !(requiresKey && !draft.apiKey && !perUser) &&
+    // Several models take these from the provider; the fields are hidden.
+    (several ||
+      (pricingIsValid &&
+        !(thinkingInvalid && draft.reasoningOverride !== null)));
   const stillEditingOriginalConnection =
     existing !== undefined &&
     draft.providerId === existing.providerId &&
@@ -244,7 +283,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       baseUrl: draft.baseUrl,
       apiKey: draft.apiKey ?? "",
       headers,
-      model: draft.model,
+      model,
       providerOptions: parsedOptions,
       toolCallingEnabled: draft.toolCallingEnabled,
     };
@@ -254,7 +293,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     draft.baseUrl,
     draft.apiKey,
     headers,
-    draft.model,
+    model,
     draft.toolCallingEnabled,
     providerOptionsText,
     providerOptionsError,
@@ -270,29 +309,19 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         providerOptions = JSON.parse(providerOptionsText);
       } catch (err) {
         setSaveError(
-          `Provider options must be a valid JSON object: ${getErrorMessage(
-            err,
-            "Invalid JSON",
-          )}`,
+          t("models.editor.errors.invalidProviderOptions", {
+            error: getErrorMessage(err, t("models.editor.errors.invalidJson")),
+          }),
         );
         return;
       }
     }
 
-    const pricing =
-      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
-    if (draft.pricing !== null && pricing === null) {
-      setSaveError(
-        isImage
-          ? "Enter input and output rates as nonnegative numbers."
-          : "Enter all four pricing rates as nonnegative numbers.",
-      );
-      return;
-    }
-
     if (!isProviderId(draft.providerId)) {
       setSaveError(
-        `Update the app to edit models that use ${existing?.displayProvider ?? draft.providerId}.`,
+        t("models.editor.errors.updateAppForProvider", {
+          provider: existing?.displayProvider ?? draft.providerId,
+        }),
       );
       return;
     }
@@ -302,11 +331,70 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       return;
     }
 
+    if (several) {
+      // Each model is saved as adding it alone would save it, with the
+      // settings that describe one model left at what the provider reports.
+      const inputs: ModelConfigInput[] = [];
+      for (const id of modelIds) {
+        const fetched = fetchedModels.find((item) => item.id === id);
+        const parsed = ModelConfigSchema.safeParse({
+          ...draft,
+          headers,
+          providerOptions,
+          model: id,
+          label: defaultLabelFor(id),
+          pricing: null,
+          contextWindow: null,
+          reasoningOverride: null,
+          discoveredContextWindow: fetched?.contextWindow ?? null,
+          discoveredCapabilities: fetched?.capabilities ?? null,
+          toolCallingEnabled:
+            fetched?.capabilities?.toolCalling ??
+            fetched?.catalogCapabilities?.toolCalling ??
+            true,
+        });
+        if (!parsed.success) {
+          setSaveError(
+            t("models.editor.errors.invalidModel", {
+              model: id,
+              error:
+                parsed.error.issues[0]?.message ??
+                t("models.editor.errors.invalidInput"),
+            }),
+          );
+          return;
+        }
+        inputs.push(parsed.data);
+      }
+      try {
+        await createManyMut.mutateAsync(inputs);
+        toast.success({
+          title: t("models.toast.createdSeveral", { count: inputs.length }),
+        });
+        void navigate({ to: "/settings/models" });
+      } catch (err) {
+        setSaveError(getErrorMessage(err, t("models.toast.saveFailed")));
+      }
+      return;
+    }
+
+    const pricing =
+      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+    if (draft.pricing !== null && pricing === null) {
+      setSaveError(
+        isImage
+          ? t("models.editor.errors.invalidImagePricing")
+          : t("models.editor.errors.invalidChatPricing"),
+      );
+      return;
+    }
+
     const parsed = ModelConfigSchema.safeParse({
       ...draft,
       headers,
       pricing,
-      label: draft.label.trim() || defaultLabelFor(draft.model),
+      model,
+      label: draft.label.trim() || defaultLabelFor(model),
       discoveredContextWindow:
         detectedContextWindow === undefined
           ? draft.discoveredContextWindow
@@ -326,7 +414,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         : {}),
     });
     if (!parsed.success) {
-      setSaveError(parsed.error.issues[0]?.message ?? "Invalid input");
+      setSaveError(
+        parsed.error.issues[0]?.message ?? t("models.editor.errors.invalidInput"),
+      );
       return;
     }
     const input: ModelConfigInput = parsed.data;
@@ -335,33 +425,35 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       if (modelId) {
         await updateMut.mutateAsync({ id: modelId, input });
         toast.success({
-          title: "Model saved",
+          title: t("models.toast.saved"),
           description: input.label,
         });
       } else {
         await createMut.mutateAsync(input);
         toast.success({
-          title: "Model created",
+          title: t("models.toast.created"),
           description: input.label,
         });
       }
       void navigate({ to: "/settings/models" });
     } catch (err) {
-      setSaveError(getErrorMessage(err, "Failed to save model"));
+      setSaveError(getErrorMessage(err, t("models.toast.saveFailed")));
     }
   }
 
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title={isEditing ? "Edit model" : "Add model"}
-        description="Configure a model that everyone on this server can use."
+        title={
+          isEditing ? t("models.editor.editTitle") : t("models.page.addModel")
+        }
+        description={t("models.editor.description")}
         leading={
           <Button
             render={<Link to="/settings/models" />}
             variant="ghost"
             size="icon-sm"
-            aria-label="Back to models"
+            aria-label={t("models.editor.backLabel")}
           >
             <ArrowLeft />
           </Button>
@@ -369,11 +461,11 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       />
 
       <form onSubmit={submit} className="space-y-8">
-        <SettingsSection title="Model type">
+        <SettingsSection title={t("models.editor.modelTypeSection")}>
           <SettingsRow
-            title="Type"
+            title={t("models.editor.typeTitle")}
             htmlFor="p-model-type"
-            description="Chat models handle conversations. Image models generate and edit pictures through chat tools."
+            description={t("models.editor.typeDescription")}
           >
             <Select
               value={draft.modelType}
@@ -411,18 +503,26 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               }}
             >
               <SelectTrigger id="p-model-type">
-                <SelectValue>{isImage ? "Image" : "Chat"}</SelectValue>
+                <SelectValue>
+                  {isImage
+                    ? t("models.editor.typeImage")
+                    : t("models.editor.typeChat")}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="chat">Chat</SelectItem>
-                <SelectItem value="image">Image</SelectItem>
+                <SelectItem value="chat">
+                  {t("models.editor.typeChat")}
+                </SelectItem>
+                <SelectItem value="image">
+                  {t("models.editor.typeImage")}
+                </SelectItem>
               </SelectContent>
             </Select>
           </SettingsRow>
         </SettingsSection>
         <SettingsSection
-          title="Connection"
-          description="Provider, credentials, model discovery, and connectivity."
+          title={t("models.editor.connectionTitle")}
+          description={t("models.editor.connectionDescription")}
         >
           <ConnectionFields
             key={draft.modelType}
@@ -430,6 +530,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             apiKeyOptional={perUser}
             providerLabel={existing?.displayProvider}
             previouslyUsedApiKeys={previouslyUsedApiKeys}
+            multiple={multiple}
+            addedModelIds={addedModelIds}
+            onFetchedModels={setFetchedModels}
             draft={{
               providerId: draft.providerId,
               apiFormat: draft.apiFormat,
@@ -492,28 +595,29 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           />
 
           <RepeatablePairs
-            label="Request headers"
+            label={t("models.editor.headersLabel")}
             description={
-              <>
-                Extra HTTP headers for gateways that need them.{" "}
-                <code>{CHAT_ID_PLACEHOLDER}</code> in a value becomes the
-                conversation&apos;s ID.
-              </>
+              <Trans
+                i18nKey="models.editor.headersDescription"
+                values={{ placeholder: CHAT_ID_PLACEHOLDER }}
+                components={{ code: <code /> }}
+              />
             }
             rows={headerRows}
-            keyPlaceholder="Header"
-            valuePlaceholder="Value"
-            addLabel="Add header"
+            keyPlaceholder={t("models.editor.headersKeyPlaceholder")}
+            valuePlaceholder={t("models.editor.headersValuePlaceholder")}
+            addLabel={t("models.editor.headersAddLabel")}
+            removeLabel={t("models.editor.removeHeaderRow")}
             allowEmpty
             error={headersError}
             onChange={setHeaderRows}
           />
 
-          {!isImage && (
+          {!isImage && !several && (
             <>
               <SettingsRow
-                title="Tool calling"
-                description={toolCallingDescription(capabilitiesHint)}
+                title={t("models.editor.toolCallingTitle")}
+                description={toolCallingDescription(capabilitiesHint, t)}
                 align="center"
                 controlAlign="end"
                 layout="toggle"
@@ -525,23 +629,23 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                   }
                   aria-label={
                     draft.toolCallingEnabled
-                      ? "Disable tool calling"
-                      : "Enable tool calling"
+                      ? t("models.editor.toolCallingDisableLabel")
+                      : t("models.editor.toolCallingEnableLabel")
                   }
                 />
               </SettingsRow>
 
               <SettingsRow
-                title="Test connection"
+                title={t("models.editor.testConnectionTitle")}
                 description={
                   draft.toolCallingEnabled
-                    ? "Send a short request and verify tool calling with the current connection settings."
-                    : "Send a short text request with the current connection settings."
+                    ? t("models.editor.testConnectionWithTools")
+                    : t("models.editor.testConnectionTextOnly")
                 }
                 controlAlign="end"
               >
                 <ConnectionTester
-                  key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${draft.toolCallingEnabled}|${providerOptionsText}|${JSON.stringify(headers)}`}
+                  key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${model}|${draft.toolCallingEnabled}|${providerOptionsText}|${JSON.stringify(headers)}`}
                   args={pingArgs}
                   disabled={(requiresKey && !draft.apiKey) || !!headersError}
                 />
@@ -561,47 +665,53 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         )}
 
         <SettingsSection
-          title={isImage ? "Image availability" : "Chat availability"}
+          title={
+            isImage
+              ? t("models.editor.imageAvailabilityTitle")
+              : t("models.editor.chatAvailabilityTitle")
+          }
           description={
             isImage
-              ? "One image model can be enabled at a time. Enabling this model switches off the previous image model."
-              : "How this model appears to people using chat."
+              ? t("models.editor.imageAvailabilityDescription")
+              : t("models.editor.chatAvailabilityDescription")
           }
         >
-          <SettingsRow
-            title="Display name"
-            description={
-              isImage
-                ? "Shown in model settings."
-                : "Shown in the chat model picker."
-            }
-            htmlFor="p-label"
-            align="center"
-            controlAlign="end"
-          >
-            <Input
-              id="p-label"
-              className="w-full"
-              placeholder={
-                draft.model
-                  ? defaultLabelFor(draft.model)
-                  : "Shown in the picker"
+          {!several && (
+            <SettingsRow
+              title={t("models.editor.displayNameTitle")}
+              description={
+                isImage
+                  ? t("models.editor.displayNameImageDescription")
+                  : t("models.editor.displayNameChatDescription")
               }
-              value={draft.label}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, label: e.target.value }))
-              }
-            />
-          </SettingsRow>
+              htmlFor="p-label"
+              align="center"
+              controlAlign="end"
+            >
+              <Input
+                id="p-label"
+                className="w-full"
+                placeholder={
+                  model
+                    ? defaultLabelFor(model)
+                    : t("models.editor.displayNamePlaceholder")
+                }
+                value={draft.label}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, label: e.target.value }))
+                }
+              />
+            </SettingsRow>
+          )}
 
           {!isImage && (
             <SettingsRow
-              title="Credentials"
+              title={t("models.editor.credentialsTitle")}
               htmlFor="p-credential-scope"
               description={
                 perUser
-                  ? "Each person can have their own key and endpoint, set under People. Anyone without one uses the connection above."
-                  : "Everyone chats with the connection above."
+                  ? t("models.editor.credentialsUserDescription")
+                  : t("models.editor.credentialsSharedDescription")
               }
             >
               <Select
@@ -613,23 +723,33 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               >
                 <SelectTrigger id="p-credential-scope">
                   <SelectValue>
-                    {perUser ? "Each person's own" : "Shared"}
+                    {perUser
+                      ? t("models.editor.credentialsUser")
+                      : t("models.editor.credentialsShared")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="shared">Shared</SelectItem>
-                  <SelectItem value="user">Each person&apos;s own</SelectItem>
+                  <SelectItem value="shared">
+                    {t("models.editor.credentialsShared")}
+                  </SelectItem>
+                  <SelectItem value="user">
+                    {t("models.editor.credentialsUser")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </SettingsRow>
           )}
 
           <SettingsRow
-            title={isImage ? "Enabled" : "Available in chat"}
+            title={
+              isImage
+                ? t("models.editor.enabledTitle")
+                : t("models.editor.availableInChatTitle")
+            }
             description={
               isImage
-                ? "Makes image generation and editing available to chats with tool calling enabled."
-                : "Turn off to keep this model saved without showing it in chat."
+                ? t("models.editor.enabledImageDescription")
+                : t("models.editor.availableInChatDescription")
             }
             align="center"
             controlAlign="end"
@@ -640,25 +760,29 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               onCheckedChange={(next) =>
                 setDraft((d) => ({ ...d, enabled: next }))
               }
-              aria-label={draft.enabled ? "Disable model" : "Enable model"}
+              aria-label={
+                draft.enabled
+                  ? t("models.editor.disableModelLabel")
+                  : t("models.editor.enableModelLabel")
+              }
             />
           </SettingsRow>
         </SettingsSection>
 
         {isImage && (
           <SettingsSection
-            title="Usage cost"
+            title={t("models.editor.usageCostTitle")}
             description={
               isOpenRouterImage
-                ? "Chat usage records each image at the charge OpenRouter reports with it."
+                ? t("models.editor.usageCostOpenRouter")
                 : isCustomImage
-                  ? "Estimates image cost from the token usage the backend reports with each image. Images stay unpriced when it reports none."
-                  : "Estimates image cost in chat usage. Providers bill images as output tokens, so size and quality are already reflected in each count."
+                  ? t("models.editor.usageCostCustom")
+                  : t("models.editor.usageCostDefault")
             }
           >
             {isOpenRouterImage ? (
               <SettingsNotice>
-                No rates are needed for OpenRouter image models.
+                {t("models.editor.usageCostOpenRouterNotice")}
               </SettingsNotice>
             ) : (
               <PricingRow
@@ -675,10 +799,11 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
         {!isImage && (
           <>
-            {supportsLocalReasoningConfig(
-              draft.providerId,
-              draft.apiFormat,
-            ) && (
+            {!several &&
+              supportsLocalReasoningConfig(
+                draft.providerId,
+                draft.apiFormat,
+              ) && (
               <ThinkingFields
                 automatic={
                   (detectedCapabilities === undefined
@@ -695,14 +820,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                   (draft.providerId === "vllm" ||
                     draft.providerId === "llamacpp") &&
                   draft.baseUrl &&
-                  draft.model
+                  model
                     ? {
                         providerId: draft.providerId,
                         apiFormat: draft.apiFormat,
                         baseUrl: draft.baseUrl,
                         apiKey: draft.apiKey,
                         headers,
-                        model: draft.model,
+                        model,
                       }
                     : undefined
                 }
@@ -735,6 +860,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 setProviderOptionsError(err);
               }}
               defaultOpen={advancedDefaultOpen}
+              sharedOnly={several}
             />
           </>
         )}
@@ -747,10 +873,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             variant="outline"
             render={<Link to="/settings/models" />}
           >
-            Cancel
+            {t("common.actions.cancel")}
           </Button>
           <Button type="submit" disabled={!canSave}>
-            {saving ? "Saving…" : isEditing ? "Save changes" : "Add model"}
+            {saving
+              ? t("common.states.saving")
+              : isEditing
+                ? t("common.actions.saveChanges")
+                : several
+                  ? t("models.editor.addModels", { count: modelIds.length })
+                  : t("models.page.addModel")}
           </Button>
         </SettingsActions>
       </form>
@@ -761,7 +893,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <UserCredentials modelId={modelId} defaultBaseUrl={draft.baseUrl} />
         ) : (
           <SettingsNotice>
-            Save this model, then set each person&apos;s own key or endpoint under People.
+            {t("models.editor.perUserSaveFirst")}
           </SettingsNotice>
         ))}
     </SettingsPage>
@@ -805,12 +937,13 @@ function parsePricingDraft(pricing: ModelPricingDraft): ModelPricing | null {
 
 function toolCallingDescription(
   capabilities: ModelCapabilities | null | undefined,
+  t: TFunction,
 ): string {
   if (capabilities?.toolCalling === true) {
-    return "This model or endpoint reports tool support. Test the connection to verify the configured template and parser.";
+    return t("models.editor.toolCallingSupported");
   }
   if (capabilities?.toolCalling === false) {
-    return "This model or endpoint reports no tool support. Override only if the served configuration adds it.";
+    return t("models.editor.toolCallingUnsupported");
   }
-  return "Allow tools such as web search. Custom servers rarely report this reliably, so use Test connection to verify the served template and parser.";
+  return t("models.editor.toolCallingUnknown");
 }

@@ -13,9 +13,8 @@ fixture.db = drizzle(raw);
 migrate(fixture.db as ReturnType<typeof drizzle>, {
   migrationsFolder: path.resolve("drizzle"),
 });
-const { getProject, toProjectListItem, updateProject } = await import(
-  "./projects"
-);
+const { deleteProject, getProject, PROJECT_DELETED_PAUSE, toProjectListItem, updateProject } =
+  await import("./projects");
 
 beforeEach(() => {
   raw.exec(`DELETE FROM projects; DELETE FROM user; DELETE FROM model_configs;
@@ -64,4 +63,34 @@ it("clears the default when its model is deleted", async () => {
   const project = await getProject("p", "a");
   expect(project?.name).toBe("Project");
   expect(project?.defaultModelConfigId).toBeNull();
+});
+
+it("pauses the scheduled tasks that ran in a deleted project, and says why", async () => {
+  const insert = raw.prepare(
+    `INSERT INTO scheduled_tasks (id, user_id, name, prompt, model_config_id, project_id, schedule, time_zone, enabled, next_run_at)
+     VALUES (?, 'a', ?, 'Summarize.', 'one', ?, '{"frequency":"daily","hour":9,"minute":0}', 'UTC', 1, 1000)`,
+  );
+  insert.run("inside", "Project digest", "p");
+  insert.run("outside", "Morning news", null);
+  const task = (id: string) =>
+    raw
+      .prepare(
+        "SELECT enabled, next_run_at, paused_reason, project_id FROM scheduled_tasks WHERE id = ?",
+      )
+      .get(id);
+
+  // Someone else's request deletes nothing and pauses nothing.
+  await deleteProject("p", "b");
+  expect(await getProject("p", "a")).not.toBeNull();
+  expect(task("inside")).toMatchObject({ enabled: 1, project_id: "p" });
+
+  await deleteProject("p", "a");
+  expect(await getProject("p", "a")).toBeNull();
+  expect(task("inside")).toEqual({
+    enabled: 0,
+    next_run_at: null,
+    paused_reason: PROJECT_DELETED_PAUSE,
+    project_id: null,
+  });
+  expect(task("outside")).toMatchObject({ enabled: 1, paused_reason: null });
 });

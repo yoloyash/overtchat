@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -5,6 +6,7 @@ import {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { forwardRef, useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
@@ -30,6 +32,7 @@ export const RenameSheet = forwardRef<
   ref,
 ) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardState((s) => (s.isVisible ? s.height : 0));
   const [draft, setDraft] = useState(initialTitle ?? "");
@@ -40,7 +43,7 @@ export const RenameSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -69,6 +72,7 @@ export const RenameSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={renderBackdrop}
@@ -113,7 +117,7 @@ export const RenameSheet = forwardRef<
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Cancel"
+            accessibilityLabel={t("common.actions.cancel")}
             onPress={dismiss}
             style={({ pressed }) => [
               styles.button,
@@ -131,12 +135,12 @@ export const RenameSheet = forwardRef<
                 { color: colors.foreground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              Cancel
+              {t("common.actions.cancel")}
             </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Save"
+            accessibilityLabel={t("common.actions.save")}
             disabled={!canSave}
             onPress={save}
             style={({ pressed }) => [
@@ -158,7 +162,7 @@ export const RenameSheet = forwardRef<
                 },
               ]}
             >
-              Save
+              {t("common.actions.save")}
             </Text>
           </Pressable>
         </View>

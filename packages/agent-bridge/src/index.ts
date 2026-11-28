@@ -36,7 +36,7 @@ import {
 /** Increment only for a breaking web-to-connector wire contract change. */
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 6;
 /** Published connector artifact version; independent of wire compatibility. */
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.21.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.22.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 /** Headroom below Next.js's default 10 MiB proxy buffer. */
 export const HOST_CONNECTOR_EVENT_BATCH_BYTES = 8 * 1024 * 1024;
@@ -53,6 +53,8 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "workspace-git-watch-v1",
   "workspace-git-branch-v1",
   "workspace-git-worktree-v1",
+  /** `session_metadata` may name the provider session a live session moved to. */
+  "session-move-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -263,6 +265,12 @@ export type HostConnectorEventPayload =
         messageCount?: number;
         providerModifiedAt?: number;
         launchConfig?: AgentSessionLaunchConfig;
+        /**
+         * The provider session this one now is, sent together when the
+         * provider carried the conversation on under a new id and file.
+         */
+        providerSessionId?: string;
+        providerSessionPath?: string;
       };
     }
   | { type: "session_directory"; sessions: AgentSessionDirectoryEntry[] }
@@ -795,6 +803,8 @@ export function isHostConnectorEvent(
       "messageCount",
       "providerModifiedAt",
       "launchConfig",
+      "providerSessionId",
+      "providerSessionPath",
     ]);
     return (
       Object.keys(payload.patch).every((key) => allowed.has(key)) &&
@@ -811,7 +821,11 @@ export function isHostConnectorEvent(
         (typeof payload.patch.providerModifiedAt === "number" &&
           Number.isFinite(payload.patch.providerModifiedAt))) &&
       (payload.patch.launchConfig === undefined ||
-        agentSessionLaunchConfigSchema.safeParse(payload.patch.launchConfig).success)
+        agentSessionLaunchConfigSchema.safeParse(payload.patch.launchConfig).success) &&
+      (payload.patch.providerSessionId === undefined
+        ? payload.patch.providerSessionPath === undefined
+        : isNonEmptyString(payload.patch.providerSessionId) &&
+          isNonEmptyString(payload.patch.providerSessionPath))
     );
   }
   if (payload.type === "session_directory") {

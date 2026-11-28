@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { router, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
@@ -34,7 +35,7 @@ export function useSignInRequests({ enabled }: { enabled: boolean }) {
         signal,
       });
       if (response.status === 404) return null;
-      if (!response.ok) throw new Error("Could not load sign-in requests.");
+      if (!response.ok) throw new Error(i18n.t("auth.mobile.signInRequest.loadError"));
       return response.json();
     },
     enabled: enabled && active,
@@ -58,7 +59,7 @@ export async function decideSignInRequest(
   );
   if (response.status === 404) return "expired";
   if (!response.ok && response.status !== 409) {
-    throw new Error("Couldn't answer the sign-in request. Try again.");
+    throw new Error(i18n.t("auth.mobile.signInRequest.answerError"));
   }
   return ((await response.json()) as { result: SignInDecisionResult }).result;
 }

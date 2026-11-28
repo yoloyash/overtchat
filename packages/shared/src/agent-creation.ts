@@ -82,6 +82,24 @@ function defaultThinking(model: AgentModel | null): string {
   );
 }
 
+/**
+ * The effort a running session shows for its model: the level the provider
+ * reports when the model offers it, otherwise the model's default. A provider
+ * can report none, as Oh My Pi does after a model that does not reason.
+ */
+export function resolveAgentSessionThinking(
+  model: AgentModel | null | undefined,
+  reportedLevel: unknown,
+): string | null {
+  if (
+    typeof reportedLevel === "string" &&
+    model?.thinkingOptions?.some((option) => option.id === reportedLevel)
+  ) {
+    return reportedLevel;
+  }
+  return defaultThinking(model ?? null) || null;
+}
+
 export function resolveAgentSessionDraftSelection(input: {
   provider: AgentProviderId;
   catalog?: AgentProviderCatalog;

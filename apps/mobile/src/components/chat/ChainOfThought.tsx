@@ -4,7 +4,9 @@ import {
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 import { useLayoutState } from "@shopify/flash-list";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Animated,
@@ -34,12 +36,15 @@ import {
   isCodeExecutionPart,
   isGmailToolPart,
   isReadFilePart,
+  isScheduledTaskToolPart,
   isSearchFilesPart,
   isToolSettled,
   isViewSkillToolPart,
   parseMcpToolName,
   readFileRangeLabel,
   type ReadFilePart,
+  scheduledTaskActivityLabel,
+  type ScheduledTaskToolPart,
   type SearchFilesPart,
   viewSkillActivityLabel,
   type ViewSkillToolPart,
@@ -48,9 +53,13 @@ import {
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
+import { agentThoughtPreview } from "@overtchat/shared/agent-presentation";
 import type { DynamicToolUIPart } from "ai";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { getApiBase } from "@/lib/api";
 import { useAuthCookie } from "@/lib/auth/useAuthCookie";
+import { useChatPreferences } from "@/lib/chatPreferences";
+import { sameItems, shallowEqual } from "@/lib/equal";
 import { useTheme } from "@/lib/theme";
 import { CalendarLogo } from "../CalendarLogo";
 import { GmailLogo } from "../GmailLogo";
@@ -68,6 +77,7 @@ export type ActivityPart =
   | GmailToolPart
   | CalendarToolPart
   | ViewSkillToolPart
+  | ScheduledTaskToolPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -97,6 +107,7 @@ function isTool(
     isGmailToolPart(p) ||
     isCalendarToolPart(p) ||
     isViewSkillToolPart(p) ||
+    isScheduledTaskToolPart(p) ||
     isMcpTool(p)
   );
 }
@@ -105,10 +116,12 @@ function isTool(
  * One run of model "work" — interleaved reasoning + web tool calls — rendered
  * as a chain-of-thought timeline: a single live status line up top, then a
  * left-rail timeline where each part is its own typed step node, in order.
- * Adding a new activity kind (e.g. code execution) is one new step icon +
- * renderer; nothing else moves. Mirrors the web ChainOfThought, RN-native.
+ * When the run used tools, each reasoning step is a collapsed "Thought" row so
+ * the tool steps can be scanned without reading the thinking. Adding a new
+ * activity kind (e.g. code execution) is one new step icon + renderer;
+ * nothing else moves. Mirrors the web ChainOfThought, RN-native.
  */
-export function ChainOfThought({
+function ChainOfThoughtView({
   parts,
   active,
 }: {
@@ -116,7 +129,11 @@ export function ChainOfThought({
   active: boolean;
 }) {
   const { colors, fonts } = useTheme();
-  const [open, setOpen] = useLayoutState(false);
+  const { t } = useTranslation();
+  const { expandActivity } = useChatPreferences();
+  // A tap wins; until then the device preference decides, live.
+  const [toggled, setToggled] = useLayoutState<boolean | null>(null);
+  const open = toggled ?? expandActivity;
   const [duration, setDuration] = useState(0);
   const startedAtRef = useRef<number | null>(null);
   const settledRef = useRef(false);
@@ -143,6 +160,18 @@ export function ChainOfThought({
   }, [active]);
 
   const lastTool = [...parts].reverse().find(isTool);
+  // Reasoning stays inline when it is all the run did.
+  const collapseThoughts = lastTool !== undefined;
+  // Keyed by position in `parts`, so dropping an empty thought never shifts
+  // another step's open state onto its neighbour.
+  const steps = parts
+    .map((part, index) => ({ part, index }))
+    .filter(
+      ({ part }) =>
+        !isReasoning(part) ||
+        part.text.trim() !== "" ||
+        part.state === "streaming",
+    );
   const toolKind = lastTool
     ? isFileTool(lastTool)
       ? "file"
@@ -152,14 +181,16 @@ export function ChainOfThought({
           ? "mail"
           : isCalendarToolPart(lastTool)
             ? "calendar"
-            : "web"
+            : isScheduledTaskToolPart(lastTool)
+              ? "scheduled"
+              : "web"
     : null;
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
-  const label = active ? activeLabel(last) : settledLabel(parts, duration);
+  const label = active ? activeLabel(last, t) : settledLabel(parts, duration, t);
 
   function toggle() {
-    setOpen((o) => !o);
+    setToggled(!open);
   }
 
   return (
@@ -197,8 +228,14 @@ export function ChainOfThought({
       {/* Timeline — typed step nodes on a left rail, in original order. */}
       {open ? (
         <View style={styles.timeline}>
-          {parts.map((part, i) => (
-            <Step key={i} part={part} isLast={i === parts.length - 1} />
+          {steps.map(({ part, index }, i) => (
+            <Step
+              key={index}
+              part={part}
+              isLast={i === steps.length - 1}
+              collapseThoughts={collapseThoughts}
+              expandByDefault={expandActivity}
+            />
           ))}
         </View>
       ) : null}
@@ -214,7 +251,7 @@ function StatusIcon({
   color,
 }: {
   active: boolean;
-  toolKind: "web" | "file" | "code" | "mail" | "calendar" | null;
+  toolKind: "web" | "file" | "code" | "mail" | "calendar" | "scheduled" | null;
   failed: boolean;
   color: string;
 }) {
@@ -260,6 +297,11 @@ function StatusIcon({
       </View>
     );
   }
+  if (toolKind === "scheduled") {
+    return (
+      <Ionicons name="calendar-outline" size={15} color={color} style={styles.statusIcon} />
+    );
+  }
   if (toolKind === "web") {
     return (
       <Ionicons name="globe-outline" size={15} color={color} style={styles.statusIcon} />
@@ -283,7 +325,7 @@ function ShimmerLabel({
   active: boolean;
   children: React.ReactNode;
 }) {
-  const opacity = useRef(new Animated.Value(1)).current;
+  const [opacity] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (!active) {
@@ -314,7 +356,17 @@ function ShimmerLabel({
 }
 
 /** A single timeline node: left rail (icon + connector) + the step's content. */
-function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
+function StepView({
+  part,
+  isLast,
+  collapseThoughts,
+  expandByDefault,
+}: {
+  part: ActivityPart;
+  isLast: boolean;
+  collapseThoughts: boolean;
+  expandByDefault: boolean;
+}) {
   const icon: RailIcon =
     isTool(part) && part.state === "output-error"
       ? "failed"
@@ -330,9 +382,11 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
                 ? "code"
                 : isGmailToolPart(part)
                   ? "mail"
-                  : isCalendarToolPart(part)
+                  : isCalendarToolPart(part) || isScheduledTaskToolPart(part)
                     ? "calendar"
-                    : isMcpTool(part)
+                    : isScheduledTaskToolPart(part)
+                      ? "scheduled"
+                      : isMcpTool(part)
                       ? "tool"
                       : "brain";
 
@@ -356,15 +410,37 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <CalendarStep part={part} />
         ) : isViewSkillToolPart(part) ? (
           <SkillStep part={part} />
+        ) : isScheduledTaskToolPart(part) ? (
+          <ScheduledTaskStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
-          <ThinkingContent content={part.text} />
+          collapseThoughts ? (
+            <ThoughtStep part={part} expandByDefault={expandByDefault} />
+          ) : (
+            <ThinkingContent content={part.text} />
+          )
         ) : null}
       </View>
     </View>
   );
 }
+
+// A streamed update hands every part over as a new object, changed or not, so
+// both compare parts by content: only the step that changed renders again.
+const Step = memo(
+  StepView,
+  (earlier, next) =>
+    earlier.isLast === next.isLast &&
+    earlier.collapseThoughts === next.collapseThoughts &&
+    earlier.expandByDefault === next.expandByDefault &&
+    shallowEqual(earlier.part, next.part),
+);
+
+export const ChainOfThought = memo(
+  ChainOfThoughtView,
+  (earlier, next) => earlier.active === next.active && sameItems(earlier.parts, next.parts),
+);
 
 type RailIcon =
   | "search"
@@ -374,6 +450,7 @@ type RailIcon =
   | "code"
   | "mail"
   | "calendar"
+  | "scheduled"
   | "tool"
   | "brain"
   | "failed";
@@ -400,6 +477,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <GmailLogo size={11} />
         ) : icon === "calendar" ? (
           <CalendarLogo size={11} />
+        ) : icon === "scheduled" ? (
+          <Ionicons name="calendar-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
@@ -415,6 +494,7 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
 
 function McpStep({ part }: { part: DynamicToolUIPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const parsed = parseMcpToolName(part.toolName);
   const title = part.title ?? parsed?.toolName ?? part.toolName;
   const server = parsed?.serverName ?? "MCP";
@@ -440,7 +520,7 @@ function McpStep({ part }: { part: DynamicToolUIPart }) {
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          {running ? "Running" : part.state === "output-error" ? "Failed" : "Done"}
+          {running ? t("chat.activity.running") : part.state === "output-error" ? t("chat.activity.failed") : t("chat.activity.done")}
         </Text>
       </View>
       {part.state === "output-error" ? (
@@ -453,10 +533,10 @@ function McpStep({ part }: { part: DynamicToolUIPart }) {
           {part.errorText}
         </Text>
       ) : (
-        <ToolValue label="Input" value={part.input} />
+        <ToolValue label={t("chat.mobile.activity.inputHeader")} value={part.input} />
       )}
       {part.state === "output-available" ? (
-        <ToolValue label="Output" value={part.output} />
+        <ToolValue label={t("chat.mobile.activity.outputHeader")} value={part.output} />
       ) : null}
     </View>
   );
@@ -464,6 +544,7 @@ function McpStep({ part }: { part: DynamicToolUIPart }) {
 
 function CodeStep({ part }: { part: CodeExecutionPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const output = part.output;
   const code = part.input?.code ?? "";
   const files = codeExecutionFiles(part);
@@ -477,7 +558,8 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
             { color: colors.foreground, fontFamily: fonts.sansMedium },
           ]}
         >
-          Python
+          {/* eslint-disable-next-line i18next/no-literal-string -- Programming language name */}
+          {"Python"}
         </Text>
         <Text
           style={[
@@ -485,7 +567,7 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          {codeRunStatus(part)}
+          {codeRunStatus(part, t)}
         </Text>
       </View>
       {code ? <CodeBlock code={code} language="python" /> : null}
@@ -500,10 +582,26 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
         </Text>
       ) : null}
       {output?.stdout ? (
-        <ToolValue label="Output" value={output.stdout} truncated={output.stdoutTruncated} mono />
+        <ToolValue
+          label={
+            output.stdoutTruncated
+              ? t("chat.mobile.activity.outputTruncatedHeader")
+              : t("chat.mobile.activity.outputHeader")
+          }
+          value={output.stdout}
+          mono
+        />
       ) : null}
       {output?.stderr ? (
-        <ToolValue label="Errors" value={output.stderr} truncated={output.stderrTruncated} mono />
+        <ToolValue
+          label={
+            output.stderrTruncated
+              ? t("chat.mobile.activity.errorsTruncatedHeader")
+              : t("chat.mobile.activity.errorsHeader")
+          }
+          value={output.stderr}
+          mono
+        />
       ) : null}
       {files.length ? <CodeExecutionFiles files={files} /> : null}
     </View>
@@ -513,12 +611,10 @@ function CodeStep({ part }: { part: CodeExecutionPart }) {
 function ToolValue({
   label,
   value,
-  truncated = false,
   mono = false,
 }: {
   label: string;
   value: unknown;
-  truncated?: boolean;
   mono?: boolean;
 }) {
   const { colors, fonts } = useTheme();
@@ -538,8 +634,7 @@ function ToolValue({
           { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
         ]}
       >
-        {label.toUpperCase()}
-        {truncated ? " (TRUNCATED)" : ""}
+        {label}
       </Text>
       <Text
         selectable
@@ -568,6 +663,67 @@ function formatToolValue(value: unknown): string {
   return text.length > 20_000 ? `${text.slice(0, 20_000)}\n…` : text;
 }
 
+/** A reasoning step among tool steps: one line until opened. */
+function ThoughtStep({
+  part,
+  expandByDefault,
+}: {
+  part: ReasoningPart;
+  expandByDefault: boolean;
+}) {
+  const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
+  const [toggled, setToggled] = useLayoutState<boolean | null>(null);
+  const open = toggled ?? expandByDefault;
+  const label = part.state === "streaming" ? t("chat.activity.thinking") : t("chat.activity.thought");
+  const preview = agentThoughtPreview(part.text);
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={preview || undefined}
+        accessibilityState={{ expanded: open }}
+        onPress={() => setToggled(!open)}
+        hitSlop={6}
+        style={({ pressed }) => [styles.thoughtHeader, { opacity: pressed ? 0.7 : 1 }]}
+      >
+        <View style={styles.thoughtTitle}>
+          <Text
+            style={[
+              styles.thoughtLabel,
+              { color: colors.foreground, fontFamily: fonts.sansMedium },
+            ]}
+          >
+            {label}
+          </Text>
+          {!open && !!preview && (
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.thoughtPreview,
+                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+              ]}
+            >
+              {preview}
+            </Text>
+          )}
+        </View>
+        <Feather
+          name={open ? "chevron-down" : "chevron-right"}
+          size={13}
+          color={colors.mutedForeground}
+        />
+      </Pressable>
+      {open ? (
+        <View style={styles.thoughtBody}>
+          <ThinkingContent content={part.text} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 /** A reasoning part's markdown, rendered as muted text inside a step. */
 function ThinkingContent({ content }: { content: string }) {
   const trimmed = content.trim();
@@ -579,10 +735,11 @@ const RESULTS_PREVIEW = 5;
 
 function SearchStep({ part }: { part: WebSearchPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const [showAll, setShowAll] = useLayoutState(false);
   const query = part.input?.query?.trim();
   const results = webSearchResults(part.output);
-  const provider = webSearchProviderLabel(part.output);
+  const provider = webSearchProviderLabel(part.output, t);
   const hasAnswer =
     part.output !== undefined &&
     !Array.isArray(part.output) &&
@@ -604,7 +761,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
             { color: colors.foreground, fontFamily: fonts.sansMedium },
           ]}
         >
-          {query || "Searching…"}
+          {query || t("common.states.searching")}
         </Text>
         {part.state === "output-available" ? (
           <Text
@@ -614,10 +771,10 @@ function SearchStep({ part }: { part: WebSearchPart }) {
             ]}
           >
             {results.length > 0
-              ? `${results.length} ${results.length === 1 ? "result" : "results"}`
+              ? t("chat.activity.results", { count: results.length })
               : hasAnswer
-                ? "answer"
-                : "no results"}
+                ? t("chat.activity.answer")
+                : t("chat.activity.noResults")}
             {provider ? ` · ${provider}` : ""}
           </Text>
         ) : null}
@@ -660,7 +817,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {showAll ? "Show less" : `Show ${hidden} more`}
+                {showAll ? t("common.actions.showLess") : t("common.actions.showCountMore", { count: hidden })}
               </Text>
             </Pressable>
           ) : null}
@@ -713,6 +870,8 @@ function ResultRow({
 
 function FetchStep({ part }: { part: FetchUrlPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const cookie = useAuthCookie();
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
@@ -728,7 +887,7 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
             { color: colors.foreground, fontFamily: fonts.sansMedium },
           ]}
         >
-          Read {domain || "page"}
+          {domain ? t("chat.activity.readDomain", { domain }) : t("chat.activity.readPage")}
         </Text>
         <Text
           style={[
@@ -789,7 +948,7 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          Image
+          {t("chat.activity.image")}
         </Text>
       </Pressable>
     );
@@ -815,7 +974,7 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
           { color: colors.foreground, fontFamily: fonts.sansRegular },
         ]}
       >
-        {page?.title ?? (running ? "Reading…" : domain)}
+        {page?.title ?? (running ? t("chat.activity.readingEllipsis") : domain)}
       </Text>
       {page ? (
         <Text
@@ -824,19 +983,19 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          {page.wordCount.toLocaleString()} words
+          {t("chat.activity.wordCount", { count: page.wordCount.toLocaleString(locale) })}
         </Text>
       ) : null}
     </Pressable>
   );
 }
 
-function gmailShortDate(iso: string | undefined): string {
+function gmailShortDate(iso: string | undefined, locale: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
     ? ""
-    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    : date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 /**
@@ -845,8 +1004,10 @@ function gmailShortDate(iso: string | undefined): string {
  */
 function GmailStep({ part }: { part: GmailToolPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [showAll, setShowAll] = useLayoutState(false);
-  const display = describeGmailToolPart(part);
+  const display = describeGmailToolPart(part, t);
   const visible = showAll
     ? display.rows
     : display.rows.slice(0, RESULTS_PREVIEW);
@@ -868,7 +1029,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
         </Text>
         <Text style={[styles.metaText, muted]}>
           {display.status === "error"
-            ? "Failed"
+            ? t("chat.steps.failed")
             : running
               ? display.detail
                 ? `${display.title}…`
@@ -915,7 +1076,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
                   },
                 ]}
               >
-                {row.sender || "(unknown sender)"}
+                {row.sender || t("chat.steps.unknownSender")}
               </Text>
               {row.attachments ? (
                 <Ionicons
@@ -939,7 +1100,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
                 {row.subject ?? row.attachments?.join(", ")}
               </Text>
               <Text style={[styles.metaText, muted]}>
-                {gmailShortDate(row.date)}
+                {gmailShortDate(row.date, locale)}
               </Text>
             </View>
           ))}
@@ -957,7 +1118,7 @@ function GmailStep({ part }: { part: GmailToolPart }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {showAll ? "Show less" : `Show ${hidden} more`}
+                {showAll ? t("common.actions.showLess") : t("common.actions.showCountMore", { count: hidden })}
               </Text>
             </Pressable>
           ) : null}
@@ -973,8 +1134,10 @@ function GmailStep({ part }: { part: GmailToolPart }) {
  */
 function CalendarStep({ part }: { part: CalendarToolPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [showAll, setShowAll] = useLayoutState(false);
-  const display = describeCalendarToolPart(part);
+  const display = describeCalendarToolPart(part, t);
   const visible = showAll
     ? display.rows
     : display.rows.slice(0, RESULTS_PREVIEW);
@@ -996,7 +1159,7 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
         </Text>
         <Text style={[styles.metaText, muted]}>
           {display.status === "error"
-            ? "Failed"
+            ? t("chat.steps.failed")
             : running
               ? display.detail
                 ? `${display.title}…`
@@ -1026,7 +1189,7 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
               disabled={!row.href}
               accessibilityRole={row.href ? "link" : undefined}
               accessibilityHint={
-                row.href ? "Opens in Google Calendar" : undefined
+                row.href ? t("chat.mobile.activity.opensInGoogleCalendar") : undefined
               }
               onPress={() => {
                 if (row.href) Linking.openURL(row.href).catch(() => {});
@@ -1041,7 +1204,7 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
               ]}
             >
               <Text numberOfLines={1} style={[styles.calendarWhen, muted]}>
-                {formatCalendarEventTime(row)}
+                {formatCalendarEventTime(row, locale)}
               </Text>
               <Text
                 numberOfLines={1}
@@ -1082,7 +1245,7 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
                 ]}
               >
-                {showAll ? "Show less" : `Show ${hidden} more`}
+                {showAll ? t("common.actions.showLess") : t("common.actions.showCountMore", { count: hidden })}
               </Text>
             </Pressable>
           ) : null}
@@ -1092,9 +1255,38 @@ function CalendarStep({ part }: { part: CalendarToolPart }) {
   );
 }
 
+/** A model scheduling, changing, listing or deleting the user's tasks. */
+function ScheduledTaskStep({ part }: { part: ScheduledTaskToolPart }) {
+  const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
+  return (
+    <View style={styles.searchStep}>
+      <Text
+        style={[
+          styles.stepTitle,
+          { color: colors.foreground, fontFamily: fonts.sansMedium },
+        ]}
+      >
+        {scheduledTaskActivityLabel(part, !isToolSettled(part), t)}
+      </Text>
+      {part.state === "output-error" && part.errorText ? (
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** A model reading a skill's instructions before using it. */
 function SkillStep({ part }: { part: ViewSkillToolPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const note =
     part.state === "output-error"
       ? part.errorText
@@ -1109,7 +1301,7 @@ function SkillStep({ part }: { part: ViewSkillToolPart }) {
           { color: colors.foreground, fontFamily: fonts.sansMedium },
         ]}
       >
-        {viewSkillActivityLabel(part, !isToolSettled(part))}
+        {viewSkillActivityLabel(part, !isToolSettled(part), t)}
       </Text>
       {note ? (
         <Text
@@ -1133,6 +1325,7 @@ function SkillStep({ part }: { part: ViewSkillToolPart }) {
 
 function ReadFileStep({ part }: { part: ReadFilePart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const output = part.output;
   return (
     <View style={styles.searchStep}>
@@ -1144,7 +1337,7 @@ function ReadFileStep({ part }: { part: ReadFilePart }) {
             { color: colors.foreground, fontFamily: fonts.sansMedium },
           ]}
         >
-          {output?.file ?? part.input?.file ?? "file"}
+          {output?.file ?? part.input?.file ?? t("chat.activity.fileFallback")}
         </Text>
         <Text
           style={[
@@ -1153,10 +1346,10 @@ function ReadFileStep({ part }: { part: ReadFilePart }) {
           ]}
         >
           {part.state === "output-error"
-            ? "Failed"
+            ? t("chat.activity.failed")
             : output
-              ? readFileRangeLabel(output)
-              : "Reading…"}
+              ? readFileRangeLabel(output, t)
+              : t("chat.activity.readingEllipsis")}
         </Text>
       </View>
       {part.state === "output-error" ? (
@@ -1175,6 +1368,7 @@ function ReadFileStep({ part }: { part: ReadFilePart }) {
 
 function SearchFilesStep({ part }: { part: SearchFilesPart }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const query = part.input?.query?.trim();
   const output = part.output;
   return (
@@ -1187,7 +1381,7 @@ function SearchFilesStep({ part }: { part: SearchFilesPart }) {
             { color: colors.foreground, fontFamily: fonts.sansMedium },
           ]}
         >
-          {query || "Searching files…"}
+          {query || t("chat.activity.searchingFilesEllipsis")}
         </Text>
         {output ? (
           <Text
@@ -1197,8 +1391,11 @@ function SearchFilesStep({ part }: { part: SearchFilesPart }) {
             ]}
           >
             {output.totalMatches === 0
-              ? "no matches"
-              : `${output.totalMatches} ${output.totalMatches === 1 ? "match" : "matches"}`}
+              ? t("chat.activity.noMatches")
+              : t("chat.activity.matches", {
+                  count: output.totalMatches,
+                  formattedCount: String(output.totalMatches),
+                })}
           </Text>
         ) : null}
       </View>
@@ -1294,90 +1491,131 @@ function Favicon({ domain }: { domain: string }) {
   );
 }
 
-function activeLabel(last: ActivityPart | undefined): string {
-  if (!last) return "Working…";
+function activeLabel(last: ActivityPart | undefined, t: TFunction): string {
+  if (!last) return t("common.states.working");
   if (last.type === "tool-web_search") {
     const query = last.input?.query?.trim();
-    return query ? `Searching "${query}"` : "Searching the web…";
+    return query
+      ? t("chat.activity.searchingQuery", { query })
+      : t("chat.activity.searchingWeb");
   }
   if (last.type === "tool-fetch_url") {
     const url = last.input?.url;
-    return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
+    return url
+      ? t("chat.activity.readingDomain", { domain: cleanDomain(url) })
+      : t("chat.activity.readingPage");
   }
   if (isReadFilePart(last)) {
     const file = last.input?.file;
-    return file ? `Reading ${file}` : "Reading file…";
+    return file
+      ? t("chat.activity.readingNamedFile", { file })
+      : t("chat.activity.readingFile");
   }
   if (isSearchFilesPart(last)) {
     const query = last.input?.query?.trim();
-    return query ? `Searching files for "${query}"` : "Searching files…";
+    return query
+      ? t("chat.activity.searchingFilesQuery", { query })
+      : t("chat.activity.searchingFilesEllipsis");
   }
-  if (isCodeExecutionPart(last)) return "Running code…";
-  if (isGmailToolPart(last)) return gmailActivityLabel(last, true);
-  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true);
-  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true);
+  if (isCodeExecutionPart(last)) return t("chat.activity.runningCode");
+  if (isGmailToolPart(last)) return gmailActivityLabel(last, true, t);
+  if (isCalendarToolPart(last)) return calendarActivityLabel(last, true, t);
+  if (isViewSkillToolPart(last)) return viewSkillActivityLabel(last, true, t);
+  if (isScheduledTaskToolPart(last)) {
+    return scheduledTaskActivityLabel(last, true, t);
+  }
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
-      ? `Running ${parsed.serverName} · ${parsed.toolName}`
-      : "Running MCP tool…";
+      ? t("chat.activity.runningMcpServerTool", {
+          server: parsed.serverName,
+          tool: parsed.toolName,
+        })
+      : t("chat.activity.runningMcpTool");
   }
-  return "Thinking";
+  return t("chat.activity.thinking");
 }
 
-function settledLabel(parts: ActivityPart[], duration: number): string {
+function settledLabel(
+  parts: ActivityPart[],
+  duration: number,
+  t: TFunction,
+): string {
   const lastTool = [...parts].reverse().find(isTool);
   if (lastTool?.type === "tool-web_search") {
-    if (lastTool.state === "output-error") return "Web search failed";
-    if (lastTool.state === "output-available") return "Searched the web";
-    return "Web search did not complete";
+    if (lastTool.state === "output-error") return t("chat.activity.webSearchFailed");
+    if (lastTool.state === "output-available") return t("chat.activity.searchedWeb");
+    return t("chat.activity.webSearchIncomplete");
   }
   if (lastTool?.type === "tool-fetch_url") {
-    if (lastTool.state === "output-error") return "Page fetch failed";
+    if (lastTool.state === "output-error") return t("chat.activity.pageFetchFailed");
     if (lastTool.state === "output-available") {
-      return isFetchedImage(lastTool.output) ? "Viewed image" : "Read page";
+      return isFetchedImage(lastTool.output)
+        ? t("chat.activity.viewedImage")
+        : t("chat.activity.readPage");
     }
-    return "Page fetch did not complete";
+    return t("chat.activity.pageFetchIncomplete");
   }
   if (lastTool && isReadFilePart(lastTool)) {
-    if (lastTool.state === "output-error") return "File read failed";
+    if (lastTool.state === "output-error") return t("chat.activity.fileReadFailed");
     if (lastTool.state === "output-available") {
-      return `Read ${lastTool.output?.file ?? lastTool.input?.file ?? "file"}`;
+      const file = lastTool.output?.file ?? lastTool.input?.file;
+      return file
+        ? t("chat.activity.readNamedFile", { file })
+        : t("chat.activity.readFile");
     }
-    return "File read did not complete";
+    return t("chat.activity.fileReadIncomplete");
   }
   if (lastTool && isSearchFilesPart(lastTool)) {
-    if (lastTool.state === "output-error") return "File search failed";
-    if (lastTool.state === "output-available") return "Searched files";
-    return "File search did not complete";
+    if (lastTool.state === "output-error") return t("chat.activity.fileSearchFailed");
+    if (lastTool.state === "output-available") return t("chat.activity.searchedFiles");
+    return t("chat.activity.fileSearchIncomplete");
   }
   if (lastTool && isCodeExecutionPart(lastTool)) {
-    if (lastTool.state === "output-error") return "Code run failed";
-    if (lastTool.state !== "output-available") return "Code run did not complete";
-    const label = lastTool.output?.exitCode === 0 ? "Ran code" : "Code ended with an error";
+    if (lastTool.state === "output-error") return t("chat.activity.codeRunFailed");
+    if (lastTool.state !== "output-available") return t("chat.activity.codeRunIncomplete");
+    const ok = lastTool.output?.exitCode === 0;
     // Run files show inside the steps, so the summary says they are there.
     const files = parts.filter(isCodeExecutionPart).flatMap(codeExecutionFiles).length;
-    return files ? `${label} · ${files} ${files === 1 ? "file" : "files"}` : label;
+    if (files > 0) {
+      return ok
+        ? t("chat.activity.ranCodeWithFiles", { count: files })
+        : t("chat.activity.codeEndedWithErrorWithFiles", { count: files });
+    }
+    return ok ? t("chat.activity.ranCode") : t("chat.activity.codeEndedWithError");
   }
   if (lastTool && isGmailToolPart(lastTool)) {
-    return gmailActivityLabel(lastTool, false);
+    return gmailActivityLabel(lastTool, false, t);
   }
   if (lastTool && isCalendarToolPart(lastTool)) {
-    return calendarActivityLabel(lastTool, false);
+    return calendarActivityLabel(lastTool, false, t);
   }
   if (lastTool && isViewSkillToolPart(lastTool)) {
-    return viewSkillActivityLabel(lastTool, false);
+    return viewSkillActivityLabel(lastTool, false, t);
+  }
+  if (lastTool && isScheduledTaskToolPart(lastTool)) {
+    return scheduledTaskActivityLabel(lastTool, false, t);
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);
-    const label = parsed
-      ? `${parsed.serverName} · ${parsed.toolName}`
-      : "MCP tool";
-    if (lastTool.state === "output-error") return `${label} failed`;
-    if (lastTool.state === "output-available") return `Used ${label}`;
-    return `${label} did not complete`;
+    const label = parsed ? `${parsed.serverName} · ${parsed.toolName}` : null;
+    if (lastTool.state === "output-error") {
+      return label
+        ? t("chat.activity.mcpNamedFailed", { label })
+        : t("chat.activity.mcpToolFailed");
+    }
+    if (lastTool.state === "output-available") {
+      return label
+        ? t("chat.activity.mcpNamedUsed", { label })
+        : t("chat.activity.mcpToolUsed");
+    }
+    return label
+      ? t("chat.activity.mcpNamedIncomplete", { label })
+      : t("chat.activity.mcpToolIncomplete");
   }
-  return duration > 0 ? `Thought for ${duration}s` : "Thoughts";
+  return duration > 0
+    ? t("chat.activity.thoughtForSeconds", { duration })
+    : t("chat.activity.thoughts");
 }
 
 const styles = StyleSheet.create({
@@ -1406,6 +1644,22 @@ const styles = StyleSheet.create({
   },
   railLine: { width: 1, flex: 1, marginTop: 4 },
   stepBody: { flex: 1, paddingBottom: 12 },
+  thoughtHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 20,
+  },
+  thoughtTitle: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  thoughtLabel: { flexShrink: 0, fontSize: 13 },
+  thoughtPreview: { flex: 1, minWidth: 0, fontSize: 12 },
+  thoughtBody: { paddingTop: 6 },
 
   searchStep: { gap: 6 },
   searchHeader: {

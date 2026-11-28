@@ -162,7 +162,7 @@ const secrets: InstallationSecrets = {
   searxngSecret: "searxng-secret",
   voiceSharedSecret: "voice-secret",
   sandboxToken: "sandbox-token",
-  cloudCredential: "",
+  cloudCredential: "", oidcClientSecret: "",
 };
 
 beforeEach(() => {

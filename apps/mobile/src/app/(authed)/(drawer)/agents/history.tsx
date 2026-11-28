@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, SectionList, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useLocalSearchParams } from "expo-router";
@@ -8,6 +10,7 @@ import {
   type AgentProviderId,
 } from "@overtchat/agent-bridge";
 import { formatAgentSessionAge } from "@overtchat/shared/agent-attention";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AgentFeedback, AgentText } from "@/components/agents/AgentPrimitives";
 import { AgentSearch, AgentSessionRow } from "@/components/agents/AgentNavigation";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
@@ -26,7 +29,7 @@ import {
   type AgentSessionSort,
 } from "@/lib/agents/search";
 import { groupWorkspaces } from "@/lib/agents/workspaces";
-import { groupByDate } from "@/lib/dateGroups";
+import { DATE_BUCKET_KEYS, groupByDate } from "@/lib/dateGroups";
 import { useAgentConnections } from "@/lib/queries/agents";
 import { useTheme } from "@/lib/theme";
 import { useNow } from "@/lib/useNow";
@@ -37,12 +40,16 @@ type Picker = "host" | "workspace" | "provider" | "sort";
 const ALL = "";
 
 /** What a history row says under its setup: the request, the error, or the reply. */
-export function agentHistorySnippet(entry: AgentAttentionItem): string | null {
+export function agentHistorySnippet(
+  entry: AgentAttentionItem,
+  t: TFunction,
+): string | null {
   const { session } = entry.item;
   if (session.attention) return agentAttentionText(session.attention);
-  if (entry.state === "failed") return session.lastTurn?.error || "The last turn failed.";
+  if (entry.state === "failed")
+    return session.lastTurn?.error || t("agents.history.lastTurnFailed");
   if (session.lastTurn?.preview) return session.lastTurn.preview;
-  const title = agentSessionRowTitle(entry);
+  const title = agentSessionRowTitle(entry, t);
   return session.firstMessage && session.firstMessage !== title ? session.firstMessage : null;
 }
 
@@ -51,8 +58,10 @@ export function agentHistorySnippet(entry: AgentAttentionItem): string | null {
  * the same order as the new-session pickers, as on the web.
  */
 export default function AgentHistoryScreen() {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const params = useLocalSearchParams<{ focus?: string }>();
-  const { colors, fonts, radii } = useTheme();
+  const { colors, fonts } = useTheme();
   const insets = useSafeAreaInsets();
   const connections = useAgentConnections();
   const groups = useMemo(
@@ -65,24 +74,24 @@ export default function AgentHistoryScreen() {
   const [provider, setProvider] = useState<AgentProviderId | null>(null);
   const [sort, setSort] = useState<AgentSessionSort>("activity");
   const [picker, setPicker] = useState<Picker | null>(null);
-  const hosts = useMemo(() => agentSessionHosts(groups), [groups]);
-  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host), [groups, host]);
+  const hosts = useMemo(() => agentSessionHosts(groups, t), [groups, t]);
+  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host, t), [groups, host, t]);
   const providers = useMemo(
-    () => agentSessionProviders(groups, host, workspace),
-    [groups, host, workspace],
+    () => agentSessionProviders(groups, host, workspace, t),
+    [groups, host, workspace, t],
   );
   const now = useNow(30_000);
 
   /** The agent filter, if it still has sessions in the narrowed scope. */
   function keptProvider(nextHost: string | null, nextWorkspace: string | null) {
-    return provider && agentSessionProviders(groups, nextHost, nextWorkspace).includes(provider)
+    return provider && agentSessionProviders(groups, nextHost, nextWorkspace, t).includes(provider)
       ? provider
       : null;
   }
   // Changing the machine drops a folder or agent that has no sessions on it.
   function selectHost(next: string | null) {
     const nextWorkspace =
-      workspace && agentSessionWorkspaces(groups, next).includes(workspace) ? workspace : null;
+      workspace && agentSessionWorkspaces(groups, next, t).includes(workspace) ? workspace : null;
     setHost(next);
     setWorkspace(nextWorkspace);
     setProvider(keptProvider(next, nextWorkspace));
@@ -93,8 +102,8 @@ export default function AgentHistoryScreen() {
   }
 
   const results = useMemo(
-    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }),
-    [groups, query, host, workspace, provider, sort],
+    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }, t),
+    [groups, query, host, workspace, provider, sort, t],
   );
   const sections = useMemo(
     () =>
@@ -104,19 +113,215 @@ export default function AgentHistoryScreen() {
           updatedAt: sort === "created" ? agentSessionCreatedAt(entry) : entry.since,
         })),
         now,
-      ).map((bucket) => ({ key: bucket.label, title: bucket.label, data: bucket.items })),
-    [results, sort, now],
+      ).map((bucket) => ({
+        key: bucket.bucket,
+        title: t(DATE_BUCKET_KEYS[bucket.bucket]),
+        data: bucket.items,
+      })),
+    [results, sort, now, t],
   );
 
-  const filterPill = (
-    label: string,
-    active: boolean,
-    icon: React.ComponentProps<typeof Ionicons>["name"] | null,
-    onPress: () => void,
-    accessibilityLabel: string,
-  ) => (
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Stack.Screen options={{ title: t("agents.history.title") }} />
+      <AgentSearch value={query} onChangeText={setQuery} autoFocus={params.focus === "1"} />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        style={styles.filterBar}
+        contentContainerStyle={styles.filters}
+      >
+        {hosts.length > 1 && (
+          <FilterPill
+            label={host ?? t("agents.history.allMachines")}
+            active={host !== null}
+            icon="server-outline"
+            onPress={() => setPicker("host")}
+            accessibilityLabel={t("agents.mobile.history.filterByMachine")}
+          />
+        )}
+        <FilterPill
+          label={workspace ?? t("agents.mobile.history.allFolders")}
+          active={workspace !== null}
+          icon="folder-outline"
+          onPress={() => setPicker("workspace")}
+          accessibilityLabel={t("agents.mobile.history.filterByFolder")}
+        />
+        <FilterPill
+          label={
+            provider
+              ? agentProviderMetadata(provider).label
+              : t("agents.history.allAgents")
+          }
+          active={provider !== null}
+          icon="terminal-outline"
+          onPress={() => setPicker("provider")}
+          accessibilityLabel={t("agents.mobile.history.filterByAgent")}
+        />
+        <FilterPill
+          label={
+            sort === "created"
+              ? t("agents.history.sortCreated")
+              : t("agents.history.sortActivity")
+          }
+          active={false}
+          icon="swap-vertical-outline"
+          onPress={() => setPicker("sort")}
+          accessibilityLabel={t("agents.mobile.history.sortSessions")}
+        />
+      </ScrollView>
+      {(connections.isPending || connections.error) && (
+        <AgentFeedback
+          loading={connections.isPending}
+          error={connections.error?.message}
+          retry={() => void connections.refetch()}
+        />
+      )}
+      <SectionList
+        sections={sections}
+        keyExtractor={({ entry }) => entry.item.session.id}
+        stickySectionHeadersEnabled={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        refreshing={connections.refreshing}
+        onRefresh={() => void connections.refresh()}
+        contentContainerStyle={{
+          paddingHorizontal: 8,
+          paddingBottom: insets.bottom + 20,
+        }}
+        ListEmptyComponent={
+          !connections.isPending && !connections.error ? (
+            <View style={{ padding: 24, gap: 8, alignItems: "center" }}>
+              <Ionicons name="time-outline" size={32} color={colors.mutedForeground} />
+              <AgentText title>
+                {groups.length
+                  ? t("agents.mobile.history.noMatchesTitle")
+                  : t("agents.mobile.history.noSessionsTitle")}
+              </AgentText>
+              <AgentText muted>
+                {groups.length
+                  ? t("agents.mobile.history.noMatchesDescription")
+                  : t("agents.mobile.history.noSessionsDescription")}
+              </AgentText>
+            </View>
+          ) : null
+        }
+        renderSectionHeader={({ section }) => (
+          <Text
+            accessibilityRole="header"
+            style={[
+              styles.dateLabel,
+              { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+            ]}
+          >
+            {section.title}
+          </Text>
+        )}
+        renderItem={({ item: { entry, updatedAt } }) => (
+          <AgentSessionRow
+            entry={entry}
+            context="all"
+            now={now}
+            time={formatAgentSessionAge(updatedAt, now, t, locale)}
+            detail={agentHistorySnippet(entry, t)}
+            onPress={() =>
+              router.navigate({
+                pathname: "/agent/[id]",
+                params: {
+                  id: entry.item.session.id,
+                  workspace: entry.item.workspaceId,
+                  name: entry.group.name,
+                },
+              })
+            }
+          />
+        )}
+      />
+      <SelectionSheet
+        title={t("agents.setup.machine")}
+        searchLabel={t("agents.mobile.setup.searchMachine")}
+        visible={picker === "host"}
+        value={host ?? ALL}
+        options={[
+          { value: ALL, label: t("agents.history.allMachines") },
+          ...hosts.map((label) => ({ value: label, label })),
+        ]}
+        onClose={() => setPicker(null)}
+        onSelect={(value) => {
+          setPicker(null);
+          selectHost(value || null);
+        }}
+      />
+      <SelectionSheet
+        title={t("agents.mobile.history.folder")}
+        searchLabel={t("agents.mobile.history.searchFolder")}
+        visible={picker === "workspace"}
+        value={workspace ?? ALL}
+        options={[
+          { value: ALL, label: t("agents.mobile.history.allFolders") },
+          ...workspaces.map((name) => ({ value: name, label: name })),
+        ]}
+        onClose={() => setPicker(null)}
+        onSelect={(value) => {
+          setPicker(null);
+          selectWorkspace(value || null);
+        }}
+      />
+      <SelectionSheet
+        title={t("agents.setup.agent")}
+        searchLabel={t("agents.mobile.setup.searchAgent")}
+        visible={picker === "provider"}
+        value={provider ?? ALL}
+        options={[
+          { value: ALL, label: t("agents.history.allAgents") },
+          ...providers.map((id) => ({
+            value: id,
+            label: agentProviderMetadata(id).label,
+            leading: <AgentProviderIcon provider={id} size={22} />,
+          })),
+        ]}
+        onClose={() => setPicker(null)}
+        onSelect={(value) => {
+          setPicker(null);
+          setProvider((value || null) as AgentProviderId | null);
+        }}
+      />
+      <SelectionSheet<AgentSessionSort>
+        title={t("agents.history.sortBy")}
+        searchLabel={t("agents.mobile.history.searchSortBy")}
+        visible={picker === "sort"}
+        value={sort}
+        options={[
+          { value: "activity", label: t("agents.history.sortActivity") },
+          { value: "created", label: t("agents.history.sortCreated") },
+        ]}
+        onClose={() => setPicker(null)}
+        onSelect={(value) => {
+          setPicker(null);
+          setSort(value);
+        }}
+      />
+    </View>
+  );
+}
+
+function FilterPill({
+  label,
+  active,
+  icon,
+  onPress,
+  accessibilityLabel,
+}: {
+  label: string;
+  active: boolean;
+  icon: React.ComponentProps<typeof Ionicons>["name"] | null;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  const { colors, fonts, radii } = useTheme();
+  return (
     <Pressable
-      key={accessibilityLabel}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
@@ -124,7 +329,11 @@ export default function AgentHistoryScreen() {
         styles.pill,
         {
           borderRadius: radii.pill,
-          backgroundColor: active ? colors.accent : pressed ? colors.muted : colors.card,
+          backgroundColor: active
+            ? colors.accent
+            : pressed
+              ? colors.muted
+              : colors.card,
           borderColor: colors.border,
         },
       ]}
@@ -154,175 +363,6 @@ export default function AgentHistoryScreen() {
         color={active ? colors.accentForeground : colors.mutedForeground}
       />
     </Pressable>
-  );
-
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Stack.Screen options={{ title: "History" }} />
-      <AgentSearch value={query} onChangeText={setQuery} autoFocus={params.focus === "1"} />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        style={styles.filterBar}
-        contentContainerStyle={styles.filters}
-      >
-        {hosts.length > 1 &&
-          filterPill(
-            host ?? "All machines",
-            host !== null,
-            "server-outline",
-            () => setPicker("host"),
-            "Filter by machine",
-          )}
-        {filterPill(
-          workspace ?? "All folders",
-          workspace !== null,
-          "folder-outline",
-          () => setPicker("workspace"),
-          "Filter by folder",
-        )}
-        {filterPill(
-          provider ? agentProviderMetadata(provider).label : "All agents",
-          provider !== null,
-          "terminal-outline",
-          () => setPicker("provider"),
-          "Filter by agent",
-        )}
-        {filterPill(
-          sort === "created" ? "Created" : "Last active",
-          false,
-          "swap-vertical-outline",
-          () => setPicker("sort"),
-          "Sort sessions",
-        )}
-      </ScrollView>
-      {(connections.isPending || connections.error) && (
-        <AgentFeedback
-          loading={connections.isPending}
-          error={connections.error?.message}
-          retry={() => void connections.refetch()}
-        />
-      )}
-      <SectionList
-        sections={sections}
-        keyExtractor={({ entry }) => entry.item.session.id}
-        stickySectionHeadersEnabled={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        refreshing={connections.refreshing}
-        onRefresh={() => void connections.refresh()}
-        contentContainerStyle={{
-          paddingHorizontal: 8,
-          paddingBottom: insets.bottom + 20,
-        }}
-        ListEmptyComponent={
-          !connections.isPending && !connections.error ? (
-            <View style={{ padding: 24, gap: 8, alignItems: "center" }}>
-              <Ionicons name="time-outline" size={32} color={colors.mutedForeground} />
-              <AgentText title>
-                {groups.length ? "No sessions match" : "No sessions yet"}
-              </AgentText>
-              <AgentText muted>
-                {groups.length
-                  ? "Try another search or widen the filters."
-                  : "Sessions you start with an agent are listed here."}
-              </AgentText>
-            </View>
-          ) : null
-        }
-        renderSectionHeader={({ section }) => (
-          <Text
-            accessibilityRole="header"
-            style={[
-              styles.dateLabel,
-              { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
-            ]}
-          >
-            {section.title}
-          </Text>
-        )}
-        renderItem={({ item: { entry, updatedAt } }) => (
-          <AgentSessionRow
-            entry={entry}
-            context="all"
-            now={now}
-            time={formatAgentSessionAge(updatedAt, now)}
-            detail={agentHistorySnippet(entry)}
-            onPress={() =>
-              router.navigate({
-                pathname: "/agent/[id]",
-                params: {
-                  id: entry.item.session.id,
-                  workspace: entry.item.workspaceId,
-                  name: entry.group.name,
-                },
-              })
-            }
-          />
-        )}
-      />
-      <SelectionSheet
-        title="Machine"
-        visible={picker === "host"}
-        value={host ?? ALL}
-        options={[
-          { value: ALL, label: "All machines" },
-          ...hosts.map((label) => ({ value: label, label })),
-        ]}
-        onClose={() => setPicker(null)}
-        onSelect={(value) => {
-          setPicker(null);
-          selectHost(value || null);
-        }}
-      />
-      <SelectionSheet
-        title="Folder"
-        visible={picker === "workspace"}
-        value={workspace ?? ALL}
-        options={[
-          { value: ALL, label: "All folders" },
-          ...workspaces.map((name) => ({ value: name, label: name })),
-        ]}
-        onClose={() => setPicker(null)}
-        onSelect={(value) => {
-          setPicker(null);
-          selectWorkspace(value || null);
-        }}
-      />
-      <SelectionSheet
-        title="Agent"
-        visible={picker === "provider"}
-        value={provider ?? ALL}
-        options={[
-          { value: ALL, label: "All agents" },
-          ...providers.map((id) => ({
-            value: id,
-            label: agentProviderMetadata(id).label,
-            leading: <AgentProviderIcon provider={id} size={22} />,
-          })),
-        ]}
-        onClose={() => setPicker(null)}
-        onSelect={(value) => {
-          setPicker(null);
-          setProvider((value || null) as AgentProviderId | null);
-        }}
-      />
-      <SelectionSheet<AgentSessionSort>
-        title="Sort by"
-        visible={picker === "sort"}
-        value={sort}
-        options={[
-          { value: "activity", label: "Last active" },
-          { value: "created", label: "Created" },
-        ]}
-        onClose={() => setPicker(null)}
-        onSelect={(value) => {
-          setPicker(null);
-          setSort(value);
-        }}
-      />
-    </View>
   );
 }
 

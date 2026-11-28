@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
+import { Trans, useTranslation } from "react-i18next";
 import {
   FolderMinus,
   LoaderCircle,
@@ -14,6 +15,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { formatUpdatedAt } from "@overtchat/shared";
@@ -36,6 +38,7 @@ const menuItemClass =
   "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground";
 
 export function ProjectChatList({ projectId }: { projectId: string }) {
+  const { t } = useTranslation();
   const { data: chats, isPending } = useChats();
   const { data: activeChatIds } = useActiveChatIds();
   const deleteMut = useDeleteChat();
@@ -53,7 +56,7 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
   const query = filter.trim().toLowerCase();
   const visibleChats = query
     ? projectChats.filter((chat) =>
-        (chat.title ?? "Untitled").toLowerCase().includes(query),
+        (chat.title ?? t("common.states.untitled")).toLowerCase().includes(query),
       )
     : projectChats;
   // Keeps labels such as "5m ago" current while the page stays open.
@@ -69,9 +72,9 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
     try {
       await deleteMut.mutateAsync(deleting.id);
       setDeleting(null);
-      toast.success("Chat deleted");
+      toast.success(t("projects.chats.toast.deleted"));
     } catch (err) {
-      setDeleteError(getErrorMessage(err, "Failed to delete"));
+      setDeleteError(getErrorMessage(err, t("projects.chats.errors.deleteFailed")));
     }
   }
 
@@ -82,7 +85,7 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
           id="project-chats-heading"
           className="text-sm font-medium text-muted-foreground"
         >
-          Chats
+          {t("projects.chats.heading")}
           {projectChats.length > 0 && (
             <span className="ml-1.5 tabular-nums text-muted-foreground/70">
               {projectChats.length}
@@ -91,13 +94,13 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
         </h2>
         {projectChats.length > FILTER_THRESHOLD && (
           <label className="relative w-48 max-sm:w-40">
-            <span className="sr-only">Filter chats</span>
+            <span className="sr-only">{t("projects.chats.filterPlaceholder")}</span>
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               type="search"
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter chats"
+              placeholder={t("projects.chats.filterPlaceholder")}
               className="h-8 w-full rounded-lg border border-input bg-transparent pr-2.5 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             />
           </label>
@@ -112,16 +115,18 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
       ) : projectChats.length === 0 ? (
         <div className="mt-3 flex flex-col items-center rounded-xl border border-dashed px-6 py-10 text-center">
           <MessageSquare className="size-5 text-muted-foreground" />
-          <p className="mt-3 text-sm font-medium">No chats yet</p>
+          <p className="mt-3 text-sm font-medium">{t("projects.chats.empty.title")}</p>
           <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-            Start a conversation above. Chats here share this project&apos;s
-            instructions and default model.
+            {t("projects.chats.empty.description")}
           </p>
         </div>
       ) : visibleChats.length === 0 ? (
         <p className="mt-3 px-3 py-6 text-center text-sm text-muted-foreground">
-          No chats match{" "}
-          <span className="text-foreground">{filter.trim()}</span>.
+          <Trans
+            i18nKey="projects.chats.empty.noMatches"
+            values={{ query: filter.trim() }}
+            components={{ query: <span className="text-foreground" /> }}
+          />
         </p>
       ) : (
         <ul className="mt-2 divide-y divide-border/60">
@@ -160,13 +165,18 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Delete chat?
+              {t("projects.chats.deleteDialog.title")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {deleting?.title?.trim() || "Untitled"}
-              </span>{" "}
-              will be permanently deleted.
+              <Trans
+                i18nKey="projects.chats.deleteDialog.description"
+                values={{
+                  title: deleting?.title?.trim() || t("common.states.untitled"),
+                }}
+                components={{
+                  title: <span className="font-medium text-foreground" />,
+                }}
+              />
             </AlertDialog.Description>
             {deleteError && (
               <p className="mt-3 text-xs text-destructive">{deleteError}</p>
@@ -181,7 +191,7 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
                   />
                 }
               >
-                Cancel
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -189,7 +199,9 @@ export function ProjectChatList({ projectId }: { projectId: string }) {
                 disabled={deleteMut.isPending}
                 onClick={confirmDelete}
               >
-                {deleteMut.isPending ? "Deleting…" : "Delete"}
+                {deleteMut.isPending
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -210,12 +222,14 @@ function ProjectChatRow({
   generating: boolean;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const renameMut = useRenameChat();
   const moveMut = useMoveChat();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const title = chat.title?.trim() || "Untitled";
+  const title = chat.title?.trim() || t("common.states.untitled");
 
   function commitRename() {
     const next = draft.trim();
@@ -226,8 +240,8 @@ function ProjectChatRow({
       {
         onError: (err) => {
           toast.error({
-            title: "Failed to rename chat",
-            description: getErrorMessage(err, "The chat title was not changed."),
+            title: t("projects.chats.toast.renameError"),
+            description: getErrorMessage(err, t("projects.chats.errors.renameFallback")),
           });
         },
       },
@@ -240,13 +254,13 @@ function ProjectChatRow({
       {
         onSuccess: () =>
           toast.success({
-            title: "Removed from project",
-            description: "The chat moved to your main list.",
+            title: t("projects.chats.toast.removedTitle"),
+            description: t("projects.chats.toast.removedDescription"),
           }),
         onError: (err) => {
           toast.error({
-            title: "Failed to move chat",
-            description: getErrorMessage(err, "The chat stayed where it was."),
+            title: t("projects.chats.toast.moveError"),
+            description: getErrorMessage(err, t("projects.chats.errors.moveFallback")),
           });
         },
       },
@@ -258,7 +272,7 @@ function ProjectChatRow({
       <li className="py-2">
         <input
           autoFocus
-          aria-label="Chat title"
+          aria-label={t("projects.chats.renameInputLabel")}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commitRename}
@@ -293,7 +307,7 @@ function ProjectChatRow({
             <span className="truncate text-sm font-medium">{title}</span>
             {chat.pinned && (
               <Pin
-                aria-label="Pinned"
+                aria-label={t("projects.chats.pinned")}
                 className="size-3 shrink-0 text-muted-foreground"
               />
             )}
@@ -305,11 +319,11 @@ function ProjectChatRow({
                   aria-hidden="true"
                   className={cn("size-3", motionClasses.spinner)}
                 />
-                Responding…
+                {t("projects.chats.responding")}
               </>
             ) : (
               <time dateTime={new Date(chat.updatedAt).toISOString()}>
-                {formatUpdatedAt(chat.updatedAt, now)}
+                {formatUpdatedAt(chat.updatedAt, t, locale, now)}
               </time>
             )}
           </span>
@@ -317,7 +331,7 @@ function ProjectChatRow({
       </Link>
       <Menu.Root onOpenChange={setMenuOpen}>
         <Menu.Trigger
-          aria-label={`Actions for ${title}`}
+          aria-label={t("projects.chats.actionsLabel", { title })}
           className={cn(
             "absolute right-2 flex size-8 items-center justify-center rounded-md text-muted-foreground motion-opacity hover:bg-background/60 hover:text-foreground",
             "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[menu-open=true]:opacity-100 [@media(hover:none)]:opacity-100",
@@ -341,18 +355,18 @@ function ProjectChatRow({
                 className={menuItemClass}
               >
                 <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>Rename</span>
+                <span>{t("common.actions.rename")}</span>
               </Menu.Item>
               <Menu.Item onClick={removeFromProject} className={menuItemClass}>
                 <FolderMinus className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>Remove from project</span>
+                <span>{t("projects.actions.removeFromProject")}</span>
               </Menu.Item>
               <Menu.Item
                 onClick={onDelete}
                 className={cn(menuItemClass, "text-destructive data-[highlighted]:text-destructive")}
               >
                 <Trash2 className="size-3.5 shrink-0" />
-                <span>Delete</span>
+                <span>{t("common.actions.delete")}</span>
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>

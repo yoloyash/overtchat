@@ -1,23 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import { authClient } from "@/lib/auth/client";
-import {
-  AGENT_ALERT_SOUND_KEY,
-  AGENT_ALERT_SYSTEM_KEY,
-} from "@/lib/notifications/agentNotification";
 import { playAgentAlertSound } from "@/lib/notifications/sound";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  requestNotificationAccess,
+  useAgentAlertChoices,
+} from "@/lib/notifications/useAgentAlertChoices";
 import { SettingsRow, SettingsSection } from "../SettingsRows";
 
-/** Per-device alerts for the agents an administrator runs. */
+/**
+ * Per-device alerts: for chat replies that finish in the background, and for
+ * the agents an administrator runs.
+ */
 export function AgentAlertsSection() {
   const { data: session } = authClient.useSession();
-  const [sound, setSound] = useLocalStorage<boolean>(AGENT_ALERT_SOUND_KEY, false);
-  const [system, setSystem] = useLocalStorage<boolean>(AGENT_ALERT_SYSTEM_KEY, false);
-  const [problem, setProblem] = useState<string | null>(null);
-  if (session?.user?.role !== "admin") return null;
+  const { sound, setSound, system, systemWanted, setSystem, access } =
+    useAgentAlertChoices();
+  const { t } = useTranslation();
+  const [refused, setRefused] = useState<"unsupported" | "blocked" | null>(null);
+  // Turned on here, then taken away in the browser's own settings.
+  const problem = refused ?? (systemWanted && !system ? "blocked" : null);
+  const agents = session?.user?.role === "admin";
 
   function toggleSound(next: boolean) {
     setSound(next);
@@ -27,24 +33,20 @@ export function AgentAlertsSection() {
   }
 
   async function toggleSystem(next: boolean) {
-    setProblem(null);
+    setRefused(null);
     if (!next) {
       setSystem(false);
       return;
     }
-    if (typeof Notification === "undefined" || !window.isSecureContext) {
-      setProblem(
-        "System notifications need a supported browser over HTTPS, or the desktop app.",
-      );
+    const result = access === "granted" ? access : await requestNotificationAccess();
+    if (result === "unsupported") {
+      setRefused("unsupported");
       return;
     }
-    const permission = await Notification.requestPermission().catch(
-      () => "denied" as const,
-    );
-    if (permission !== "granted") {
-      setProblem(
-        "Allow notifications for this site in your browser or system settings, then turn this on again.",
-      );
+    if (result !== "granted") {
+      // Asked and refused: stop wanting it until the switch is used again.
+      setSystem(false);
+      setRefused("blocked");
       return;
     }
     setSystem(true);
@@ -52,12 +54,20 @@ export function AgentAlertsSection() {
 
   return (
     <SettingsSection
-      title="Agent alerts"
-      description="When an agent needs you, finishes or fails. Only on this device, and only while OvertChat is open; otherwise your phone is told."
+      title={t("settings.alerts.title")}
+      description={
+        agents
+          ? t("settings.alerts.descriptionWithAgents")
+          : t("settings.alerts.description")
+      }
     >
       <SettingsRow
-        title="Play a sound"
-        description="A short chime: rising when an agent needs you, falling when it is done."
+        title={t("settings.alerts.sound.title")}
+        description={
+          agents
+            ? t("settings.alerts.sound.descriptionWithAgents")
+            : t("settings.alerts.sound.description")
+        }
         htmlFor="agent-alert-sound"
         align="center"
         controlAlign="end"
@@ -67,14 +77,17 @@ export function AgentAlertsSection() {
           id="agent-alert-sound"
           checked={sound}
           onCheckedChange={toggleSound}
-          aria-label="Play a sound"
+          aria-label={t("settings.alerts.sound.title")}
         />
       </SettingsRow>
       <SettingsRow
-        title="System notifications"
+        title={t("settings.alerts.system.title")}
         description={
-          problem ??
-          "Shown while the window is in the background. In front, alerts appear in the corner instead."
+          problem
+            ? t(`settings.alerts.system.${problem}`)
+            : agents
+              ? t("settings.alerts.system.descriptionWithAgents")
+              : t("settings.alerts.system.description")
         }
         htmlFor="agent-alert-system"
         align="center"
@@ -85,7 +98,7 @@ export function AgentAlertsSection() {
           id="agent-alert-system"
           checked={system}
           onCheckedChange={(next) => void toggleSystem(next)}
-          aria-label="System notifications"
+          aria-label={t("settings.alerts.system.title")}
         />
       </SettingsRow>
     </SettingsSection>

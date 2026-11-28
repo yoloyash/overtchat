@@ -8,6 +8,7 @@ import {
   useState,
   type PointerEvent,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,12 +29,14 @@ type DiagramImage = Size & { url: string };
 export function DiagramViewport({
   image,
   fullscreen = false,
-  alt = "Mermaid chart",
+  alt,
 }: {
   image: DiagramImage;
   fullscreen?: boolean;
   alt?: string;
 }) {
+  const { t } = useTranslation();
+  const resolvedAlt = alt ?? t("chat.diagram.mermaidChartAlt");
   const canvasRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [height, setHeight] = useState<number | null>(null);
@@ -207,7 +210,9 @@ export function DiagramViewport({
           ref={canvasRef}
           role="region"
           aria-label={
-            fullscreen ? "Fullscreen diagram viewer" : "Diagram viewer"
+            fullscreen
+              ? t("chat.diagram.fullscreenViewer")
+              : t("chat.diagram.viewer")
           }
           tabIndex={0}
           className="relative overflow-hidden bg-background outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -272,7 +277,7 @@ export function DiagramViewport({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={serverUrl(image.url)}
-            alt={alt}
+            alt={resolvedAlt}
             draggable={false}
             className="pointer-events-none absolute left-1/2 top-1/2 max-w-none select-none"
             style={{
@@ -287,8 +292,8 @@ export function DiagramViewport({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Zoom out"
-            title="Zoom out"
+            aria-label={t("chat.diagram.zoomOut")}
+            title={t("chat.diagram.zoomOut")}
             disabled={view.scale <= minScale}
             onClick={() => zoom(0.8)}
           >
@@ -303,8 +308,8 @@ export function DiagramViewport({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Zoom in"
-            title="Zoom in"
+            aria-label={t("chat.diagram.zoomIn")}
+            title={t("chat.diagram.zoomIn")}
             disabled={view.scale >= maxScale}
             onClick={() => zoom(1.25)}
           >
@@ -313,8 +318,8 @@ export function DiagramViewport({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Fit diagram"
-            title="Fit diagram"
+            aria-label={t("chat.diagram.fit")}
+            title={t("chat.diagram.fit")}
             onClick={() => setManualView(null)}
           >
             <Maximize />
@@ -322,8 +327,8 @@ export function DiagramViewport({
           <Button
             variant="ghost"
             size="sm"
-            aria-label="Actual size"
-            title="Actual size"
+            aria-label={t("chat.diagram.actualSize")}
+            title={t("chat.diagram.actualSize")}
             onClick={() => commit({ scale: 1, x: 0, y: 0 })}
           >
             100%
@@ -333,12 +338,14 @@ export function DiagramViewport({
       {!fullscreen && (
         <div
           role="separator"
-          aria-label="Resize diagram"
+          aria-label={t("chat.diagram.resize")}
           aria-orientation="horizontal"
           aria-valuemin={MIN_DIAGRAM_HEIGHT}
           aria-valuemax={MAX_DIAGRAM_HEIGHT}
           aria-valuenow={Math.round(actualHeight)}
-          aria-valuetext={`${Math.round(actualHeight)} pixels high`}
+          aria-valuetext={t("chat.diagram.heightPixels", {
+            height: Math.round(actualHeight),
+          })}
           tabIndex={0}
           className="flex h-4 touch-none cursor-ns-resize items-center justify-center border-t bg-muted/30 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           onPointerDown={(event) => {

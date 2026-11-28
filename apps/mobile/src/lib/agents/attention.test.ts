@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import type {
   AgentConnectionListItem,
   AgentProviderSnapshot,
@@ -126,7 +127,7 @@ describe("agent drawer entries", () => {
       collapsed: [],
       showAllDone: false,
       activeSessionId: "done-8",
-    });
+    }, i18n.t);
     expect(
       entries.map((entry) =>
         entry.kind === "group"
@@ -158,7 +159,7 @@ describe("agent drawer entries", () => {
         collapsed: ["done", "working"],
         showAllDone: false,
         activeSessionId: null,
-      }).map((entry) => (entry.kind === "group" ? `${entry.label}${entry.collapsed ? " (folded)" : ""}` : entry.kind)),
+      }, i18n.t).map((entry) => (entry.kind === "group" ? `${entry.label}${entry.collapsed ? " (folded)" : ""}` : entry.kind)),
     ).toEqual([
       "Needs input",
       "session",
@@ -175,7 +176,7 @@ describe("agent drawer entries", () => {
         collapsed: [],
         showAllDone: true,
         activeSessionId: null,
-      }).filter((entry) => entry.kind === "session"),
+      }, i18n.t).filter((entry) => entry.kind === "session"),
     ).toHaveLength(14);
   });
 
@@ -185,11 +186,11 @@ describe("agent drawer entries", () => {
       collapsed: [groups[0]!.key, groups[2]!.key],
       showAllDone: false,
       activeSessionId: null,
-    });
+    }, i18n.t);
     expect(
       entries.map((entry) =>
         entry.kind === "workspace"
-          ? [entry.group.name, agentHostLabel(entry.group.host), entry.state, entry.collapsed]
+          ? [entry.group.name, agentHostLabel(entry.group.host, i18n.t), entry.state, entry.collapsed]
           : entry.kind === "empty"
             ? entry.text
             : entry.kind,
@@ -206,12 +207,12 @@ describe("agent drawer entries", () => {
       collapsed: [groups[2]!.key],
       showAllDone: false,
       activeSessionId: "claude-done",
-    });
+    }, i18n.t);
     const rows = open.flatMap((entry) => (entry.kind === "session" ? [entry.entry] : []));
     expect(rows.map((entry) => entry.item.session.id)).toContain("claude-done");
     // Under its folder a row names its agent; a waiting one still shows its request.
-    expect(agentSessionRowMeta(rows[0]!, "workspace")).toBe("Allow Bash · npm ci");
-    expect(agentSessionRowMeta(rows[1]!, "workspace")).toBe("Codex");
+    expect(agentSessionRowMeta(rows[0]!, "workspace", i18n.t)).toBe("Allow Bash · npm ci");
+    expect(agentSessionRowMeta(rows[1]!, "workspace", i18n.t)).toBe("Codex");
   });
 
   it("says what a waiting session asks, else where it runs", () => {
@@ -220,25 +221,25 @@ describe("agent drawer entries", () => {
       collapsed: [],
       showAllDone: false,
       activeSessionId: null,
-    }).filter((entry) => entry.kind === "session");
-    expect(agentSessionRowMeta(entries[0]!.entry, "all")).toBe("Allow Bash · npm ci");
-    expect(agentSessionRowMeta(entries[1]!.entry, "all")).toBe("app · This machine");
-    expect(agentSessionRowMeta(entries[1]!.entry, "workspace")).toBe("Codex");
+    }, i18n.t).filter((entry) => entry.kind === "session");
+    expect(agentSessionRowMeta(entries[0]!.entry, "all", i18n.t)).toBe("Allow Bash · npm ci");
+    expect(agentSessionRowMeta(entries[1]!.entry, "all", i18n.t)).toBe("app · This machine");
+    expect(agentSessionRowMeta(entries[1]!.entry, "workspace", i18n.t)).toBe("Codex");
   });
 
   it("lists nothing to see without sessions or workspaces", () => {
     expect(
-      agentDrawerEntries([], { grouping: "status", collapsed: [], showAllDone: false, activeSessionId: null }),
+      agentDrawerEntries([], { grouping: "status", collapsed: [], showAllDone: false, activeSessionId: null }, i18n.t),
     ).toEqual([{ kind: "empty", key: "empty", text: "No sessions yet." }]);
     expect(
-      agentDrawerEntries([], { grouping: "workspace", collapsed: [], showAllDone: false, activeSessionId: null }),
+      agentDrawerEntries([], { grouping: "workspace", collapsed: [], showAllDone: false, activeSessionId: null }, i18n.t),
     ).toEqual([{ kind: "empty", key: "empty", text: "No workspaces yet." }]);
   });
 });
 
 describe("recent agent setups", () => {
   it("orders setups by their latest activity, then list order, and lists machines, folders and agents", () => {
-    const setups = recentAgentSetups(connections);
+    const setups = recentAgentSetups(connections, i18n.t);
     expect(setups.map(({ workspaceId, provider, hostLabel, activityAt }) => [workspaceId, provider, hostLabel, activityAt])).toEqual([
       ["claude-app", "claude", "home-server", 200],
       ["codex-app", "codex", "This machine", 100],
@@ -271,22 +272,22 @@ describe("recent agent setups", () => {
 
 describe("agent session search", () => {
   it("narrows by machine, folder and agent and matches every word", () => {
-    expect(agentSessionHosts(groups)).toEqual(["This machine", "home-server"]);
-    expect(agentSessionWorkspaces(groups, "home-server")).toEqual(["app"]);
-    expect(agentSessionProviders(groups, null, "app")).toEqual(["claude", "codex"]);
-    expect(agentSessionProviders(groups, "home-server", null)).toEqual(["claude"]);
+    expect(agentSessionHosts(groups, i18n.t)).toEqual(["This machine", "home-server"]);
+    expect(agentSessionWorkspaces(groups, "home-server", i18n.t)).toEqual(["app"]);
+    expect(agentSessionProviders(groups, null, "app", i18n.t)).toEqual(["claude", "codex"]);
+    expect(agentSessionProviders(groups, "home-server", null, i18n.t)).toEqual(["claude"]);
     const all = { query: "", host: null, workspace: null, provider: null, sort: "activity" as const };
-    expect(searchAgentSessions(groups, all)).toHaveLength(14);
-    expect(searchAgentSessions(groups, all)[0]!.item.session.id).toBe("claude-done");
+    expect(searchAgentSessions(groups, all, i18n.t)).toHaveLength(14);
+    expect(searchAgentSessions(groups, all, i18n.t)[0]!.item.session.id).toBe("claude-done");
     expect(
-      searchAgentSessions(groups, { ...all, query: "bash npm" }).map((entry) => entry.item.session.id),
+      searchAgentSessions(groups, { ...all, query: "bash npm" }, i18n.t).map((entry) => entry.item.session.id),
     ).toEqual(["approval"]);
     expect(
-      searchAgentSessions(groups, { ...all, host: "home-server" }).map((entry) => entry.item.session.id),
+      searchAgentSessions(groups, { ...all, host: "home-server" }, i18n.t).map((entry) => entry.item.session.id),
     ).toEqual(["claude-done"]);
-    expect(searchAgentSessions(groups, { ...all, provider: "claude", host: "This machine" })).toEqual([]);
+    expect(searchAgentSessions(groups, { ...all, provider: "claude", host: "This machine" }, i18n.t)).toEqual([]);
     expect(
-      searchAgentSessions(groups, { ...all, query: "boom" }).map((entry) => entry.state),
+      searchAgentSessions(groups, { ...all, query: "boom" }, i18n.t).map((entry) => entry.state),
     ).toEqual(["failed"]);
   });
 });

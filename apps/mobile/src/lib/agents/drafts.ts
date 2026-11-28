@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { AppState } from "react-native";
 import type {
   AgentForkContext,
@@ -40,6 +41,7 @@ function read() {
 }
 
 export function useAgentDraft(id: string) {
+  const { t } = useTranslation();
   const session = getAuthClient().useSession();
   const server = getApiBase();
   const key = JSON.stringify([server, session.data?.user.id, id]);
@@ -48,16 +50,16 @@ export function useAgentDraft(id: string) {
     () => read()[key] ?? empty,
     () => empty,
   );
-  const [storageError, setStorageError] = useState<string>();
+  const [hasStorageError, setHasStorageError] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   function flush() {
     clearTimeout(timer.current);
     try {
       directory.create({ intermediates: true, idempotent: true });
       file.write(JSON.stringify(read()));
-      setStorageError(undefined);
+      setHasStorageError(false);
     } catch {
-      setStorageError("Couldn't save this draft on your device.");
+      setHasStorageError(true);
     }
   }
   function setDraft(
@@ -112,5 +114,8 @@ export function useAgentDraft(id: string) {
     listeners.forEach((listener) => listener());
     flush();
   }
+  const storageError = hasStorageError
+    ? t("agents.mobile.errors.draftSaveFailed")
+    : undefined;
   return { draft, setDraft, storageError, saveDraftToSession };
 }

@@ -1,6 +1,11 @@
+import type { TFunction } from "i18next";
 export { htmlPreviewDocument, MAX_PREVIEW_LENGTH } from "@overtchat/shared";
 
-export function svgPreviewSource(source: string, isIncomplete = false): string {
+export function svgPreviewSource(
+  source: string,
+  t: TFunction,
+  isIncomplete = false,
+): string {
   // A detached template uses the browser's forgiving HTML/SVG parser to close
   // unfinished elements while streaming. Its content stays inert, including
   // scripts and resource URLs, and is only ever serialized into an SVG image.
@@ -19,9 +24,7 @@ export function svgPreviewSource(source: string, isIncomplete = false): string {
     root.localName !== "svg" ||
     (root.namespaceURI && root.namespaceURI !== "http://www.w3.org/2000/svg")
   ) {
-    throw new Error(
-      "This SVG could not be rendered. Its source is still available.",
-    );
+    throw new Error(t("chat.codePreview.svgRenderError"));
   }
   root.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   // Display this only as an image, never as inline DOM or an object/embed.

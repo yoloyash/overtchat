@@ -1,6 +1,8 @@
 "use client";
 
 import { Paperclip } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   describeGmailToolPart,
   type GmailToolPart,
@@ -8,12 +10,12 @@ import {
 } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
 
-function shortDate(iso: string | undefined): string {
+function shortDate(iso: string | undefined, locale: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
     ? ""
-    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    : date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 /**
@@ -22,7 +24,8 @@ function shortDate(iso: string | undefined): string {
  * is not a step; it shows as its own card.
  */
 export function GmailStep({ part }: { part: GmailToolPart }) {
-  const display = describeGmailToolPart(part);
+  const { t } = useTranslation();
+  const display = describeGmailToolPart(part, t);
 
   const running = display.status === "running";
 
@@ -34,7 +37,7 @@ export function GmailStep({ part }: { part: GmailToolPart }) {
         </span>
         <span className="shrink-0 text-muted-foreground">
           {display.status === "error"
-            ? "Failed"
+            ? t("chat.steps.failed")
             : running
               ? display.detail && `${display.title}…`
               : display.note}
@@ -59,6 +62,8 @@ export function GmailStep({ part }: { part: GmailToolPart }) {
 
 /** Sender, then subject or attachments, then date: the columns of an inbox. */
 function MessageRow({ row }: { row: GmailToolRow }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const content = (
     <>
       <span
@@ -67,7 +72,7 @@ function MessageRow({ row }: { row: GmailToolRow }) {
           row.unread && "font-medium",
         )}
       >
-        {row.sender || "(unknown sender)"}
+        {row.sender || t("chat.steps.unknownSender")}
       </span>
       <span
         className={cn(
@@ -81,7 +86,7 @@ function MessageRow({ row }: { row: GmailToolRow }) {
         </span>
       </span>
       <span className="shrink-0 tabular-nums text-muted-foreground">
-        {shortDate(row.date)}
+        {shortDate(row.date, locale)}
       </span>
     </>
   );
@@ -91,7 +96,7 @@ function MessageRow({ row }: { row: GmailToolRow }) {
       href={row.href}
       target="_blank"
       rel="noopener noreferrer"
-      title="Open in Gmail"
+      title={t("chat.steps.openInGmail")}
       className={cn(className, "motion-colors hover:bg-accent/60")}
     >
       {content}

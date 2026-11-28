@@ -18,11 +18,11 @@ const sans = Plus_Jakarta_Sans({
   style: ["normal", "italic"],
 });
 
+// The wordmark is the only brand-face text and is never italic.
 const brand = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   display: "swap",
-  style: ["normal", "italic"],
   axes: ["opsz"],
 });
 

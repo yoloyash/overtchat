@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetBackdrop,
@@ -5,6 +6,7 @@ import {
   BottomSheetModal,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { forwardRef, useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,11 +24,12 @@ export const MoveToProjectSheet = forwardRef<
   }
 >(function MoveToProjectSheet({ projects, currentProjectId, onSelect }, ref) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -43,6 +46,7 @@ export const MoveToProjectSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={renderBackdrop}
@@ -65,11 +69,11 @@ export const MoveToProjectSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          Move to project
+          {t("sidebar.mobile.chatMenu.moveToProject")}
         </Text>
 
         <Row
-          label="No project"
+          label={t("sidebar.chat.noProject")}
           icon="remove-circle-outline"
           selected={currentProjectId === null}
           onPress={() => pick(null)}
@@ -88,7 +92,7 @@ export const MoveToProjectSheet = forwardRef<
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            You haven't created any projects yet.
+            {t("sidebar.mobile.chatMenu.noProjectsYet")}
           </Text>
         ) : (
           projects.map((p) => (

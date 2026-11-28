@@ -15,6 +15,7 @@ import {
   Pencil,
   Sparkles,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AgentBranchPicker } from "@/components/agents/AgentBranchPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
@@ -71,6 +72,7 @@ export function AgentSessionHeader({
   terminalOpen: boolean;
   onToggleTerminal: () => void;
 }) {
+  const { t } = useTranslation();
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
   const gitStatus = useAgentWorkspaceGitStatus(workspaceId, {
@@ -79,14 +81,16 @@ export function AgentSessionHeader({
   }).data;
   const branch = gitStatus?.branch;
 
-  async function copyWorkspaceValue(value: string, label: string) {
+  async function copyWorkspaceValue(
+    value: string,
+    successTitle: string,
+    errorTitle: string,
+  ) {
     try {
       await clipboardWriteText(value);
-      toast.success({ title: `${label} copied` });
+      toast.success({ title: successTitle });
     } catch {
-      toast.error({
-        title: `Could not copy ${label[0].toLowerCase()}${label.slice(1)}`,
-      });
+      toast.error({ title: errorTitle });
     }
   }
 
@@ -99,8 +103,12 @@ export function AgentSessionHeader({
       <SidebarToggle />
       <div
         data-testid="agent-provider-identity"
-        aria-label={`${providerMetadata.label} agent`}
-        title={`${providerMetadata.label} agent`}
+        aria-label={t("agents.session.providerAgent", {
+          provider: providerMetadata.label,
+        })}
+        title={t("agents.session.providerAgent", {
+          provider: providerMetadata.label,
+        })}
         className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium"
       >
         <span
@@ -140,8 +148,8 @@ export function AgentSessionHeader({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Account usage"
-            title="Account usage"
+            aria-label={t("agents.session.accountUsage")}
+            title={t("agents.session.accountUsage")}
             disabled={accountUsagePending}
             onClick={onShowAccountUsage}
           >
@@ -158,8 +166,8 @@ export function AgentSessionHeader({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Session actions"
-                title="Session actions"
+                aria-label={t("agents.session.actions")}
+                title={t("agents.session.actions")}
               />
             }
           >
@@ -175,33 +183,45 @@ export function AgentSessionHeader({
               >
                 <Menu.Item
                   onClick={() =>
-                    void copyWorkspaceValue(workspacePath, "Workspace path")
+                    void copyWorkspaceValue(
+                      workspacePath,
+                      t("agents.session.workspacePathCopied"),
+                      t("agents.session.workspacePathCopyFailed"),
+                    )
                   }
                   className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
                 >
                   <Copy className="size-3.5 text-muted-foreground" />
-                  Copy workspace path
+                  {t("agents.session.copyWorkspacePath")}
                 </Menu.Item>
                 {branch && (
                   <Menu.Item
                     onClick={() =>
-                      void copyWorkspaceValue(branch, "Branch name")
+                      void copyWorkspaceValue(
+                        branch,
+                        t("agents.session.branchNameCopied"),
+                        t("agents.session.branchNameCopyFailed"),
+                      )
                     }
                     className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
                 >
                   <GitBranch className="size-3.5 text-muted-foreground" />
-                  Copy branch name
+                  {t("agents.session.copyBranchName")}
                 </Menu.Item>
                 )}
                 {providerSessionId && (
                   <Menu.Item
                     onClick={() =>
-                      void copyWorkspaceValue(providerSessionId, "Session ID")
+                      void copyWorkspaceValue(
+                        providerSessionId,
+                        t("agents.session.sessionIdCopied"),
+                        t("agents.session.sessionIdCopyFailed"),
+                      )
                     }
                     className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
                   >
                     <Hash className="size-3.5 text-muted-foreground" />
-                    Copy session ID
+                    {t("agents.session.copySessionId")}
                   </Menu.Item>
                 )}
                 <Menu.Separator className="my-1 h-px bg-border" />
@@ -210,7 +230,7 @@ export function AgentSessionHeader({
                   className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
                 >
                   <ChartNoAxesColumnIncreasing className="size-3.5 text-muted-foreground" />
-                  Session usage
+                  {t("agents.session.sessionUsage")}
                 </Menu.Item>
                 {providerMetadata.capabilities.renameSession !== false && (
                   <Menu.Item
@@ -219,7 +239,7 @@ export function AgentSessionHeader({
                     className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
                   >
                     <Pencil className="size-3.5 text-muted-foreground" />
-                    Rename session
+                    {t("agents.session.rename")}
                   </Menu.Item>
                 )}
                 <Menu.Item
@@ -228,7 +248,7 @@ export function AgentSessionHeader({
                   className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
                 >
                   <Sparkles className="size-3.5 text-muted-foreground" />
-                  Compact context
+                  {t("agents.session.compactContext")}
                 </Menu.Item>
               </Menu.Popup>
             </Menu.Positioner>
@@ -241,13 +261,13 @@ export function AgentSessionHeader({
           size="icon-sm"
           aria-label={
             terminalOpen
-              ? "Close workspace terminal"
-              : "Open workspace terminal"
+              ? t("agents.session.closeTerminal")
+              : t("agents.session.openTerminal")
           }
           title={
             terminalOpen
-              ? "Close workspace terminal"
-              : "Open workspace terminal"
+              ? t("agents.session.closeTerminal")
+              : t("agents.session.openTerminal")
           }
           aria-pressed={terminalOpen}
           className={PANE_TOGGLE_CLASS}
@@ -258,8 +278,16 @@ export function AgentSessionHeader({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={filesOpen ? "Close workspace files" : "Open workspace files"}
-          title={filesOpen ? "Close workspace files" : "Open workspace files"}
+          aria-label={
+            filesOpen
+              ? t("agents.session.closeFiles")
+              : t("agents.session.openFiles")
+          }
+          title={
+            filesOpen
+              ? t("agents.session.closeFiles")
+              : t("agents.session.openFiles")
+          }
           aria-pressed={filesOpen}
           className={PANE_TOGGLE_CLASS}
           onClick={onToggleFiles}
@@ -286,18 +314,19 @@ function WorkspaceGitSummary({
   running: boolean;
   onShowChanges: () => void;
 }) {
+  const { t } = useTranslation();
   if (!status?.isGit) return null;
-  const branch = status.branch ?? "Detached HEAD";
+  const branch = status.branch ?? t("agents.branch.detachedHead");
   const tracking = [
-    status.ahead ? `${status.ahead} ahead` : null,
-    status.behind ? `${status.behind} behind` : null,
+    status.ahead ? t("agents.branch.ahead", { count: status.ahead }) : null,
+    status.behind ? t("agents.branch.behind", { count: status.behind }) : null,
   ].filter(Boolean);
   const title = [
     branch,
     ...tracking,
     status.dirty
-      ? `${status.changedFiles} changed ${status.changedFiles === 1 ? "file" : "files"}`
-      : "Clean working tree",
+      ? t("agents.branch.changedFiles", { count: status.changedFiles })
+      : t("agents.branch.cleanWorkingTree"),
   ].join(" · ");
 
   return (
@@ -316,15 +345,16 @@ function WorkspaceGitSummary({
       {status.dirty && (
         <button
           type="button"
-          aria-label={`View ${status.changedFiles} changed ${status.changedFiles === 1 ? "file" : "files"}`}
-          title="View workspace changes"
+          aria-label={t("agents.branch.viewChangedFiles", {
+            count: status.changedFiles,
+          })}
+          title={t("agents.branch.viewWorkspaceChanges")}
           onClick={onShowChanges}
           className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 tabular-nums outline-none motion-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground"
         >
           <FileDiff className="size-3.5" />
           <span>
-            {status.changedFiles}{" "}
-            {status.changedFiles === 1 ? "file" : "files"}
+            {t("agents.branch.fileCount", { count: status.changedFiles })}
           </span>
           {status.lineStatsComplete && (
             <>

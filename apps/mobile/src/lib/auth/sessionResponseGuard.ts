@@ -1,16 +1,19 @@
+import type { TFunction } from "i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import type { BetterAuthClientPlugin } from "better-auth/client";
 
 export const UNEXPECTED_SESSION_RESPONSE = "UNEXPECTED_SESSION_RESPONSE";
-const UNEXPECTED_SESSION_MESSAGE =
-  "The server didn't answer like OvertChat. A proxy or Wi-Fi sign-in page may be in the way.";
 
 // The message for a session check this guard rejected, read from the session
 // error that Better Auth keeps.
-export function unexpectedSessionMessage(error: unknown): string | null {
+export function unexpectedSessionMessage(
+  error: unknown,
+  t: TFunction,
+): string | null {
   return typeof error === "object" &&
     error !== null &&
     (error as { code?: unknown }).code === UNEXPECTED_SESSION_RESPONSE
-    ? UNEXPECTED_SESSION_MESSAGE
+    ? t("auth.mobile.unexpectedSessionResponse")
     : null;
 }
 
@@ -64,7 +67,7 @@ export function sessionResponseGuard() {
             return new Response(
               JSON.stringify({
                 code: UNEXPECTED_SESSION_RESPONSE,
-                message: UNEXPECTED_SESSION_MESSAGE,
+                message: i18n.t("auth.mobile.unexpectedSessionResponse"),
               }),
               {
                 status: 502,

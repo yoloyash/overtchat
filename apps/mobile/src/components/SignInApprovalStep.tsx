@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { useEffect, useEffectEvent, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import {
@@ -32,6 +34,7 @@ export function SignInApprovalStep({
   onUnavailable: (message: string) => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const [view, setView] = useState<ApprovalView>({ step: "sending" });
   const [attempt, setAttempt] = useState(0);
   const approved = useEffectEvent(() => onApproved());
@@ -95,7 +98,7 @@ export function SignInApprovalStep({
         if (signal.aborted) return;
         setView({
           step: "ended",
-          message: "Couldn't reach the server. Check your connection and try again.",
+          message: i18n.t("auth.twoFactor.approval.networkError"),
         });
       });
     });
@@ -126,7 +129,7 @@ export function SignInApprovalStep({
           ]}
         >
           <Text style={[styles.ctaText, { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold }]}>
-            Send a new request
+            {t("auth.twoFactor.approval.sendNewRequest")}
           </Text>
         </Pressable>
       </View>
@@ -141,7 +144,11 @@ export function SignInApprovalStep({
       ]}
     >
       <Text
-        accessibilityLabel={view.step === "sending" ? "Sending request" : `Number ${view.number}`}
+        accessibilityLabel={
+          view.step === "sending"
+            ? t("auth.twoFactor.approval.sendingLabel")
+            : t("auth.twoFactor.approval.numberLabel", { number: view.number })
+        }
         accessibilityLiveRegion="polite"
         style={[styles.number, { color: colors.foreground, fontFamily: fonts.mono }]}
       >
@@ -151,10 +158,10 @@ export function SignInApprovalStep({
         <ActivityIndicator size="small" color={colors.mutedForeground} />
         <Text style={[styles.statusText, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
           {view.step === "sending"
-            ? "Sending request…"
+            ? t("auth.twoFactor.approval.sending")
             : view.step === "verifying"
-              ? "Approved. Signing in…"
-              : "Waiting for approval…"}
+              ? t("auth.twoFactor.approval.verifying")
+              : t("auth.twoFactor.approval.waiting")}
         </Text>
       </View>
     </View>

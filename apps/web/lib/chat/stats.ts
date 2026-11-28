@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
   parseMessageStats,
   isRecord,
@@ -33,15 +34,19 @@ export function writeStoredMessageStats(stats: StoredMessageStats): void {
   window.localStorage.setItem(MESSAGE_STATS_STORAGE_KEY, JSON.stringify(stats));
 }
 
-export function formatInteger(value: number): string {
-  return new Intl.NumberFormat().format(Math.round(value));
+export function formatInteger(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale).format(Math.round(value));
 }
 
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
+export function formatDuration(ms: number, t: TFunction): string {
+  if (ms < 1000) {
+    return t("chat.stats.durationMs", { value: Math.round(ms) });
+  }
+  return t("chat.stats.durationSec", { value: (ms / 1000).toFixed(2) });
 }
 
-export function formatTps(value: number): string {
-  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
+export function formatTps(value: number, t: TFunction): string {
+  return t("chat.stats.tpsValue", {
+    value: value >= 100 ? value.toFixed(0) : value.toFixed(1),
+  });
 }

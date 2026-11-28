@@ -1,9 +1,11 @@
+import { useTranslation } from "react-i18next";
 import { useLocalSearchParams } from "expo-router";
 import {
   agentProviderMetadata,
   type AgentConnectionListItem,
   type HostConnectorListItem,
 } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { AdminGate } from "@/components/settings/AdminGate";
 import { SettingsStatus } from "@/components/settings/SettingsStatus";
@@ -28,6 +30,8 @@ export default function ConnectionDetails() {
   );
 }
 function Details() {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useSettingsQuery<{ connections: AgentConnectionListItem[] }>(
     "/agent-connections",
@@ -46,13 +50,13 @@ function Details() {
   );
   const name = connection
     ? agentProviderMetadata(connection.provider).label
-    : "Connection";
+    : t("connections.mobile.detail.title");
   return (
     <SettingsPage title={name}>
       <QueryState query={query} />
       <QueryState query={hosts} />
       {query.data && !connection && (
-        <Label>This connection no longer exists.</Label>
+        <Label>{t("connections.mobile.detail.notFound")}</Label>
       )}
       {connection && (
         <>
@@ -64,8 +68,10 @@ function Details() {
               }
               detail={
                 connection.detectedVersion
-                  ? `Version ${connection.detectedVersion}`
-                  : "Version not detected"
+                  ? t("connections.mobile.common.version", {
+                      version: connection.detectedVersion,
+                    })
+                  : t("connections.mobile.detail.versionNotDetected")
               }
             />
             <Row
@@ -77,17 +83,19 @@ function Details() {
               }
               detail={
                 connection.host.transport === "ssh"
-                  ? `SSH · ${connection.host.sshAlias ?? connection.host.name}`
-                  : "Runs on the connected computer"
+                  ? t("connections.mobile.detail.sshHost", {
+                      host: connection.host.sshAlias ?? connection.host.name,
+                    })
+                  : t("connections.mobile.detail.runsOnComputer")
               }
               status={
                 <SettingsStatus
                   label={
                     connector
                       ? connector.online
-                        ? "Connector online"
-                        : "Connector offline"
-                      : "Status unavailable"
+                        ? t("connections.mobile.status.connectorOnline")
+                        : t("connections.mobile.status.connectorOffline")
+                      : t("connections.mobile.status.unavailable")
                   }
                   state={connector?.online ? "ready" : "neutral"}
                 />
@@ -95,23 +103,27 @@ function Details() {
             />
           </Section>
           <Section
-            title="Connection"
+            title={t("connections.mobile.detail.title")}
             description={
               connector?.online === false
-                ? "Bring the Host Connector online before testing this agent."
+                ? t("connections.mobile.detail.offlineHint")
                 : undefined
             }
           >
             <Row
-              title="Last verified"
+              title={t("connections.mobile.detail.lastVerified")}
               detail={
                 connection.lastValidatedAt
-                  ? new Date(connection.lastValidatedAt).toLocaleString()
-                  : "Not tested yet"
+                  ? new Date(connection.lastValidatedAt).toLocaleString(locale)
+                  : t("connections.mobile.detail.notTestedYet")
               }
             />
             <Row
-              title={action.busy ? "Testing connection…" : "Test connection"}
+              title={
+                action.busy
+                  ? t("connections.mobile.detail.testing")
+                  : t("connections.mobile.detail.testConnection")
+              }
               icon="pulse-outline"
               disabled={action.busy || !connector?.online}
               onPress={() =>
@@ -121,15 +133,17 @@ function Details() {
                     "POST",
                   );
                   await query.refetch();
-                  toastSuccess(`${name} connection healthy`);
+                  toastSuccess(
+                    t("connections.mobile.detail.testHealthy", { name }),
+                  );
                 })
               }
             />
           </Section>
           {action.error && <Label error>{action.error}</Label>}
           <Section
-            title="Workspaces"
-            description="Folders this agent can work in."
+            title={t("connections.mobile.detail.workspacesTitle")}
+            description={t("connections.mobile.detail.workspacesDescription")}
           >
             {connection.workspaces.map((workspace) => (
               <Row
@@ -141,16 +155,16 @@ function Details() {
             ))}
             {!connection.workspaces.length && (
               <Row
-                title="No workspaces yet"
-                detail="Add a workspace from web settings to start using this agent."
+                title={t("connections.mobile.detail.noWorkspacesTitle")}
+                detail={t("connections.mobile.detail.noWorkspacesDetail")}
               />
             )}
           </Section>
           <Section>
             <WebRow
-              title="Manage on web"
+              title={t("connections.mobile.detail.manageOnWebTitle")}
               path="/settings/connections"
-              detail="Edit workspaces, SSH setup, or remove this connection."
+              detail={t("connections.mobile.detail.manageOnWebDetail")}
             />
           </Section>
         </>

@@ -4,14 +4,12 @@ import { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { CircleCheck } from "lucide-react";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import { AgentSessionStatusIcon } from "@/components/agents/AgentSessionStatus";
 import { toast } from "@/components/ui/toast";
 import { agentAttentionCounts } from "@/lib/agents/attention";
 import { agentSessionIdForPath } from "@/lib/agents/sidebarMode";
-import { desktopBridge } from "@/lib/desktop";
 import {
-  AGENT_ALERT_SOUND_KEY,
-  AGENT_ALERT_SYSTEM_KEY,
   agentNotificationHeading,
   agentNotificationNeedsInput,
   type AgentNotification,
@@ -20,14 +18,18 @@ import { subscribeAgentStream } from "@/lib/notifications/agentStream";
 import { showAgentAttentionBadge } from "@/lib/notifications/favicon";
 import {
   playAgentAlertSound,
-  unlockAgentAlertSound,
+  useAgentAlertSoundUnlock,
 } from "@/lib/notifications/sound";
+import {
+  closeSystemNotification,
+  showSystemNotification,
+} from "@/lib/notifications/systemNotification";
+import { useAgentAlertChoices } from "@/lib/notifications/useAgentAlertChoices";
 import { useAgentPresence } from "@/lib/notifications/useAgentPresence";
 import {
   useAgentConnectionSessionDirectory,
   useAgentConnections,
 } from "@/lib/queries/agentConnections";
-import { useLocalStorage } from "@/lib/useLocalStorage";
 
 /** Alerts already shown this page load; a replayed stream shows none twice. */
 const seen = new Set<string>();
@@ -35,10 +37,14 @@ const seen = new Set<string>();
 /** One toast per session: a newer alert takes the place of the one before it. */
 const alertToastId = (sessionId: string) => `agent-alert:${sessionId}`;
 
+/** One system notification per session, likewise. */
+const alertNotificationKey = (sessionId: string) => `agent:${sessionId}`;
+
 /**
  * Keeps the server told where this client is, counts what needs the owner on
  * the icon, and shows the alerts the server sends this client: a toast while
- * the window is in front, a system notification while it is not.
+ * the window is in front, a system notification while it is not. A window
+ * that can be seen falls back to the toast when it may not notify.
  */
 export function AgentAlerts({
   connections,
@@ -48,9 +54,9 @@ export function AgentAlerts({
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const viewing = agentSessionIdForPath(pathname);
-  const [sound] = useLocalStorage<boolean>(AGENT_ALERT_SOUND_KEY, false);
-  const [system] = useLocalStorage<boolean>(AGENT_ALERT_SYSTEM_KEY, false);
+  const { sound, system } = useAgentAlertChoices();
   useAgentPresence(viewing, sound || system);
+  useAgentAlertSoundUnlock(sound);
 
   const counts = useMemo(() => agentAttentionCounts(connections), [connections]);
   useEffect(() => {
@@ -59,19 +65,11 @@ export function AgentAlerts({
   // Signing out or losing admin rights takes the count off the icon too.
   useEffect(() => () => showAgentAttentionBadge(0), []);
 
-  useEffect(() => {
-    if (!sound) return;
-    document.addEventListener("pointerdown", unlockAgentAlertSound);
-    document.addEventListener("keydown", unlockAgentAlertSound);
-    return () => {
-      document.removeEventListener("pointerdown", unlockAgentAlertSound);
-      document.removeEventListener("keydown", unlockAgentAlertSound);
-    };
-  }, [sound]);
-
   // An alert has done its work once its session is on screen.
   useEffect(() => {
-    if (viewing) toast.dismiss(alertToastId(viewing));
+    if (!viewing) return;
+    toast.dismiss(alertToastId(viewing));
+    closeSystemNotification(alertNotificationKey(viewing));
   }, [viewing]);
 
   // Alerts arrive outside render; read the latest choices when they do.
@@ -101,7 +99,7 @@ export function AgentAlerts({
               agentNotificationNeedsInput(notification.reason) ? "input" : "done",
             )
           : Promise.resolve(false);
-        if (visible && document.hasFocus()) {
+        const showToast = () => {
           const { label, session } = agentNotificationHeading(notification);
           toast.notice({
             id: alertToastId(notification.sessionId),
@@ -117,15 +115,28 @@ export function AgentAlerts({
               </>
             ),
             icon: <AlertIcon reason={notification.reason} />,
-            action: { label: "Open", onClick: open },
+            action: { label: i18n.t("common.actions.open"), onClick: open },
           });
+        };
+        if (visible && document.hasFocus()) {
+          showToast();
           return;
         }
-        if (!system) return;
+        if (!system) {
+          if (visible) showToast();
+          return;
+        }
         // The system's own sound stands in for a chime that could not play.
-        void chimed.then((played) =>
-          showSystemNotification(notification, open, !sound || played),
-        );
+        void chimed.then((played) => {
+          const shown = showSystemNotification({
+            key: alertNotificationKey(notification.sessionId),
+            title: notification.title,
+            body: notification.body,
+            silent: !sound || played,
+            onOpen: open,
+          });
+          if (!shown && visible) showToast();
+        });
       }),
     [navigate],
   );
@@ -143,35 +154,6 @@ function AlertIcon({ reason }: { reason: AgentNotification["reason"] }) {
     );
   }
   return <AgentSessionStatusIcon state={reason} className="size-4" />;
-}
-
-function showSystemNotification(
-  notification: AgentNotification,
-  open: () => void,
-  silent: boolean,
-): void {
-  if (
-    typeof Notification === "undefined" ||
-    Notification.permission !== "granted"
-  ) {
-    return;
-  }
-  try {
-    const shown = new Notification(notification.title, {
-      body: notification.body,
-      // A newer alert for the same session replaces the one before it.
-      tag: `agent:${notification.sessionId}`,
-      silent,
-    });
-    shown.addEventListener("click", () => {
-      shown.close();
-      window.focus();
-      void desktopBridge()?.revealWindow?.().catch(() => undefined);
-      open();
-    });
-  } catch {
-    // Some browsers expose Notification but refuse to show one.
-  }
 }
 
 /**

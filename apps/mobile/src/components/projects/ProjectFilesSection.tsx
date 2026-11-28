@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import * as DocumentPicker from "expo-document-picker";
@@ -39,6 +40,7 @@ export function ProjectFilesSection({
   onOpenChat: (chatId: string) => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const { data: files, isError, refetch } = useProjectFiles(projectId);
   const addMutation = useAddProjectFile(projectId);
   const removeMutation = useRemoveProjectFile(projectId);
@@ -58,21 +60,24 @@ export function ProjectFilesSection({
     if (result.canceled) return;
     const picked: PickedProjectFile[] = result.assets.map((asset) => ({
       uri: asset.uri,
-      name: asset.name ?? "file",
+      name: asset.name ?? t("projects.files.fallbackFile"),
       type: asset.mimeType ?? "application/octet-stream",
     }));
     const room = MAX_PROJECT_FILES - count - uploading.length;
     if (picked.length > room) {
       toastError(
-        `A project holds up to ${MAX_PROJECT_FILES} files`,
+        t("projects.files.toast.limitTitle", { count: MAX_PROJECT_FILES }),
         room > 0
-          ? `Only the first ${room} selected ${room === 1 ? "file was" : "files were"} added.`
-          : "Remove a file to add another.",
+          ? t("projects.files.toast.limitPartial", { count: room })
+          : t("projects.files.toast.limitFull"),
       );
     }
     const accepted = picked.slice(0, Math.max(room, 0)).filter((file) => {
       if (file.type.startsWith("image/")) {
-        toastError(`${file.name} is an image`, "Project files are documents and text.");
+        toastError(
+          t("projects.mobile.files.imageNotAllowedTitle", { name: file.name }),
+          t("projects.mobile.files.imageNotAllowedMessage"),
+        );
         return false;
       }
       return true;
@@ -83,7 +88,10 @@ export function ProjectFilesSection({
       try {
         await addMutation.mutateAsync(file);
       } catch (error) {
-        toastError(`Couldn't add ${file.name}`, error);
+        toastError(
+          t("projects.mobile.files.addError", { filename: file.name }),
+          error,
+        );
       } finally {
         setUploading((prev) => {
           const index = prev.indexOf(file.name);
@@ -97,7 +105,11 @@ export function ProjectFilesSection({
     const file = removing;
     if (!file) return;
     removeMutation.mutate(file.uploadId, {
-      onError: (error) => toastError(`Couldn't remove ${file.filename}`, error),
+      onError: (error) =>
+        toastError(
+          t("projects.mobile.files.removeError", { filename: file.filename }),
+          error,
+        ),
     });
   }
 
@@ -115,13 +127,17 @@ export function ProjectFilesSection({
   ];
 
   return (
-    <View style={styles.section} accessibilityLabel="Project files">
-      <Text style={label}>FILES{count > 0 ? ` · ${count} OF ${MAX_PROJECT_FILES}` : ""}</Text>
+    <View style={styles.section} accessibilityLabel={t("projects.files.sectionLabel")}>
+      <Text style={label}>
+        {count > 0
+          ? t("projects.mobile.files.headingCount", { count, max: MAX_PROJECT_FILES })
+          : t("projects.mobile.files.heading")}
+      </Text>
       <View style={group}>
         {isError ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Retry loading project files"
+            accessibilityLabel={t("projects.mobile.files.retryLoadLabel")}
             onPress={() => void refetch()}
             style={styles.row}
           >
@@ -129,7 +145,7 @@ export function ProjectFilesSection({
             <Text
               style={[styles.rowTitle, { color: colors.foreground, fontFamily: fonts.sansRegular }]}
             >
-              Couldn&apos;t load files. Tap to retry.
+              {t("projects.mobile.files.loadErrorTap")}
             </Text>
           </Pressable>
         ) : (
@@ -156,27 +172,39 @@ export function ProjectFilesSection({
                     numberOfLines={1}
                     style={[styles.rowMeta, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}
                   >
-                    {humanMediaLabel(file.mediaType)} · {formatSize(file.size)}
+                    {humanMediaLabel(file.mediaType, t)} · {formatSize(file.size, t)}
                     {file.pageCount
-                      ? ` · ${file.pageCount} ${file.pageCount === 1 ? "page" : "pages"}`
+                      ? ` · ${t("projects.files.pages", { count: file.pageCount })}`
                       : ""}
                     {file.sourceChat ? (
-                      <>
-                        {" · from "}
-                        <Text
-                          accessibilityRole="link"
-                          onPress={() => onOpenChat(file.sourceChat!.id)}
-                          style={{ color: colors.foreground, textDecorationLine: "underline" }}
-                        >
-                          {file.sourceChat.title?.trim() || "a chat"}
-                        </Text>
-                      </>
+                      <Trans
+                        i18nKey={
+                          file.sourceChat.title?.trim()
+                            ? "projects.mobile.files.metaFromChat"
+                            : "projects.mobile.files.metaFromUnnamedChat"
+                        }
+                        values={{ chat: file.sourceChat.title?.trim() ?? "" }}
+                        components={{
+                          chatLink: (
+                            <Text
+                              accessibilityRole="link"
+                              onPress={() => onOpenChat(file.sourceChat!.id)}
+                              style={{
+                                color: colors.foreground,
+                                textDecorationLine: "underline",
+                              }}
+                            />
+                          ),
+                        }}
+                      />
                     ) : null}
                   </Text>
                 </View>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove ${file.filename} from project`}
+                  accessibilityLabel={t("projects.files.removeFileLabel", {
+                    filename: file.filename,
+                  })}
                   hitSlop={8}
                   disabled={removeMutation.isPending}
                   onPress={() => {
@@ -196,7 +224,7 @@ export function ProjectFilesSection({
               <View
                 key={`uploading-${index}-${name}`}
                 style={[styles.row, (count > 0 || index > 0) && divider]}
-                accessibilityLabel={`Uploading ${name}`}
+                accessibilityLabel={t("projects.mobile.files.uploadingLabel", { name })}
               >
                 <ActivityIndicator size="small" color={colors.mutedForeground} />
                 <Text
@@ -209,8 +237,8 @@ export function ProjectFilesSection({
             ))}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Add files"
-              accessibilityHint="Reference material the model can read in every chat here"
+              accessibilityLabel={t("projects.files.addFiles")}
+              accessibilityHint={t("projects.mobile.files.addFilesHint")}
               disabled={full}
               onPress={() => void pickFiles()}
               style={({ pressed }) => [
@@ -224,15 +252,15 @@ export function ProjectFilesSection({
                 <Text
                   style={[styles.rowTitle, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
                 >
-                  Add files
+                  {t("projects.files.addFiles")}
                 </Text>
                 <Text
                   numberOfLines={2}
                   style={[styles.rowMeta, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}
                 >
                   {count === 0
-                    ? "Reference material the model can read in every chat here."
-                    : "The model reads and searches these when a question needs them."}
+                    ? t("projects.files.description")
+                    : t("projects.mobile.files.addFilesExistingDetail")}
                 </Text>
               </View>
             </Pressable>
@@ -241,13 +269,15 @@ export function ProjectFilesSection({
       </View>
       <ConfirmSheet
         ref={removeSheetRef}
-        title="Remove from project?"
+        title={t("projects.mobile.files.removeConfirmTitle")}
         message={
           removing
-            ? `${removing.filename} will no longer be available to chats in this project. Messages that attached it keep their copy.`
+            ? t("projects.mobile.files.removeConfirmMessage", {
+                filename: removing.filename,
+              })
             : ""
         }
-        confirmLabel="Remove"
+        confirmLabel={t("common.actions.remove")}
         destructive
         onConfirm={confirmRemove}
       />

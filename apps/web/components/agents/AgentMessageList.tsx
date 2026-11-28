@@ -3,6 +3,7 @@
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertTriangle,
@@ -20,6 +21,8 @@ import {
   Square,
   Volume2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { stripMarkdown } from "@/lib/chat/message";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -167,6 +170,8 @@ export function AgentMessageList({
   onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
   onImplementPlan: (plan: string) => void;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({
       initial: "instant",
@@ -183,8 +188,8 @@ export function AgentMessageList({
   }, [messages, history?.loading, scrollRef]);
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
   const projectedTranscript = useMemo(
-    () => projectAgentTranscript(messages),
-    [messages],
+    () => projectAgentTranscript(messages, t, locale),
+    [messages, t, locale],
   );
   const unsettled = streaming || Boolean(activity || error || question);
   const transcript = useMemo(
@@ -292,7 +297,9 @@ export function AgentMessageList({
                   history.load();
                 }}
               >
-                {history.loading ? "Loading…" : "Load older messages"}
+                {history.loading
+                  ? t("common.states.loading")
+                  : t("agents.messages.loadOlder")}
               </Button>
               {history.error && (
                 <p role="alert" className="mt-2 text-sm text-destructive">
@@ -306,7 +313,7 @@ export function AgentMessageList({
               <Terminal className="size-6 text-muted-foreground" />
               <p className="mt-3 text-sm font-medium">{workspaceName}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                New {providerLabel} session
+                {t("agents.newSession.heading", { provider: providerLabel })}
               </p>
             </div>
           ) : (
@@ -381,7 +388,7 @@ export function AgentMessageList({
                 )
               )}
               {question && <div className="mt-4">{question}</div>}
-              {error && <AgentErrorNotice error={presentAgentError(error)} />}
+              {error && <AgentErrorNotice error={presentAgentError(error, t)} />}
             </div>
           )}
         </div>
@@ -396,7 +403,7 @@ export function AgentMessageList({
             size="icon-sm"
             className="pointer-events-auto rounded-full bg-background/95 shadow-md backdrop-blur"
             onClick={() => void scrollToBottom()}
-            aria-label="Scroll to bottom"
+            aria-label={t("agents.messages.scrollToBottom")}
           >
             <ChevronDown />
           </Button>
@@ -435,6 +442,7 @@ function AgentTranscriptRow({
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
+  const { t } = useTranslation();
   const actionBar = responseActions && (
     <div className="mt-2">
       <MessageActions show alwaysVisible>
@@ -478,7 +486,7 @@ function AgentTranscriptRow({
           className="flex min-h-8 cursor-pointer items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums motion-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-testid="agent-work-summary"
         >
-          {agentWorkLabel(item.durationMs)}
+          {agentWorkLabel(item.durationMs, t)}
           <ChevronRight className={cn("size-3.5 motion-transform", item.expanded && "rotate-90")} />
         </button>
       </div>
@@ -593,6 +601,7 @@ function AgentTurnFooter({
   actionsDisabled: boolean;
   onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const showFork = canFork && item.messageId !== null;
 
   if (!item.text && !showFork && item.durationMs === null) return null;
@@ -620,7 +629,9 @@ function AgentTurnFooter({
       </MessageActions>
       {item.durationMs !== null && (
         <span className="ml-1 tabular-nums">
-          Worked for {formatAgentElapsed(item.durationMs)}
+          {t("agents.messages.workedFor", {
+            duration: formatAgentElapsed(item.durationMs, t),
+          })}
         </span>
       )}
     </div>
@@ -640,6 +651,7 @@ function AgentPlanCard({
   disabled: boolean;
   onImplement: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <section
       className="overflow-hidden rounded-lg border bg-muted/15"
@@ -647,7 +659,7 @@ function AgentPlanCard({
     >
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <ListChecks className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium">Plan</h3>
+        <h3 className="text-sm font-medium">{t("agents.messages.plan")}</h3>
       </div>
       <div className="space-y-3 px-3 py-3 text-sm">
         {item.explanation && (
@@ -681,7 +693,7 @@ function AgentPlanCard({
               onClick={onImplement}
             >
               <Play />
-              Implement plan
+              {t("agents.messages.implementPlan")}
             </Button>
           </div>
         )}
@@ -699,14 +711,19 @@ function AgentSpeakButton({
   text: string;
   speech: ReturnType<typeof useSpeech>;
 }) {
+  const { t } = useTranslation();
   const spokenText = useMemo(() => stripMarkdown(text), [text]);
   if (!spokenText) return null;
   const active = speech.activeId === id;
   const loading = active && speech.status === "loading";
   const tooLong = spokenText.length > 5_000;
   const label = active
-    ? loading ? "Cancel loading speech" : "Stop reading"
-    : tooLong ? "Read aloud supports up to 5,000 characters" : "Read aloud";
+    ? loading
+      ? t("agents.messages.cancelLoadingSpeech")
+      : t("agents.messages.stopReading")
+    : tooLong
+      ? t("agents.messages.readAloudLimit")
+      : t("agents.messages.readAloud");
   return (
     <MessageActionButton
       label={label}
@@ -732,10 +749,19 @@ function AgentCopyButton({
   disabled: boolean;
   subject?: "response" | "message";
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   return (
     <MessageActionButton
-      label={copied ? `Copied ${subject}` : `Copy ${subject}`}
+      label={
+        subject === "message"
+          ? copied
+            ? t("agents.messages.copiedMessage")
+            : t("agents.messages.copyMessage")
+          : copied
+            ? t("agents.messages.copiedResponse")
+            : t("agents.messages.copyResponse")
+      }
       icon={copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
       disabled={disabled}
       onClick={() => {
@@ -746,8 +772,8 @@ function AgentCopyButton({
           })
           .catch(() => {
             toast.error({
-              title: "Failed to copy",
-              description: "Clipboard access was denied by the browser.",
+              title: t("agents.messages.copyFailedTitle"),
+              description: t("agents.messages.copyFailedDescription"),
             });
           });
       }}
@@ -756,6 +782,7 @@ function AgentCopyButton({
 }
 
 function AgentErrorNotice({ error }: { error: AgentErrorPresentation }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <div className="overflow-hidden rounded-lg border border-destructive/30 bg-destructive/5 text-sm">
@@ -769,7 +796,7 @@ function AgentErrorNotice({ error }: { error: AgentErrorPresentation }) {
             aria-expanded={open}
             className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground motion-colors hover:text-foreground"
           >
-            Details
+            {t("agents.messages.details")}
             <ChevronDown
               className={cn(
                 "size-3 motion-transform",
@@ -848,6 +875,7 @@ function UserMessage({
   actionsDisabled: boolean;
   onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const text = textOfContent(content);
   const images = Array.isArray(content)
     ? content.flatMap((part) => {
@@ -868,7 +896,7 @@ function UserMessage({
             alt:
               typeof record.filename === "string"
                 ? record.filename
-                : "Attached image",
+                : t("agents.messages.attachedImage"),
           },
         ];
       })
@@ -914,6 +942,7 @@ const USER_MESSAGE_FOLDED_HEIGHT = 240;
 
 /** A prompt's text. A long one is folded so the reply stays in reach. */
 function UserMessageText({ text }: { text: string }) {
+  const { t } = useTranslation();
   const body = useRef<HTMLDivElement>(null);
   const [tall, setTall] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -963,7 +992,9 @@ function UserMessageText({ text }: { text: string }) {
           }}
           className="mt-1.5 cursor-pointer text-xs font-medium text-muted-foreground motion-colors hover:text-foreground"
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded
+            ? t("common.actions.showLess")
+            : t("common.actions.showMore")}
         </button>
       )}
     </div>
@@ -977,8 +1008,10 @@ function Markdown({
   children: string;
   streaming?: boolean;
 }) {
+  const markdownLabels = useMarkdownLabels();
   return (
     <Streamdown
+      translations={markdownLabels}
       className={cn(AGENT_MARKDOWN_CLASSES, streaming && "motion-stream-blocks")}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={AGENT_REMARK_PLUGINS}
@@ -992,6 +1025,7 @@ function Markdown({
 }
 
 function BranchSummaryMessage({ message }: { message: UnknownRecord }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const summary = typeof message.summary === "string" ? message.summary : "";
   return (
@@ -1005,7 +1039,7 @@ function BranchSummaryMessage({ message }: { message: UnknownRecord }) {
         <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block font-medium">
-            Branch summarized
+            {t("agents.messages.branchSummarized")}
           </span>
         </span>
         <ChevronDown

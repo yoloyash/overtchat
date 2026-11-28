@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { History, Search, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   agentProviderMetadata,
   isAgentProviderId,
   type AgentProviderId,
 } from "@overtchat/agent-bridge";
 import { formatUpdatedAt } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import {
   AgentProviderLogo,
@@ -39,7 +41,7 @@ import {
   type AgentSessionSort,
 } from "@/lib/agents/search";
 import { agentHostLabel, groupAgentWorkspaces } from "@/lib/agents/workspaces";
-import { groupByDate } from "@/lib/dateGroups";
+import { dateBucketLabel, groupByDate } from "@/lib/dateGroups";
 import { useAgentConnections } from "@/lib/queries/agentConnections";
 import { useNow } from "@/lib/useNow";
 import { cn } from "@/lib/utils";
@@ -65,9 +67,9 @@ function withSearch(
   ) as AgentHistorySearch;
 }
 
-const SORT_LABELS: Record<AgentSessionSort, string> = {
-  activity: "Last active",
-  created: "Created",
+const SORT_KEYS: Record<AgentSessionSort, "sortActivity" | "sortCreated"> = {
+  activity: "sortActivity",
+  created: "sortCreated",
 };
 
 /**
@@ -76,12 +78,14 @@ const SORT_LABELS: Record<AgentSessionSort, string> = {
  * sessions there. A filter outside that scope is ignored.
  */
 export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const navigate = useNavigate();
   const { data: connections = [], isPending } = useAgentConnections();
   const groups = useMemo(() => groupAgentWorkspaces(connections), [connections]);
-  const hosts = useMemo(() => agentSessionHosts(groups), [groups]);
-  const allWorkspaces = useMemo(() => agentSessionWorkspaces(groups, null), [groups]);
-  const allProviders = useMemo(() => agentSessionProviders(groups, null, null), [groups]);
+  const hosts = useMemo(() => agentSessionHosts(groups, t), [groups, t]);
+  const allWorkspaces = useMemo(() => agentSessionWorkspaces(groups, null, t), [groups, t]);
+  const allProviders = useMemo(() => agentSessionProviders(groups, null, null, t), [groups, t]);
   // What was typed, over which address; the History link or going back changes
   // the address underneath, and the box follows it.
   const [typed, setTyped] = useState({ value: search.q ?? "", over: search.q });
@@ -89,12 +93,12 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   const setQuery = (value: string) => setTyped({ value, over: search.q });
   const [limit, setLimit] = useState(PAGE_SIZE);
   const host = search.host && hosts.includes(search.host) ? search.host : null;
-  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host), [groups, host]);
+  const workspaces = useMemo(() => agentSessionWorkspaces(groups, host, t), [groups, host, t]);
   const workspace =
     search.workspace && workspaces.includes(search.workspace) ? search.workspace : null;
   const providers = useMemo(
-    () => agentSessionProviders(groups, host, workspace),
-    [groups, host, workspace],
+    () => agentSessionProviders(groups, host, workspace, t),
+    [groups, host, workspace, t],
   );
   const provider: AgentProviderId | null =
     search.provider && isAgentProviderId(search.provider) && providers.includes(search.provider)
@@ -114,7 +118,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
 
   /** The agent filter, if it still has sessions in the narrowed scope. */
   function keptProvider(nextHost: string | null, nextWorkspace: string | null) {
-    return provider && agentSessionProviders(groups, nextHost, nextWorkspace).includes(provider)
+    return provider && agentSessionProviders(groups, nextHost, nextWorkspace, t).includes(provider)
       ? provider
       : undefined;
   }
@@ -122,7 +126,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   // Changing the machine drops a folder or agent that has no sessions on it.
   function selectHost(next: string | null) {
     const nextWorkspace =
-      workspace && agentSessionWorkspaces(groups, next).includes(workspace) ? workspace : null;
+      workspace && agentSessionWorkspaces(groups, next, t).includes(workspace) ? workspace : null;
     updateSearch({
       host: next ?? undefined,
       workspace: nextWorkspace ?? undefined,
@@ -149,8 +153,8 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
   }, [navigate, query, search.q]);
 
   const results = useMemo(
-    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }),
-    [groups, query, host, workspace, provider, sort],
+    () => searchAgentSessions(groups, { query, host, workspace, provider, sort }, t),
+    [groups, query, host, workspace, provider, sort, t],
   );
   const shown = results.slice(0, limit);
   const buckets = groupByDate(
@@ -158,6 +162,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
       entry,
       updatedAt: sort === "created" ? agentSessionCreatedAt(entry) : entry.since,
     })),
+    t,
     now,
   );
   const totalSessions = groups.reduce((total, group) => total + group.sessions.length, 0);
@@ -167,7 +172,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <header data-titlebar className="flex h-12 shrink-0 items-center gap-2 px-3">
         <SidebarToggle />
-        <h1 className="text-sm font-medium">History</h1>
+        <h1 className="text-sm font-medium">{t("agents.history.title")}</h1>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-2 pb-10 sm:px-6">
@@ -183,8 +188,8 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                 setQuery(event.target.value);
                 setLimit(PAGE_SIZE);
               }}
-              placeholder="Search sessions"
-              aria-label="Search sessions"
+              placeholder={t("agents.history.searchPlaceholder")}
+              aria-label={t("agents.history.searchLabel")}
               autoFocus={typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches}
               className="h-10 pr-9 pl-9 [&::-webkit-search-cancel-button]:hidden"
             />
@@ -192,7 +197,7 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                aria-label="Clear search"
+                aria-label={t("common.actions.clearSearch")}
                 className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
               >
                 <X aria-hidden="true" className="size-4" />
@@ -202,11 +207,21 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
           <div className="flex flex-wrap items-center gap-2">
             {hosts.length > 1 && (
               <Select value={host} onValueChange={selectHost}>
-                <SelectTrigger size="sm" className="max-w-48" aria-label="Machine">
-                  <SelectValue>{(value: string | null) => value ?? "All machines"}</SelectValue>
+                <SelectTrigger
+                  size="sm"
+                  className="max-w-48"
+                  aria-label={t("agents.setup.machine")}
+                >
+                  <SelectValue>
+                    {(value: string | null) =>
+                      value ?? t("agents.history.allMachines")
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={null}>All machines</SelectItem>
+                  <SelectItem value={null}>
+                    {t("agents.history.allMachines")}
+                  </SelectItem>
                   {hosts.map((name) => (
                     <SelectItem key={name} value={name}>
                       {name}
@@ -217,13 +232,21 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
             )}
             {allWorkspaces.length > 1 && (
               <Select value={workspace} onValueChange={selectWorkspace}>
-                <SelectTrigger size="sm" className="max-w-56" aria-label="Workspace">
+                <SelectTrigger
+                  size="sm"
+                  className="max-w-56"
+                  aria-label={t("agents.setup.workspace")}
+                >
                   <SelectValue>
-                    {(value: string | null) => value ?? "All workspaces"}
+                    {(value: string | null) =>
+                      value ?? t("agents.history.allWorkspaces")
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={null}>All workspaces</SelectItem>
+                  <SelectItem value={null}>
+                    {t("agents.history.allWorkspaces")}
+                  </SelectItem>
                   {workspaces.map((name) => (
                     <SelectItem key={name} value={name}>
                       {name}
@@ -237,17 +260,19 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                 value={provider}
                 onValueChange={(value) => updateSearch({ provider: value ?? undefined })}
               >
-                <SelectTrigger size="sm" aria-label="Agent">
+                <SelectTrigger size="sm" aria-label={t("agents.setup.agent")}>
                   <SelectValue>
                     {(value: string | null) =>
                       value && isAgentProviderId(value)
                         ? agentProviderMetadata(value).label
-                        : "All agents"
+                        : t("agents.history.allAgents")
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={null}>All agents</SelectItem>
+                  <SelectItem value={null}>
+                    {t("agents.history.allAgents")}
+                  </SelectItem>
                   {providers.map((item) => (
                     <SelectItem key={item} value={item}>
                       {agentProviderMetadata(item).label}
@@ -262,38 +287,50 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                 updateSearch({ sort: value === "created" ? "created" : undefined })
               }
             >
-              <SelectTrigger size="sm" aria-label="Sort by">
+              <SelectTrigger size="sm" aria-label={t("agents.history.sortBy")}>
                 <SelectValue>
                   {(value: string) =>
-                    `Sort: ${SORT_LABELS[value === "created" ? "created" : "activity"]}`
+                    t("agents.history.sortLabel", {
+                      sort: t(
+                        `agents.history.${SORT_KEYS[value === "created" ? "created" : "activity"]}`,
+                      ),
+                    })
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="activity">{SORT_LABELS.activity}</SelectItem>
-                <SelectItem value="created">{SORT_LABELS.created}</SelectItem>
+                <SelectItem value="activity">
+                  {t("agents.history.sortActivity")}
+                </SelectItem>
+                <SelectItem value="created">
+                  {t("agents.history.sortCreated")}
+                </SelectItem>
               </SelectContent>
             </Select>
             <span role="status" className="ml-auto text-xs tabular-nums text-muted-foreground">
               {isPending
-                ? "Loading…"
-                : `${results.length} ${results.length === 1 ? "session" : "sessions"}`}
+                ? t("common.states.loading")
+                : t("agents.history.sessionCount", { count: results.length })}
             </span>
           </div>
           {!isPending && totalSessions === 0 ? (
             <div className="flex flex-col items-center px-6 py-16 text-center">
               <History aria-hidden="true" className="size-8 text-muted-foreground" />
-              <h2 className="mt-3 text-base font-semibold">No agent sessions yet</h2>
+              <h2 className="mt-3 text-base font-semibold">
+                {t("agents.history.emptyTitle")}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Sessions you start or run on your machines are listed here.
+                {t("agents.history.emptyDescription")}
               </p>
               <Link to="/agents" className={cn(buttonVariants({ size: "sm" }), "mt-4")}>
-                New agent
+                {t("agents.history.newAgent")}
               </Link>
             </div>
           ) : !isPending && results.length === 0 ? (
             <div className="flex flex-col items-center px-6 py-16 text-center">
-              <p className="text-sm text-muted-foreground">No sessions match.</p>
+              <p className="text-sm text-muted-foreground">
+                {t("agents.history.noMatches")}
+              </p>
               {filtered && (
                 <Button
                   variant="outline"
@@ -309,28 +346,31 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                     });
                   }}
                 >
-                  Clear filters
+                  {t("agents.history.clearFilters")}
                 </Button>
               )}
             </div>
           ) : (
             <>
-              {buckets.map((bucket) => (
-                <section key={bucket.label} aria-label={bucket.label}>
+              {buckets.map((bucket) => {
+                const bucketLabel = dateBucketLabel(bucket.key, t);
+                return (
+                <section key={bucket.key} aria-label={bucketLabel}>
                   <h2 className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
-                    {bucket.label}
+                    {bucketLabel}
                   </h2>
                   <ul className="flex flex-col">
                     {bucket.items.map(({ entry, updatedAt }) => (
                       <HistoryRow
                         key={entry.item.session.id}
                         entry={entry}
-                        time={formatUpdatedAt(updatedAt, now)}
+                        time={formatUpdatedAt(updatedAt, t, locale, now)}
                       />
                     ))}
                   </ul>
                 </section>
-              ))}
+                );
+              })}
               {results.length > shown.length && (
                 <Button
                   variant="ghost"
@@ -338,7 +378,9 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
                   className="self-center"
                   onClick={() => setLimit((current) => current + PAGE_SIZE)}
                 >
-                  Show {Math.min(PAGE_SIZE, results.length - shown.length)} more
+                  {t("common.actions.showCountMore", {
+                    count: Math.min(PAGE_SIZE, results.length - shown.length),
+                  })}
                 </Button>
               )}
             </>
@@ -350,15 +392,16 @@ export function AgentHistoryView({ search }: { search: AgentHistorySearch }) {
 }
 
 function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }) {
+  const { t } = useTranslation();
   const { item, group, state } = entry;
   const { session, provider } = item;
-  const title = agentSessionRowTitle(entry);
+  const title = agentSessionRowTitle(entry, t);
   const needsOwner = agentSessionNeedsOwner(state);
   // What it is asking, why it failed, or how it last replied.
   const snippet = session.attention
     ? [session.attention.title, session.attention.detail].filter(Boolean).join(" · ")
     : state === "failed"
-      ? session.lastTurn?.error || "The last turn failed."
+      ? session.lastTurn?.error || t("agents.history.lastTurnFailed")
       : session.lastTurn?.preview ||
         (session.firstMessage && session.firstMessage !== title ? session.firstMessage : null);
   return (
@@ -371,7 +414,11 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
         <span className="flex h-5 w-4 shrink-0 items-center justify-center">
           <AgentSessionStatusIcon state={state} />
           {state !== "idle" && (
-            <span className="sr-only">{agentSessionStateLabel(state)}:</span>
+            <span className="sr-only">
+              {t("agents.sessionState.prefix", {
+                state: agentSessionStateLabel(state, t),
+              })}
+            </span>
           )}
         </span>
         <span className="min-w-0 flex-1">
@@ -389,7 +436,7 @@ function HistoryRow({ entry, time }: { entry: AgentAttentionItem; time: string }
           <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <AgentProviderLogo provider={provider} />
             <span className="truncate">
-              {agentProviderMetadata(provider).label} · {group.name} · {agentHostLabel(group.host)}
+              {agentProviderMetadata(provider).label} · {group.name} · {agentHostLabel(group.host, t)}
             </span>
           </span>
           {snippet && (

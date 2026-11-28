@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { z } from "zod";
 
 /** Replaced in a header value with the ID of the conversation a request is for. */
@@ -34,53 +36,66 @@ export type ModelHeaders = Record<string, string>;
  * Extra request headers an administrator sets on a model's connection. Names
  * and values are trimmed; an empty object is stored as null.
  */
-export const ModelHeadersSchema = z
-  .record(z.string(), z.string())
-  .nullable()
-  .transform((value, context): ModelHeaders | null => {
-    if (!value) return null;
-    const entries = Object.entries(value).map(
-      ([name, headerValue]) => [name.trim(), headerValue.trim()] as const,
-    );
-    if (entries.length > MAX_MODEL_HEADERS) {
-      context.addIssue({
-        code: "custom",
-        message: `A model can send at most ${MAX_MODEL_HEADERS} request headers`,
-      });
-      return z.NEVER;
-    }
-    const seen = new Set<string>();
-    for (const [name, headerValue] of entries) {
-      const message = headerIssue(name, headerValue, seen);
-      if (message) {
-        context.addIssue({ code: "custom", path: [name], message });
+function createModelHeadersSchema(t: TFunction) {
+  return z
+    .record(z.string(), z.string())
+    .nullable()
+    .transform((value, context): ModelHeaders | null => {
+      if (!value) return null;
+      const entries = Object.entries(value).map(
+        ([name, headerValue]) => [name.trim(), headerValue.trim()] as const,
+      );
+      if (entries.length > MAX_MODEL_HEADERS) {
+        context.addIssue({
+          code: "custom",
+          message: t("models.editor.errors.tooManyHeaders", {
+            max: MAX_MODEL_HEADERS,
+          }),
+        });
         return z.NEVER;
       }
-      seen.add(name.toLowerCase());
-    }
-    return entries.length > 0 ? Object.fromEntries(entries) : null;
-  });
+      const seen = new Set<string>();
+      for (const [name, headerValue] of entries) {
+        const message = headerIssue(name, headerValue, seen, t);
+        if (message) {
+          context.addIssue({ code: "custom", path: [name], message });
+          return z.NEVER;
+        }
+        seen.add(name.toLowerCase());
+      }
+      return entries.length > 0 ? Object.fromEntries(entries) : null;
+    });
+}
+
+export const ModelHeadersSchema = createModelHeadersSchema(i18n.t);
 
 function headerIssue(
   name: string,
   value: string,
   seen: Set<string>,
+  t: TFunction,
 ): string | undefined {
-  if (!name) return "Request header names cannot be empty";
+  if (!name) return t("models.editor.errors.emptyHeaderName");
   if (name.length > MAX_HEADER_NAME_LENGTH || !HEADER_NAME.test(name)) {
-    return `"${name.slice(0, 40)}" is not a valid request header name`;
+    return t("models.editor.errors.invalidHeaderName", {
+      name: name.slice(0, 40),
+    });
   }
   const lower = name.toLowerCase();
   if (RESERVED_HEADER_NAMES.has(lower)) {
-    return `The ${name} request header is set by the app and cannot be changed`;
+    return t("models.editor.errors.reservedHeaderName", { name });
   }
-  if (seen.has(lower)) return `The ${name} request header is listed twice`;
-  if (!value) return `The ${name} request header needs a value`;
+  if (seen.has(lower)) {
+    return t("models.editor.errors.duplicateHeaderName", { name });
+  }
+  if (!value) {
+    return t("models.editor.errors.missingHeaderValue", { name });
+  }
   if (value.length > MAX_HEADER_VALUE_LENGTH) {
-    return `The ${name} request header value is too long`;
+    return t("models.editor.errors.headerValueTooLong", { name });
   }
   if (!HEADER_VALUE.test(value)) {
-    return `The ${name} request header value has characters HTTP headers cannot carry`;
+    return t("models.editor.errors.invalidHeaderValue", { name });
   }
   return undefined;
 }
@@ -91,6 +106,7 @@ function headerIssue(
  */
 export function modelHeadersFromRows(
   rows: ReadonlyArray<{ key: string; value: string }>,
+  t: TFunction,
 ): { headers: ModelHeaders | null; error?: string } {
   const named = rows
     .map((row) => [row.key.trim(), row.value.trim()] as const)
@@ -100,12 +116,12 @@ export function modelHeadersFromRows(
     if (seen.has(name.toLowerCase())) {
       return {
         headers: null,
-        error: `The ${name} request header is listed twice`,
+        error: t("models.editor.errors.duplicateHeaderName", { name }),
       };
     }
     seen.add(name.toLowerCase());
   }
-  const parsed = ModelHeadersSchema.safeParse(Object.fromEntries(named));
+  const parsed = createModelHeadersSchema(t).safeParse(Object.fromEntries(named));
   return parsed.success
     ? { headers: parsed.data }
     : { headers: null, error: parsed.error.issues[0]?.message };

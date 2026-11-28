@@ -1,0 +1,62 @@
+import tseslint from "typescript-eslint";
+import { translatedCopy } from "../../eslint.i18n.mjs";
+
+// Paths whose interface text is fully in the translation catalog. Add a path
+// when it is migrated; `npm run i18n:untranslated` lists what is left.
+const TRANSLATED = [
+  "src/app/(authed)/settings/appearance.tsx",
+  "src/components/I18nProvider.tsx",
+  "src/components/ui/AccentPicker.tsx",
+  "src/app/(authed)/(drawer)/chat.tsx",
+  "src/components/chat/**/*.{ts,tsx}",
+  "src/lib/chat/**/*.{ts,tsx}",
+  "src/lib/voice/**/*.{ts,tsx}",
+  "src/lib/useDictation.ts",
+  "src/lib/useSpeech.ts",
+  "src/app/(authed)/(drawer)/agent/**",
+  "src/app/(authed)/(drawer)/agents/**",
+  "src/components/agents/**",
+  "src/lib/agents/**",
+  "src/app/(authed)/settings/**",
+  "src/components/settings/**",
+  "src/lib/settings-model.ts",
+  "src/lib/queries/settings.ts",
+  "src/app/*.tsx",
+  "src/app/(authed)/*.tsx",
+  "src/app/(authed)/(drawer)/_layout.tsx",
+  "src/app/(authed)/projects/**",
+  "src/app/(authed)/scheduled/**",
+  "src/components/*.tsx",
+  "src/components/drawer/**",
+  "src/components/personalization/**",
+  "src/components/projects/**",
+  "src/components/ui/**",
+  "src/lib/auth/**",
+  "src/lib/notifications/**",
+  "src/lib/queries/**",
+  "src/lib/search/**",
+  "src/lib/scheduledTaskForm.ts",
+  "src/lib/dateGroups.ts",
+  "src/lib/toast.ts",
+  "src/lib/api.ts",
+  "src/lib/server-url.ts",
+];
+
+// The typecheck covers code quality here; this config only parses TypeScript
+// so the translation rules can read it. Existing comments switch off a
+// react-hooks rule that is not installed, so it is declared as a no-op.
+const reactHooks = { rules: { "exhaustive-deps": { create: () => ({}) } } };
+
+export default tseslint.config(
+  { ignores: ["android/**", "ios/**", ".expo/**", "modules/**", "plugins/**", "scripts/**"] },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    plugins: { "react-hooks": reactHooks },
+    linterOptions: { reportUnusedDisableDirectives: "off" },
+  },
+  ...translatedCopy({ files: ["src/**/*.{ts,tsx}"], migrated: TRANSLATED }),
+);

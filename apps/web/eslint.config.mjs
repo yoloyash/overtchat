@@ -1,10 +1,43 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import { translatedCopy } from "../../eslint.i18n.mjs";
+
+// Paths whose interface text is fully in the translation catalog. Add a path
+// when it is migrated; `npm run i18n:untranslated` lists what is left.
+const TRANSLATED = [
+  "components/settings/general/**",
+  "components/I18nProvider.tsx",
+  "components/scheduled/**",
+  "components/auth/**",
+  "components/projects/**",
+  "components/activity/**",
+  "components/library/**",
+  "components/settings/*.tsx",
+  "components/settings/account/**",
+  "components/settings/data/**",
+  "components/settings/personalization/**",
+  "components/settings/profile/**",
+  "components/settings/models/**",
+  "components/settings/services/**",
+  "components/settings/connections/**",
+  "components/settings/tools/**",
+  "components/settings/users/**",
+  "components/*.{ts,tsx}",
+  "components/ui/**",
+  "spa/**",
+  "lib/useDesktopUpdate.ts",
+  "components/agents/**",
+  "components/chat/**",
+];
 
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  ...translatedCopy({
+    files: ["components/**/*.{ts,tsx}", "spa/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+    migrated: TRANSLATED,
+  }),
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

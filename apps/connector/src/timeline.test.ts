@@ -116,6 +116,32 @@ afterEach(async () => {
 });
 
 describe("connector session timeline", () => {
+  it("re-keys a session whose provider moved it without disturbing its history", async () => {
+    const { directory, store } = await createStore();
+    const opened = await store.openSession(SESSION_ID, PROVIDER_SESSION_ID, snapshot());
+    const answer = { role: "assistant", id: "answer", timestamp: 100, content: [{ type: "text", text: "Kept" }] };
+    await commit(store, { type: "message_end", message: answer });
+    const before = await store.sync(SESSION_ID, opened);
+    const delivered: AgentRuntimeEnvelope[] = [];
+    const { unsubscribe } = await store.subscribe(SESSION_ID, before.cursor, (envelope) => delivered.push(envelope));
+
+    await store.moveSession(SESSION_ID, "continued-session");
+
+    // Nothing is replayed to a client that is up to date, and nothing is reset.
+    expect(delivered).toEqual([]);
+    expect(await store.sync(SESSION_ID, before.cursor)).toEqual({ reset: false, cursor: before.cursor, events: [] });
+    await expect(store.readTranscript(SESSION_ID, PROVIDER_SESSION_ID)).resolves.toBeNull();
+    await expect(store.readTranscript(SESSION_ID, "continued-session")).resolves.toEqual([
+      expect.objectContaining({ id: "answer" }),
+    ]);
+    unsubscribe();
+    await store.close();
+    const restored = await reopen(directory);
+    await expect(restored.readTranscript(SESSION_ID, "continued-session")).resolves.toEqual([
+      expect.objectContaining({ id: "answer" }),
+    ]);
+  });
+
   it("retains a completed Pi/OMP answer through continuation, replay, restart and native history recovery", async () => {
     const { directory, store } = await createStore();
     const initial = await store.openSession(

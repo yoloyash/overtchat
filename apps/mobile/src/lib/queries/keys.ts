@@ -6,6 +6,7 @@ export const queryKeys = {
     ["authCookie", server, sessionId, updatedAt] as const,
   capabilities: () => ["capabilities", "public"] as const,
   twoFactor: () => ["two-factor"] as const,
+  signInMethods: (server: string) => ["sign-in-methods", server] as const,
   signInRequests: (server: string) => ["sign-in-requests", server] as const,
   agentConnections: (server: string) =>
     ["agents", server, "connections"] as const,
@@ -28,4 +29,8 @@ export const queryKeys = {
   project: (id: string) => ["projects", id] as const,
   projectFiles: (id: string) => ["projects", id, "files"] as const,
   personalization: () => ["personalization"] as const,
+  scheduledTasksRoot: () => ["scheduledTasks"] as const,
+  scheduledTasks: () => ["scheduledTasks", "list"] as const,
+  scheduledTaskRuns: (id: string) => ["scheduledTasks", "runs", id] as const,
+  scheduledTaskActivity: () => ["scheduledTasks", "activity"] as const,
 };

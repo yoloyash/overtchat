@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { cn } from "@/lib/utils";
 import { formatCompact, formatExact } from "./activity-format";
 
@@ -12,6 +16,8 @@ export function ActivityMetric({
   pending?: boolean;
   inline?: boolean;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   return (
     <div className={cn(
       "min-w-0 px-4 py-5 sm:px-5",
@@ -24,17 +30,17 @@ export function ActivityMetric({
       </dt>
       <dd
         className={cn("tracking-tight tabular-nums", inline ? "text-xl font-medium" : "mt-2 text-2xl font-semibold")}
-        title={value === undefined ? undefined : formatExact(value)}
+        title={value === undefined ? undefined : formatExact(value, locale)}
       >
         {pending ? (
           <span
-            aria-label="Loading"
+            aria-label={t("activity.metrics.loading")}
             className="block h-8 w-16 rounded motion-skeleton"
           />
         ) : value === undefined ? (
           "—"
         ) : (
-          formatCompact(value)
+          formatCompact(value, locale)
         )}
       </dd>
     </div>

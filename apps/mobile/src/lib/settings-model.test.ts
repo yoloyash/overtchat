@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   changeModelProvider,
   changeModelType,
@@ -89,11 +90,11 @@ describe("native model edits", () => {
     expect(input).toMatchObject({ providerId: "future", label: "Renamed" });
   });
   it("labels providers added after this build", () => {
-    expect(providerLabel({ providerId: "openai" })).toBe("OpenAI");
+    expect(providerLabel({ providerId: "openai" }, i18n.t)).toBe("OpenAI");
     expect(
-      providerLabel({ providerId: "future", displayProvider: "Future" }),
+      providerLabel({ providerId: "future", displayProvider: "Future" }, i18n.t),
     ).toBe("Future");
-    expect(providerLabel({ providerId: "future" })).toBe("future");
+    expect(providerLabel({ providerId: "future" }, i18n.t)).toBe("future");
   });
   it.each(["[]", "null", '"string"', "{broken"])(
     "rejects invalid provider options %s",

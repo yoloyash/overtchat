@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
 import {
@@ -11,6 +12,7 @@ import {
   type OpenUIFormState,
 } from "@overtchat/shared";
 import { Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
 import {
   Check,
   Copy,
@@ -130,6 +132,7 @@ export function MessageBubble({
   showStats: boolean;
   stats: MessageStats | null;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
 
   if (message.role === "user") {
@@ -183,7 +186,7 @@ export function MessageBubble({
           {sentAt !== null && <MessageTime at={sentAt} />}
           <CopyButton text={text} />
           {!readOnly && <ActionButton
-            label="Edit"
+            label={t("common.actions.edit")}
             onClick={() => setEditing(true)}
             icon={<Pencil className="size-3.5" />}
           />}
@@ -219,6 +222,7 @@ const QUOTE_COLLAPSED_LENGTH = 320;
 
 /** A passage the message replies to; long ones open on request. */
 function UserQuote({ text }: { text: string }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const long =
     text.length > QUOTE_COLLAPSED_LENGTH ||
@@ -234,7 +238,7 @@ function UserQuote({ text }: { text: string }) {
           aria-expanded={expanded}
           onClick={() => setExpanded((current) => !current)}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded ? t("common.actions.showLess") : t("common.actions.showMore")}
         </button>
       )}
     </blockquote>
@@ -276,6 +280,8 @@ function AssistantBubble({
   showStats: boolean;
   stats: MessageStats | null;
 }) {
+  const markdownLabels = useMarkdownLabels();
+  const { t } = useTranslation();
   const text = textOf(message);
   const lookup = useMemo(() => buildSourceLookup(message), [message]);
   const ownFiles = useMemo(
@@ -319,6 +325,7 @@ function AssistantBubble({
               return (
                 <div key={seg.index} data-chat-find-text="">
                   <Streamdown
+                    translations={markdownLabels}
                     className="font-sans space-y-3 text-[15px] leading-relaxed"
                     plugins={MESSAGE_MARKDOWN_PLUGINS}
                     remarkPlugins={REPLY_REMARK_PLUGINS}
@@ -407,13 +414,13 @@ function AssistantBubble({
             speech={speech}
           />}
           {!readOnly && onRegenerate && <ActionButton
-            label="Regenerate"
+            label={t("chat.messages.regenerate")}
             onClick={() => onRegenerate(message.id)}
             icon={<RotateCcw className="size-3.5" />}
           />}
           {!readOnly && onContinue && (
             <ActionButton
-              label="Continue response"
+              label={t("chat.messages.continueResponse")}
               onClick={() => onContinue(message.id)}
               icon={<Play className="size-3.5" />}
             />
@@ -430,8 +437,11 @@ function AssistantBubble({
 }
 
 function MessageAttachment({ part }: { part: FileUIPart }) {
+  const { t } = useTranslation();
   const isImage = part.mediaType?.startsWith("image/") ?? false;
-  const label = part.filename ?? (isImage ? "image" : "file");
+  const label =
+    part.filename ??
+    (isImage ? t("chat.composer.fallbackImage") : t("chat.composer.fallbackFile"));
   if (isImage) {
     return (
       <a href={serverUrl(part.url)} target="_blank" rel="noopener noreferrer">
@@ -456,7 +466,7 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{label}</div>
         <div className="text-xs text-muted-foreground">
-          {humanMediaLabel(part.mediaType)}
+          {humanMediaLabel(part.mediaType, t)}
         </div>
       </div>
     </a>
@@ -474,6 +484,7 @@ function EditBubble({
   onCancel: () => void;
   onSave: (text: string, files: FileUIPart[]) => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(initial);
   const [files, setFiles] = useState(initialFiles);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -522,7 +533,13 @@ function EditBubble({
                   onClick={() =>
                     setFiles((prev) => prev.filter((_, j) => j !== i))
                   }
-                  aria-label={`Remove ${part.filename ?? "attachment"}`}
+                  aria-label={
+                    part.filename
+                      ? t("chat.messages.removeNamedAttachment", {
+                          filename: part.filename,
+                        })
+                      : t("chat.messages.removeAttachment")
+                  }
                   className="absolute top-1 right-1 rounded-full bg-foreground/70 p-0.5 text-background shadow-sm hover:bg-foreground max-md:p-1"
                 >
                   <X className="size-3" />
@@ -535,7 +552,7 @@ function EditBubble({
           ref={ref}
           rows={1}
           value={draft}
-          aria-label="Edit message"
+          aria-label={t("chat.messages.editMessage")}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -557,7 +574,7 @@ function EditBubble({
             className="h-9 rounded-full px-4"
             onClick={onCancel}
           >
-            Cancel
+            {t("common.actions.cancel")}
           </Button>
           <Button
             type="submit"
@@ -565,7 +582,7 @@ function EditBubble({
             className="h-9 rounded-full px-5"
             disabled={!canSave}
           >
-            Send
+            {t("common.actions.send")}
           </Button>
         </div>
       </form>
@@ -574,10 +591,11 @@ function EditBubble({
 }
 
 function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   return (
     <ActionButton
-      label={copied ? "Copied" : "Copy"}
+      label={copied ? t("common.states.copied") : t("common.actions.copy")}
       icon={
         copied ? (
           <Check className="size-3.5" />
@@ -593,8 +611,8 @@ function CopyButton({ text }: { text: string }) {
           })
           .catch(() => {
             toast.error({
-              title: "Failed to copy",
-              description: "Clipboard access was denied by the browser.",
+              title: t("chat.messages.copyFailedTitle"),
+              description: t("chat.messages.copyFailedDescription"),
             });
           });
       }}
@@ -611,11 +629,16 @@ function SpeakButton({
   text: string;
   speech: ReturnType<typeof useSpeech>;
 }) {
+  const { t } = useTranslation();
   if (!text) return null;
   const active = speech.activeId === messageId;
   const loading = active && speech.status === "loading";
   const live = active && (speech.status === "playing" || speech.status === "paused");
-  const label = live ? "Stop" : loading ? "Loading…" : "Speak";
+  const label = live
+    ? t("chat.messages.stopSpeaking")
+    : loading
+      ? t("common.states.loading")
+      : t("chat.messages.speak");
   const icon = loading ? (
     <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />
   ) : live ? (

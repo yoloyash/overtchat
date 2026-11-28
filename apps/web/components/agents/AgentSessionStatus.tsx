@@ -1,12 +1,13 @@
 "use client";
 
 import { Check, CircleAlert, CircleDot, CircleX } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import type {
   AgentProviderId,
   AgentSessionListItem,
 } from "@overtchat/agent-bridge";
 import {
-  AGENT_SESSION_STATE_LABELS,
   agentSessionCanToggleRead,
   agentSessionHasUnseenTurn,
   type AgentSessionState,
@@ -16,8 +17,11 @@ import { useSetAgentSessionRead } from "@/lib/queries/agentSessionRead";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-export function agentSessionStateLabel(state: AgentSessionState): string {
-  return AGENT_SESSION_STATE_LABELS[state];
+export function agentSessionStateLabel(
+  state: AgentSessionState,
+  t: TFunction,
+): string {
+  return state === "idle" ? "" : t(`agents.sessionState.${state}`);
 }
 
 /**
@@ -83,6 +87,7 @@ export function AgentSessionReadToggle({
   state: AgentSessionState;
   title: string;
 }) {
+  const { t } = useTranslation();
   const setRead = useSetAgentSessionRead();
   if (!agentSessionCanToggleRead(session, state)) return null;
   const unseen = agentSessionHasUnseenTurn(session);
@@ -90,8 +95,16 @@ export function AgentSessionReadToggle({
     <button
       type="button"
       onClick={() => setRead.mutate({ sessionId: session.id, read: unseen })}
-      aria-label={unseen ? `Mark ${title} as read` : `Mark ${title} as unread`}
-      title={unseen ? "Mark as read" : "Mark as unread"}
+      aria-label={
+        unseen
+          ? t("agents.sessionState.markSessionRead", { title })
+          : t("agents.sessionState.markSessionUnread", { title })
+      }
+      title={
+        unseen
+          ? t("agents.sessionState.markRead")
+          : t("agents.sessionState.markUnread")
+      }
       className="absolute inset-0 flex items-center justify-center rounded text-muted-foreground opacity-0 motion-opacity hover:bg-sidebar-border/60 hover:text-foreground focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:hidden"
     >
       {unseen ? (

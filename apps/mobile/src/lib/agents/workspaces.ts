@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
@@ -29,8 +30,9 @@ export type WorkspaceGroup = {
 /** How a machine is named everywhere: its SSH alias, else its name. */
 export function agentHostLabel(
   host: Pick<AgentConnectionListItem["host"], "name" | "sshAlias">,
+  t: TFunction,
 ): string {
-  return host.sshAlias || host.name || "This server";
+  return host.sshAlias || host.name || t("connections.hosts.thisServer");
 }
 
 /**
@@ -140,8 +142,8 @@ export function findAgentSession(groups: WorkspaceGroup[], id: string) {
   }
   return null;
 }
-export function sessionTitle(session: AgentSessionListItem) {
-  return agentSessionDisplayTitle(session) || "New session";
+export function sessionTitle(session: AgentSessionListItem, t: TFunction) {
+  return agentSessionDisplayTitle(session) || t("agents.session.newSession");
 }
 /**
  * Where a new session in a folder starts: with the agent used there most

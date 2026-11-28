@@ -189,6 +189,29 @@ export async function createModelConfig(
   });
 }
 
+/**
+ * Adds several chat models as one change: all are saved or none, in the given
+ * order after the models already listed.
+ */
+export function createModelConfigs(inputs: ModelConfigInput[]): ModelConfigRow[] {
+  return db.transaction((tx) => {
+    const last =
+      tx.select({ last: max(modelConfigs.sortOrder) }).from(modelConfigs).get()
+        ?.last ?? -1;
+    return inputs.map((input, index) =>
+      tx
+        .insert(modelConfigs)
+        .values({
+          id: crypto.randomUUID(),
+          ...input,
+          sortOrder: last + 1 + index,
+        })
+        .returning()
+        .get(),
+    );
+  });
+}
+
 export async function updateModelConfig(
   id: string,
   input: ModelConfigInput,

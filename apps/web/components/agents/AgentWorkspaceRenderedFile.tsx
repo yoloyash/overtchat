@@ -2,11 +2,14 @@
 
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
+import { useMarkdownLabels } from "@/lib/chat/useMarkdownLabels";
+import { useTranslation } from "react-i18next";
 import type { AgentWorkspaceFilePreview } from "@overtchat/agent-bridge";
 import {
   DelimitedTable,
   HtmlFilePreview,
 } from "@/components/chat/FilePreviewBodies";
+import { i18n } from "@overtchat/shared/i18n";
 import { svgPreviewSource } from "@/lib/chat/code-preview";
 import {
   MESSAGE_MARKDOWN_PLUGINS,
@@ -45,6 +48,7 @@ export function AgentWorkspaceRenderedFile({
   content: string;
   rendering: WorkspaceFileRendering;
 }) {
+  const { t } = useTranslation();
   switch (rendering.kind) {
     case "markdown":
       return (
@@ -68,7 +72,7 @@ export function AgentWorkspaceRenderedFile({
         <AgentWorkspaceImage path={path} source={source} />
       ) : (
         <p className="p-6 text-sm text-muted-foreground">
-          This SVG could not be rendered. Its source is still available.
+          {t("agents.workspace.svgRenderError")}
         </p>
       );
     }
@@ -100,7 +104,7 @@ export function AgentWorkspaceImage({
 function svgImageSource(content: string): string | null {
   try {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-      svgPreviewSource(content),
+      svgPreviewSource(content, i18n.t),
     )}`;
   } catch {
     return null;
@@ -124,12 +128,13 @@ function MarkdownImage({
   path: string;
   alt: string;
 }) {
+  const { t } = useTranslation();
   const file = useAgentWorkspaceFile(workspaceId, path);
   const source = useMemo(() => imageSource(file.data), [file.data]);
   if (!source) {
     return (
       <span className="text-sm text-muted-foreground" title={path}>
-        {file.isPending ? "Loading image…" : alt || path}
+        {file.isPending ? t("agents.workspace.loadingImage") : alt || path}
       </span>
     );
   }
@@ -153,6 +158,7 @@ function MarkdownFile({
   path: string;
   content: string;
 }) {
+  const markdownLabels = useMarkdownLabels();
   const remarkPlugins = useMemo(
     () => [...STREAMDOWN_DEFAULT_REMARK_PLUGINS, remarkWorkspaceFileLinks(path)],
     [path],
@@ -178,6 +184,7 @@ function MarkdownFile({
     >
       <div className="mx-auto max-w-3xl px-5 py-4">
         <Streamdown
+          translations={markdownLabels}
           className={MARKDOWN_CLASSES}
           plugins={MESSAGE_MARKDOWN_PLUGINS}
           remarkPlugins={remarkPlugins}

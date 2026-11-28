@@ -1,9 +1,11 @@
+import { useTranslation } from "react-i18next";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useState } from "react";
 import { Alert } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { SettingsUser } from "@overtchat/shared/admin-settings";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { getAuthClient } from "@/lib/auth/client";
 import { queryKeys } from "@/lib/queries/keys";
 import { useSettingsQuery, settingsRequest } from "@/lib/queries/settings";
@@ -20,11 +22,8 @@ import {
   useAction,
   useUnsavedChanges,
 } from "@/components/settings/SettingsUI";
+import { useSignInMethods } from "@/lib/queries/signInMethods";
 import { toastSuccess } from "@/lib/toast";
-const roles = [
-  { value: "user", label: "User" },
-  { value: "admin", label: "Administrator" },
-] as const;
 export default function UserDetails() {
   return (
     <AdminGate>
@@ -33,11 +32,18 @@ export default function UserDetails() {
   );
 }
 function UserScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useSettingsQuery<{ users: SettingsUser[] }>("/users", true);
   const user = query.data?.users.find((u) => u.id === id);
   return (
-    <SettingsPage title={id === "new" ? "Add user" : (user?.name ?? "User")}>
+    <SettingsPage
+      title={
+        id === "new"
+          ? t("users.page.addUser")
+          : (user?.name ?? t("users.mobile.detail.fallbackTitle"))
+      }
+    >
       {id === "new" ? (
         <CreateUser />
       ) : user ? (
@@ -45,13 +51,14 @@ function UserScreen() {
       ) : (
         <>
           <QueryState query={query} />
-          {query.data && <Label>User no longer exists.</Label>}
+          {query.data && <Label>{t("users.mobile.detail.notFound")}</Label>}
         </>
       )}
     </SettingsPage>
   );
 }
 function CreateUser() {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,37 +66,53 @@ function CreateUser() {
   const [created, setCreated] = useState(false);
   const action = useAction();
   const client = useQueryClient();
+  const methods = useSignInMethods();
+  // With passwords off, the account is found by its email at the provider.
+  const provider =
+    methods.data?.password === false ? methods.data.sso?.name : undefined;
   useUnsavedChanges(!created && !!(name || email || password));
+  const roles = [
+    { value: "user", label: t("users.roles.user") },
+    { value: "admin", label: t("users.mobile.roles.administrator") },
+  ] as const;
   return (
     <>
-      <Section description="Share the initial password privately. They can change it in Security settings.">
+      <Section
+        description={
+          provider
+            ? t("users.addDialog.ssoDescription", { provider })
+            : t("users.mobile.create.passwordDescription")
+        }
+      >
         <Field
           editable={!action.busy && !created}
-          label="Name"
+          label={t("users.addDialog.nameLabel")}
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
         />
         <Field
           editable={!action.busy && !created}
-          label="Email"
+          label={t("users.addDialog.emailLabel")}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
           // Another person's credentials must not autofill or save as the admin's.
           autoComplete="off"
         />
-        <Field
-          editable={!action.busy && !created}
-          label="Initial password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoComplete="off"
-        />
+        {!provider && (
+          <Field
+            editable={!action.busy && !created}
+            label={t("users.mobile.create.initialPasswordLabel")}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="off"
+          />
+        )}
         <Choice
           disabled={action.busy || created}
-          title="Role"
+          title={t("users.addDialog.roleLabel")}
           value={role}
           onChange={setRole}
           options={roles}
@@ -98,42 +121,60 @@ function CreateUser() {
       {action.error && <Label error>{action.error}</Label>}
       <Action
         title={
-          created ? "User created" : action.busy ? "Creating…" : "Create user"
+          created
+            ? t("users.mobile.create.created")
+            : action.busy
+              ? t("common.states.creating")
+              : t("users.mobile.create.submit")
         }
         disabled={action.busy || created}
         onPress={() =>
           void action.run(async () => {
             if (!name.trim() || !email.trim())
-              throw new Error("Enter a name and email address.");
-            if (password.length < 8 || password.length > 128)
-              throw new Error("Use an initial password of 8–128 characters.");
+              throw new Error(
+                t("users.mobile.create.errors.nameAndEmailRequired"),
+              );
+            if (!provider && (password.length < 8 || password.length > 128))
+              throw new Error(
+                t("users.mobile.create.errors.invalidPasswordLength"),
+              );
             const { error } = await getAuthClient().admin.createUser({
               name: name.trim(),
               email: email.trim(),
-              password,
+              ...(provider ? {} : { password }),
               role,
             });
             if (error)
-              throw new Error(error.message ?? "Couldn’t create user.");
+              throw new Error(
+                error.message ?? t("users.mobile.create.errors.createFailed"),
+              );
             setCreated(true);
             setPassword("");
             await client.invalidateQueries({
               queryKey: queryKeys.settings("/users"),
             });
-            toastSuccess("User created");
+            toastSuccess(t("users.toast.createdTitle"));
           })
         }
       />
       {created && (
-        <Action secondary title="Back to users" onPress={() => router.back()} />
+        <Action
+          secondary
+          title={t("users.mobile.create.backToUsers")}
+          onPress={() => router.back()}
+        />
       )}
     </>
   );
 }
 function ManageUser({ user }: { user: SettingsUser }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const session = getAuthClient().useSession();
   const self = user.id === session.data?.user.id;
   const [reset, setReset] = useState(false);
+  // With passwords off there is nothing to reset; accounts sign in elsewhere.
+  const passwords = useSignInMethods().data?.password !== false;
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -142,23 +183,30 @@ function ManageUser({ user }: { user: SettingsUser }) {
   useUnsavedChanges(!!(current || password || confirm));
   const refresh = () =>
     client.invalidateQueries({ queryKey: queryKeys.settings("/users") });
+  const roles = [
+    { value: "user", label: t("users.roles.user") },
+    { value: "admin", label: t("users.mobile.roles.administrator") },
+  ] as const;
   return (
     <>
-      <Section title="Account">
+      <Section title={t("users.mobile.detail.accountSection")}>
         <Row
           title={user.name}
           detail={user.email}
           leading={<UserAvatar name={user.name} email={user.email} size={44} />}
         />
         <Row
-          title="Created"
-          value={new Date(user.createdAt).toLocaleDateString()}
+          title={t("users.mobile.detail.createdLabel")}
+          value={new Date(user.createdAt).toLocaleDateString(locale)}
         />
         {self ? (
-          <Row title="Role" value="Administrator · You" />
+          <Row
+            title={t("users.mobile.detail.roleLabel")}
+            value={t("users.mobile.detail.roleSelfAdmin")}
+          />
         ) : (
           <Choice
-            title="Role"
+            title={t("users.mobile.detail.roleLabel")}
             value={user.role === "admin" ? "admin" : "user"}
             options={roles}
             disabled={action.busy}
@@ -166,15 +214,19 @@ function ManageUser({ user }: { user: SettingsUser }) {
               if (role === user.role) return;
               Alert.alert(
                 role === "admin"
-                  ? "Grant administrator access?"
-                  : "Remove administrator access?",
+                  ? t("users.roleDialog.grantTitle")
+                  : t("users.roleDialog.removeTitle"),
                 role === "admin"
-                  ? `${user.email} will be able to manage this server, users, and coding agents. They will be signed out on all devices.`
-                  : `${user.email} will lose administrator features, their active agent runs will stop, and they will be signed out on all devices.`,
+                  ? t("users.mobile.roleDialog.grantMessage", {
+                      email: user.email,
+                    })
+                  : t("users.mobile.roleDialog.removeMessage", {
+                      email: user.email,
+                    }),
                 [
-                  { text: "Cancel", style: "cancel" },
+                  { text: t("common.actions.cancel"), style: "cancel" },
                   {
-                    text: "Change role",
+                    text: t("users.mobile.roleDialog.confirm"),
                     onPress: () =>
                       void action.run(async () => {
                         await settingsRequest(
@@ -183,7 +235,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
                           { role },
                         );
                         await refresh();
-                        toastSuccess("Role updated");
+                        toastSuccess(t("users.mobile.roleDialog.updated"));
                       }),
                   },
                 ],
@@ -193,26 +245,30 @@ function ManageUser({ user }: { user: SettingsUser }) {
         )}
       </Section>
       {self ? (
-        <Label muted>Change your own password in Security settings.</Label>
+        passwords && (
+          <Label muted>{t("users.mobile.detail.selfPasswordHint")}</Label>
+        )
       ) : (
         <>
-          <Section>
-            <Row
-              title="Reset password"
-              icon="key-outline"
-              expanded={reset}
-              onPress={() => setReset(!reset)}
-            />
-          </Section>
-          {reset && (
+          {passwords && (
+            <Section>
+              <Row
+                title={t("users.list.resetPassword")}
+                icon="key-outline"
+                expanded={reset}
+                onPress={() => setReset(!reset)}
+              />
+            </Section>
+          )}
+          {passwords && reset && (
             <>
               <Section
-                title="Reset password"
-                description="This signs the user out on all devices. Share the replacement password privately."
+                title={t("users.resetPasswordDialog.title")}
+                description={t("users.mobile.resetPassword.description")}
               >
                 <Field
                   editable={!action.busy}
-                  label="Your current password"
+                  label={t("users.resetPasswordDialog.currentPasswordLabel")}
                   value={current}
                   onChangeText={setCurrent}
                   secureTextEntry
@@ -220,7 +276,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
                 />
                 <Field
                   editable={!action.busy}
-                  label="Replacement password"
+                  label={t("users.resetPasswordDialog.replacementPasswordLabel")}
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
@@ -228,7 +284,7 @@ function ManageUser({ user }: { user: SettingsUser }) {
                 />
                 <Field
                   editable={!action.busy}
-                  label="Confirm replacement password"
+                  label={t("users.resetPasswordDialog.confirmPasswordLabel")}
                   value={confirm}
                   onChangeText={setConfirm}
                   secureTextEntry
@@ -236,16 +292,26 @@ function ManageUser({ user }: { user: SettingsUser }) {
                 />
               </Section>
               <Action
-                title={action.busy ? "Saving…" : "Reset user password"}
+                title={
+                  action.busy
+                    ? t("common.states.saving")
+                    : t("users.mobile.resetPassword.submit")
+                }
                 disabled={action.busy}
                 onPress={() =>
                   void action.run(async () => {
                     if (!current)
-                      throw new Error("Enter your current password.");
+                      throw new Error(
+                        t("users.mobile.resetPassword.errors.currentRequired"),
+                      );
                     if (password.length < 8 || password.length > 128)
-                      throw new Error("Use a password of 8–128 characters.");
+                      throw new Error(
+                        t("users.mobile.resetPassword.errors.invalidLength"),
+                      );
                     if (password !== confirm)
-                      throw new Error("Replacement passwords do not match.");
+                      throw new Error(
+                        t("users.mobile.resetPassword.errors.mismatch"),
+                      );
                     const { error } = await getAuthClient().$fetch(
                       "/admin/reset-user-password",
                       {
@@ -259,13 +325,14 @@ function ManageUser({ user }: { user: SettingsUser }) {
                     );
                     if (error)
                       throw new Error(
-                        error.message ?? "Couldn’t reset password.",
+                        error.message ??
+                          t("users.mobile.resetPassword.errors.failed"),
                       );
                     setCurrent("");
                     setPassword("");
                     setConfirm("");
                     setReset(false);
-                    toastSuccess("Password reset");
+                    toastSuccess(t("users.toast.passwordResetTitle"));
                   })
                 }
               />
@@ -273,18 +340,18 @@ function ManageUser({ user }: { user: SettingsUser }) {
           )}
           <Section>
             <Row
-              title="Delete user"
+              title={t("users.mobile.deleteDialog.action")}
               icon="trash-outline"
               destructive
               disabled={action.busy || !!(current || password || confirm)}
               onPress={() =>
                 Alert.alert(
-                  "Delete user?",
-                  `${user.email} will no longer be able to sign in. Existing chats and projects are not deleted.`,
+                  t("users.deleteDialog.title"),
+                  t("users.mobile.deleteDialog.message", { email: user.email }),
                   [
-                    { text: "Cancel", style: "cancel" },
+                    { text: t("common.actions.cancel"), style: "cancel" },
                     {
-                      text: "Delete",
+                      text: t("common.actions.delete"),
                       style: "destructive",
                       onPress: () =>
                         void action.run(async () => {
@@ -294,11 +361,12 @@ function ManageUser({ user }: { user: SettingsUser }) {
                             });
                           if (error)
                             throw new Error(
-                              error.message ?? "Couldn’t delete user.",
+                              error.message ??
+                                t("users.mobile.deleteDialog.failed"),
                             );
                           await refresh();
                           router.back();
-                          toastSuccess("User deleted");
+                          toastSuccess(t("users.toast.deletedTitle"));
                         }),
                     },
                   ],

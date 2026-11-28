@@ -2,8 +2,10 @@ import { app, dialog } from "electron";
 import path from "node:path";
 import { configureServerAuth } from "./auth";
 import { registerIpc } from "./ipc";
+import { i18n } from "@overtchat/shared/i18n";
+import { applyStoredLanguage } from "./language";
 import { installMenu } from "./menu";
-import { configurePermissions } from "./permissions";
+import { configurePermissions, requestNotificationAccess } from "./permissions";
 import { handleAppScheme, registerAppScheme } from "./protocol";
 import { flushSettings, loadSettings } from "./settings";
 import { getMainWindow, openMainWindow } from "./window";
@@ -43,10 +45,11 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     loadSettings();
+    applyStoredLanguage();
     app.setAboutPanelOptions({
       applicationName: "overtchat",
       applicationVersion: app.getVersion(),
-      copyright: "Self-hosted chat for local and hosted models.",
+      copyright: i18n.t("app.desktopNative.aboutTagline"),
       website: "https://overtchat.com",
     });
     handleAppScheme();
@@ -55,6 +58,7 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     installMenu();
     openMainWindow();
+    requestNotificationAccess();
     startUpdates();
 
     app.on("activate", () => {

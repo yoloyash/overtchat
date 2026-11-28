@@ -6,12 +6,15 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import type {
   ChatReasoningLevel,
   ModelReasoningControls,
   ModelReasoningLevel,
   PublicModelConfig,
 } from "@overtchat/shared";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   forwardRef,
   useCallback,
@@ -73,6 +76,7 @@ export const ModelPickerSheet = forwardRef<
   ref,
 ) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const modalRef = useRef<BottomSheetModal>(null);
@@ -123,7 +127,7 @@ export const ModelPickerSheet = forwardRef<
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -135,6 +139,7 @@ export const ModelPickerSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={modalRef}
       enableDynamicSizing
       maxDynamicContentSize={sheetMaxHeight}
@@ -166,7 +171,7 @@ export const ModelPickerSheet = forwardRef<
           {panel === "thinking" ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Back to models"
+              accessibilityLabel={t("chat.mobile.modelPicker.backToModels")}
               onPress={() => setPanel("models")}
               style={({ pressed }) => [
                 styles.backButton,
@@ -190,7 +195,7 @@ export const ModelPickerSheet = forwardRef<
                 },
               ]}
             >
-              {panel === "thinking" ? "Thinking" : "Models"}
+              {panel === "thinking" ? t("app.modelPicker.thinking") : t("app.modelPicker.modelsHeading")}
             </Text>
             {panel === "thinking" && selectedModel ? (
               <Text
@@ -212,13 +217,13 @@ export const ModelPickerSheet = forwardRef<
               accessibilityRole="button"
               accessibilityLabel={
                 defaultModelId === selectedModel.id
-                  ? "Clear default"
-                  : "Set as default"
+                  ? t("app.modelPicker.clearDefault")
+                  : t("app.modelPicker.setAsDefault")
               }
               accessibilityHint={
                 defaultModelId === selectedModel.id
-                  ? "New chats will use the first available model"
-                  : `Use ${selectedModel.label} for new chats on all your devices`
+                  ? t("app.modelPicker.clearDefaultTitle")
+                  : t("chat.mobile.modelPicker.setAsDefaultHint", { model: selectedModel.label })
               }
               accessibilityState={{
                 disabled: !preferences.data || setDefault.isPending,
@@ -234,7 +239,7 @@ export const ModelPickerSheet = forwardRef<
                   },
                   {
                     onError: (error) =>
-                      Alert.alert("Couldn't save default model", error.message),
+                      Alert.alert(t("models.preferences.saveDefaultFailed"), error.message),
                   },
                 )
               }
@@ -267,8 +272,8 @@ export const ModelPickerSheet = forwardRef<
                 }}
               >
                 {defaultModelId === selectedModel.id
-                  ? "Clear default"
-                  : "Set as default"}
+                  ? t("app.modelPicker.clearDefault")
+                  : t("app.modelPicker.setAsDefault")}
               </Text>
             </Pressable>
           ) : null}
@@ -280,7 +285,7 @@ export const ModelPickerSheet = forwardRef<
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={
-                searchExpanded ? "Close model search" : "Search models"
+                searchExpanded ? t("app.modelPicker.closeModelSearch") : t("app.modelPicker.searchModels")
               }
               accessibilityState={{ expanded: searchExpanded }}
               onPress={() => {
@@ -305,7 +310,9 @@ export const ModelPickerSheet = forwardRef<
         {panel === "models" && showThinking && effectiveReasoningLevel ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Thinking level: ${reasoningLabel(effectiveReasoningLevel)}`}
+            accessibilityLabel={t("chat.mobile.modelPicker.thinkingLevel", {
+              level: reasoningLabel(effectiveReasoningLevel, t),
+            })}
             onPress={() => {
               setSearch("");
               setPanel("thinking");
@@ -332,7 +339,7 @@ export const ModelPickerSheet = forwardRef<
                 },
               ]}
             >
-              Thinking
+              {t("app.modelPicker.thinking")}
             </Text>
             <Text
               numberOfLines={1}
@@ -344,10 +351,11 @@ export const ModelPickerSheet = forwardRef<
                 },
               ]}
             >
-              {reasoningLabel(effectiveReasoningLevel)}
               {effectiveReasoningLevel === reasoningControls?.defaultLevel
-                ? " (default)"
-                : ""}
+                ? t("app.modelPicker.reasoningOptionDefault", {
+                    level: reasoningLabel(effectiveReasoningLevel, t),
+                  })
+                : reasoningLabel(effectiveReasoningLevel, t)}
             </Text>
             <Ionicons
               name="chevron-forward"
@@ -376,8 +384,8 @@ export const ModelPickerSheet = forwardRef<
             <BottomSheetTextInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Search models"
-              accessibilityLabel="Search models"
+              placeholder={t("app.modelPicker.searchPlaceholder")}
+              accessibilityLabel={t("app.modelPicker.searchInputLabel")}
               autoFocus={searchExpanded}
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
@@ -391,7 +399,7 @@ export const ModelPickerSheet = forwardRef<
             {search.length > 0 ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Clear model search"
+                accessibilityLabel={t("chat.mobile.modelPicker.clearSearch")}
                 onPress={() => setSearch("")}
                 style={({ pressed }) => [
                   styles.searchClearButton,
@@ -425,24 +433,24 @@ export const ModelPickerSheet = forwardRef<
           </View>
         ) : loading ? (
           <StatusState
-            title="Loading models…"
+            title={t("chat.mobile.modelPicker.loading")}
             icon={<ActivityIndicator color={colors.mutedForeground} />}
           />
         ) : error ? (
           <StatusState
-            title="Couldn't load models"
+            title={t("chat.mobile.loadModelsFailed")}
             message={error.message}
             tone="error"
           />
         ) : models.length === 0 ? (
           <StatusState
-            title="No models configured"
-            message="An admin can add one in Settings → Models on the web."
+            title={t("app.modelPicker.noModels")}
+            message={t("chat.mobile.modelPicker.noModelsHint")}
           />
         ) : filteredModels.length === 0 ? (
           <StatusState
-            title={`No models match "${searchTerm}"`}
-            message="Try a model, provider, or endpoint name."
+            title={t("chat.mobile.modelPicker.noMatches", { query: searchTerm })}
+            message={t("chat.mobile.modelPicker.noMatchesHint")}
           />
         ) : (
           <View style={styles.list}>
@@ -478,6 +486,7 @@ function ReasoningRow({
   onPress: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <Pressable
@@ -504,8 +513,11 @@ function ReasoningRow({
             },
           ]}
         >
-          {reasoningLabel(option)}
-          {isDefault ? " (default)" : ""}
+          {isDefault
+            ? t("app.modelPicker.reasoningOptionDefault", {
+                level: reasoningLabel(option, t),
+              })
+            : reasoningLabel(option, t)}
         </Text>
       </View>
       {selected ? (
@@ -535,9 +547,23 @@ export function reasoningOptionsForControls(
   return [...new Set(options)];
 }
 
-export function reasoningLabel(level: ChatReasoningLevel): string {
-  if (level === "xhigh") return "Extra high";
-  return level.charAt(0).toUpperCase() + level.slice(1);
+const REASONING_LABEL_KEYS = {
+  default: "chat.mobile.modelPicker.reasoningDefault",
+  off: "models.thinking.levels.off",
+  on: "models.thinking.levels.on",
+  minimal: "models.thinking.levels.minimal",
+  low: "models.thinking.levels.low",
+  medium: "models.thinking.levels.medium",
+  high: "models.thinking.levels.high",
+  xhigh: "models.thinking.levels.xhigh",
+  max: "models.thinking.levels.max",
+} as const;
+
+export function reasoningLabel(
+  level: ChatReasoningLevel,
+  t: TFunction,
+): string {
+  return t(REASONING_LABEL_KEYS[level]);
 }
 
 function ModelRow({
@@ -552,11 +578,12 @@ function ModelRow({
   onPress: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={model.label}
-      accessibilityHint={isDefault ? "Default model for new chats" : undefined}
+      accessibilityHint={isDefault ? t("app.modelPicker.defaultModelDescription") : undefined}
       accessibilityState={{ selected }}
       onPress={onPress}
       style={({ pressed }) => [
@@ -593,7 +620,7 @@ function ModelRow({
             fontFamily: fonts.sansRegular,
           }}
         >
-          Default
+          {t("app.modelPicker.defaultBadge")}
         </Text>
       )}
       <View style={{ width: 18 }}>

@@ -10,14 +10,12 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import {
-  AGENT_SESSION_STATE_LABELS,
+  agentSessionStateLabel,
   type AgentSessionState,
 } from "@overtchat/shared/agent-attention";
 import { useTheme, type Theme } from "@/lib/theme";
 
-export function agentSessionStateLabel(state: AgentSessionState): string {
-  return AGENT_SESSION_STATE_LABELS[state];
-}
+export { agentSessionStateLabel };
 
 /** The web sidebar's status colours (amber, red, blue, green), per scheme. */
 export function agentSessionStateColor(

@@ -11,6 +11,7 @@ import {
   type CodeExecutionFile,
   type CodeExecutionOutput,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { formatSize } from "@/lib/chat/attachments";
 import { numberedName, safeFilename, type ChatFile } from "@/lib/chat/chat-files";
 import { createUpload, getUpload, readFetchedImage, uploadPath } from "@/lib/db/uploads";
@@ -320,7 +321,7 @@ export function formatRun(output: CodeExecutionOutput, outputChars = Infinity): 
       : `Exit code ${output.exitCode} after ${seconds}.`;
   const files = output.files.length
     ? `Saved files (later runs read them from ${SANDBOX_UPLOADS_DIR}/<name>; link finished ones in your reply):\n${output.files
-        .map((file) => `- ${file.name} (${file.mediaType}, ${formatSize(file.size)})`)
+        .map((file) => `- ${file.name} (${file.mediaType}, ${formatSize(file.size, i18n.t)})`)
         .join("\n")}`
     : "";
   const skipped = output.skippedFiles?.length

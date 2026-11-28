@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, type ReactNode } from "react";
 import { Menu } from "@base-ui/react/menu";
+import { useTranslation } from "react-i18next";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -22,6 +23,7 @@ export function ModelSearch({
   heading?: ReactNode;
   actions?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const toggleRef = useRef<HTMLDivElement>(null);
   const alwaysVisible = count > 7;
   const visible = alwaysVisible || expanded;
@@ -37,7 +39,7 @@ export function ModelSearch({
         <div className="min-w-0 flex-1">
           {heading ?? (
             <div className="px-2 text-xs font-medium text-muted-foreground">
-              Models
+              {t("app.modelPicker.modelsHeading")}
             </div>
           )}
         </div>
@@ -46,8 +48,8 @@ export function ModelSearch({
           <Menu.Item
             ref={toggleRef}
             closeOnClick={false}
-            aria-label={expanded ? "Close model search" : "Search models"}
-            title={expanded ? "Close search" : "Search models"}
+            aria-label={expanded ? t("app.modelPicker.closeModelSearch") : t("app.modelPicker.searchModels")}
+            title={expanded ? t("app.modelPicker.closeSearch") : t("app.modelPicker.searchModels")}
             aria-expanded={expanded}
             onClick={() => {
               onSearch("");
@@ -84,8 +86,8 @@ export function ModelSearch({
               }
             }}
             onClick={(event) => event.stopPropagation()}
-            placeholder="Search models"
-            aria-label="Search models"
+            placeholder={t("app.modelPicker.searchPlaceholder")}
+            aria-label={t("app.modelPicker.searchInputLabel")}
             className="h-8 pl-7 text-xs md:text-xs"
           />
         </div>

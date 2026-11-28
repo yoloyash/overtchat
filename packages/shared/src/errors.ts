@@ -1,3 +1,6 @@
+import type { TFunction } from "i18next";
+import { i18n } from "./i18n/i18n";
+
 /** Public, transport-neutral error information shared by web and native clients. */
 export class ApiError extends Error {
   constructor(
@@ -39,34 +42,55 @@ export function isSpeechErrorCode(code: unknown): code is SpeechErrorCode {
 
 export function speechErrorMessage(
   service: SpeechService,
+  t: TFunction,
   code?: string,
 ): string {
-  const feature = service === "stt" ? "Dictation" : "Read aloud";
-  const provider = service === "stt" ? "transcription" : "speech playback";
+  const keys =
+    service === "stt"
+      ? ({
+          speech_disabled: "common.errors.speech.stt.disabled",
+          speech_not_configured: "common.errors.speech.stt.notConfigured",
+          speech_unreachable: "common.errors.speech.stt.unreachable",
+          speech_timeout: "common.errors.speech.stt.timeout",
+          speech_provider_auth: "common.errors.speech.stt.providerAuth",
+          speech_rate_limited: "common.errors.speech.stt.rateLimited",
+          speech_invalid_response: "common.errors.speech.stt.invalidResponse",
+          fallback: "common.errors.speech.stt.unavailable",
+        } as const)
+      : ({
+          speech_disabled: "common.errors.speech.tts.disabled",
+          speech_not_configured: "common.errors.speech.tts.notConfigured",
+          speech_unreachable: "common.errors.speech.tts.unreachable",
+          speech_timeout: "common.errors.speech.tts.timeout",
+          speech_provider_auth: "common.errors.speech.tts.providerAuth",
+          speech_rate_limited: "common.errors.speech.tts.rateLimited",
+          speech_invalid_response: "common.errors.speech.tts.invalidResponse",
+          fallback: "common.errors.speech.tts.unavailable",
+        } as const);
   switch (code) {
     case "speech_disabled":
-      return `${feature} is turned off on this server.`;
+      return t(keys.speech_disabled);
     case "speech_not_configured":
-      return `${feature} hasn't been set up on this server.`;
+      return t(keys.speech_not_configured);
     case "speech_unreachable":
-      return `Couldn't reach the ${provider} service. Try again shortly.`;
+      return t(keys.speech_unreachable);
     case "speech_timeout":
-      return `The ${provider} service took too long to respond. Try again.`;
+      return t(keys.speech_timeout);
     case "speech_provider_auth":
-      return `The ${provider} service rejected the server's credentials. Ask an administrator to check the speech settings.`;
+      return t(keys.speech_provider_auth);
     case "speech_rate_limited":
-      return `The ${provider} service is busy. Try again shortly.`;
+      return t(keys.speech_rate_limited);
     case "speech_invalid_response":
-      return `The ${provider} service returned an invalid response. Try again.`;
+      return t(keys.speech_invalid_response);
     default:
-      return `The ${provider} service is temporarily unavailable. Try again shortly.`;
+      return t(keys.fallback);
   }
 }
 
 /** Only normalized API errors carry a message intended for display. */
 export function getErrorMessage(
   error: unknown,
-  fallback = "Something went wrong. Please try again.",
+  fallback: string,
 ): string {
   return error instanceof ApiError ? error.message : fallback;
 }
@@ -95,13 +119,14 @@ export function apiError(
       : undefined;
   let message: string;
   if (service && isSpeechErrorCode(code))
-    message = speechErrorMessage(service, code);
-  else if (status === 401) message = "Sign in to continue.";
-  else if (status === 403) message = "You don't have permission to do this.";
-  else if (status === 429) message = "Too many requests. Try again shortly.";
+    message = speechErrorMessage(service, i18n.t, code);
+  else if (status === 401) message = i18n.t("common.errors.signInRequired");
+  else if (status === 403) message = i18n.t("common.errors.permissionDenied");
+  else if (status === 429) message = i18n.t("common.errors.tooManyRequests");
   else if (service && status >= 500)
     message = speechErrorMessage(
       service,
+      i18n.t,
       status === 504 ? "speech_timeout" : undefined,
     );
   // OvertChat's API error field is public display copy. Do not unwrap nested

@@ -1,5 +1,7 @@
 import { createRoute, Link } from "@tanstack/react-router";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { rootRoute } from "./root";
 import { publicShareQuery } from "@/lib/queries/shares";
 import { SharedTranscript } from "@/components/chat/SharedTranscript";
@@ -12,6 +14,8 @@ export const shareRoute = createRoute({
 });
 
 function SharedChatPage() {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { id } = shareRoute.useParams();
   const query = useInfiniteQuery(publicShareQuery(id));
   const client = useQueryClient();
@@ -21,16 +25,17 @@ function SharedChatPage() {
       <meta name="robots" content="noindex,nofollow,noarchive" />
       <meta name="referrer" content="no-referrer" />
       <title>
-        {data?.title ? `${data.title} · OvertChat` : "Shared chat · OvertChat"}
+        {data?.title
+          ? `${data.title} · OvertChat`
+          : t("app.share.defaultPageTitle")}
       </title>
       <header className="border-b px-6 py-4">
-        <Link to="/" className="font-semibold">
-          OvertChat
-        </Link>
+        {/* eslint-disable-next-line i18next/no-literal-string -- product name */}
+        <Link to="/" className="font-semibold">OvertChat</Link>
       </header>
       <main className="mx-auto max-w-3xl space-y-8 px-4 py-10 sm:px-8">
         {query.isPending ? (
-          <p role="status">Loading shared chat…</p>
+          <p role="status">{t("app.share.loading")}</p>
         ) : query.error ? (
           <div role="alert" className="space-y-3">
             <p>{query.error.message}</p>
@@ -41,7 +46,7 @@ function SharedChatPage() {
                 })
               }
             >
-              Reload shared chat
+              {t("app.share.reload")}
             </Button>
           </div>
         ) : data ? (
@@ -51,8 +56,9 @@ function SharedChatPage() {
                 {data.title}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Shared conversation ·{" "}
-                {new Date(data.updatedAt!).toLocaleDateString()}
+                {t("app.share.meta", {
+                  date: new Date(data.updatedAt!).toLocaleDateString(locale),
+                })}
               </p>
             </div>
             <SharedTranscript
@@ -69,9 +75,9 @@ function SharedChatPage() {
           </>
         ) : (
           <div>
-            <h1 className="text-2xl font-semibold">Shared chat unavailable</h1>
+            <h1 className="text-2xl font-semibold">{t("app.share.unavailableTitle")}</h1>
             <p className="mt-2 text-muted-foreground">
-              This link was removed or does not exist.
+              {t("app.share.unavailableDescription")}
             </p>
           </div>
         )}

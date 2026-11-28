@@ -1,6 +1,9 @@
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useTheme } from "@/lib/theme";
 import {
   agentSessionRowMeta,
@@ -21,7 +24,7 @@ import {
 export function AgentSearch({
   value,
   onChangeText,
-  placeholder = "Search sessions",
+  placeholder,
   autoFocus = false,
 }: {
   value: string;
@@ -29,6 +32,9 @@ export function AgentSearch({
   placeholder?: string;
   autoFocus?: boolean;
 }) {
+  const { t } = useTranslation();
+  const resolvedPlaceholder = placeholder ?? t("agents.history.searchPlaceholder");
+  const resolvedLabel = placeholder ?? t("agents.history.searchLabel");
   const { colors, fonts } = useTheme();
   return (
     <View
@@ -49,8 +55,8 @@ export function AgentSearch({
         color={colors.mutedForeground}
       />
       <TextInput
-        accessibilityLabel={placeholder}
-        placeholder={placeholder}
+        accessibilityLabel={resolvedLabel}
+        placeholder={resolvedPlaceholder}
         placeholderTextColor={colors.mutedForeground}
         value={value}
         onChangeText={onChangeText}
@@ -70,7 +76,7 @@ export function AgentSearch({
       {!!value && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t("common.actions.clearSearch")}
           onPress={() => onChangeText("")}
           hitSlop={10}
           style={{ padding: 8 }}
@@ -87,10 +93,24 @@ export function AgentSearch({
 }
 
 /** What a row announces: its state, title, agent and folder. */
-export function agentSessionRowLabel(entry: AgentAttentionItem): string {
+export function agentSessionRowLabel(
+  entry: AgentAttentionItem,
+  t: TFunction,
+): string {
   const { item, group, state } = entry;
-  const stateLabel = agentSessionStateLabel(state);
-  return `${stateLabel ? `${stateLabel}: ` : ""}${agentSessionRowTitle(entry)}, ${agentProviderMetadata(item.provider).label}, ${group.name} · ${agentHostLabel(group.host)}`;
+  const stateLabel = agentSessionStateLabel(state, t);
+  const params = {
+    title: agentSessionRowTitle(entry, t),
+    provider: agentProviderMetadata(item.provider).label,
+    workspace: group.name,
+    host: agentHostLabel(group.host, t),
+  };
+  return stateLabel
+    ? t("agents.mobile.navigation.sessionRowLabelWithState", {
+        ...params,
+        state: stateLabel,
+      })
+    : t("agents.mobile.navigation.sessionRowLabel", params);
 }
 
 /**
@@ -119,6 +139,8 @@ export function AgentSessionRow({
   onPress: () => void;
   onLongPress?: () => void;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const theme = useTheme();
   const { colors, fonts, radii } = theme;
   const { item, state } = entry;
@@ -127,7 +149,7 @@ export function AgentSessionRow({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={agentSessionRowLabel(entry)}
+      accessibilityLabel={agentSessionRowLabel(entry, t)}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={300}
@@ -158,7 +180,7 @@ export function AgentSessionRow({
               },
             ]}
           >
-            {agentSessionRowTitle(entry)}
+            {agentSessionRowTitle(entry, t)}
           </Text>
           <Text
             style={[
@@ -166,7 +188,7 @@ export function AgentSessionRow({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {time ?? agentSessionRowTime(entry, now)}
+            {time ?? agentSessionRowTime(entry, now, t, locale)}
           </Text>
         </View>
         <View style={styles.metaLine}>
@@ -178,7 +200,7 @@ export function AgentSessionRow({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {agentSessionRowMeta(entry, context)}
+            {agentSessionRowMeta(entry, context, t)}
           </Text>
         </View>
         {!!detail && (
@@ -210,6 +232,7 @@ export function AgentBranch({
   workspace: string;
   fallback?: string;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const query = useAgentGitStatus(workspace);
   if (
@@ -255,12 +278,12 @@ export function AgentBranch({
         }}
       >
         {query.error
-          ? "Git unavailable"
-          : (query.data?.branch ?? "Detached HEAD")}
+          ? t("agents.mobile.navigation.gitUnavailable")
+          : (query.data?.branch ?? t("agents.branch.detachedHead"))}
       </Text>
       {!query.error && query.data?.dirty && (
         <Ionicons
-          accessibilityLabel="Uncommitted changes"
+          accessibilityLabel={t("agents.mobile.navigation.uncommittedChanges")}
           name="ellipse"
           size={5}
           color={colors.mutedForeground}

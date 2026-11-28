@@ -2,6 +2,7 @@ import { agentHostLabel } from "@/lib/agents/workspaces";
 import "server-only";
 import { createHash } from "node:crypto";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   agentNotificationSession,
   notificationDevices,
@@ -177,7 +178,7 @@ export async function notifyAgentAttention(event: AgentAttentionEvent) {
   const text = agentNotificationText(event, {
     title: resolveInitialAgentSessionTitle(session) ?? "New session",
     workspaceName: session.workspaceName,
-    hostName: agentHostLabel({ name: session.hostName, sshAlias: session.hostSshAlias }),
+    hostName: agentHostLabel({ name: session.hostName, sshAlias: session.hostSshAlias }, i18n.t),
   });
   const notification: AgentNotification = {
     sessionId: event.sessionId,

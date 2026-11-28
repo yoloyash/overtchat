@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
   agentForkMessageId,
   agentTurnChangesOf,
@@ -304,18 +305,39 @@ export function foldAgentTranscript(
   return output;
 }
 
-export function agentWorkLabel(durationMs: number | null): string {
-  if (durationMs === null) return "Worked";
+export function agentWorkLabel(durationMs: number | null, t: TFunction): string {
+  if (durationMs === null) return t("agents.messages.worked");
   const seconds = Math.max(1, Math.round(durationMs / 1000));
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainder = seconds % 60;
-  const duration = [
-    hours ? `${hours}h` : "",
-    minutes ? `${minutes}m` : "",
-    remainder ? `${remainder}s` : "",
-  ].filter(Boolean).join(" ");
-  return `Worked for ${duration}`;
+  const duration =
+    hours && minutes && remainder
+      ? t("agents.activity.elapsedHoursMinutesSeconds", {
+          hours,
+          minutes,
+          seconds: remainder,
+        })
+      : hours && minutes
+        ? t("agents.activity.elapsedHoursMinutes", { hours, minutes })
+        : hours && remainder
+          ? t("agents.activity.elapsedHoursSeconds", {
+              hours,
+              seconds: remainder,
+            })
+          : hours
+            ? t("agents.activity.elapsedHours", { hours })
+            : minutes && remainder
+              ? t("agents.activity.elapsedMinutesSeconds", {
+                  minutes,
+                  seconds: remainder,
+                })
+              : minutes
+                ? t("agents.activity.elapsedMinutes", { minutes })
+                : t("agents.activity.elapsedSeconds", {
+                    seconds: remainder,
+                  });
+  return t("agents.messages.workedFor", { duration });
 }
 
 export type AgentToolStatus =
@@ -645,6 +667,7 @@ function ompNoticeFirstLine(text: string): string | null {
 
 export function presentOmpSystemNotice(
   text: string,
+  t: TFunction,
 ): AgentNotificationPresentation | null {
   if (!text.trimStart().startsWith(OMP_SYSTEM_NOTICE_OPEN_TAG)) return null;
 
@@ -661,9 +684,10 @@ export function presentOmpSystemNotice(
     const id = attributes.get("id") || null;
     const status = attributes.get("status") || null;
     if (id) {
+      const normalized = normalizedOmpJobStatus(status);
       return {
         level: ompNotificationLevel(status),
-        message: `Background job ${id} ${normalizedOmpJobStatus(status)}`,
+        message: formatOmpBackgroundJobNotice(id, normalized, t),
       };
     }
   }
@@ -673,24 +697,43 @@ export function presentOmpSystemNotice(
   if (backgroundJob?.[1] && backgroundJob[2]) {
     return {
       level: ompNotificationLevel(backgroundJob[2]),
-      message: `Background job ${backgroundJob[1]} ${normalizedOmpJobStatus(backgroundJob[2])}`,
+      message: formatOmpBackgroundJobNotice(
+        backgroundJob[1],
+        normalizedOmpJobStatus(backgroundJob[2]),
+        t,
+      ),
     };
   }
   return firstLine ? { level: "info", message: firstLine } : null;
 }
 
+function formatOmpBackgroundJobNotice(id: string, status: string, t: TFunction): string {
+  switch (status) {
+    case "completed":
+      return t("agents.notifications.backgroundJob.completed", { id });
+    case "failed":
+      return t("agents.notifications.backgroundJob.failed", { id });
+    case "canceled":
+      return t("agents.notifications.backgroundJob.canceled", { id });
+    case "stopped":
+      return t("agents.notifications.backgroundJob.stopped", { id });
+    default:
+      return t("agents.notifications.backgroundJob.other", { id, status });
+  }
+}
+
 const MAX_ERROR_SUMMARY_LENGTH = 240;
 
-export function presentAgentError(value: string): AgentErrorPresentation {
+export function presentAgentError(value: string, t: TFunction): AgentErrorPresentation {
   const details = value.trim();
   const contextLimit =
     /maximum context length|context length.{0,80}(?:exceed|requested)|input_tokens/iu.test(
       details,
     );
   let summary = contextLimit
-    ? "Context limit exceeded. Compact the conversation or reduce the maximum output tokens."
+    ? t("agents.errors.contextLimitExceeded")
     : (details.split(/\r?\n/u).find((line) => line.trim())?.trim() ??
-      "The agent command failed.");
+      t("agents.errors.commandFailed"));
   if (summary.length > MAX_ERROR_SUMMARY_LENGTH) {
     summary = `${summary.slice(0, MAX_ERROR_SUMMARY_LENGTH - 3).trimEnd()}...`;
   }
@@ -826,6 +869,8 @@ function directShellTool(
 
 export function projectAgentTranscript(
   messages: unknown[],
+  t: TFunction,
+  locale: string,
 ): AgentTranscriptItem[] {
   const items: AgentTranscriptItem[] = [];
   const { callIds, results } = collectToolData(messages);
@@ -856,22 +901,44 @@ export function projectAgentTranscript(
     if (role === "compactionSummary") {
       const active = record.status === "running";
       const failed = record.status === "failed";
-      const label = active ? "Compacting context…"
-        : failed ? "Context compaction failed"
-        : record.status === "interrupted" ? "Context compaction stopped"
-        : record.status === "skipped" ? "Context compaction skipped"
-        : record.trigger === "auto" ? "Context automatically compacted"
-        : record.trigger === "manual" ? "Context manually compacted"
-        : "Context compacted";
-      const tokens = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0
-        ? value.toLocaleString("en-US") : null;
+      const label = t(
+        active
+          ? "agents.compaction.running"
+          : failed
+            ? "agents.compaction.failed"
+            : record.status === "interrupted"
+              ? "agents.compaction.stopped"
+              : record.status === "skipped"
+                ? "agents.compaction.skipped"
+                : record.trigger === "auto"
+                  ? "agents.compaction.auto"
+                  : record.trigger === "manual"
+                    ? "agents.compaction.manual"
+                    : "agents.compaction.done",
+      );
+      const tokens = (value: unknown) =>
+        typeof value === "number" && Number.isFinite(value) && value >= 0
+          ? value.toLocaleString(locale)
+          : null;
       const before = tokens(record.tokensBefore);
       const after = tokens(record.tokensAfter);
       items.push({
-        type: "compaction", key: `compaction:${identity}`, active, failed, label,
-        detail: active || failed || record.status === "interrupted" || record.status === "skipped" ? null
-          : before !== null && after !== null ? `${before} → ${after} tokens`
-          : before !== null ? `From ${before} tokens` : null,
+        type: "compaction",
+        key: `compaction:${identity}`,
+        active,
+        failed,
+        label,
+        detail:
+          active ||
+          failed ||
+          record.status === "interrupted" ||
+          record.status === "skipped"
+            ? null
+            : before !== null && after !== null
+              ? t("agents.compaction.tokensBeforeAfter", { before, after })
+              : before !== null
+                ? t("agents.compaction.tokensBefore", { before })
+                : null,
       });
       return;
     }
@@ -1088,7 +1155,7 @@ export function projectAgentTranscript(
         items.push({
           type: "assistant_error",
           key: `assistant-error:${identity}`,
-          error: presentAgentError(record.errorMessage),
+          error: presentAgentError(record.errorMessage, t),
         });
       }
       return;
@@ -1102,7 +1169,7 @@ export function projectAgentTranscript(
         items.push({
           type: "assistant_error",
           key: `assistant-error:${identity}`,
-          error: presentAgentError(record.errorMessage),
+          error: presentAgentError(record.errorMessage, t),
         });
       }
       const durationMs = record.durationMs;
@@ -1159,7 +1226,7 @@ export function projectAgentTranscript(
     }
     if (role === "custom" && record.display === false) return;
     if (role === "custom") {
-      const notification = presentOmpSystemNotice(textOfContent(record.content));
+      const notification = presentOmpSystemNotice(textOfContent(record.content), t);
       if (notification) {
         items.push({
           type: "notification",
@@ -1230,14 +1297,14 @@ function stringArgument(args: unknown, keys: string[]): string | null {
   return null;
 }
 
-function humanizeToolName(name: string): string {
+function humanizeToolName(name: string, t: TFunction): string {
   const normalized = name
     .trim()
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[._:/-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!normalized) return "Tool";
+  if (!normalized) return t("agents.activity.toolLabels.other");
   return normalized
     .split(" ")
     .map((part) => part[0].toUpperCase() + part.slice(1))
@@ -1246,19 +1313,20 @@ function humanizeToolName(name: string): string {
 
 export function describeAgentTool(
   tool: AgentToolActivity,
+  t: TFunction,
 ): AgentToolPresentation {
   const name = normalizedToolName(tool.name);
   if (hasName(name, ["bash", "shell", "terminal", "exec", "execute"])) {
     return {
       category: "shell",
-      label: "Terminal",
+      label: t("agents.activity.toolLabels.shell"),
       summary: stringArgument(tool.args, ["command", "cmd"]),
     };
   }
   if (hasName(name, ["read", "read_file", "readfile"])) {
     return {
       category: "read",
-      label: "Read",
+      label: t("agents.activity.toolLabels.read"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
@@ -1273,14 +1341,14 @@ export function describeAgentTool(
   ) {
     return {
       category: "edit",
-      label: "Edit",
+      label: t("agents.activity.toolLabels.edit"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
   if (hasName(name, ["write", "write_file", "create_file"])) {
     return {
       category: "write",
-      label: "Write",
+      label: t("agents.activity.toolLabels.write"),
       summary: stringArgument(tool.args, ["path", "filePath", "file_path"]),
     };
   }
@@ -1298,7 +1366,7 @@ export function describeAgentTool(
   ) {
     return {
       category: "search",
-      label: "Search",
+      label: t("agents.activity.toolLabels.search"),
       summary: stringArgument(tool.args, [
         "query",
         "pattern",
@@ -1310,13 +1378,13 @@ export function describeAgentTool(
   if (hasName(name, ["fetch", "web_fetch", "webfetch", "fetch_url"])) {
     return {
       category: "fetch",
-      label: "Fetch",
+      label: t("agents.activity.toolLabels.fetch"),
       summary: stringArgument(tool.args, ["url"]),
     };
   }
   return {
     category: "other",
-    label: humanizeToolName(tool.name),
+    label: humanizeToolName(tool.name, t),
     summary: null,
   };
 }
@@ -1335,38 +1403,74 @@ export function agentToolStatus(
 export function agentToolStepLabel(
   category: AgentToolCategory,
   status: AgentToolStatus,
+  t: TFunction,
 ): string {
   const running = status === "running";
   switch (category) {
     case "shell":
-      return running ? "Running" : "Terminal";
+      return t(
+        running
+          ? "agents.activity.toolStepRunning.shell"
+          : "agents.activity.toolStepDone.shell",
+      );
     case "read":
-      return running ? "Reading" : "Read";
+      return t(
+        running
+          ? "agents.activity.toolStepRunning.read"
+          : "agents.activity.toolStepDone.read",
+      );
     case "edit":
-      return running ? "Editing" : "Edited";
+      return t(
+        running
+          ? "agents.activity.toolStepRunning.edit"
+          : "agents.activity.toolStepDone.edit",
+      );
     case "write":
-      return running ? "Writing" : "Wrote";
+      return t(
+        running
+          ? "agents.activity.toolStepRunning.write"
+          : "agents.activity.toolStepDone.write",
+      );
     case "search":
-      return running ? "Searching" : "Searched";
+      return t(
+        running
+          ? "agents.activity.toolStepRunning.search"
+          : "agents.activity.toolStepDone.search",
+      );
     case "fetch":
-      return running ? "Fetching" : "Fetched";
+      return t(
+        running
+          ? "agents.activity.toolStepRunning.fetch"
+          : "agents.activity.toolStepDone.fetch",
+      );
     case "other":
-      return running ? "Running tool" : "Tool";
+      return t(
+        running
+          ? "agents.activity.toolStepRunning.other"
+          : "agents.activity.toolStepDone.other",
+      );
   }
 }
 
-function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString()} ${count === 1 ? one : many}`;
-}
+type SummaryClause = { lead: string; inline: string };
 
-function naturalList(parts: string[]): string {
-  if (parts.length <= 1) return parts[0] ?? "";
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
-}
-
-function capitalize(value: string): string {
-  return value ? value[0].toUpperCase() + value.slice(1) : value;
+function naturalSummaryList(parts: SummaryClause[], t: TFunction): string {
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0].lead;
+  if (parts.length === 2) {
+    return t("agents.activity.summary.listTwo", {
+      first: parts[0].lead,
+      second: parts[1].inline,
+    });
+  }
+  const items = [
+    parts[0].lead,
+    ...parts.slice(1, -1).map((part) => part.inline),
+  ].join(t("agents.activity.summary.listSep"));
+  return t("agents.activity.summary.listMany", {
+    items,
+    last: parts.at(-1)!.inline,
+  });
 }
 
 /** Codex reports inProgress/pendingInit; Claude Code reports running. */
@@ -1378,6 +1482,7 @@ export function isSubagentRunning(status: string): boolean {
  * Code agent type and task description. */
 export function describeSubagentActivity(
   activity: AgentSubagentActivity,
+  t: TFunction,
 ): { label: string; summary: string | null } {
   const running = isSubagentRunning(activity.status);
   const count = Math.max(1, activity.receivers.length);
@@ -1386,36 +1491,44 @@ export function describeSubagentActivity(
     .join(" · ") || null;
   if (activity.action === "task") {
     return {
-      label: running
-        ? "Running subagent"
-        : activity.status === "failed"
-          ? "Subagent failed"
-          : activity.status === "stopped"
-            ? "Subagent stopped"
-            : "Ran subagent",
+      label: t(
+        running
+          ? "agents.activity.subagent.running"
+          : activity.status === "failed"
+            ? "agents.activity.subagent.failed"
+            : activity.status === "stopped"
+              ? "agents.activity.subagent.stopped"
+              : "agents.activity.subagent.ran",
+      ),
       summary,
     };
   }
   const label =
     activity.action === "spawnAgent"
-      ? running
-        ? "Starting subagent"
-        : "Started subagent"
+      ? t(
+          running
+            ? "agents.activity.subagent.starting"
+            : "agents.activity.subagent.started",
+        )
       : activity.action === "sendInput"
-        ? "Sent subagent input"
+        ? t("agents.activity.subagent.sentInput")
         : activity.action === "wait"
-          ? running
-            ? "Waiting for subagents"
-            : "Waited for subagents"
+          ? t(
+              running
+                ? "agents.activity.subagent.waiting"
+                : "agents.activity.subagent.waited",
+            )
           : activity.action === "closeAgent"
-            ? "Closed subagent"
-            : `${count} ${count === 1 ? "subagent" : "subagents"}`;
+            ? t("agents.activity.subagent.closed")
+            : t("agents.activity.subagent.count", { count });
   return { label, summary };
 }
 
 export function describeAgentActivity(
   entries: AgentActivityEntry[],
   active: boolean,
+  t: TFunction,
+  locale: string,
 ): AgentActivityPresentation {
   const tools = entries.flatMap((entry) =>
     entry.type === "tool" ? [entry.tool] : [],
@@ -1430,15 +1543,23 @@ export function describeAgentActivity(
         (entry) => entry.activity.status === "failed",
       );
       return {
-        label: running
-          ? `Running ${plural(subagents.length, "subagent")}`
-          : `Used ${plural(subagents.length, "subagent")}`,
+        label: t(
+          running
+            ? "agents.activity.subagent.runningCount"
+            : "agents.activity.subagent.usedCount",
+          {
+            count: subagents.length,
+            formattedCount: subagents.length.toLocaleString(locale),
+          },
+        ),
         secondary: null,
         status: running ? "running" : failed ? "failed" : "completed",
       };
     }
     return {
-      label: active ? "Thinking" : "Thoughts",
+      label: t(
+        active ? "agents.activity.thinking" : "agents.activity.thoughts",
+      ),
       secondary: null,
       status: active ? "running" : "completed",
     };
@@ -1462,7 +1583,7 @@ export function describeAgentActivity(
   let searchCount = 0;
   let otherToolCount = 0;
   for (const tool of tools) {
-    const presentation = describeAgentTool(tool);
+    const presentation = describeAgentTool(tool, t);
     const identity = presentation.summary?.trim() || `tool:${tool.id}`;
     switch (presentation.category) {
       case "edit":
@@ -1485,25 +1606,73 @@ export function describeAgentActivity(
     }
   }
 
-  const summary = [
-    editedFiles.size ? `edited ${plural(editedFiles.size, "file")}` : null,
-    commandCount ? `ran ${plural(commandCount, "command")}` : null,
-    readFiles.size ? `read ${plural(readFiles.size, "file")}` : null,
-    searchCount ? `searched ${plural(searchCount, "time")}` : null,
-    otherToolCount
-      ? `used ${plural(otherToolCount, "other tool")}`
-      : null,
-  ].filter((part): part is string => part !== null);
+  const summary: SummaryClause[] = [];
+  if (editedFiles.size) {
+    const opts = {
+      count: editedFiles.size,
+      formattedCount: editedFiles.size.toLocaleString(locale),
+    };
+    summary.push({
+      lead: t("agents.activity.summary.editedLead", opts),
+      inline: t("agents.activity.summary.edited", opts),
+    });
+  }
+  if (commandCount) {
+    const opts = {
+      count: commandCount,
+      formattedCount: commandCount.toLocaleString(locale),
+    };
+    summary.push({
+      lead: t("agents.activity.summary.ranLead", opts),
+      inline: t("agents.activity.summary.ran", opts),
+    });
+  }
+  if (readFiles.size) {
+    const opts = {
+      count: readFiles.size,
+      formattedCount: readFiles.size.toLocaleString(locale),
+    };
+    summary.push({
+      lead: t("agents.activity.summary.readLead", opts),
+      inline: t("agents.activity.summary.read", opts),
+    });
+  }
+  if (searchCount) {
+    const opts = {
+      count: searchCount,
+      formattedCount: searchCount.toLocaleString(locale),
+    };
+    summary.push({
+      lead: t("agents.activity.summary.searchedLead", opts),
+      inline: t("agents.activity.summary.searched", opts),
+    });
+  }
+  if (otherToolCount) {
+    const opts = {
+      count: otherToolCount,
+      formattedCount: otherToolCount.toLocaleString(locale),
+    };
+    summary.push({
+      lead: t("agents.activity.summary.otherLead", opts),
+      inline: t("agents.activity.summary.other", opts),
+    });
+  }
   const failed = statuses.filter((candidate) => candidate === "failed").length;
   const stopped = statuses.filter((candidate) => candidate === "stopped").length;
-  const suffix = failed
-    ? `, ${plural(failed, "failed", "failed")}`
+  const baseSummary = naturalSummaryList(summary, t);
+  const label = failed
+    ? t("agents.activity.summary.withFailed", {
+        summary: baseSummary,
+        formattedCount: failed.toLocaleString(locale),
+      })
     : stopped
-      ? `, ${plural(stopped, "stopped", "stopped")}`
-      : "";
-
+      ? t("agents.activity.summary.withStopped", {
+          summary: baseSummary,
+          formattedCount: stopped.toLocaleString(locale),
+        })
+      : baseSummary;
   return {
-    label: `${capitalize(naturalList(summary))}${suffix}`,
+    label,
     secondary: null,
     status,
   };
@@ -1599,26 +1768,30 @@ export function agentActivityIsLive(entries: AgentActivityEntry[]): boolean {
   return describeAgentLiveActivity(entries) !== null;
 }
 
-export function formatAgentToolDetail(tool: AgentToolActivity): string {
-  const presentation = describeAgentTool(tool);
+export function formatAgentToolDetail(tool: AgentToolActivity, t: TFunction): string {
+  const presentation = describeAgentTool(tool, t);
   if (presentation.category === "shell") {
     const command = presentation.summary ?? formatUnknown(tool.args);
     const sections = [command ? `$ ${command}` : ""];
     if (tool.output) sections.push(tool.output.replace(/^\n+/, ""));
-    if (tool.cancelled) sections.push("Command cancelled.");
+    if (tool.cancelled) sections.push(t("agents.activity.commandCancelled"));
     else if (tool.exitCode !== null && tool.exitCode !== 0) {
-      sections.push(`Command exited with code ${tool.exitCode}.`);
+      sections.push(
+        t("agents.activity.commandExitedWithCode", { code: tool.exitCode }),
+      );
     }
     if (tool.truncated && tool.fullOutputPath) {
-      sections.push(`Output truncated. Full output: ${tool.fullOutputPath}`);
+      sections.push(
+        t("agents.activity.outputTruncated", { path: tool.fullOutputPath }),
+      );
     }
     return sections.filter(Boolean).join("\n\n");
   }
 
   const input = formatUnknown(tool.args);
   const sections = [
-    input ? `Input\n${input}` : "",
-    tool.output ? `Output\n${tool.output}` : "",
+    input ? `${t("agents.activity.input")}\n${input}` : "",
+    tool.output ? `${t("agents.activity.output")}\n${tool.output}` : "",
   ];
   return sections.filter(Boolean).join("\n\n");
 }
@@ -1640,6 +1813,7 @@ export type AgentRewindCapabilities = Pick<
 
 export function agentRewindOptions(
   capabilities: AgentRewindCapabilities,
+  t: TFunction,
 ): Array<{ mode: AgentRewindMode; label: string }> {
   const options: Array<{
     enabled: boolean | undefined;
@@ -1649,13 +1823,17 @@ export function agentRewindOptions(
     {
       enabled: capabilities.rewindConversation,
       mode: "conversation",
-      label: "Rewind conversation",
+      label: t("agents.rewind.conversation"),
     },
-    { enabled: capabilities.rewindFiles, mode: "files", label: "Rewind files" },
+    {
+      enabled: capabilities.rewindFiles,
+      mode: "files",
+      label: t("agents.rewind.files"),
+    },
     {
       enabled: capabilities.rewindBoth,
       mode: "both",
-      label: "Rewind conversation and files",
+      label: t("agents.rewind.both"),
     },
   ];
   return options.flatMap(({ enabled, mode, label }) =>

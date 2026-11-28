@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { ToolState } from "./tools";
 
 /**
@@ -16,15 +17,25 @@ export const VIEW_SKILL_TOOL_NAME = "view_skill" as const;
 export const CALL_TOOL_TOOL_NAME = "call_tool" as const;
 export const SKILL_TOOL_NAMES = [VIEW_SKILL_TOOL_NAME, CALL_TOOL_TOOL_NAME] as const;
 
-export const CHAT_SKILL_IDS = ["gmail", "calendar", "interactive_ui"] as const;
+export const CHAT_SKILL_IDS = [
+  "gmail",
+  "calendar",
+  "interactive_ui",
+  "scheduled_tasks",
+] as const;
 export type ChatSkillId = (typeof CHAT_SKILL_IDS)[number];
 
 /** How each skill is named to people and to models. */
-export const CHAT_SKILL_NAMES: Record<ChatSkillId, string> = {
-  gmail: "Gmail",
-  calendar: "Google Calendar",
-  interactive_ui: "Interactive UI",
-};
+const CHAT_SKILL_NAME_KEYS = {
+  gmail: "chat.activity.skills.names.gmail",
+  calendar: "chat.activity.skills.names.calendar",
+  interactive_ui: "chat.activity.skills.names.interactive_ui",
+  scheduled_tasks: "chat.activity.skills.names.scheduled_tasks",
+} as const;
+
+export function chatSkillName(id: ChatSkillId, t: TFunction): string {
+  return t(CHAT_SKILL_NAME_KEYS[id]);
+}
 
 export function isChatSkillId(value: unknown): value is ChatSkillId {
   return (
@@ -67,13 +78,26 @@ export function viewedSkillId(part: { type: string }): ChatSkillId | null {
 export function viewSkillActivityLabel(
   part: ViewSkillToolPart,
   active: boolean,
+  t: TFunction,
 ): string {
   const id = part.input?.id;
-  const name = isChatSkillId(id) ? CHAT_SKILL_NAMES[id] : "a";
-  if (active) return `Loading ${name} skill…`;
-  if (part.state === "output-error") return "Skill could not load";
-  if (part.state !== "output-available") return "Skill load did not complete";
-  return viewedSkillId(part) ? `Loaded ${name} skill` : "Skill unavailable";
+  const known = isChatSkillId(id);
+  const name = known ? chatSkillName(id, t) : undefined;
+  if (active) {
+    return name
+      ? t("chat.activity.skills.loadingNamed", { name })
+      : t("chat.activity.skills.loadingUnknown");
+  }
+  if (part.state === "output-error") {
+    return t("chat.activity.skills.failed");
+  }
+  if (part.state !== "output-available") {
+    return t("chat.activity.skills.incomplete");
+  }
+  if (!viewedSkillId(part)) return t("chat.activity.skills.unavailable");
+  return name
+    ? t("chat.activity.skills.loadedNamed", { name })
+    : t("chat.activity.skills.loadedUnknown");
 }
 
 type SkillMessage = {

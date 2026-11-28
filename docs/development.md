@@ -141,6 +141,97 @@ npm run test -w apps/web -- lib/chat/markdown-math.test.tsx
 E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
 ```
 
+## Identity provider sign-in validation
+
+`lib/auth/oidc.ts` reads the operator's OpenID Connect provider from the
+environment once, at startup; `docs/deploy.md` lists the variables. With one
+configured, `lib/auth/server.ts` registers it with Better Auth as the provider
+`oidc`, whose callback is `/api/auth/callback/oidc`. The ID token is verified
+against the provider's keys. Accounts are matched by email on a first sign-in
+and by the provider's subject afterwards; account creation follows
+`OIDC_AUTO_CREATE_USERS` and never the public sign-up setting.
+`/api/sign-in-methods` tells every client, before login, whether to show the
+password form and what to call the provider. Turning passwords off is enforced
+by the server on `/sign-in/email`, not by hiding the form. Two-factor and
+sign-in approval only follow a password sign-in; `/api/two-factor` reports
+`passwordSignIn: false` for an account that cannot use one, and clients then
+hide the password and two-factor settings instead of requiring setup.
+
+Desktop and mobile cannot receive the provider's redirect, so they sign in
+through the system browser with a flow of our own, described in
+`packages/shared/src/sign-in.ts`:
+
+1. The app makes a secret and opens `/api/native-sign-in/start` with the
+   secret's SHA-256 challenge, a state, and where to return: a loopback port
+   the desktop app listens on, or `overtchat://login` on mobile. No other
+   return address is accepted.
+2. The server remembers the request and sends the browser to the provider.
+   The provider's callback signs the browser in and lands on
+   `/api/native-sign-in/finish`.
+3. Finish accepts only a session newer than the request, issues a code that
+   works once for two minutes, and returns the browser to the app. It signs
+   the browser out again unless it was signed in before the app's sign-in began.
+4. The app posts the code and its secret to
+   `/api/auth/native-sign-in/exchange` and receives its own session: a bearer
+   token on desktop, a cookie on mobile. A wrong secret spends the code.
+
+Starting needs no login and stores a row, so the server allows 60 starts a
+minute in total. Requests and codes are rows in `verification`, stored by hash
+(`lib/db/nativeSignIn.ts`). A code is useless without the secret, which never
+leaves the app, so another app that registers the same URL scheme or reads the
+loopback redirect cannot use it.
+
+```sh
+npm run test -w apps/web -- lib/auth/oidc.test.ts lib/auth/native-sign-in.test.ts
+npm run test -w apps/desktop --
+npm run test -w apps/mobile -- src/lib/auth/providerSignIn.test.ts
+E2E_PORT=4881 npm run test:e2e -w apps/web -- sign-in-methods.spec.ts
+```
+
+`oidc.test.ts` drives the real auth handler against an in-process provider
+(`lib/auth/fixtures/oidc-provider.ts`): linking, refusal, account creation,
+disabled accounts, passwords off, and the native flow's single use, secret
+check, and browser sign-out. For a change to the flow or a Better Auth
+upgrade, also sign in through a real provider. Keycloak starts with a ready
+realm:
+
+```sh
+docker run --rm -p 127.0.0.1:8081:8081 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  -e KC_HOSTNAME=http://localhost:8081 \
+  -v "$PWD/apps/web/lib/auth/fixtures/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro" \
+  quay.io/keycloak/keycloak:26.4 start-dev --import-realm --http-port 8081
+
+OIDC_ISSUER_URL=http://localhost:8081/realms/overtchat OIDC_CLIENT_ID=overtchat \
+  OIDC_CLIENT_SECRET=overtchat-development-secret OIDC_PROVIDER_NAME=Keycloak \
+  npm run dev:web
+```
+
+The realm's client redirects to `http://localhost:4717`; change `redirectUris`
+in the file for another port. Its users are `admin` (`admin@example.com`) and
+`newcomer` (`newcomer@example.com`), both with the password
+`development-password`. Give the OvertChat administrator the first address to
+see an account matched by email. `newcomer` is refused until
+`OIDC_AUTO_CREATE_USERS=true` or an administrator adds that address. Repeat
+with `OIDC_DISABLE_PASSWORD_LOGIN=true`: `POST /api/auth/sign-in/email`
+answers 403, and Security settings and **Settings → Users** offer no password
+actions. A browser opening the app without a session must arrive at the
+provider without a click, and Back from there must not return to the login
+page. After **Log out** the login page must stay, showing only the provider
+button, also after a reload; `components/auth/LoginForm.tsx` remembers the
+sign-out for the tab in session storage. A failed sign-in must stay on the
+page with its message. The desktop and mobile apps always show the button.
+
+From `npm run dev:desktop`, **Continue with Keycloak** must open the default
+browser rather than a window of the app, the browser must end on "You're
+signed in", and the app must stay signed in after a restart. Opening the
+server in that browser afterwards must still ask for a login. On a phone or
+emulator the provider opens in the system browser sheet, and closing it leaves
+the login screen ready for another try. The provider must be reachable from
+the device at the issuer address, so use a LAN or tunnel address for both the
+server and the provider instead of `localhost`. The system browser session is
+a native module: build the app again rather than reloading an older build.
+
 ## CI browser and desktop smoke diagnostics
 
 Web E2E runs inside the official Playwright image
@@ -912,6 +1003,66 @@ CHAT_QUEUE_LIVE_URL=http://127.0.0.1:8001/v1 E2E_PORT=4831 npm run test:e2e -w a
 Before releasing native clients, also check queue/edit/delete/Send now on Android
 and iOS, including keyboard clearance, chat switching, and foreground recovery.
 
+## Scheduled tasks validation
+
+A scheduled task is a prompt with a schedule (`once`, `hourly`, `daily`,
+`weekdays`, `weekly`, `monthly`) and an IANA time zone. The web server process
+owns the clock: `instrumentation.ts` starts a loop that, every 30 seconds
+(`OVERTCHAT_SCHEDULED_TASKS_TICK_MS`, at least 100), claims the tasks whose
+`next_run_at` has come. Claiming inserts the run and advances `next_run_at` in
+one transaction, and `(task_id, trigger, scheduled_for)` is unique, so a time
+runs once. A run goes through `runChat` as the task's owner with
+`unattended: { title }`: a new chat titled with the task's name, no generated
+title, no Gmail send, and no scheduled tasks skill. Startup closes runs the
+last process left open. The chat such a turn creates keeps the task's name in
+`chats.scheduled_task_name`, which is what marks it in chat lists and above the
+chat; it is text rather than a reference so it outlives the task and the
+90 days of run history.
+
+Nothing pushes a run to a page: the page asks `/api/scheduled-tasks/activity`
+every 30 seconds, every 3 while a run is going, and keeps asking while hidden
+only on a device that turned alerts on. A run that ends raises the same alert
+an agent does (a toast in front, the chime and a system notification behind),
+once per browser, and not while the Scheduled page or the run's own chat is in
+front.
+
+State that the startup code and the routes must share lives on `globalThis`
+(the scheduler's state and the stream cancel registry), because the standalone
+build bundles them apart. Stopping a run from its chat only works if they do.
+For the same reason the first run the clock starts loads the startup bundle's
+own copy of the chat pipeline, about 25 MB in the standalone build; it is
+imported then rather than at startup, so a server with no tasks never pays it.
+
+Chats set tasks up through the `scheduled_tasks` skill, offered to clients that
+send `scheduledTasksSupported: true`; a client without the Scheduled page is
+not offered it. Bundled clients show the page when `/api/capabilities`
+advertises `scheduledTasks: true`.
+
+```sh
+npm run test -w packages/shared --
+npm run test -w apps/web -- lib/scheduled-tasks lib/db/scheduledTasks.test.ts app/api/scheduled-tasks app/api/chat/route.test.ts lib/chat/request.test.ts lib/notifications/chat.test.ts lib/streams/context.test.ts lib/db/chatTurns.test.ts app/api/capabilities/route.test.ts
+REDIS_URL=redis://127.0.0.1:6379 E2E_PORT=4793 npm run test:e2e -w apps/web -- scheduled-tasks.spec.ts
+```
+
+The unit tests cover schedule maths through daylight-saving changes, claiming,
+the missed-run grace period, overlap, the concurrency share, automatic pausing,
+restart recovery, the skill's tools, and the routes. The browser spec runs
+against the standalone build: a task made on the page comes due in the database
+and runs with no request from the browser, its chat appears marked as new and
+is read by opening it from the alert, then Run now, pause and delete; a chat
+sets a task up through the skill; a task given a project runs in it and is
+switched off when the project is deleted. With `REDIS_URL` set it also opens a run in progress and
+stops it, which is the check that startup code and routes share state.
+
+To watch a real model use the skill, point a model configuration at a local
+OpenAI-compatible server, start the development stack with
+`OVERTCHAT_SCHEDULED_TASKS_TICK_MS=2000`, and ask a chat for a reminder. Make a
+task due without waiting for its time with:
+
+```sh
+sqlite3 "$DATABASE_URL" "UPDATE scheduled_tasks SET next_run_at = (unixepoch() - 1) * 1000 WHERE name = 'Morning news'"
+```
+
 ## Chat pinning validation
 
 Chat pins are stored on the server and appear in the web/Electron sidebar and
@@ -965,6 +1116,103 @@ launch surfaces appear before device-local preferences can be read. Native root,
 navigation, and status-bar appearance follow the palette once the app renders.
 Validate release splash behavior with a release build, since Expo development
 clients do not reproduce all native splash properties.
+
+## Translations
+
+Interface text for the web, desktop and mobile clients lives in one catalog,
+`packages/shared/src/i18n/resources`: `en/` is the source, with one file per
+product surface, and each other language is a directory of the same files and
+shape. `@overtchat/shared/i18n` exports the
+single i18next instance, the supported languages, and how a device's language
+list maps to one of them. The choice is a device preference like the theme:
+"System" by default, saved in browser storage on web and desktop and in
+SecureStore on mobile.
+
+What is translated is the text a client owns: labels, buttons, empty states,
+confirmations, toasts, and accessibility labels. These stay as they are:
+
+- Product, provider, model and font names, code, commands, file paths, URLs,
+  and key names.
+- What a person or an agent wrote, and anything a server or connector
+  authored: API error messages, agent and tool output, push notification text.
+- Everything a model reads: system prompts, tool descriptions and tool
+  results. The server never changes the instance's language, so a shared
+  helper it calls returns English.
+
+Writing text:
+
+- In a component or hook, `const { t } = useTranslation()` and `t("key")`.
+  Never translate at module load: a constant table holds ids or keys, and the
+  component that draws it calls `t()`.
+- A language change takes effect in place: nothing is reloaded or redrawn
+  from scratch, so text must be tied to the language where it is drawn. A
+  helper whose result a component draws takes the translate function as a
+  parameter (`t: TFunction`) and the component passes the one from
+  `useTranslation()`; a memo that builds text lists `t` as a dependency. The
+  mobile client's React Compiler caches a helper's result on its arguments,
+  so a helper that reads the language on its own keeps the old language.
+- `i18n.t()` from `@overtchat/shared/i18n` is for text made at the moment
+  something happens and then handed off: a toast, an alert, a thrown error,
+  text copied or shared. It is also what the server passes to a helper that
+  takes `t`.
+- Dates, times and numbers a person reads are formatted with the locale from
+  `useFormatLocale()` (or `formatLocale()` where `i18n.t()` is allowed): the
+  active language, in the device's regional form when it has one. Never pass
+  `undefined` as the locale, which follows the device even when the person
+  chose another language. A fixed `"en-US"` is only for text a model or the
+  server reads.
+- Name keys for the product surface and the meaning, not the component:
+  `settings.appearance.theme.title`. Web and mobile share a key when the text
+  and meaning are the same; a different meaning gets its own key even when the
+  English matches.
+- One sentence is one string, with `{{variables}}` inside it. Do not join
+  translated pieces, add an "s", or change the case of a translated string in
+  code; word order, plurals and case differ by language.
+- A count uses `key_one` and `key_other` and passes `count`. Each language
+  file carries the plural forms its own grammar has, which the catalog test
+  checks against `Intl.PluralRules`. Hermes has no `Intl.PluralRules`, so
+  `apps/mobile/src/polyfills.js` installs one; without it every count reads as
+  plural.
+- Markup inside a sentence uses `<Trans>` with named tags, never HTML in a
+  string.
+- Dates, times and numbers keep using the device's regional format
+  (`toLocaleDateString(undefined, …)`); only the words around them are keys.
+
+Moving existing text into the catalog must not change the English by a
+character: the browser specs find elements by it, and passing unchanged is the
+proof. Move a whole screen or cluster of neighboring labels together, add its
+path to `TRANSLATED` in that client's `eslint.config.mjs`, and add every new
+key to every language file in the same change. In a listed path, text written
+straight into JSX, a visible prop, a toast or an alert is a lint error. The
+rule cannot see text in a constant table or a helper's return value, so read
+those by hand. For text that correctly stays English, disable the rule on that
+line with the reason.
+
+```sh
+npm run i18n:untranslated                       # what is left, per directory
+npm run i18n:untranslated -- apps/web/components/chat   # each finding in a path
+npm run test -w packages/shared --
+npm run lint -w apps/web -- && npm run lint -w apps/mobile --
+npm run typecheck
+E2E_PORT=4827 npm run test:e2e -w apps/web -- settings.spec.ts
+```
+
+The shared tests fail when a language is missing a key or has one English
+lacks, drops a variable or tag, leaves a string empty, or copies more than a
+few strings from English; the typecheck catches a mistyped key and a language
+file of the wrong shape. Neither can judge a translation, so a new or changed
+language needs a reader of it, and a check of the changed screens in that
+language for clipped or overflowing text.
+
+To add a language: add its tag to `SUPPORTED_LOCALES` and its own name to
+`LOCALE_NATIVE_NAMES` in `locales.ts`, map its system tags in
+`matchSystemLocale`, add the resource directory and register it in
+`LOCALE_RESOURCES`, and extend the locale tests. A right-to-left language also
+needs the layout work that has not been done.
+
+On native clients, also change the language in Appearance and confirm the
+screen updates at once and after a restart, and that "System" follows the
+device language.
 
 ## Mobile validation
 
@@ -1579,6 +1827,18 @@ to the internet. Before a sandbox version is published, tag a locally built imag
 as `ghcr.io/yoloyash/overtchat-sandbox:<version>` (or `overtchat-sandbox-full`) and
 run setup in development mode, which ignores pull failures.
 
+For sign-in with an identity provider, run `setup --dry-run` against a
+provider that answers (the Keycloak realm in
+[Identity provider sign-in validation](#identity-provider-sign-in-validation)
+needs an address other than `localhost`), and check that the preview's
+environment file carries the six `OIDC_*` values. A dry run writes no
+installation state; after a real setup, `installation.json` must not hold the
+client secret. In the generated stack, rerunning setup with **Keep** leaves
+the client secret as it was, **Turn it off** empties every value, and an
+unattended run changes nothing. A secret containing `$` must reach the app
+unchanged: the environment file doubles each `$`, which
+`docker compose config` shows as a single one in the app's environment.
+
 Installer binary and terminal checks are documented in [Release process](release.md).
 
 ## Agent transport validation
@@ -1940,26 +2200,69 @@ body.
 
 Who is told follows presence. Web and desktop clients post
 `/api/agent-presence` every half minute while visible, at once when that or
-the open session changes, and the desktop app also while the computer is in
-use with the window in the background. Nobody is told while a present client
-shows the session; otherwise the server sends the alert over the event stream
-of the client used most recently that wants alerts; phones get a push only
-when no such client is present. Push text names the session and what it needs
-when the device allows previews, and says only "An agent needs approval" or
-"An agent finished" otherwise. Every agent alert keeps the Android channel
-`agent-idle`, now named "Agent activity", so phones that predate this still
-show it. Notifications never carry an approval action.
+the open session changes, and the desktop app also with the window in the
+background. Each report carries `idleMs`, how long ago the client was used: a
+click, a key press, a scroll or the window gaining focus in a browser, and any
+input to the computer in the desktop app. A client is present while it was
+used within three minutes. Nobody is told while a present client shows the
+session. Otherwise the server sends the alert over the event stream of the
+present client used most recently that wants alerts, and phones stay quiet.
+With no such client, phones get a push and no client is told: a browser tab
+nobody has touched for three minutes counts as left, while the desktop app
+stays present for as long as the computer is in use. Servers that predate
+`idleMs` refuse a report that carries it; the client then leaves it out, and
+such a client counts as used whenever it reports in. Push text names the session and what it needs when the device
+allows previews, and says only "An agent needs approval" or "An agent
+finished" otherwise. Every agent alert keeps the Android channel `agent-idle`,
+now named "Agent activity", so phones that predate this still show it.
+Notifications never carry an approval action.
 
-Settings → General → Agent alerts is per device and off by default: a chime
-(rising for a request, falling for a finished turn) and system notifications,
-which need notification permission. In front, an alert is a toast with an
-Open button; in the background, a system notification whose click reveals the
-window. The favicon and the desktop dock or taskbar icon count sessions that
+Settings → General → Alerts is per device and covers agents and chat replies:
+a chime (rising for a request, falling for a finished turn or reply) and
+system notifications, which need notification permission. Both start on in
+the desktop app and off in a browser, which may only ask for permission from
+a click. A browser that has never chosen is offered them once, above the
+composer of an agent session or of a chat whose reply finished unseen
+(`apps/web/components/AlertsIntro.tsx`): "Enable notifications" asks the
+browser and turns both on, "Not now" leaves them to Settings, and either
+answer ends the offer on that device. When the browser later blocks
+the site, the system notifications switch shows off and says why. In front,
+an alert is a toast with an Open button; in the background, a system
+notification whose click reveals the window and which closes once its session
+is open. A window that can be seen but may not notify shows the toast
+instead. The favicon and the desktop dock or taskbar icon count sessions that
 need input, failed, or finished unseen, whatever the device wants. The
 desktop bridge gained optional `setBadge`, `revealWindow` and
 `getSystemIdleSeconds`; the UI treats them as absent on older apps. Mobile
 marks a session read when it is open in the foreground and whenever a turn
 ends while it is open.
+
+macOS asks whether the desktop app may notify the first time the app reaches
+for notifications, and shows none until that is answered. The app reaches for
+them at startup (`requestNotificationAccess` in
+`apps/desktop/src/main/permissions.ts`) so the question appears with the app
+in front, not with the first alert, which only comes with the window in the
+background. Electron does not report the answer, so a refusal in System
+Settings → Notifications leaves the switch on while nothing is shown.
+
+macOS refuses the request outright ("Notifications are not allowed for this
+application") for an ad-hoc signed build such as `package:mac` makes, and for
+a build run from `/tmp`, so neither can show the question or a notification.
+To check the question, sign the packaged app with a real identity, put it in
+an Applications folder, and start it with `ELECTRON_DEBUG_NOTIFICATIONS=1
+ELECTRON_ENABLE_LOGGING=1`: a refusal is logged at once, and a request that
+was put to the owner adds the app to System Settings → Notifications within
+seconds of launch. Use a bundle identifier of its own, since macOS asks once
+per identifier.
+
+A chat's reply is announced by the page that streamed it
+(`apps/web/lib/notifications/useChatReplyAlert.ts`), not by the server: when
+the reply runs to its end with the window in the background, the page plays
+the chime and shows a system notification with the start of the reply, which
+closes when the window is in front again. A reply that was watched, stopped
+by hand or failed says nothing, and neither does a manual compaction. The
+phone push for a finished reply is separate and unchanged: it does not look
+at presence. `apps/web/e2e/chat-reply-alerts.spec.ts` covers the page.
 
 Toasts sit at the top right, under the header row, so none covers the
 composer. An alert's toast shows the state, the session and two lines of the
@@ -1978,7 +2281,11 @@ is wanted and could not play, the notification makes the system's own sound.
 
 `apps/web/e2e/agent-notifications.spec.ts` streams scripted alerts and checks
 the heartbeat, the badge, both settings, both presentations, the toast's
-lifetime and which of the two sounds is heard. It records no trace: trace
+lifetime, the toast shown in place of a blocked notification, the
+notification closed when its session opens, and which of the two sounds is
+heard. `apps/web/e2e/agent-runtime.spec.ts` checks the offer in a session. A
+headless browser reports notifications as blocked whatever it was granted, so
+these tests give the page their own `Notification`. It records no trace: trace
 snapshots count as using the page, which lets it play sound. For the same
 reason the page reports what it showed and played itself; `page.evaluate`
 counts as using it too.

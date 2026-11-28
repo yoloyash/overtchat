@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch, getApiBase, uploadFile } from "@/lib/api";
 import type { AttachmentCategory } from "@/lib/chat/attachments";
@@ -29,7 +30,7 @@ async function readError(res: Response, fallback: string): Promise<string> {
 
 async function fetchProjectFiles(projectId: string): Promise<ProjectFileItem[]> {
   const res = await authFetch(`${getApiBase()}/api/projects/${projectId}/files`);
-  if (!res.ok) throw new Error(`Failed to load project files (${res.status})`);
+  if (!res.ok) throw new Error(i18n.t("common.mobile.errors.loadProjectFiles", { status: res.status }));
   const json = (await res.json()) as { files: ProjectFileItem[] };
   return json.files;
 }

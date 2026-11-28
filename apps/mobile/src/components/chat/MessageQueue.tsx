@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Pressable,
   ScrollView,
@@ -25,10 +26,11 @@ export function MessageQueue({
   error,
 }: MessageQueueProps) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   if (!messages.length && !error) return null;
   return (
     <View
-      accessibilityLabel="Queued messages"
+      accessibilityLabel={t("chat.queue.queuedMessages")}
       style={[styles.container, { borderColor: colors.border }]}
     >
       <Text
@@ -38,7 +40,7 @@ export function MessageQueue({
           fontSize: 12,
         }}
       >
-        {paused ? "Queue paused — use Send now to continue" : "Queued messages"}
+        {paused ? t("chat.queue.pausedStatus") : t("chat.queue.queuedMessages")}
       </Text>
       {error ? (
         <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
@@ -70,28 +72,28 @@ export function MessageQueue({
                     numberOfLines={1}
                     style={{ color: colors.mutedForeground, fontSize: 12 }}
                   >
-                    {file.filename || "Attachment"}
+                    {file.filename || t("chat.queue.attachmentFallback")}
                   </Text>
                 ))}
               </View>
               <QueueButton
                 label={
                   sendingId === message.id
-                    ? "Sending queued message"
-                    : "Send now"
+                    ? t("chat.mobile.queue.sending")
+                    : t("chat.queue.sendNow")
                 }
                 icon="arrow-up"
                 disabled={sendingId !== null}
                 onPress={() => void queue.sendNow(message.id)}
               />
               <QueueButton
-                label="Edit queued message"
+                label={t("chat.queue.editMessage")}
                 icon="pencil"
                 disabled={sendingId === message.id}
                 onPress={() => queue.edit(message.id)}
               />
               <QueueButton
-                label="Delete queued message"
+                label={t("chat.queue.deleteMessage")}
                 icon="trash-outline"
                 disabled={sendingId === message.id}
                 onPress={() => queue.remove(message.id)}
@@ -137,11 +139,12 @@ function QueueEditor({
   queue: ChatMessageQueue;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const [text, setText] = useState(message.text);
   return (
     <View style={{ gap: 8, paddingVertical: 8 }}>
       <TextInput
-        accessibilityLabel="Edit queued message text"
+        accessibilityLabel={t("chat.queue.editMessageText")}
         multiline
         autoFocus
         value={text}
@@ -161,7 +164,7 @@ function QueueEditor({
           numberOfLines={1}
           style={{ color: colors.mutedForeground, fontSize: 12 }}
         >
-          {file.filename || "Attachment"}
+          {file.filename || t("chat.queue.attachmentFallback")}
         </Text>
       ))}
       <View style={styles.row}>
@@ -171,14 +174,14 @@ function QueueEditor({
           onPress={() => queue.save(message.id, text)}
           style={styles.textButton}
         >
-          <Text style={{ color: colors.foreground }}>Save queued message</Text>
+          <Text style={{ color: colors.foreground }}>{t("chat.queue.saveMessage")}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={() => queue.edit(null)}
           style={styles.textButton}
         >
-          <Text style={{ color: colors.mutedForeground }}>Cancel edit</Text>
+          <Text style={{ color: colors.mutedForeground }}>{t("chat.queue.cancelEdit")}</Text>
         </Pressable>
       </View>
     </View>

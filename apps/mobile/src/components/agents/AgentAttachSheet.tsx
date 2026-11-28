@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { BackHandler, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -6,12 +7,13 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 
 const sources = [
-  { camera: true, label: "Camera", icon: "camera-outline" },
-  { camera: false, label: "Photos", icon: "image-outline" },
+  { camera: true, labelKey: "agents.mobile.attachSheet.camera", icon: "camera-outline" },
+  { camera: false, labelKey: "agents.mobile.attachSheet.photos", icon: "image-outline" },
 ] as const;
 
 /** Image sources for an agent message, presented like the chat attach sheet. */
@@ -24,6 +26,7 @@ export function AgentAttachSheet({
   onClose: () => void;
   onPick: (camera: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<BottomSheetModal>(null);
   const presented = useRef(false);
   const picked = useRef<boolean | null>(null);
@@ -48,7 +51,7 @@ export function AgentAttachSheet({
   }, [visible]);
   const backdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -59,6 +62,7 @@ export function AgentAttachSheet({
   );
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={backdrop}
@@ -85,14 +89,16 @@ export function AgentAttachSheet({
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          Add images
+          {t("agents.mobile.attachSheet.title")}
         </Text>
         <View style={styles.tiles}>
-          {sources.map((source) => (
+          {sources.map((source) => {
+            const label = t(source.labelKey);
+            return (
             <Pressable
-              key={source.label}
+              key={source.labelKey}
               accessibilityRole="button"
-              accessibilityLabel={source.label}
+              accessibilityLabel={label}
               onPress={() => {
                 picked.current = source.camera;
                 ref.current?.dismiss();
@@ -114,10 +120,11 @@ export function AgentAttachSheet({
                   fontSize: 13,
                 }}
               >
-                {source.label}
+                {label}
               </Text>
             </Pressable>
-          ))}
+            );
+          })}
         </View>
       </BottomSheetView>
     </BottomSheetModal>

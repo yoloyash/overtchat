@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { SettingsModelIcon } from "@/components/settings/SettingsModelIcon";
 import { SettingsStatus } from "@/components/settings/SettingsStatus";
 import { useRef, useState } from "react";
@@ -33,6 +34,7 @@ export default function Models() {
   );
 }
 function ModelList() {
+  const { t } = useTranslation();
   const query = useSettingsQuery<{ modelConfigs: SettingsModelConfig[] }>(
     "/model-configs?admin=1",
     true,
@@ -46,7 +48,7 @@ function ModelList() {
   useRefreshOnFocus(query.refetch);
   const models = query.data?.modelConfigs ?? [];
   const filtered = models.filter((m) =>
-    `${m.label} ${m.model} ${providerLabel(m)}`
+    `${m.label} ${m.model} ${providerLabel(m, t)}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
@@ -73,9 +75,9 @@ function ModelList() {
   }
   return (
     <SettingsPage
-      title="Models"
+      title={t("models.page.title")}
       action={{
-        label: "Add model",
+        label: t("models.page.addModel"),
         icon: "add",
         disabled: reorder.isPending,
         onPress: () => router.push("/settings/models/new"),
@@ -86,7 +88,7 @@ function ModelList() {
         <>
           {!reordering && (
             <SearchField
-              label="Search models"
+              label={t("models.page.searchLabel")}
               value={search}
               onChangeText={setSearch}
             />
@@ -109,12 +111,14 @@ function ModelList() {
                   flex: 1,
                 }}
               >
-                Available models
+                {t("models.mobile.list.availableTitle")}
               </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  reordering ? "Done reordering models" : "Reorder models"
+                  reordering
+                    ? t("models.mobile.list.doneReorderingLabel")
+                    : t("models.mobile.list.reorderLabel")
                 }
                 accessibilityState={{ disabled: modeDisabled }}
                 disabled={modeDisabled}
@@ -136,18 +140,20 @@ function ModelList() {
                     fontSize: 15,
                   }}
                 >
-                  {reordering ? "Done" : "Reorder"}
+                  {reordering
+                    ? t("common.actions.done")
+                    : t("models.mobile.list.reorder")}
                 </Text>
               </Pressable>
             </View>
             {!!search && (
-              <Label muted>Clear search to change model order.</Label>
+              <Label muted>{t("models.page.reorderClearSearch")}</Label>
             )}
             {reordering && (
               <Label muted>
                 {reorder.isPending
-                  ? "Saving order…"
-                  : "Use the arrows to set the model order for everyone. Changes save automatically."}
+                  ? t("models.mobile.list.savingOrder")
+                  : t("models.mobile.list.reorderHint")}
               </Label>
             )}
             {reorder.error && <Label error>{reorder.error.message}</Label>}
@@ -155,7 +161,7 @@ function ModelList() {
               description={
                 reordering
                   ? undefined
-                  : "Open a model to edit, test, or change availability."
+                  : t("models.mobile.list.sectionDescription")
               }
             >
               {filtered.map((m, index) => (
@@ -168,10 +174,23 @@ function ModelList() {
                       model={m.model}
                     />
                   }
-                  detail={`${providerLabel(m)} · ${m.modelType === "chat" ? "Chat" : "Image"}`}
+                  detail={t(
+                    m.modelType === "chat"
+                      ? "models.mobile.list.rowDetailChat"
+                      : "models.mobile.list.rowDetailImage",
+                    { provider: providerLabel(m, t) },
+                  )}
                   status={
                     <SettingsStatus
-                      label={`${m.enabled ? "Enabled" : "Disabled"}${m.taskModel ? " · Task model" : ""}`}
+                      label={t(
+                        m.enabled
+                          ? m.taskModel
+                            ? "models.mobile.list.statusEnabledTask"
+                            : "models.mobile.list.statusEnabled"
+                          : m.taskModel
+                            ? "models.mobile.list.statusDisabledTask"
+                            : "models.mobile.list.statusDisabled",
+                      )}
                       state={m.enabled ? "ready" : "neutral"}
                     />
                   }
@@ -189,13 +208,13 @@ function ModelList() {
                   {reordering && (
                     <View style={{ flexDirection: "row", gap: 2 }}>
                       <MoveButton
-                        label={`Move ${m.label} up`}
+                        label={t("models.item.moveUpLabel", { label: m.label })}
                         direction="up"
                         disabled={busy || !!query.error || index === 0}
                         onPress={() => move(m.id, -1)}
                       />
                       <MoveButton
-                        label={`Move ${m.label} down`}
+                        label={t("models.item.moveDownLabel", { label: m.label })}
                         direction="down"
                         disabled={
                           busy || !!query.error || index === models.length - 1
@@ -208,28 +227,32 @@ function ModelList() {
               ))}
               {!!models.length && !filtered.length && (
                 <Row
-                  title="No matching models"
-                  detail="Try another name or provider."
+                  title={t("models.mobile.list.noMatchesTitle")}
+                  detail={t("models.mobile.list.noMatchesDetail")}
                 />
               )}
               {!models.length && (
                 <Row
-                  title="No models configured"
-                  detail="Add your first chat or image model."
+                  title={t("models.mobile.list.emptyTitle")}
+                  detail={t("models.mobile.list.emptyDetail")}
                 />
               )}
             </Section>
           </View>
           <Section
-            title="Background tasks"
-            description="The task model generates chat titles for everyone on this server."
+            title={t("models.backgroundTasks.title")}
+            description={t("models.mobile.list.backgroundTasksDescription")}
           >
             <Choice
-              title="Task model"
+              title={t("models.backgroundTasks.taskModelTitle")}
+              searchLabel={t("models.mobile.list.searchTaskModel")}
               value={models.find((m) => m.taskModel)?.id ?? ""}
               disabled={mutation.isPending || reorder.isPending}
               options={[
-                { value: "", label: "Same as chat model" },
+                {
+                  value: "",
+                  label: t("models.backgroundTasks.sameAsChatModel"),
+                },
                 ...models
                   .filter((m) => m.modelType === "chat")
                   .map((m) => ({

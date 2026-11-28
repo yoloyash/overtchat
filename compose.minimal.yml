@@ -16,7 +16,7 @@
 
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.35.0}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.36.0}
     restart: always
     # For Podman automatic updates, use the :latest tag and uncomment these
     # lines; see docs/deploy.md#minimal-compose-updates.
@@ -35,6 +35,12 @@ services:
       # LAN address such as http://192.168.0.5:4718, uncomment this to accept
       # that anyone on the network path can read the connector token.
       # HOST_CONNECTOR_ALLOW_INSECURE_HTTP: "true"
+      # Sign in with your identity provider (OpenID Connect); see
+      # docs/deploy.md#sign-in-with-an-identity-provider. Put the secret in .env.
+      # OIDC_ISSUER_URL: https://id.example.com
+      # OIDC_CLIENT_ID: overtchat
+      # OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      # OIDC_PROVIDER_NAME: Example ID
       # No bundled search or speech containers in this stack.
       OVERTCHAT_INSTALLED_CAPABILITIES: ""
       REDIS_URL: redis://redis:6379

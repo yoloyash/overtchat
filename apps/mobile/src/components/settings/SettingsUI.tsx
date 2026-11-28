@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useFocusEffect } from "expo-router";
 import {
@@ -41,6 +43,7 @@ export function SettingsPage({
     disabled?: boolean;
   };
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   const headerHeight = useHeaderHeight();
   return (
@@ -49,7 +52,7 @@ export function SettingsPage({
         options={{
           headerShown: true,
           title,
-          headerBackTitle: "Back",
+          headerBackTitle: t("common.actions.back"),
           headerTitleStyle: { fontFamily: fonts.serifSemiBold },
           headerShadowVisible: false,
           headerRight: action
@@ -110,7 +113,7 @@ export function Section({
   const { colors, radii } = useTheme();
   return (
     <View style={{ gap: 8 }}>
-      {title && <Label muted>{title.toUpperCase()}</Label>}
+      {title && <Label muted uppercase>{title}</Label>}
       <View
         style={{
           borderRadius: radii.lg,
@@ -130,10 +133,12 @@ export function Label({
   children,
   muted = false,
   error = false,
+  uppercase = false,
 }: {
   children: ReactNode;
   muted?: boolean;
   error?: boolean;
+  uppercase?: boolean;
 }) {
   const { colors, fonts } = useTheme();
   return (
@@ -148,6 +153,7 @@ export function Label({
         fontFamily: fonts.sansRegular,
         fontSize: muted ? 12 : 15,
         lineHeight: muted ? 18 : 22,
+        textTransform: uppercase ? "uppercase" : undefined,
       }}
     >
       {children}
@@ -301,6 +307,7 @@ export function Toggle({
 }
 export function Choice<T extends string>({
   title,
+  searchLabel,
   detail,
   value,
   options,
@@ -308,6 +315,7 @@ export function Choice<T extends string>({
   disabled,
 }: {
   title: string;
+  searchLabel?: string;
   detail?: string;
   value: T;
   options: readonly { value: T; label: string; leading?: ReactNode }[];
@@ -328,6 +336,7 @@ export function Choice<T extends string>({
       />
       <SelectionSheet
         title={title}
+        searchLabel={searchLabel}
         visible={open}
         value={value}
         options={options}
@@ -382,6 +391,7 @@ export function SearchField({
   value: string;
   onChangeText: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   return (
     <View
@@ -422,7 +432,7 @@ export function SearchField({
       {!!value && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t("common.actions.clearSearch")}
           onPress={() => onChangeText("")}
           style={{
             minWidth: 44,
@@ -492,13 +502,18 @@ export function QueryState({
 }: {
   query: { isPending: boolean; error: Error | null; refetch: () => unknown };
 }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   return query.isPending ? (
     <ActivityIndicator color={colors.primary} />
   ) : query.error ? (
     <>
       <Label error>{query.error.message}</Label>
-      <Action secondary title="Retry" onPress={() => void query.refetch()} />
+      <Action
+        secondary
+        title={t("common.actions.retry")}
+        onPress={() => void query.refetch()}
+      />
     </>
   ) : null;
 }
@@ -514,16 +529,21 @@ export function useRefreshOnFocus(refetch: () => unknown) {
   );
 }
 export function useUnsavedChanges(dirty: boolean) {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   usePreventRemove(dirty, ({ data }) => {
-    Alert.alert("Discard changes?", "Your changes haven’t been saved.", [
-      { text: "Keep editing", style: "cancel" },
-      {
-        text: "Discard",
-        style: "destructive",
-        onPress: () => navigation.dispatch(data.action),
-      },
-    ]);
+    Alert.alert(
+      t("settings.mobile.unsaved.title"),
+      t("settings.mobile.unsaved.message"),
+      [
+        { text: t("settings.mobile.unsaved.keepEditing"), style: "cancel" },
+        {
+          text: t("settings.mobile.unsaved.discard"),
+          style: "destructive",
+          onPress: () => navigation.dispatch(data.action),
+        },
+      ],
+    );
   });
 }
 
@@ -542,7 +562,7 @@ export function useAction() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Couldn’t complete the request.",
+          : i18n.t("settings.mobile.errors.requestFailed"),
       );
     } finally {
       running.current = false;
@@ -560,10 +580,11 @@ export function WebRow({
   path: string;
   detail?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Row
       title={title}
-      detail={detail ?? "Open in browser"}
+      detail={detail ?? t("settings.mobile.common.openInBrowser")}
       external
       onPress={() => void openSettingsOnWeb(path)}
     />
@@ -575,7 +596,7 @@ export async function openSettingsOnWeb(path: string) {
   try {
     await Linking.openURL(`${server.replace(/\/$/, "")}${path}`);
   } catch (error) {
-    toastError("Couldn’t open browser", error);
+    toastError(i18n.t("settings.mobile.errors.openBrowserFailed"), error);
   }
 }
 const styles = StyleSheet.create({

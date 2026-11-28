@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -5,6 +6,7 @@ import {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import { forwardRef, useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
@@ -21,13 +23,14 @@ export const CreateProjectSheet = forwardRef<
   }
 >(function CreateProjectSheet({ submitting, onSubmit }, ref) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardState((s) => (s.isVisible ? s.height : 0));
   const [name, setName] = useState("");
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
+      <SheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
@@ -54,6 +57,7 @@ export const CreateProjectSheet = forwardRef<
 
   return (
     <BottomSheetModal
+      handleComponent={SheetHandle}
       ref={ref}
       enableDynamicSizing
       backdropComponent={renderBackdrop}
@@ -72,7 +76,7 @@ export const CreateProjectSheet = forwardRef<
             { color: colors.popoverForeground, fontFamily: fonts.serifSemiBold },
           ]}
         >
-          New project
+          {t("sidebar.sections.newProject")}
         </Text>
         <Text
           style={[
@@ -80,13 +84,13 @@ export const CreateProjectSheet = forwardRef<
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
           ]}
         >
-          Give it a name. You can add instructions after creating it.
+          {t("sidebar.projects.createDialog.description")}
         </Text>
 
         <BottomSheetTextInput
           value={name}
           onChangeText={setName}
-          placeholder="e.g. Work — weekly review"
+          placeholder={t("sidebar.projects.createDialog.namePlaceholder")}
           placeholderTextColor={colors.mutedForeground}
           maxLength={120}
           autoFocus
@@ -106,7 +110,7 @@ export const CreateProjectSheet = forwardRef<
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Cancel"
+            accessibilityLabel={t("common.actions.cancel")}
             onPress={dismiss}
             style={({ pressed }) => [
               styles.button,
@@ -124,12 +128,12 @@ export const CreateProjectSheet = forwardRef<
                 { color: colors.foreground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              Cancel
+              {t("common.actions.cancel")}
             </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Create"
+            accessibilityLabel={t("common.actions.create")}
             disabled={!canSubmit}
             onPress={submit}
             style={({ pressed }) => [
@@ -154,7 +158,7 @@ export const CreateProjectSheet = forwardRef<
                   },
                 ]}
               >
-                Create
+                {t("common.actions.create")}
               </Text>
             )}
           </Pressable>

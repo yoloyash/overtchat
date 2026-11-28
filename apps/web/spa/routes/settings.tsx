@@ -5,6 +5,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
@@ -58,17 +59,18 @@ export const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/settings",
   component: function SettingsLayout() {
+    const { t } = useTranslation();
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
           <SidebarToggle />
-          <span className="text-sm font-semibold tracking-tight">Settings</span>
+          <span className="text-sm font-semibold tracking-tight">{t("app.pages.settings.title")}</span>
           <div className="flex-1" />
           <Button
             render={<Link to="/" />}
             variant="ghost"
             size="icon-sm"
-            aria-label="Close settings"
+            aria-label={t("app.pages.settings.close")}
           >
             <X />
           </Button>

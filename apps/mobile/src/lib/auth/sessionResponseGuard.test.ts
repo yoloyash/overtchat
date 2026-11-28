@@ -1,5 +1,6 @@
 import { createAuthClient } from "better-auth/client";
 import { describe, expect, it, vi } from "vitest";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   isSessionPayload,
   sessionResponseGuard,
@@ -55,7 +56,7 @@ describe("sessionResponseGuard", () => {
 
     expect(result.data).toBeNull();
     expect(result.error?.status).toBe(502);
-    expect(unexpectedSessionMessage(result.error)).toMatch(/proxy or Wi-Fi sign-in page/);
+    expect(unexpectedSessionMessage(result.error, i18n.t)).toMatch(/proxy or Wi-Fi sign-in page/);
   });
 
   it("rejects JSON that isn't a session", async () => {
@@ -84,7 +85,7 @@ describe("sessionResponseGuard", () => {
       () => new Response("{}", { status: 401, headers: { "content-type": "application/json" } }),
     ).getSession();
     expect(unauthorized.error?.status).toBe(401);
-    expect(unexpectedSessionMessage(unauthorized.error)).toBeNull();
+    expect(unexpectedSessionMessage(unauthorized.error, i18n.t)).toBeNull();
   });
 
   it("keeps the last good session when a later check returns HTML", async () => {
@@ -99,7 +100,7 @@ describe("sessionResponseGuard", () => {
       page = true;
       await atom.get().refetch();
       expect(atom.get().data?.user.id).toBe("user-1");
-      expect(unexpectedSessionMessage(atom.get().error)).not.toBeNull();
+      expect(unexpectedSessionMessage(atom.get().error, i18n.t)).not.toBeNull();
     } finally {
       stop();
     }

@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,6 +20,7 @@ import {
   documentIdOf,
   findDocumentPart,
   followLiveDocuments,
+  hasScheduledTaskChange,
   hasSuccessfulMemoryMutation,
   isDocumentToolPart,
   modelSupportsChatReasoningLevel,
@@ -38,6 +40,7 @@ import {
   chatKeys,
   libraryKeys,
   personalizationKeys,
+  scheduledTaskKeys,
 } from "@/lib/queries/keys";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import type { IntegrationId } from "@/lib/integrations/schema";
@@ -49,6 +52,7 @@ import {
   useLoadOlderChatMessages,
   type ChatListItem,
 } from "@/lib/queries/chats";
+import { useChatReplyAlert } from "@/lib/notifications/useChatReplyAlert";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import {
@@ -96,6 +100,7 @@ import {
 } from "@/lib/chat/composer-drafts";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
+import { AlertsIntro } from "@/components/AlertsIntro";
 import { toast } from "@/components/ui/toast";
 import { ChatFilesPanel } from "./ChatFiles";
 import { ChatHeader } from "./ChatHeader";
@@ -139,6 +144,8 @@ interface Props {
   initialModelId?: string | null;
   isNew?: boolean;
   projectId?: string | null;
+  /** The scheduled task whose run started this chat, when one did. */
+  scheduledTaskName?: string;
   initialQuery?: string;
   /** Called once when a new chat is first saved, so its URL can move to `/chat/:id`. */
   onPersisted?: () => void;
@@ -157,10 +164,12 @@ export function ChatArea({
   initialModelId,
   isNew,
   projectId,
+  scheduledTaskName,
   initialQuery,
   onPersisted,
   renderEmptyState,
 }: Props) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { openPalette } = useSidebar();
@@ -199,8 +208,8 @@ export function ChatArea({
   );
   const searchAvailable = webSearchEnabled && modelSupportsSearch;
   const searchUnavailableReason = !webSearchEnabled
-    ? "Web search is disabled in Settings → Tools"
-    : "Web search is unavailable for this model";
+    ? t("chat.composer.unavailable.searchDisabled")
+    : t("chat.composer.unavailable.searchModel");
 
   const [searchRequested, setSearchRequested] = useState(false);
   const [openuiEnabled] = useLocalStorage<boolean>(
@@ -208,7 +217,7 @@ export function ChatArea({
     DEFAULT_OPENUI_ENABLED,
   );
   const openuiAvailable = modelSupportsSearch;
-  const openuiUnavailableReason = "Interactive UI is unavailable for this model";
+  const openuiUnavailableReason = t("chat.composer.unavailable.openuiModel");
   const [openuiRequested, setOpenuiRequested] = useState(false);
   const { data: capabilitiesData } = usePublicCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
@@ -234,8 +243,8 @@ export function ChatArea({
     ?.find((chat) => chat.id === chatId)
     ?.title?.trim();
   const headerTitle = temporary
-    ? "Temporary chat"
-    : persistedTitle || (isNew ? null : "Untitled");
+    ? t("chat.empty.temporaryTitle")
+    : persistedTitle || (isNew ? null : t("common.states.untitled"));
   const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
     () =>
       initialQuery?.trim()
@@ -309,6 +318,11 @@ export function ChatArea({
   useEffect(() => {
     temporaryRef.current = temporary;
   }, [temporary]);
+  const replyAlert = useChatReplyAlert(chatId);
+  const replyFinishedRef = useRef(replyAlert.replyFinished);
+  useEffect(() => {
+    replyFinishedRef.current = replyAlert.replyFinished;
+  }, [replyAlert.replyFinished]);
 
   const {
     messages,
@@ -355,7 +369,7 @@ export function ChatArea({
         void qc.invalidateQueries({ queryKey: libraryKeys.all() });
       }
     },
-    onFinish: ({ message, isError }) => {
+    onFinish: ({ message, isError, isAbort }) => {
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -379,7 +393,13 @@ export function ChatArea({
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       }
+      if (hasScheduledTaskChange(message)) {
+        void qc.invalidateQueries({ queryKey: scheduledTaskKeys.all() });
+      }
       if (isError) return;
+      // Stats come with a generation that ran to its end. A reply stopped by
+      // hand has none, and neither has a summary the person asked for.
+      if (stats && !isAbort) replyFinishedRef.current(message.parts);
       setChatPersisted(true);
       void Promise.all([
         qc.invalidateQueries({ queryKey: chatKeys.list() }),
@@ -400,6 +420,8 @@ export function ChatArea({
       qc.invalidateQueries({ queryKey: chatKeys.active() }),
       qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
       qc.invalidateQueries({ queryKey: activityKeys.all() }),
+      // A reply that finished out of sight may have scheduled something.
+      qc.invalidateQueries({ queryKey: scheduledTaskKeys.all() }),
     ]);
   }, [chatId, qc]);
   const generation = useChatGenerationRecovery({
@@ -458,14 +480,14 @@ export function ChatArea({
     } catch {
       setOlderMessagesFailed(true);
       toast.error({
-        title: "Could not load older messages",
-        description: "Check your connection and try again.",
+        title: t("chat.errors.loadOlderTitle"),
+        description: t("chat.errors.checkConnection"),
       });
     } finally {
       loadingOlderMessagesRef.current = false;
       loadAllOlderMessagesRef.current = false;
     }
-  }, [addLoadedMessages, loadOlderMessages, olderMessageCursor, setMessages]);
+  }, [addLoadedMessages, loadOlderMessages, olderMessageCursor, setMessages, t]);
   const handleLoadOlderMessages = useCallback(
     () => loadOlderPages(false),
     [loadOlderPages],
@@ -494,7 +516,7 @@ export function ChatArea({
   >([]);
   const connectors = useMemo(
     () =>
-      CHAT_CONNECTORS.flatMap((connector) => {
+      CHAT_CONNECTORS.flatMap(({ descriptionKey, ...connector }) => {
         const connection = integrations?.find(
           (integration) => integration.id === connector.id,
         )?.connection;
@@ -505,23 +527,28 @@ export function ChatArea({
         return [
           {
             ...connector,
+            description: t(descriptionKey),
             requested,
             active: usable && (connection.alwaysOn || usedHere || requested),
             ambient: connection.alwaysOn,
             lockedReason:
               connection.status === "needs_reconnect"
-                ? `Reconnect ${connector.title} in Settings → Tools → Connectors`
+                ? t("chat.composer.unavailable.connectorReconnect", {
+                    connector: connector.title,
+                  })
                 : !modelSupportsSearch
-                  ? `${connector.title} is unavailable for this model`
+                  ? t("chat.composer.unavailable.connectorModel", {
+                      connector: connector.title,
+                    })
                   : connection.alwaysOn
-                    ? "Always available"
+                    ? t("chat.composer.unavailable.connectorAlwaysAvailable")
                     : usedHere
-                      ? "On for this chat"
+                      ? t("chat.composer.unavailable.connectorOnForChat")
                       : undefined,
           },
         ];
       }),
-    [integrations, messages, modelSupportsSearch, connectorsRequested],
+    [integrations, messages, modelSupportsSearch, connectorsRequested, t],
   );
   const connectorRequested = (id: IntegrationId) =>
     connectors.some((connector) => connector.id === id && connector.requested);
@@ -541,6 +568,7 @@ export function ChatArea({
     documentsSupported: true,
     codeExecutionSupported: true,
     gmailComposeSupported: true,
+    scheduledTasksSupported: true,
     forceOpenUI: openuiAvailable && forceOpenUI,
     gmailEnabled: connectorRequested("gmail"),
     calendarEnabled: connectorRequested("calendar"),
@@ -567,7 +595,7 @@ export function ChatArea({
   const openFile = useCallback((file: PanelFile) => setPanel({ kind: "file", file }), []);
   const documentTarget = panel?.kind === "document" ? panel.toolCallId : null;
   const fileTarget = panel?.kind === "file" ? panel.file : null;
-  const files = useMemo(() => conversationFiles(messages), [messages]);
+  const files = useMemo(() => conversationFiles(messages, t), [messages, t]);
   const documentPanel = useMemo(
     () => ({ activeToolCallId: documentTarget, open: openDocument }),
     [documentTarget, openDocument],
@@ -642,8 +670,8 @@ export function ChatArea({
     setContextStatus(null);
     void generation.cancel().catch(() => {
       toast.error({
-        title: "Could not stop the response",
-        description: "Check your connection and try again.",
+        title: t("chat.errors.stopResponseTitle"),
+        description: t("chat.errors.checkConnection"),
       });
     });
   }
@@ -851,7 +879,11 @@ export function ChatArea({
       setVoiceActive(false);
       return true;
     } catch (error) {
-      toast.error({ title: "Could not end voice", description: error instanceof Error ? error.message : "Try again." });
+      toast.error({
+        title: t("chat.voice.endVoiceFailedTitle"),
+        description:
+          error instanceof Error ? error.message : t("chat.errors.tryAgain"),
+      });
       return false;
     } finally { setVoiceEnding(false); }
   }
@@ -886,14 +918,16 @@ export function ChatArea({
       configured={configured}
       streaming={streaming}
       searchAvailable={searchAvailable && !voiceActive}
-      searchUnavailableReason={voiceActive
-        ? "End voice to require a web search. Voice can still search automatically."
-        : searchUnavailableReason}
+      searchUnavailableReason={
+        voiceActive
+          ? t("chat.composer.unavailable.searchVoice")
+          : searchUnavailableReason
+      }
       searchRequested={searchAvailable && !voiceActive && searchRequested}
       openuiAvailable={openuiAvailable && !voiceActive}
       openuiUnavailableReason={
         voiceActive
-          ? "End voice to request an interactive UI."
+          ? t("chat.composer.unavailable.openuiVoice")
           : openuiUnavailableReason
       }
       openuiRequested={openuiAvailable && !voiceActive && openuiRequested}
@@ -915,15 +949,15 @@ export function ChatArea({
       voiceUnavailableReason={
         !configured
           ? modelLoading
-            ? "Loading model…"
-            : "Configure a model before starting voice"
+            ? t("chat.composer.loadingModelPlaceholder")
+            : t("chat.composer.unavailable.configureModelBeforeVoice")
           : voiceCapability?.unavailableReason === "stt-unavailable"
-            ? "Speech-to-text is disabled"
+            ? t("chat.composer.unavailable.sttDisabled")
             : voiceCapability?.unavailableReason === "tts-unavailable"
-              ? "Text-to-speech is disabled"
+              ? t("chat.composer.unavailable.ttsDisabled")
               : voiceCapability?.unavailableReason === "not-configured"
-                ? "Voice authentication is not configured"
-                : "Realtime voice is unavailable"
+                ? t("chat.composer.unavailable.voiceAuthNotConfigured")
+                : t("chat.composer.unavailable.voiceUnavailable")
       }
       attachmentsEnabled={!voiceActive}
       projectFiles={projectFiles}
@@ -934,13 +968,13 @@ export function ChatArea({
             ? {
                 onCompact: handleCompact,
                 unavailableReason: streaming
-                  ? "Wait for the response to finish"
+                  ? t("chat.composer.unavailable.waitForResponse")
                   : !configured
                     ? modelLoading
-                      ? "Loading model…"
-                      : "Configure a model first"
+                      ? t("chat.composer.loadingModelPlaceholder")
+                      : t("chat.composer.unavailable.configureModelFirst")
                     : messages.length === 0
-                      ? "Start a conversation first"
+                      ? t("chat.composer.unavailable.startConversationFirst")
                       : undefined,
               }
             : undefined,
@@ -1008,6 +1042,7 @@ export function ChatArea({
           onToggle: () => setPanel((shown) => (shown ? null : { kind: "files" })),
         }}
         title={headerTitle}
+        scheduledTaskName={scheduledTaskName}
         project={
           project && !(renderEmptyState && showEmptyState)
             ? { id: project.id, name: project.name }
@@ -1025,8 +1060,8 @@ export function ChatArea({
 
       {fileDrop.active && (
         <FileDropOverlay
-          title="Drop files to attach"
-          description="Images, PDFs, docs, spreadsheets, and text files"
+          title={t("chat.composer.dropFilesTitle")}
+          description={t("chat.composer.dropFilesDescription")}
         />
       )}
 
@@ -1042,17 +1077,16 @@ export function ChatArea({
           ) : (
             <div className="w-full max-w-3xl">
               <h1 className="mb-10 text-center text-2xl font-semibold tracking-tight md:text-3xl">
-                {temporary ? "Temporary chat" : "What can I help with?"}
+                {temporary ? t("chat.empty.temporaryTitle") : t("chat.empty.title")}
               </h1>
               {models?.length === 0 && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
-                  No models configured. An admin can add one in Settings →
-                  Models.
+                  {t("chat.empty.noModels")}
                 </p>
               )}
               {configured && temporary && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
-                  {"Messages won't be saved to your history."}
+                  {t("chat.empty.temporaryHint")}
                 </p>
               )}
               {composer}
@@ -1113,6 +1147,7 @@ export function ChatArea({
                   onPersisted={handleVoicePersisted}
                 />
               )}
+              {replyAlert.missed && !temporary && <AlertsIntro agents={isAdmin} />}
               {composer}
             </div>
           </div>

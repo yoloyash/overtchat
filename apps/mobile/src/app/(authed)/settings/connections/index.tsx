@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
@@ -7,6 +8,7 @@ import {
   type HostConnectorPairing,
   type AgentConnectionListItem,
 } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { AdminGate } from "@/components/settings/AdminGate";
 import { SettingsStatus } from "@/components/settings/SettingsStatus";
@@ -31,6 +33,8 @@ export default function Connections() {
   );
 }
 function ConnectionList() {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const hosts = useSettingsQuery<{ connectors: HostConnectorListItem[] }>(
     "/host-connectors",
     true,
@@ -59,9 +63,9 @@ function ConnectionList() {
   }
   return (
     <SettingsPage
-      title="Agent connections"
+      title={t("settings.mobile.index.agentConnections")}
       action={{
-        label: "Refresh connections",
+        label: t("connections.mobile.list.refreshLabel"),
         icon: "refresh-outline",
         disabled: hosts.isFetching || connections.isFetching,
         onPress: () => {
@@ -79,7 +83,11 @@ function ConnectionList() {
         return (
           <Section key={host.id} title={host.name}>
             <Row
-              title={host.transport === "ssh" ? "SSH host" : "Host Connector"}
+              title={
+                host.transport === "ssh"
+                  ? t("connections.hosts.sshHost")
+                  : t("connections.host.infoTitle")
+              }
               icon={
                 host.transport === "ssh" ? "server-outline" : "desktop-outline"
               }
@@ -87,7 +95,9 @@ function ConnectionList() {
                 host.transport === "ssh"
                   ? (host.sshAlias ?? undefined)
                   : connector?.version
-                    ? `Connector ${connector.version}`
+                    ? t("connections.mobile.list.connectorVersion", {
+                        version: connector.version,
+                      })
                     : undefined
               }
               status={
@@ -95,9 +105,9 @@ function ConnectionList() {
                   label={
                     connector
                       ? connector.online
-                        ? "Connector online"
-                        : "Connector offline"
-                      : "Status unavailable"
+                        ? t("connections.mobile.status.connectorOnline")
+                        : t("connections.mobile.status.connectorOffline")
+                      : t("connections.mobile.status.unavailable")
                   }
                   state={connector?.online ? "ready" : "neutral"}
                 />
@@ -110,7 +120,16 @@ function ConnectionList() {
                 leading={
                   <AgentProviderIcon provider={connection.provider} size={28} />
                 }
-                detail={`${connection.workspaces.length} ${connection.workspaces.length === 1 ? "workspace" : "workspaces"}${connection.detectedVersion ? ` · ${connection.detectedVersion}` : ""}`}
+                detail={
+                  connection.detectedVersion
+                    ? t("connections.mobile.list.workspaceCountWithVersion", {
+                        count: connection.workspaces.length,
+                        version: connection.detectedVersion,
+                      })
+                    : t("connections.mobile.list.workspaceCount", {
+                        count: connection.workspaces.length,
+                      })
+                }
                 navigation
                 onPress={() =>
                   router.push({
@@ -133,22 +152,30 @@ function ConnectionList() {
         .map((connector) => (
           <Section key={connector.id} title={connector.name}>
             <Row
-              title="Host Connector"
+              title={t("connections.host.infoTitle")}
               icon="desktop-outline"
               detail={
-                connector.version ? `Version ${connector.version}` : undefined
+                connector.version
+                  ? t("connections.mobile.common.version", {
+                      version: connector.version,
+                    })
+                  : undefined
               }
               status={
                 <SettingsStatus
-                  label={connector.online ? "Online" : "Offline"}
+                  label={
+                    connector.online
+                      ? t("connections.mobile.status.online")
+                      : t("connections.mobile.status.offline")
+                  }
                   state={connector.online ? "ready" : "neutral"}
                 />
               }
             />
             {connections.data && (
               <Row
-                title="No agents connected"
-                detail="Add an agent and workspace from the web setup."
+                title={t("connections.mobile.list.noAgentsTitle")}
+                detail={t("connections.mobile.list.noAgentsDetail")}
               />
             )}
           </Section>
@@ -157,17 +184,21 @@ function ConnectionList() {
         connections.data?.connections.length === 0 && (
           <Section>
             <Row
-              title="Connect your computer"
+              title={t("connections.mobile.list.emptyTitle")}
               icon="desktop-outline"
-              detail="Pair a Host Connector to use the coding agents installed on your computer."
+              detail={t("connections.mobile.list.emptyDetail")}
             />
           </Section>
         )}
-      <Section title="Setup">
+      <Section title={t("connections.mobile.setup.title")}>
         <Row
-          title={action.busy ? "Creating command…" : "Pair a computer"}
+          title={
+            action.busy
+              ? t("connections.mobile.setup.creatingCommand")
+              : t("connections.mobile.setup.pairComputer")
+          }
           icon="add-circle-outline"
-          detail="Create a command to run on the computer you want to connect."
+          detail={t("connections.mobile.setup.pairComputerDetail")}
           disabled={action.busy}
           onPress={() =>
             void action.run(async () => {
@@ -181,23 +212,25 @@ function ConnectionList() {
           }
         />
         <WebRow
-          title="Manage agents & workspaces"
+          title={t("connections.mobile.setup.manageOnWebTitle")}
           path="/settings/connections"
-          detail="Add or remove connections and configure SSH in your browser."
+          detail={t("connections.mobile.setup.manageOnWebDetail")}
         />
       </Section>
       {pairing && (
         <Section
-          title="Pairing command"
-          description={`Run this on your computer. Expires ${new Date(pairing.expiresAt).toLocaleTimeString()}.`}
+          title={t("connections.mobile.pairing.title")}
+          description={t("connections.mobile.pairing.description", {
+            time: new Date(pairing.expiresAt).toLocaleTimeString(locale),
+          })}
         >
           <Row
-            title="Copy pairing command"
+            title={t("connections.mobile.pairing.copy")}
             icon="copy-outline"
             onPress={() =>
               void action.run(async () => {
                 await Clipboard.setStringAsync(pairing.command);
-                toastSuccess("Command copied");
+                toastSuccess(t("connections.mobile.pairing.copied"));
               })
             }
           />

@@ -4,7 +4,8 @@ import type { ImageGenerationOptions, ModelBrandIconId } from "@overtchat/shared
 import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
 import { TextInputWrapper } from "expo-paste-input";
-import { useState } from "react";
+import { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -33,13 +34,27 @@ const AUDIO_LINES_PATHS = [
   "M22 10v3",
 ] as const;
 
-export function Composer({
+/**
+ * Runs a task with the busy flag up, lowering it however the task ends. It
+ * lives outside the component because the React Compiler leaves a component
+ * holding try/finally unoptimized.
+ */
+async function whileBusy<T>(setBusy: (busy: boolean) => void, task: () => Promise<T>): Promise<T> {
+  setBusy(true);
+  try {
+    return await task();
+  } finally {
+    setBusy(false);
+  }
+}
+
+function ComposerView({
   chatQueue,
   voiceInstalled = false,
   voiceEligible = false,
   voiceAvailable = false,
   voiceActive = false,
-  voiceUnavailableReason = "Realtime voice is unavailable",
+  voiceUnavailableReason,
   textInputDisabled = false,
   endVoiceDisabled = false,
   onStartVoice,
@@ -111,6 +126,9 @@ export function Composer({
   onStop: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
+  const resolvedVoiceUnavailableReason =
+    voiceUnavailableReason ?? t("chat.composer.unavailable.voiceUnavailable");
   const [input, setInput] = useState("");
 
   const dictation = useDictation((text) => {
@@ -128,10 +146,8 @@ export function Composer({
     if (streaming && text.toLowerCase() === "/compact" && !attachments.length) return;
     if (!text && attachments.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-    setSubmitting(true);
-    try {
-      if (await onSubmit(text, attachments) !== false) setInput(current => current.trim() === text ? "" : current);
-    } finally { setSubmitting(false); }
+    const sent = await whileBusy(setSubmitting, async () => onSubmit(text, attachments));
+    if (sent !== false) setInput(current => current.trim() === text ? "" : current);
   }
 
   function toggleMic() {
@@ -181,13 +197,13 @@ export function Composer({
       <MessageQueue {...chatQueue} />
       {dictation.error && (
         <ErrorNotice
-          message={dictationErrorMessage(dictation.error, isAdmin)}
+          message={dictationErrorMessage(dictation.error, isAdmin, t)}
           onDismiss={dictation.clearError}
           action={
             dictation.error.kind === "empty" || dictation.error.kind === "other" ||
             (dictation.error.kind === "stt_unavailable" &&
               !["speech_disabled", "speech_not_configured", "speech_provider_auth"].includes(dictation.error.code ?? ""))
-              ? { label: "Record again", onPress: toggleMic }
+              ? { label: t("chat.dictation.recordAgain"), onPress: toggleMic }
               : undefined
           }
         />
@@ -240,7 +256,7 @@ export function Composer({
                     },
                   ]}
                 >
-                  Uploading…
+                  {t("common.states.uploading")}
                 </Text>
               </View>
             ) : null}
@@ -265,12 +281,12 @@ export function Composer({
             multiline
             placeholder={
               textInputDisabled
-                ? "Resume voice to continue"
+                ? t("chat.composer.resumeVoicePlaceholder")
                 : configured
-                  ? "Message…"
+                  ? t("chat.mobile.composer.messagePlaceholder")
                   : modelLoading
-                    ? "Loading model…"
-                    : "No models configured"
+                    ? t("chat.composer.loadingModelPlaceholder")
+                    : t("chat.composer.noModelsPlaceholder")
             }
             placeholderTextColor={colors.mutedForeground}
             style={[
@@ -285,8 +301,8 @@ export function Composer({
             accessibilityRole="button"
             accessibilityLabel={
               searchAvailable
-                ? "Add to chat"
-                : "Add to chat; web search unavailable for this model"
+                ? t("chat.mobile.addToChat.title")
+                : t("chat.mobile.composer.addToChatNoSearch")
             }
             accessibilityState={{ disabled: voiceActive || textInputDisabled }}
             disabled={voiceActive || textInputDisabled}
@@ -315,7 +331,7 @@ export function Composer({
           {searchRequested && !voiceActive ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Turn off Search for this message"
+              accessibilityLabel={t("chat.mobile.composer.turnOffSearch")}
               accessibilityState={{ selected: true }}
               onPress={clearSearch}
               style={({ pressed }) => [
@@ -344,7 +360,7 @@ export function Composer({
           {openuiRequested ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Turn off Interactive UI for this message"
+              accessibilityLabel={t("chat.mobile.composer.turnOffOpenUI")}
               accessibilityState={{ selected: true }}
               onPress={() => {
                 Haptics.selectionAsync().catch(() => {});
@@ -379,8 +395,11 @@ export function Composer({
               accessibilityRole="button"
               accessibilityLabel={
                 thinkingLevelLabel
-                  ? `Model and thinking: ${modelLabel}, ${thinkingLevelLabel}`
-                  : `Model: ${modelLabel}`
+                  ? t("chat.mobile.composer.modelAndThinking", {
+                      model: modelLabel,
+                      thinking: thinkingLevelLabel,
+                    })
+                  : t("chat.mobile.composer.modelLabel", { model: modelLabel })
               }
               accessibilityState={{ disabled: textInputDisabled }}
               disabled={textInputDisabled}
@@ -443,10 +462,10 @@ export function Composer({
               accessibilityRole="button"
               accessibilityLabel={
                 dictation.status === "recording"
-                  ? "Stop dictation"
+                  ? t("chat.dictation.stop")
                   : dictation.status === "transcribing"
-                    ? "Transcribing"
-                    : "Start dictation"
+                    ? t("chat.dictation.transcribing")
+                    : t("chat.mobile.dictation.start")
               }
               disabled={dictation.status === "transcribing"}
               onPress={toggleMic}
@@ -494,7 +513,7 @@ export function Composer({
           {streaming && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Stop generating"
+              accessibilityLabel={t("chat.composer.stopGenerating")}
               onPress={onStop}
               style={({ pressed }) => [
                 styles.iconHitTarget,
@@ -521,7 +540,7 @@ export function Composer({
           {voiceActive && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="End voice session"
+              accessibilityLabel={t("chat.composer.endVoiceSession")}
               accessibilityState={{ disabled: endVoiceDisabled }}
               disabled={endVoiceDisabled}
               onPress={() => {
@@ -558,14 +577,14 @@ export function Composer({
           {showVoiceButton ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Start voice conversation"
+              accessibilityLabel={t("chat.composer.startVoiceConversation")}
               accessibilityHint={
-                !voiceAvailable ? voiceUnavailableReason : undefined
+                !voiceAvailable ? resolvedVoiceUnavailableReason : undefined
               }
               accessibilityState={{ disabled: !voiceAvailable }}
               onPress={() => {
                 if (!voiceAvailable) {
-                  toastError(voiceUnavailableReason);
+                  toastError(resolvedVoiceUnavailableReason);
                   return;
                 }
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
@@ -614,7 +633,7 @@ export function Composer({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  streaming ? "Queue message" : "Send message"
+                  streaming ? t("chat.composer.queueMessage") : t("chat.composer.sendMessage")
                 }
                 accessibilityState={{
                   disabled: !canSend,
@@ -739,3 +758,6 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
 });
+
+/** The composer does not depend on the reply being written, so it sits out those updates. */
+export const Composer = memo(ComposerView);

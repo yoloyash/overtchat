@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { ActivityMetric } from "@/components/activity/ActivityMetric";
 import { SettingsPage } from "@/components/settings/SettingsRows";
 
@@ -70,10 +71,11 @@ export function ProjectPending() {
 
 /** Shown inside the settings layout while a settings page loads. */
 export function SettingsPending() {
+  const { t } = useTranslation();
   return (
     <SettingsPage>
       <span className="sr-only" role="status">
-        Loading settings…
+        {t("app.pending.loadingSettings")}
       </span>
       <div aria-hidden="true" className="space-y-8">
         <div className="space-y-2">
@@ -99,8 +101,15 @@ export function SettingsPending() {
   );
 }
 
+const ACTIVITY_METRIC_KEYS = [
+  "app.pending.activityMetrics.chatTokens",
+  "app.pending.activityMetrics.responses",
+  "app.pending.activityMetrics.activePeople",
+] as const;
+
 /** Shown inside the activity layout while activity loads. */
 export function ActivityPending() {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-8 md:px-8 md:py-10">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
@@ -111,8 +120,8 @@ export function ActivityPending() {
         <div className="h-8 w-56 rounded-md motion-skeleton" />
       </div>
       <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-        {["Chat tokens", "Responses", "Active people"].map((label) => (
-          <ActivityMetric key={label} label={label} value={undefined} pending />
+        {ACTIVITY_METRIC_KEYS.map((key) => (
+          <ActivityMetric key={key} label={t(key)} value={undefined} pending />
         ))}
       </dl>
       <div className="space-y-px overflow-hidden rounded-lg border border-border/70">

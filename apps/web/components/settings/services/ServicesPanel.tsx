@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import type { VoiceCapability } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,9 +34,16 @@ import {
   SettingsSection,
 } from "../SettingsRows";
 
-type ProviderOption = {
-  value: string;
-  label: string;
+type SearchProviderValue =
+  | "bundled"
+  | "brave"
+  | "keenable"
+  | "searxng"
+  | "disabled";
+type SpeechProviderValue = "bundled" | "openai-compatible" | "disabled";
+
+type ProviderOption<V extends string = string> = {
+  value: V;
   bundled?: boolean;
 };
 
@@ -52,29 +61,61 @@ type CapabilityDraft = {
 
 const PROVIDERS: Record<AdminServerCapability["id"], ProviderOption[]> = {
   search: [
-    { value: "bundled", label: "Bundled SearXNG", bundled: true },
-    { value: "brave", label: "Brave Search API" },
-    { value: "keenable", label: "Keenable Search API" },
-    { value: "searxng", label: "Existing SearXNG" },
-    { value: "disabled", label: "Disabled" },
-  ],
+    { value: "bundled", bundled: true },
+    { value: "brave" },
+    { value: "keenable" },
+    { value: "searxng" },
+    { value: "disabled" },
+  ] satisfies ProviderOption<SearchProviderValue>[],
   tts: [
-    { value: "bundled", label: "Bundled Kokoro", bundled: true },
-    { value: "openai-compatible", label: "OpenAI-compatible API" },
-    { value: "disabled", label: "Disabled" },
-  ],
+    { value: "bundled", bundled: true },
+    { value: "openai-compatible" },
+    { value: "disabled" },
+  ] satisfies ProviderOption<SpeechProviderValue>[],
   stt: [
-    { value: "bundled", label: "Bundled Parakeet", bundled: true },
-    { value: "openai-compatible", label: "OpenAI-compatible API" },
-    { value: "disabled", label: "Disabled" },
-  ],
+    { value: "bundled", bundled: true },
+    { value: "openai-compatible" },
+    { value: "disabled" },
+  ] satisfies ProviderOption<SpeechProviderValue>[],
 };
 
-const TITLES: Record<AdminServerCapability["id"], string> = {
-  search: "Web search",
-  tts: "Text-to-speech",
-  stt: "Speech-to-text",
-};
+function providerOptionLabel(
+  capabilityId: AdminServerCapability["id"],
+  providerValue: string,
+  t: TFunction,
+): string {
+  switch (capabilityId) {
+    case "search":
+      if (
+        providerValue === "bundled" ||
+        providerValue === "brave" ||
+        providerValue === "keenable" ||
+        providerValue === "searxng" ||
+        providerValue === "disabled"
+      ) {
+        return t(`services.capabilities.search.providers.${providerValue}`);
+      }
+      return providerValue;
+    case "tts":
+      if (
+        providerValue === "bundled" ||
+        providerValue === "openai-compatible" ||
+        providerValue === "disabled"
+      ) {
+        return t(`services.capabilities.tts.providers.${providerValue}`);
+      }
+      return providerValue;
+    case "stt":
+      if (
+        providerValue === "bundled" ||
+        providerValue === "openai-compatible" ||
+        providerValue === "disabled"
+      ) {
+        return t(`services.capabilities.stt.providers.${providerValue}`);
+      }
+      return providerValue;
+  }
+}
 
 interface VoiceServicePresentation {
   label: string;
@@ -84,40 +125,39 @@ interface VoiceServicePresentation {
 
 export function voiceServicePresentation(
   voice: VoiceCapability,
+  t: TFunction,
 ): VoiceServicePresentation {
   if (voice.available) {
     return {
-      label: "Configured",
-      description: "Realtime voice conversations are available on this server.",
+      label: t("services.voice.configuredLabel"),
+      description: t("services.voice.configuredDescription"),
       configured: true,
     };
   }
   switch (voice.unavailableReason) {
     case "not-installed":
       return {
-        label: "Not installed",
-        description:
-          "Run overtchat setup and enable realtime voice conversations.",
+        label: t("services.voice.notInstalledLabel"),
+        description: t("services.voice.notInstalledDescription"),
         configured: false,
       };
     case "stt-unavailable":
       return {
-        label: "Needs speech-to-text",
-        description: "Choose a speech-to-text provider above.",
+        label: t("services.voice.needsSttLabel"),
+        description: t("services.voice.needsSttDescription"),
         configured: false,
       };
     case "tts-unavailable":
       return {
-        label: "Needs text-to-speech",
-        description: "Choose a text-to-speech provider above.",
+        label: t("services.voice.needsTtsLabel"),
+        description: t("services.voice.needsTtsDescription"),
         configured: false,
       };
     case "not-configured":
     default:
       return {
-        label: "Incomplete setup",
-        description:
-          "Run overtchat setup to repair the realtime voice configuration.",
+        label: t("services.voice.incompleteSetupLabel"),
+        description: t("services.voice.incompleteSetupDescription"),
         configured: false,
       };
   }
@@ -143,7 +183,11 @@ function CapabilitySection({
 }: {
   capability: AdminServerCapability;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<CapabilityDraft>(capability);
+  // A saved key belongs to the saved provider; the server drops it when the
+  // search provider changes, so the form must not report it as configured.
+  const [saved, setSaved] = useState<CapabilityDraft>(capability);
   const updateCapability = useUpdateServerCapability();
   const testCapability = useTestServerCapability();
   const canTest =
@@ -163,30 +207,33 @@ function CapabilitySection({
         draft as unknown as ServerCapabilityInput,
       );
       setDraft(updated);
-      toast.success({ title: `${TITLES[draft.id]} updated` });
+      setSaved(updated);
+      toast.success({ title: t(`services.capabilities.${draft.id}.updatedTitle`) });
     } catch (error) {
       toast.error({
-        title: `Could not update ${TITLES[draft.id].toLowerCase()}`,
-        description: getErrorMessage(error, "The provider was not changed."),
+        title: t(`services.capabilities.${draft.id}.updateErrorTitle`),
+        description: getErrorMessage(error, t("services.errors.updateUnchanged")),
       });
     }
   }
 
   const bundledMissing = !draft.bundledInstalled;
+  const bundledProvider = PROVIDERS[draft.id].find((provider) => provider.bundled);
+  const bundledProviderLabel = bundledProvider
+    ? providerOptionLabel(draft.id, bundledProvider.value, t)
+    : "";
   return (
     <SettingsSection
-      title={TITLES[draft.id]}
-      description={
-        draft.id === "search"
-          ? "Choose the first provider OvertChat tries."
-          : "Choose the provider used by everyone on this server."
-      }
+      title={t(`services.capabilities.${draft.id}.title`)}
+      description={t(`services.capabilities.${draft.id}.description`)}
     >
       <SettingsRow
-        title="Provider"
+        title={t("services.fields.providerTitle")}
         description={
           bundledMissing
-            ? `${PROVIDERS[draft.id].find((provider) => provider.bundled)?.label} is not installed on this server. Run: overtchat setup`
+            ? t("services.fields.bundledMissingDescription", {
+                provider: bundledProviderLabel,
+              })
             : undefined
         }
         align="center"
@@ -235,20 +282,29 @@ function CapabilitySection({
                       : (current.model ?? "whisper-1"),
                 };
               }
+              if (current.id === "search" && provider !== current.provider) {
+                const keepsSavedKey = provider === saved.provider;
+                return {
+                  ...current,
+                  provider,
+                  apiKey: null,
+                  apiKeySet: keepsSavedKey && saved.apiKeySet,
+                };
+              }
               return { ...current, provider };
             });
           }}
         >
           <SelectTrigger
             className="w-full"
-            aria-label={`${TITLES[draft.id]} provider`}
+            aria-label={t(`services.capabilities.${draft.id}.providerLabel`)}
           >
             <SelectValue>
-              {
-                PROVIDERS[draft.id].find(
-                  (provider) => provider.value === draft.provider,
-                )?.label
-              }
+              {PROVIDERS[draft.id].some(
+                (provider) => provider.value === draft.provider,
+              )
+                ? providerOptionLabel(draft.id, draft.provider, t)
+                : undefined}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -258,8 +314,11 @@ function CapabilitySection({
                 value={provider.value}
                 disabled={provider.bundled && bundledMissing}
               >
-                {provider.label}
-                {provider.bundled && bundledMissing ? " — Not installed" : ""}
+                {provider.bundled && bundledMissing
+                  ? t("services.fields.providerOptionNotInstalled", {
+                      provider: providerOptionLabel(draft.id, provider.value, t),
+                    })
+                  : providerOptionLabel(draft.id, provider.value, t)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -267,7 +326,10 @@ function CapabilitySection({
       </SettingsRow>
 
       {needsBaseUrl(draft) && (
-        <SettingsRow title="API base URL" htmlFor={`${draft.id}-base-url`}>
+        <SettingsRow
+          title={t("services.fields.apiBaseUrlTitle")}
+          htmlFor={`${draft.id}-base-url`}
+        >
           <Input
             id={`${draft.id}-base-url`}
             value={draft.baseUrl ?? ""}
@@ -279,8 +341,10 @@ function CapabilitySection({
             }
             placeholder={
               draft.id === "search"
-                ? "http://host.docker.internal:8088"
-                : "https://api.openai.com/v1"
+                ? // eslint-disable-next-line i18next/no-literal-string -- example URL placeholder
+                  "http://host.docker.internal:8088"
+                : // eslint-disable-next-line i18next/no-literal-string -- example URL placeholder
+                  "https://api.openai.com/v1"
             }
           />
         </SettingsRow>
@@ -288,12 +352,14 @@ function CapabilitySection({
 
       {needsApiKey(draft) && (
         <SettingsRow
-          title="API key"
+          title={t("services.fields.apiKeyTitle")}
           description={
             draft.apiKeySet
-              ? "A key is configured. Leave this blank to keep it."
+              ? draft.provider === "keenable"
+                ? `${t("services.fields.apiKeyConfiguredDescription")} ${t("services.fields.keenableLoggingNotice")}`
+                : t("services.fields.apiKeyConfiguredDescription")
               : draft.provider === "keenable"
-                ? "Optional. Without a key, OvertChat uses Keenable's keyless endpoint (rate limited per IP). Queries are logged by Keenable with or without a key."
+                ? `${t("services.fields.keenableKeyOptionalDescription")} ${t("services.fields.keenableLoggingNotice")}`
                 : undefined
           }
           htmlFor={`${draft.id}-api-key`}
@@ -314,24 +380,36 @@ function CapabilitySection({
 
       {draft.id === "search" && draft.provider !== "disabled" && (
         <SettingsRow
-          title="Search order"
-          description="If your primary provider fails, OvertChat tries free search providers."
+          title={t("services.fields.searchOrderTitle")}
+          description={t("services.fields.searchOrderDescription")}
           align="center"
           controlAlign="end"
         >
           <span className="text-xs text-muted-foreground">
-            {draft.provider === "brave" || draft.provider === "keenable"
-              ? `${draft.provider === "brave" ? "Brave" : "Keenable"} → ${
-                  draft.bundledInstalled || draft.baseUrl ? "SearXNG → " : ""
-                }Firecrawl → Exa → DuckDuckGo`
-              : "SearXNG → Firecrawl → Exa → DuckDuckGo"}
+            {draft.provider === "brave"
+              ? draft.bundledInstalled || draft.baseUrl
+                ? // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                  "Brave → SearXNG → Firecrawl → Exa → DuckDuckGo"
+                : // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                  "Brave → Firecrawl → Exa → DuckDuckGo"
+              : draft.provider === "keenable"
+                ? draft.bundledInstalled || draft.baseUrl
+                  ? // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                    "Keenable → SearXNG → Firecrawl → Exa → DuckDuckGo"
+                  : // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                    "Keenable → Firecrawl → Exa → DuckDuckGo"
+                : // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                  "SearXNG → Firecrawl → Exa → DuckDuckGo"}
           </span>
         </SettingsRow>
       )}
 
       {(draft.id === "tts" || draft.id === "stt") &&
         draft.provider === "openai-compatible" && (
-          <SettingsRow title="Model" htmlFor={`${draft.id}-model`}>
+          <SettingsRow
+            title={t("services.fields.modelTitle")}
+            htmlFor={`${draft.id}-model`}
+          >
             <Input
               id={`${draft.id}-model`}
               value={draft.model ?? ""}
@@ -341,13 +419,22 @@ function CapabilitySection({
                   model: event.target.value,
                 }))
               }
-              placeholder={draft.id === "tts" ? "tts-1" : "whisper-1"}
+              placeholder={
+                draft.id === "tts"
+                  ? // eslint-disable-next-line i18next/no-literal-string -- default model ID placeholder
+                    "tts-1"
+                  : // eslint-disable-next-line i18next/no-literal-string -- default model ID placeholder
+                    "whisper-1"
+              }
             />
           </SettingsRow>
         )}
 
       {draft.id === "tts" && draft.provider === "openai-compatible" && (
-        <SettingsRow title="Default voice" htmlFor="tts-voice">
+        <SettingsRow
+          title={t("services.fields.defaultVoiceTitle")}
+          htmlFor="tts-voice"
+        >
           <Input
             id="tts-voice"
             value={draft.voice ?? ""}
@@ -357,6 +444,7 @@ function CapabilitySection({
                 voice: event.target.value,
               }))
             }
+            // eslint-disable-next-line i18next/no-literal-string -- default voice ID placeholder
             placeholder="alloy"
           />
         </SettingsRow>
@@ -372,7 +460,9 @@ function CapabilitySection({
               !canTest || testCapability.isPending || updateCapability.isPending
             }
           >
-            {testCapability.isPending ? "Testing…" : "Test connection"}
+            {testCapability.isPending
+              ? t("services.actions.testing")
+              : t("services.actions.testConnection")}
           </Button>
         )}
         <Button
@@ -380,7 +470,9 @@ function CapabilitySection({
           onClick={() => void save()}
           disabled={updateCapability.isPending || testCapability.isPending}
         >
-          {updateCapability.isPending ? "Saving…" : "Save"}
+          {updateCapability.isPending
+            ? t("common.states.saving")
+            : t("common.actions.save")}
         </Button>
       </SettingsActions>
       {showTestResult && testCapability.isSuccess && (
@@ -392,7 +484,7 @@ function CapabilitySection({
         <SettingsNotice tone="error" className="py-4">
           {getErrorMessage(
             testCapability.error,
-            "Could not connect to the provider.",
+            t("services.errors.connectFailed"),
           )}
         </SettingsNotice>
       )}
@@ -401,20 +493,23 @@ function CapabilitySection({
 }
 
 export function ServicesPanel() {
+  const { t } = useTranslation();
   const { data, isPending, error } = useServerCapabilities();
   const capabilities = data?.capabilities ?? [];
-  const voiceStatus = data?.voice ? voiceServicePresentation(data.voice) : null;
+  const voiceStatus = data?.voice ? voiceServicePresentation(data.voice, t) : null;
 
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Services"
-        description="Manage search and speech providers for this server. Local services are installed with overtchat setup."
+        title={t("services.page.title")}
+        description={t("services.page.description")}
       />
-      {isPending && <SettingsNotice>Loading services…</SettingsNotice>}
+      {isPending && (
+        <SettingsNotice>{t("services.page.loading")}</SettingsNotice>
+      )}
       {error && (
         <SettingsNotice tone="error">
-          {getErrorMessage(error, "Could not load server services.")}
+          {getErrorMessage(error, t("services.page.loadError"))}
         </SettingsNotice>
       )}
       {capabilities.map((capability) => (
@@ -422,11 +517,11 @@ export function ServicesPanel() {
       ))}
       {voiceStatus && (
         <SettingsSection
-          title="Realtime voice"
-          description="Live, interruptible conversations using the speech providers above and the selected chat model."
+          title={t("services.voice.title")}
+          description={t("services.voice.description")}
         >
           <SettingsRow
-            title="Status"
+            title={t("services.voice.statusTitle")}
             description={voiceStatus.description}
             align="center"
             controlAlign="end"

@@ -6,6 +6,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { AppShell } from "@/components/AppShell";
 import { AgentLiveState } from "@/components/agents/AgentAlerts";
 import { AgentSessionRenameHost } from "@/components/agents/AgentSessionRowMenu";
@@ -14,6 +15,7 @@ import { AuthFrame } from "@/components/auth/AuthFrame";
 import { TwoFactorPrompt } from "@/components/auth/TwoFactorPrompt";
 import { SignInRequestPrompt } from "@/components/auth/SignInRequestPrompt";
 import { DesktopServer } from "@/components/auth/DesktopServer";
+import { ScheduledTaskActivity } from "@/components/scheduled/ScheduledTaskActivity";
 import { Sidebar } from "@/components/Sidebar";
 import { activeChatIdsQuery, chatListQuery } from "@/lib/queries/chats";
 import { projectListQuery } from "@/lib/queries/projects";
@@ -79,6 +81,7 @@ function AppLayout() {
       <Outlet />
       <TwoFactorPrompt key={session.user.id} />
       <SignInRequestPrompt key={`sign-in-${session.user.id}`} />
+      <ScheduledTaskActivity />
       {isAdmin && <AgentLiveState />}
       {isAdmin && <AgentSessionRenameHost />}
     </AppShell>
@@ -86,11 +89,12 @@ function AppLayout() {
 }
 
 function NotFound() {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4 text-center">
-      <h1 className="text-xl font-semibold tracking-tight">Page not found</h1>
+      <h1 className="text-xl font-semibold tracking-tight">{t("app.notFound.title")}</h1>
       <Link to="/" className="text-sm text-muted-foreground underline underline-offset-4">
-        Back to chats
+        {t("app.notFound.backToChats")}
       </Link>
     </div>
   );

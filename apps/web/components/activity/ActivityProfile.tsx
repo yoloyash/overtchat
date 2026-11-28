@@ -2,15 +2,27 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { ArrowLeft } from "lucide-react";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { useActivityProfile } from "@/lib/queries/activity";
-import { PROVIDERS } from "@/lib/providers/catalog";
+import { isProviderId, providerDisplayLabel } from "@/lib/providers/catalog";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { ActivityMetric } from "./ActivityMetric";
 import { formatCompact, formatDate } from "./activity-format";
 
+const PROFILE_METRIC_KEYS = [
+  "activity.metrics.chatTokens",
+  "activity.metrics.responses",
+  "activity.metrics.input",
+  "activity.metrics.output",
+] as const;
+
 export function ActivityProfile({ userId }: { userId: string }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [timeZone] = useState(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   );
@@ -21,13 +33,13 @@ export function ActivityProfile({ userId }: { userId: string }) {
     return (
       <div className="mx-auto flex min-h-full max-w-5xl flex-col items-center justify-center gap-4 px-4 py-12 text-center">
         <p className="text-sm text-muted-foreground">
-          This activity profile could not be loaded.
+          {t("activity.profile.loadError")}
         </p>
         <Link
           to="/activity"
           className="text-sm font-medium text-foreground underline underline-offset-4"
         >
-          Return to leaderboard
+          {t("activity.profile.returnToLeaderboard")}
         </Link>
       </div>
     );
@@ -40,7 +52,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
         className="inline-flex items-center gap-2 rounded-sm text-xs font-medium text-muted-foreground motion-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
         <ArrowLeft className="size-4" />
-        Leaderboard
+        {t("activity.leaderboard.title")}
       </Link>
 
       <section className="mt-4 flex flex-col items-center gap-4 text-center">
@@ -56,37 +68,41 @@ export function ActivityProfile({ userId }: { userId: string }) {
             {data.member.name}
           </h1>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Member since {formatDate(data.member.createdAt)}
+            {t("activity.profile.memberSince", {
+              date: formatDate(data.member.createdAt, locale),
+            })}
           </p>
         </div>
       </section>
 
       <dl className="mt-8 grid grid-cols-2 overflow-hidden rounded-xl border border-border/60 @xl:grid-cols-4">
         <ActivityMetric
-          label="Chat tokens"
+          label={t("activity.metrics.chatTokens")}
           inline
           value={data.totals.totalTokens}
         />
         <ActivityMetric
-          label="Responses"
+          label={t("activity.metrics.responses")}
           inline
           value={data.totals.generations}
         />
-        <ActivityMetric inline label="Input" value={data.totals.inputTokens} />
-        <ActivityMetric inline label="Output" value={data.totals.outputTokens} />
+        <ActivityMetric inline label={t("activity.metrics.input")} value={data.totals.inputTokens} />
+        <ActivityMetric inline label={t("activity.metrics.output")} value={data.totals.outputTokens} />
       </dl>
 
       <section className="mt-10">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <h2 className="text-sm font-semibold">Token activity</h2>
+            <h2 className="text-sm font-semibold">{t("activity.profile.tokenActivity")}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {data.trackingStartedAt
-                ? `Tracked since ${formatDate(data.trackingStartedAt)}`
-                : "No tracked responses yet"}
+                ? t("activity.profile.trackedSince", {
+                    date: formatDate(data.trackingStartedAt, locale),
+                  })
+                : t("activity.profile.noTrackedResponses")}
             </p>
           </div>
-          <span className="text-xs text-muted-foreground">Past 365 days</span>
+          <span className="text-xs text-muted-foreground">{t("activity.profile.pastYear")}</span>
         </div>
         <ActivityHeatmap
           key={`${userId}:${data.throughDate}`}
@@ -99,19 +115,19 @@ export function ActivityProfile({ userId }: { userId: string }) {
       <section className="mt-8">
         <div className="flex items-baseline justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold">Models</h2>
+            <h2 className="text-sm font-semibold">{t("activity.profile.models.title")}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Share of all responses by model
+              {t("activity.profile.models.description")}
             </p>
           </div>
           <span className="text-xs text-muted-foreground">
-            {data.models.length} used
+            {t("activity.profile.models.used", { count: data.models.length })}
           </span>
         </div>
         <div className="mt-4 divide-y divide-border/50">
           {data.models.length === 0 ? (
             <p className="px-3 py-10 text-center text-sm text-muted-foreground">
-              No model activity yet.
+              {t("activity.profile.models.empty")}
             </p>
           ) : (
             data.models.map((model) => {
@@ -133,7 +149,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
                         {model.model}
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {providerLabel(model.providerId)}
+                        {providerLabel(model.providerId, t)}
                       </span>
                     </div>
                     <div
@@ -148,10 +164,10 @@ export function ActivityProfile({ userId }: { userId: string }) {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-medium tabular-nums">
-                      {formatCompact(model.generations)}
+                      {formatCompact(model.generations, locale)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      responses
+                      {t("activity.profile.models.responsesLabel")}
                     </p>
                   </div>
                 </div>
@@ -164,12 +180,14 @@ export function ActivityProfile({ userId }: { userId: string }) {
   );
 }
 
-function providerLabel(providerId: string): string {
-  return Object.values(PROVIDERS).find((provider) => provider.id === providerId)
-    ?.label ?? providerId.replaceAll("-", " ");
+function providerLabel(providerId: string, t: TFunction): string {
+  return isProviderId(providerId)
+    ? providerDisplayLabel(providerId, t)
+    : providerId.replaceAll("-", " ");
 }
 
 function ProfileSkeleton() {
+  const { t } = useTranslation();
   return (
     <div className="@container mx-auto w-full max-w-5xl space-y-8 px-4 py-8 md:px-8">
       <div className="h-4 w-24 rounded motion-skeleton" />
@@ -181,8 +199,8 @@ function ProfileSkeleton() {
         </div>
       </div>
       <dl className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/60 @xl:grid-cols-4">
-        {["Chat tokens", "Responses", "Input", "Output"].map((label) => (
-          <ActivityMetric key={label} inline label={label} value={undefined} pending />
+        {PROFILE_METRIC_KEYS.map((key) => (
+          <ActivityMetric key={key} inline label={t(key)} value={undefined} pending />
         ))}
       </dl>
       <div className="h-48 rounded-lg motion-skeleton" />

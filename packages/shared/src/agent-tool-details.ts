@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
   describeAgentTool,
   type AgentToolActivity,
@@ -47,6 +48,7 @@ function label(key: string) {
 // than a JSON blob. Nested paths remain visible so context is never discarded.
 export function argumentSections(
   value: unknown,
+  t: TFunction,
   prefix = "",
   depth = 0,
 ): ToolSection[] {
@@ -54,7 +56,7 @@ export function argumentSections(
   if (value === null || typeof value !== "object")
     return [
       {
-        label: prefix || "Input",
+        label: prefix || t("agents.activity.input"),
         value: typeof value === "string" ? value : String(value),
         kind: "code",
       },
@@ -62,7 +64,7 @@ export function argumentSections(
   if (depth > 8)
     return [
       {
-        label: prefix || "Input",
+        label: prefix || t("agents.activity.input"),
         value: JSON.stringify(value, null, 2),
         kind: "code",
       },
@@ -71,15 +73,23 @@ export function argumentSections(
   if (!entries.length)
     return [
       {
-        label: prefix || "Input",
-        value: Array.isArray(value) ? "Empty list" : "No values",
+        label: prefix || t("agents.activity.input"),
+        value: Array.isArray(value)
+          ? t("agents.toolDetails.emptyList")
+          : t("agents.toolDetails.noValues"),
         kind: "text",
       },
     ];
   return entries.flatMap(([key, child]) =>
     argumentSections(
       child,
-      [prefix, Array.isArray(value) ? `Item ${Number(key) + 1}` : label(key)]
+      t,
+      [
+        prefix,
+        Array.isArray(value)
+          ? t("agents.toolDetails.itemIndex", { index: Number(key) + 1 })
+          : label(key),
+      ]
         .filter(Boolean)
         .join(" · "),
       depth + 1,
@@ -87,8 +97,8 @@ export function argumentSections(
   );
 }
 
-export function toolDetails(tool: AgentToolActivity): ToolDetails {
-  const { category } = describeAgentTool(tool);
+export function toolDetails(tool: AgentToolActivity, t: TFunction): ToolDetails {
+  const { category } = describeAgentTool(tool, t);
   const args = record(tool.args);
   const sections: ToolSection[] = [];
   const used = new Set<string>();
@@ -103,46 +113,54 @@ export function toolDetails(tool: AgentToolActivity): ToolDetails {
       sections.push({ label: title, value, kind });
     }
   }
-  if (category === "shell") take(["command", "cmd"], "Command");
-  take(["filePath", "file_path", "path"], "Path");
-  take(["cwd", "workdir", "workingDirectory"], "Working directory");
-  take(["patch", "diff", "unifiedDiff", "unified_diff"], "Changes", "diff");
-  take(["oldString", "old_string", "oldText", "old_text"], "Before");
-  take(["newString", "new_string", "newText", "new_text"], "After");
-  take(["content", "text", "fileText", "file_text"], "Content");
+  if (category === "shell") take(["command", "cmd"], t("agents.toolDetails.command"));
+  take(["filePath", "file_path", "path"], t("agents.toolDetails.path"));
+  take(["cwd", "workdir", "workingDirectory"], t("agents.toolDetails.workingDirectory"));
+  take(["patch", "diff", "unifiedDiff", "unified_diff"], t("agents.activity.changes"), "diff");
+  take(["oldString", "old_string", "oldText", "old_text"], t("agents.toolDetails.before"));
+  take(["newString", "new_string", "newText", "new_text"], t("agents.toolDetails.after"));
+  take(["content", "text", "fileText", "file_text"], t("agents.activity.content"));
   const remaining = Object.fromEntries(
     Object.entries(args).filter(([key]) => !used.has(key)),
   );
   if (Object.keys(remaining).length)
-    sections.push(...argumentSections(remaining));
+    sections.push(...argumentSections(remaining, t));
   else if (typeof tool.args === "string" && tool.args)
-    sections.push({ label: "Input", value: tool.args, kind: "code" });
+    sections.push({ label: t("agents.activity.input"), value: tool.args, kind: "code" });
   if (tool.output)
     sections.push({
-      label: tool.isError ? "Error output" : "Output",
+      label: tool.isError
+        ? t("agents.toolDetails.errorOutput")
+        : t("agents.activity.output"),
       value: readableToolText(tool.output),
       kind: "code",
     });
   if (tool.terminalInputs.length)
     sections.push({
-      label: "Terminal input",
+      label: t("agents.toolDetails.terminalInput"),
       value: tool.terminalInputs.join("\n"),
       kind: "code",
     });
   if (tool.exitCode !== null)
     sections.push({
-      label: "Exit code",
+      label: t("agents.toolDetails.exitCode"),
       value: String(tool.exitCode),
       kind: "text",
     });
   if (tool.cancelled)
-    sections.push({ label: "Status", value: "Cancelled", kind: "text" });
+    sections.push({
+      label: t("agents.toolDetails.status"),
+      value: t("agents.toolDetails.cancelled"),
+      kind: "text",
+    });
   if (tool.truncated)
     sections.push({
-      label: "Output limit",
+      label: t("agents.toolDetails.outputLimit"),
       value: tool.fullOutputPath
-        ? `Output was truncated by the agent. Full output on the host: ${tool.fullOutputPath}`
-        : "Output was truncated by the agent.",
+        ? t("agents.toolDetails.truncatedWithPath", {
+            path: tool.fullOutputPath,
+          })
+        : t("agents.toolDetails.truncated"),
       kind: "text",
     });
   return { category, sections };
@@ -150,6 +168,7 @@ export function toolDetails(tool: AgentToolActivity): ToolDetails {
 
 export function approvalDetails(
   request: Record<string, unknown>,
+  t: TFunction,
 ): ToolDetails & {
   title: string;
   message: string;
@@ -180,16 +199,17 @@ export function approvalDetails(
   if (description && !message.includes(description))
     message = [message, description].filter(Boolean).join("\n\n");
   const suppliedTitle = text(request.title);
-  let title = suppliedTitle || "Permission required";
+  let title = suppliedTitle || t("agents.approval.permissionRequired");
   if (request.approvalKind === "tool") {
-    const shortTitle =
+    const shortTitle = t(
       detail.type === "shell"
-        ? "Run command?"
+        ? "agents.approval.titles.shell"
         : detail.type === "edit"
-          ? "Allow file changes?"
+          ? "agents.approval.titles.edit"
           : detail.type === "write"
-            ? "Write file?"
-            : "Allow tool use?";
+            ? "agents.approval.titles.write"
+            : "agents.approval.titles.other",
+    );
     if (
       ["shell", "edit", "write"].includes(text(detail.type)) ||
       suppliedTitle.length > 100
@@ -218,18 +238,20 @@ export function approvalDetails(
     if (suppliedChoices.length) choices.push(...suppliedChoices);
     else {
       choices.push({
-        label: "Allow once",
+        label: t("agents.approval.choices.allowOnce"),
         value: text(request.approveValue) || "Approve",
         kind: "allow",
       });
       if (request.alwaysValue)
         choices.push({
-          label: text(request.alwaysLabel) || "Allow always",
+          label:
+            text(request.alwaysLabel) ||
+            t("agents.approval.choices.allowAlways"),
           value: text(request.alwaysValue),
           kind: "always",
         });
       choices.push({
-        label: "Deny",
+        label: t("agents.approval.choices.deny"),
         value: text(request.denyValue) || "Deny",
         kind: "deny",
       });
@@ -258,7 +280,7 @@ export function approvalDetails(
       fullOutputPath: null,
       terminalInputs: [],
     };
-    sections.push(...toolDetails(fake).sections);
+    sections.push(...toolDetails(fake, t).sections);
     if (
       message === `Command: ${detail.command}` ||
       message === `File: ${detail.filePath}` ||
@@ -276,7 +298,7 @@ export function approvalDetails(
       sections.push({
         label: destination ? `${path} → ${destination}` : path,
         value:
-          text(change.patch) || "No change preview was provided for this file.",
+          text(change.patch) || t("agents.approval.noChangePreview"),
         kind: text(change.patch) ? "diff" : "text",
       });
     }

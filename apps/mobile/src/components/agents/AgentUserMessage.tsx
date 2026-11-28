@@ -1,4 +1,7 @@
 import { useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import type { AgentRewindMode } from "@overtchat/agent-bridge";
@@ -9,13 +12,12 @@ import { useTheme } from "@/lib/theme";
 import { AgentImage } from "./AgentImage";
 import { AgentMenu } from "./AgentMenu";
 import { AgentCopyButton, useCopied } from "./AgentMessageActions";
-import {
-  AGENT_REWIND_NOTE,
-  AgentRewindMenu,
-  agentRewindMenuItems,
-} from "./AgentRewindMenu";
+import { AgentRewindMenu, agentRewindMenuItems } from "./AgentRewindMenu";
 
-export function agentUserMessageParts(message: unknown) {
+export function agentUserMessageParts(
+  message: unknown,
+  t: TFunction,
+) {
   const value = record(message);
   const parts = Array.isArray(value.content) ? value.content.map(record) : [];
   return {
@@ -29,7 +31,7 @@ export function agentUserMessageParts(message: unknown) {
     images: parts
       .filter((part) => part.type === "image")
       .map((part) => ({
-        label: text(part.filename) || "Attached image",
+        label: text(part.filename) || t("agents.messages.attachedImage"),
         url:
           text(part.url) ||
           (part.data ? `data:${text(part.mimeType)};base64,${text(part.data)}` : ""),
@@ -37,15 +39,19 @@ export function agentUserMessageParts(message: unknown) {
   };
 }
 
-export function formatAgentMessageTime(timestamp: number, now = Date.now()) {
+export function formatAgentMessageTime(
+  timestamp: number,
+  locale: string,
+  now = Date.now(),
+) {
   const date = new Date(timestamp);
-  const time = date.toLocaleTimeString(undefined, {
+  const time = date.toLocaleTimeString(locale, {
     hour: "numeric",
     minute: "2-digit",
   });
   return new Date(now).toDateString() === date.toDateString()
     ? time
-    : `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+    : `${date.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${time}`;
 }
 
 export function AgentUserMessage({
@@ -61,12 +67,14 @@ export function AgentUserMessage({
   disabled: boolean;
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, radii, fonts } = useTheme();
   const menu = useMeasuredPopoverAnchor();
   const { copy } = useCopied();
   const [rewinding, setRewinding] = useState(false);
   const value = record(message);
-  const { body, images } = agentUserMessageParts(message);
+  const { body, images } = agentUserMessageParts(message, t);
   const id = typeof value.id === "string" ? value.id : null;
   const sending = !!id?.startsWith("submission:");
   const rewindable =
@@ -82,18 +90,19 @@ export function AgentUserMessage({
         ? [
             {
               key: "copy",
-              label: "Copy",
+              label: t("common.actions.copy"),
               icon: "copy-outline" as const,
-              onSelect: () => copy(body, "Couldn't copy message"),
+              onSelect: () =>
+                copy(body, t("agents.mobile.messages.copyMessageFailed")),
             },
           ]
         : [],
     },
     {
-      note: AGENT_REWIND_NOTE,
+      note: t("agents.rewind.cannotBeUndone"),
       items:
         rewindable && !disabled && !rewinding
-          ? agentRewindMenuItems(capabilities, rewind)
+          ? agentRewindMenuItems(capabilities, rewind, t)
           : [],
     },
   ];
@@ -118,7 +127,9 @@ export function AgentUserMessage({
         <Pressable
           ref={menu.anchorRef}
           collapsable={false}
-          accessibilityHint={hasMenu ? "Long press for message actions" : undefined}
+          accessibilityHint={
+            hasMenu ? t("agents.mobile.messages.longPressActions") : undefined
+          }
           onLongPress={() => {
             if (!hasMenu) return;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -157,7 +168,9 @@ export function AgentUserMessage({
               paddingHorizontal: 4,
             }}
           >
-            {sending ? "Sending…" : formatAgentMessageTime(timestamp!)}
+            {sending
+              ? t("common.states.sending")
+              : formatAgentMessageTime(timestamp!, locale)}
           </Text>
         )}
         {rewindable && (
@@ -171,8 +184,9 @@ export function AgentUserMessage({
         {!!body && (
           <AgentCopyButton
             text={body}
-            label="Copy message"
-            copiedLabel="Copied message"
+            label={t("agents.messages.copyMessage")}
+            copiedLabel={t("agents.messages.copiedMessage")}
+            failureLabel={t("agents.mobile.messages.copyMessageFailed")}
           />
         )}
       </View>

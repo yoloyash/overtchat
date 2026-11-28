@@ -1,6 +1,7 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { useEffect, useSyncExternalStore } from "react";
 import {
   queryOptions,
@@ -52,7 +53,7 @@ async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
     error?: string;
   } | null;
-  return apiError(response.status, data, "Could not complete the request. Please try again.");
+  return apiError(response.status, data, i18n.t("common.errors.requestFailed"));
 }
 
 async function fetchAgentConnections(): Promise<AgentConnectionListItem[]> {
@@ -279,7 +280,7 @@ export function useAgentProviderSnapshot(
       target?.transport === "ssh" ? target.sshAlias : "",
     ),
     queryFn: async (): Promise<AgentProviderSnapshot> => {
-      if (!target) throw new Error("Choose a machine first.");
+      if (!target) throw new Error(i18n.t("connections.dialog.validation.missingMachine"));
       const response = await fetch(apiUrl("/api/agent-connections/discover?refresh=0"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -308,7 +309,7 @@ export function useAgentTargetDirectories(
       path,
     ),
     queryFn: async (): Promise<AgentDirectoryListing> => {
-      if (!target) throw new Error("Choose a machine first.");
+      if (!target) throw new Error(i18n.t("connections.dialog.validation.missingMachine"));
       const response = await fetch(apiUrl("/api/agent-connections/directories"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },

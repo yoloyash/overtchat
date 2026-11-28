@@ -2,6 +2,7 @@
 
 import { Component, lazy, Suspense, type ReactNode } from "react";
 import { useTheme } from "next-themes";
+import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import {
   normalizeOpenUILang,
@@ -44,6 +45,7 @@ export function OpenUICard({
   initialState?: OpenUIFormState;
   onAction?: (action: OpenUIAction) => void;
 }) {
+  const { t } = useTranslation();
   const { resolvedTheme } = useTheme();
   const pending =
     part.state === "input-streaming" || part.state === "input-available";
@@ -53,7 +55,7 @@ export function OpenUICard({
   const failed = part.state === "output-error" || (!streaming && pending);
   const fallback = (
     <div className="whitespace-pre-wrap text-sm" data-openui-fallback="">
-      {text || "Interactive UI is unavailable."}
+      {text || t("chat.openui.unavailable")}
     </div>
   );
   return (
@@ -64,19 +66,19 @@ export function OpenUICard({
           className="flex items-center gap-2 text-xs text-muted-foreground"
         >
           <Loader2 className="size-3.5 animate-spin" />
-          Building interactive UI…
+          {t("chat.openui.building")}
         </div>
       )}
       {failed ? (
         <>
           <p className="text-sm text-destructive" role="alert">
-            {part.errorText ?? "Interactive UI generation was interrupted."}
+            {part.errorText ?? t("chat.openui.interrupted")}
           </p>
           {text && fallback}
         </>
       ) : code.trim() ? (
         <LoadingBoundary key={part.toolCallId} fallback={fallback}>
-          <Suspense fallback={<div role="status">Loading interactive UI…</div>}>
+          <Suspense fallback={<div role="status">{t("chat.openui.loading")}</div>}>
             <OpenUIRenderer
               messageId={messageId}
               toolCallId={part.toolCallId}

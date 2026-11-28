@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { AgentTurnChanges } from "@overtchat/agent-bridge";
 
 export type AgentTurnChangesFileNode = {
@@ -138,8 +139,15 @@ export function agentTurnChangesDirectories(
   );
 }
 
-export function agentTurnChangesLabel(files: number): string {
-  return `${files.toLocaleString("en-US")} changed ${files === 1 ? "file" : "files"}`;
+export function agentTurnChangesLabel(
+  files: number,
+  t: TFunction,
+  locale: string,
+): string {
+  return t("agents.messages.changedFilesCount", {
+    count: files,
+    formattedCount: files.toLocaleString(locale),
+  });
 }
 
 /** 950, 1.2k, 15k, 2.4m: line counts stay narrow enough to line up. */

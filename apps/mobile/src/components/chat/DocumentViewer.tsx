@@ -2,6 +2,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { Directory } from "expo-file-system";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
@@ -19,7 +20,6 @@ import { WebView } from "react-native-webview";
 import type { UIMessage } from "ai";
 import {
   canExportToWord,
-  DOCUMENT_TYPE_LABELS,
   documentFilename,
   documentMediaType,
   documentView,
@@ -54,8 +54,9 @@ export function DocumentViewer({
   onClose: () => void;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const view = useMemo(() => documentView(messages, toolCallId), [messages, toolCallId]);
+  const view = useMemo(() => documentView(messages, toolCallId, t), [messages, toolCallId, t]);
   const [showSource, setShowSource] = useState(false);
   const [saving, setSaving] = useState(false);
   const missing = !view;
@@ -74,11 +75,14 @@ export function DocumentViewer({
   const sourceShown = !previewable || showSource || writing;
   const status = view.draft
     ? writing
-      ? "Writing…"
-      : "Not saved"
+      ? t("chat.documents.writing")
+      : t("chat.documents.notSaved")
     : view.updating && streaming
-      ? `Version ${saved.version} · Updating…`
-      : `Version ${saved.version} of ${view.versions.at(-1)!.version}`;
+      ? t("chat.documents.versionUpdating", { version: saved.version })
+      : t("chat.documents.versionOf", {
+          version: saved.version,
+          total: view.versions.at(-1)!.version,
+        });
 
   async function save(format: "source" | "docx") {
     const shown = document!;
@@ -108,10 +112,10 @@ export function DocumentViewer({
           .createFile(documentFilename(shown), documentMediaType(shown))
           .write(shown.content);
       }
-      toastSuccess("Document saved");
+      toastSuccess(t("chat.mobile.documents.saved"));
     } catch (error) {
       if (!(error instanceof Error && /cancel/i.test(error.message)))
-        toastError("Could not save document", error);
+        toastError(t("chat.mobile.documents.saveFailed"), error);
     } finally {
       setSaving(false);
     }
@@ -122,32 +126,12 @@ export function DocumentViewer({
       void save("source");
       return;
     }
-    Alert.alert("Save document", undefined, [
+    Alert.alert(t("chat.mobile.documents.saveTitle"), undefined, [
       { text: "Markdown (.md)", onPress: () => void save("source") },
       { text: "Word (.docx)", onPress: () => void save("docx") },
-      { text: "Cancel", style: "cancel" },
+      { text: t("common.actions.cancel"), style: "cancel" },
     ]);
   }
-
-  const iconButton = (
-    label: string,
-    icon: keyof typeof Feather.glyphMap,
-    onPress: () => void,
-    disabled = false,
-  ) => (
-    <Pressable
-      key={label}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [styles.iconButton, { opacity: disabled ? 0.35 : pressed ? 0.6 : 1 }]}
-    >
-      <Feather name={icon} size={19} color={colors.foreground} />
-    </Pressable>
-  );
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -170,39 +154,64 @@ export function DocumentViewer({
                 {document.title}
               </Text>
               <Text numberOfLines={1} style={[styles.status, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-                {DOCUMENT_TYPE_LABELS[document.type]}
+                {t(`chat.documents.types.${document.type}`)}
                 {document.type === "code" && document.language ? ` · ${document.language}` : ""} · {status}
               </Text>
             </View>
-            {iconButton("Close document", "x", onClose)}
+            <ToolbarIconButton label={t("chat.documents.closeDocument")} icon="x" onPress={onClose} />
           </View>
           <View style={styles.toolbar}>
             {view.versions.length > 1 && !view.draft ? (
-              <View style={styles.toolbarGroup} accessibilityLabel="Versions">
-                {iconButton("Previous version", "chevron-left", () => onSelect(view.versions[view.index - 1].toolCallId), view.index <= 0)}
-                {iconButton(
-                  "Next version",
-                  "chevron-right",
-                  () => onSelect(view.versions[view.index + 1].toolCallId),
-                  view.index >= view.versions.length - 1,
-                )}
+              <View style={styles.toolbarGroup} accessibilityLabel={t("chat.documents.versions")}>
+                <ToolbarIconButton
+                  label={t("chat.documents.previousVersion")}
+                  icon="chevron-left"
+                  onPress={() => onSelect(view.versions[view.index - 1].toolCallId)}
+                  disabled={view.index <= 0}
+                />
+                <ToolbarIconButton
+                  label={t("chat.documents.nextVersion")}
+                  icon="chevron-right"
+                  onPress={() => onSelect(view.versions[view.index + 1].toolCallId)}
+                  disabled={view.index >= view.versions.length - 1}
+                />
               </View>
             ) : (
               <View />
             )}
             <View style={styles.toolbarGroup}>
-              {previewable
-                ? iconButton(showSource ? "Show preview" : "Show source", showSource ? "eye" : "code", () => setShowSource((value) => !value), writing)
-                : null}
-              {iconButton("Copy document", "copy", () => {
-                Clipboard.setStringAsync(document.content)
-                  .then(() => toastSuccess("Document copied"))
-                  .catch((error: unknown) => toastError("Could not copy the document", error));
-              }, writing)}
-              {iconButton("Share document", "share", () => {
-                void Share.share({ title: document.title, message: document.content }).catch(() => {});
-              }, writing)}
-              {iconButton("Save document", "download", chooseSave, writing || saving)}
+              {previewable ? (
+                <ToolbarIconButton
+                  label={showSource ? t("chat.files.showPreview") : t("chat.files.showSource")}
+                  icon={showSource ? "eye" : "code"}
+                  onPress={() => setShowSource((value) => !value)}
+                  disabled={writing}
+                />
+              ) : null}
+              <ToolbarIconButton
+                label={t("chat.documents.copyDocument")}
+                icon="copy"
+                onPress={() => {
+                  Clipboard.setStringAsync(document.content)
+                    .then(() => toastSuccess(t("chat.documents.documentCopied")))
+                    .catch((error: unknown) => toastError(t("chat.documents.copyDocumentFailed"), error));
+                }}
+                disabled={writing}
+              />
+              <ToolbarIconButton
+                label={t("chat.mobile.documents.share")}
+                icon="share"
+                onPress={() => {
+                  void Share.share({ title: document.title, message: document.content }).catch(() => {});
+                }}
+                disabled={writing}
+              />
+              <ToolbarIconButton
+                label={t("chat.mobile.documents.saveTitle")}
+                icon="download"
+                onPress={chooseSave}
+                disabled={writing || saving}
+              />
             </View>
           </View>
         </View>
@@ -218,6 +227,33 @@ export function DocumentViewer({
   );
 }
 
+function ToolbarIconButton({
+  label,
+  icon,
+  onPress,
+  disabled = false,
+}: {
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      hitSlop={6}
+      style={({ pressed }) => [styles.iconButton, { opacity: disabled ? 0.35 : pressed ? 0.6 : 1 }]}
+    >
+      <Feather name={icon} size={19} color={colors.foreground} />
+    </Pressable>
+  );
+}
+
 function DocumentBody({
   document,
   source,
@@ -230,6 +266,7 @@ function DocumentBody({
   bottomInset: number;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   if (source || document.type === "markdown") {
     return (
       <ScrollView
@@ -243,21 +280,21 @@ function DocumentBody({
         )}
         {document.type === "mermaid" ? (
           <Text style={[styles.note, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-            Open this chat on the web to view the diagram.
+            {t("chat.mobile.documents.diagramWebHint")}
           </Text>
         ) : null}
       </ScrollView>
     );
   }
-  return <SandboxedPreview html={previewHtml(document)} background={document.type === "html" ? "#ffffff" : colors.background} />;
+  return <SandboxedPreview html={previewHtml(document, t("chat.documents.svgPreviewAlt"))} background={document.type === "html" ? "#ffffff" : colors.background} />;
 }
 
-function previewHtml(document: ShownDocument): string {
+function previewHtml(document: ShownDocument, svgAlt: string): string {
   if (document.type === "svg") {
     // An SVG image document never runs scripts or loads resources.
     const image = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(document.content)}`;
     return htmlPreviewDocument(
-      `<style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100%}</style><img alt="SVG preview" src="${image}">`,
+      `<style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100%}</style><img alt="${svgAlt.replace(/"/g, "&quot;")}" src="${image}">`,
     );
   }
   return htmlPreviewDocument(document.content);

@@ -3,6 +3,8 @@
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { getErrorMessage } from "@/lib/errors";
 import { apiError, ApiError } from "@overtchat/shared";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   forwardRef,
   useEffect,
@@ -45,32 +47,22 @@ interface Props {
 
 function friendlyError(error: unknown): string {
   if (error instanceof DOMException && error.name === "NotAllowedError") {
-    return "Microphone access was denied. Allow it in your browser and try again.";
+    return i18n.t("chat.voice.permissionDenied");
   }
   if (!window.isSecureContext && window.location.hostname !== "localhost") {
-    return "Microphone access requires HTTPS for non-local addresses.";
+    return i18n.t("chat.voice.httpsRequired");
   }
-  return getErrorMessage(error, "The voice session could not start.");
+  return getErrorMessage(error, i18n.t("chat.voice.startFailed"));
 }
 
-function statusLabel(
-  status: VoiceClientStatus,
-): string {
-  switch (status) {
-    case "connecting":
-      return "Connecting";
-    case "user-speaking":
-      return "Listening to you";
-    case "thinking":
-      return "Thinking";
-    case "assistant-speaking":
-      return "Speaking";
-    case "closed":
-      return "Ended";
-    default:
-      return "Listening";
-  }
-}
+const VOICE_STATUS_KEYS = {
+  connecting: "chat.voice.status.connecting",
+  "user-speaking": "chat.voice.status.userSpeaking",
+  thinking: "chat.voice.status.thinking",
+  "assistant-speaking": "chat.voice.status.assistantSpeaking",
+  closed: "chat.voice.status.closed",
+  listening: "chat.voice.status.listening",
+} as const;
 
 export const RealtimeVoiceSession = forwardRef<
   RealtimeVoiceSessionHandle,
@@ -88,6 +80,7 @@ export const RealtimeVoiceSession = forwardRef<
   },
   ref,
 ) {
+  const { t } = useTranslation();
   const clientRef = useRef<OvertChatVoiceClient | null>(null);
   const cleanupRef = useRef<Promise<void>>(Promise.resolve());
   const callbacksRef = useRef({ onMessages, onPersisted });
@@ -136,7 +129,7 @@ export const RealtimeVoiceSession = forwardRef<
         method: "DELETE", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: grant.sessionId }), keepalive: true,
       }).then(response => {
-        if (!response.ok) throw new ApiError("Could not end the voice session.", response.status);
+        if (!response.ok) throw new ApiError(i18n.t("chat.voice.endFailed"), response.status);
       }).catch(error => { releasePromise = null; throw error; });
     };
     const close = async () => {
@@ -162,9 +155,9 @@ export const RealtimeVoiceSession = forwardRef<
       while (true) {
         const response = await fetch(apiUrl(`/api/chat/${encodeURIComponent(chatId)}/stream/status`));
         if (response.status === 404) break;
-        if (!response.ok) throw new Error("Could not finish the voice session. Try End again.");
+        if (!response.ok) throw new Error(i18n.t("chat.voice.finishFailed"));
         if (!(await response.json()).active) break;
-        if (Date.now() >= deadline) throw new Error("The response is still stopping. Try End again.");
+        if (Date.now() >= deadline) throw new Error(i18n.t("chat.voice.stillStopping"));
         await new Promise(resolve => setTimeout(resolve, 150));
       }
       await refresh();
@@ -185,7 +178,7 @@ export const RealtimeVoiceSession = forwardRef<
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
         });
         const body = await response.json();
-        if (!response.ok || !body.token) throw apiError(response.status, body, "Could not start voice.");
+        if (!response.ok || !body.token) throw apiError(response.status, body, i18n.t("chat.voice.startRequestFailed"));
         grant = body as VoiceSessionGrant;
         if (!active()) return;
         // Subscribe before opening the microphone: no initial turn can race the
@@ -194,7 +187,7 @@ export const RealtimeVoiceSession = forwardRef<
           headers: { "X-OvertChat-Voice-Ticket": grant.token }, signal: events.signal,
         });
         if (!active()) return;
-        if (!eventResponse.ok || !eventResponse.body) throw new ApiError("Could not connect voice history.", eventResponse.status);
+        if (!eventResponse.ok || !eventResponse.body) throw new ApiError(i18n.t("chat.voice.historyConnectFailed"), eventResponse.status);
         const reader = eventResponse.body.pipeThrough(new TextDecoderStream()).getReader();
         void (async () => {
           let pending = "";
@@ -202,7 +195,7 @@ export const RealtimeVoiceSession = forwardRef<
             while (active()) {
               const { value, done } = await reader.read();
               if (!active()) break;
-              if (done) throw new ApiError("The voice connection ended. End voice and reconnect.", 503);
+              if (done) throw new ApiError(i18n.t("chat.voice.connectionEnded"), 503);
               pending += value;
               let boundary: number;
               while ((boundary = pending.indexOf("\n\n")) !== -1) {
@@ -271,7 +264,7 @@ export const RealtimeVoiceSession = forwardRef<
   }, [chatId, modelConfigId, projectId, webSearchEnabled, reasoningLevel]);
 
   const connected = status !== "connecting" && status !== "closed" && !error;
-  const label = statusLabel(status);
+  const label = t(VOICE_STATUS_KEYS[status] ?? "chat.voice.status.listening");
 
   return (
     <div className="mb-3 overflow-hidden rounded-3xl border bg-background/95 shadow-sm">
@@ -279,7 +272,7 @@ export const RealtimeVoiceSession = forwardRef<
         <div key={item.id} className="border-b px-4 py-2 text-sm" role="status">
           <p className="whitespace-pre-wrap">{item.text}</p>
           <p className="text-xs text-muted-foreground">
-            {item.failed ? "Not confirmed sent. Check the conversation before sending again." : "Sending…"}
+            {item.failed ? t("chat.voice.notConfirmedSent") : t("common.states.sending")}
           </p>
         </div>
       ))}
@@ -295,8 +288,10 @@ export const RealtimeVoiceSession = forwardRef<
           <p className="text-sm font-medium">{error ?? label}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {error
-              ? "End the session and try again"
-              : `${modelLabel} · ${muted ? "Microphone muted" : "Realtime voice"}`}
+              ? t("chat.voice.endAndRetry")
+              : muted
+                ? t("chat.voice.subtitleMuted", { model: modelLabel })
+                : t("chat.voice.subtitleActive", { model: modelLabel })}
           </p>
           {turnWarning && (
             <ErrorNotice className="mt-1" message={turnWarning} onDismiss={() => setTurnWarning(null)} />
@@ -314,7 +309,11 @@ export const RealtimeVoiceSession = forwardRef<
               setMuted(next);
               clientRef.current?.setMuted(next);
             }}
-            aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+            aria-label={
+              muted
+                ? t("chat.voice.unmuteMicrophone")
+                : t("chat.voice.muteMicrophone")
+            }
           >
             {muted ? <MicOff /> : <Mic />}
           </Button>
@@ -325,7 +324,7 @@ export const RealtimeVoiceSession = forwardRef<
               size="icon-sm"
               className="rounded-full"
               onClick={() => clientRef.current?.interrupt()}
-              aria-label="Stop assistant"
+              aria-label={t("chat.voice.stopAssistant")}
             >
               <Square className="size-3 fill-current" />
             </Button>

@@ -2,6 +2,7 @@
 
 import { Server } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
@@ -17,6 +18,7 @@ import {
 } from "../SettingsRows";
 
 export function AvailableMcpServersPanel() {
+  const { t } = useTranslation();
   const { data: servers = [], isPending, error } = useAvailableMcpServers();
   const setPreference = useSetMcpServerPreference();
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -27,8 +29,13 @@ export function AvailableMcpServersPanel() {
       await setPreference.mutateAsync({ id: server.id, enabled });
     } catch (error) {
       toast.error({
-        title: `Failed to ${enabled ? "enable" : "disable"} MCP server`,
-        description: getErrorMessage(error, "Your preference was not changed."),
+        title: enabled
+          ? t("tools.mcp.available.enableErrorTitle")
+          : t("tools.mcp.available.disableErrorTitle"),
+        description: getErrorMessage(
+          error,
+          t("tools.mcp.available.toggleErrorFallback"),
+        ),
       });
     } finally {
       setTogglingId(null);
@@ -37,19 +44,21 @@ export function AvailableMcpServersPanel() {
 
   return (
     <SettingsSection
-      title="MCP servers"
-      description="Choose which available MCP servers can provide tools in your chats."
+      title={t("tools.mcp.available.title")}
+      description={t("tools.mcp.available.description")}
     >
       {isPending ? (
-        <SettingsNotice className="py-6">Loading MCP servers…</SettingsNotice>
+        <SettingsNotice className="py-6">
+          {t("tools.mcp.loading")}
+        </SettingsNotice>
       ) : error ? (
         <SettingsNotice tone="error" className="py-6">
-          {getErrorMessage(error, "Unable to load MCP servers.")}
+          {getErrorMessage(error, t("tools.mcp.loadError"))}
         </SettingsNotice>
       ) : servers.length === 0 ? (
         <SettingsEmptyState
-          title="No MCP servers available"
-          description="Ask an administrator to connect a tool server."
+          title={t("tools.mcp.emptyTitle")}
+          description={t("tools.mcp.available.emptyDescription")}
         />
       ) : (
         servers.map((server) => (
@@ -67,7 +76,11 @@ export function AvailableMcpServersPanel() {
               checked={server.enabled}
               disabled={togglingId === server.id}
               onCheckedChange={(enabled) => void toggle(server, enabled)}
-              aria-label={`${server.enabled ? "Disable" : "Enable"} ${server.name} for my chats`}
+              aria-label={
+                server.enabled
+                  ? t("tools.mcp.available.disableLabel", { name: server.name })
+                  : t("tools.mcp.available.enableLabel", { name: server.name })
+              }
             />
           </div>
         ))

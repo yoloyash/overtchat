@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { applyAgentRuntimeMessageEvent } from "@overtchat/agent-bridge";
 import { latestAgentTaskList, projectAgentTranscript } from "@overtchat/shared/agent-presentation";
+import { i18n } from "@overtchat/shared/i18n";
 import { startOmp } from "./client";
 import { configureLocalTestProcessSpawner } from "../runtime/local-process.test-helper";
 
@@ -42,7 +43,7 @@ describe.runIf(process.env.RUN_OMP_TODO_INTEGRATION === "1")("installed OMP todo
       expect(tasks?.tasks.every((task) => task.status === "completed")).toBe(true);
       expect(completedCounts).toContain(0);
       expect(completedCounts).toContain(1);
-      expect(projectAgentTranscript(messages).some((item) => item.type === "task_list")).toBe(true);
+      expect(projectAgentTranscript(messages, i18n.t, "en-US").some((item) => item.type === "task_list")).toBe(true);
       await client.stop();
       client = startOmp({ transport: "local" }, launch);
       const restored = await client.getMessages();

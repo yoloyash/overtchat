@@ -3,6 +3,7 @@
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { apiError, getErrorMessage } from "@overtchat/shared";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motionClasses } from "@/lib/motion";
@@ -36,6 +37,7 @@ export interface ConnectionTesterProps {
 }
 
 export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
+  const { t } = useTranslation();
   const [pinging, setPinging] = useState(false);
   const [result, setResult] = useState<PingResult | null>(null);
 
@@ -56,7 +58,14 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
         error?: string;
       };
       if (!res.ok || json.error) {
-        setResult({ ok: false, error: apiError(res.status, json, "Could not connect to the model provider.").message });
+        setResult({
+          ok: false,
+          error: apiError(
+            res.status,
+            json,
+            t("models.connectionTester.connectError"),
+          ).message,
+        });
         return;
       }
       setResult({
@@ -67,7 +76,10 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
         outputTokens: json.outputTokens ?? null,
       });
     } catch (e) {
-      setResult({ ok: false, error: getErrorMessage(e, "Could not connect to the model provider.") });
+      setResult({
+        ok: false,
+        error: getErrorMessage(e, t("models.connectionTester.connectError")),
+      });
     } finally {
       setPinging(false);
     }
@@ -84,10 +96,11 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
       >
         {pinging ? (
           <>
-            <Loader2 className={`size-3 ${motionClasses.spinner}`} /> Testing…
+            <Loader2 className={`size-3 ${motionClasses.spinner}`} />{" "}
+            {t("models.connectionTester.testing")}
           </>
         ) : (
-          "Test connection"
+          t("models.connectionTester.testConnection")
         )}
       </Button>
 
@@ -95,12 +108,17 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
         <div className="rounded-lg border border-ring/30 bg-ring/5 px-3 py-2 text-xs">
           <div className="flex items-center gap-1.5 font-medium text-foreground">
             <CheckCircle2 className="size-3.5 text-ring" />
-            Connected
+            {t("models.connectionTester.connected")}
             <span className="ml-auto font-normal text-muted-foreground">
-              {result.elapsedMs}ms
-              {result.inputTokens != null && result.outputTokens != null && (
-                <> · {result.inputTokens} in / {result.outputTokens} out</>
-              )}
+              {result.inputTokens != null && result.outputTokens != null
+                ? t("models.connectionTester.elapsedMsWithTokens", {
+                    elapsedMs: result.elapsedMs,
+                    inputTokens: result.inputTokens,
+                    outputTokens: result.outputTokens,
+                  })
+                : t("models.connectionTester.elapsedMs", {
+                    elapsedMs: result.elapsedMs,
+                  })}
             </span>
           </div>
           {result.text && (

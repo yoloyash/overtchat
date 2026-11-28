@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { note } from "@clack/prompts";
 import {
   existingInstallationSummary,
   kokoroGpuVariant,
@@ -58,6 +59,12 @@ vi.mock("@clack/prompts", () => ({
 
 vi.mock("./process.js", () => ({
   commandExists: vi.fn(async () => false),
+}));
+
+// The wizard must not reach for the network while it is tested.
+vi.mock("./identity-provider.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./identity-provider.js")>()),
+  checkIssuer: vi.fn(async () => null),
 }));
 
 beforeEach(() => {
@@ -309,6 +316,79 @@ describe("setup provider selection", () => {
       ["full", "Full"],
       ["later", "Set up later"],
     ]);
+  });
+
+  it("sets up an identity provider against the address chosen for access", async () => {
+    promptAnswers.set("Web search", "disabled");
+    promptAnswers.set("Text-to-speech", "disabled");
+    promptAnswers.set("Speech-to-text", "disabled");
+    promptAnswers.set("Install Agent Connections?", false);
+    promptAnswers.set("Sign in with an identity provider?", "configure");
+    promptAnswers.set("Issuer URL", "https://id.example.com");
+    promptAnswers.set("Client ID", "overtchat");
+    promptAnswers.set("Client secret", "s3cret");
+    promptAnswers.set("Name on the sign-in button", "Pocket ID");
+    promptAnswers.set(
+      "When someone signs in with Pocket ID but has no account here?",
+      "refuse",
+    );
+
+    const selected = await promptInstallationConfig(setupConfig(), []);
+
+    expect(selected.identityProvider).toEqual({
+      issuerUrl: "https://id.example.com",
+      clientId: "overtchat",
+      clientSecret: "s3cret",
+      name: "Pocket ID",
+      autoCreateUsers: false,
+      disablePasswordLogin: false,
+    });
+    expect(note).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `Redirect address: ${selected.publicUrl}/api/auth/callback/oidc`,
+      ),
+      "Register OvertChat with the provider",
+    );
+  });
+
+  it("keeps a configured identity provider and leaves others without one", async () => {
+    promptAnswers.set("Web search", "disabled");
+    promptAnswers.set("Text-to-speech", "disabled");
+    promptAnswers.set("Speech-to-text", "disabled");
+    promptAnswers.set("Install Agent Connections?", false);
+    promptAnswers.set("Sign in with an identity provider?", "later");
+    expect(
+      (await promptInstallationConfig(setupConfig(), [])).identityProvider,
+    ).toBeUndefined();
+    expect(selectPrompts.at(-1)).toMatchObject({
+      message: "Sign in with an identity provider?",
+      initialValue: "later",
+    });
+
+    const identityProvider = {
+      issuerUrl: "https://id.example.com",
+      clientId: "overtchat",
+      name: "Pocket ID",
+      autoCreateUsers: true,
+      disablePasswordLogin: true,
+    };
+    promptAnswers.set("Sign in with an identity provider?", "keep");
+    const kept = await promptInstallationConfig(
+      { ...setupConfig(), identityProvider },
+      [],
+      undefined,
+      null,
+      { identityProviderSecretStored: true },
+    );
+    expect(kept.identityProvider).toEqual(identityProvider);
+    expect(selectPrompts.at(-1)).toMatchObject({
+      initialValue: "keep",
+      options: [
+        { value: "keep", label: "Keep Pocket ID" },
+        { value: "configure" },
+        { value: "off" },
+      ],
+    });
   });
 
   it("removes previously installed optional services when setup is deferred", async () => {

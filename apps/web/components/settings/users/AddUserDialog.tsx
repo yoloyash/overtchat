@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { authClient } from "@/lib/auth/client";
+import { signInMethodsQuery } from "@/lib/queries/auth";
 import {
   SettingsActions,
   SettingsNotice,
@@ -32,12 +35,16 @@ export function AddUserDialog({
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("user");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { data: methods } = useQuery(signInMethodsQuery);
+  // With passwords off, the account is found by its email at the provider.
+  const provider = methods?.password === false ? methods.sso?.name : undefined;
 
   function reset() {
     setName("");
@@ -54,12 +61,12 @@ export function AddUserDialog({
     setError("");
     const { error } = await authClient.admin.createUser({
       email,
-      password,
+      ...(provider ? {} : { password }),
       name: name.trim(),
       role,
     });
     if (error) {
-      setError(error.message ?? "Failed to create user");
+      setError(error.message ?? t("users.toast.createErrorFallback"));
       setSubmitting(false);
       return;
     }
@@ -67,7 +74,7 @@ export function AddUserDialog({
     onOpenChange(false);
     onCreated();
     toast.success({
-      title: "User created",
+      title: t("users.toast.createdTitle"),
       description: email,
     });
   }
@@ -91,15 +98,17 @@ export function AddUserDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Add user
+            {t("users.page.addUser")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Share the password with them out-of-band. They can change it later.
+            {provider
+              ? t("users.addDialog.ssoDescription", { provider })
+              : t("users.addDialog.passwordDescription")}
           </Dialog.Description>
 
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="new-name">Name</Label>
+              <Label htmlFor="new-name">{t("users.addDialog.nameLabel")}</Label>
               <Input
                 id="new-name"
                 type="text"
@@ -112,7 +121,9 @@ export function AddUserDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="new-email">Email</Label>
+              <Label htmlFor="new-email">
+                {t("users.addDialog.emailLabel")}
+              </Label>
               <Input
                 id="new-email"
                 type="email"
@@ -124,22 +135,26 @@ export function AddUserDialog({
                 }}
               />
             </div>
+            {!provider && (
+              <div className="space-y-1.5">
+                <Label htmlFor="new-password">
+                  {t("users.addDialog.passwordLabel")}
+                </Label>
+                <Input
+                  id="new-password"
+                  type="text"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError("");
+                  }}
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
-              <Label htmlFor="new-password">Password</Label>
-              <Input
-                id="new-password"
-                type="text"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError("");
-                }}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-role">Role</Label>
+              <Label htmlFor="new-role">{t("users.addDialog.roleLabel")}</Label>
               <Select
                 value={role}
                 onValueChange={(next) => {
@@ -147,12 +162,18 @@ export function AddUserDialog({
                   setError("");
                 }}
               >
-                <SelectTrigger id="new-role" aria-label="Role" className="w-full">
-                  <SelectValue />
+                <SelectTrigger
+                  id="new-role"
+                  aria-label={t("users.addDialog.roleAriaLabel")}
+                  className="w-full"
+                >
+                  <SelectValue>{t(`users.roles.${role}`)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="user">{t("users.roles.user")}</SelectItem>
+                  <SelectItem value="admin">
+                    {t("users.roles.admin")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -166,10 +187,12 @@ export function AddUserDialog({
                 size="sm"
                 onClick={() => onOpenChange(false)}
               >
-                Cancel
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
-                {submitting ? "Creating…" : "Create"}
+                {submitting
+                  ? t("common.states.creating")
+                  : t("common.actions.create")}
               </Button>
             </SettingsActions>
           </form>

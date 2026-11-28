@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
+import { signInMethodsQuery, twoFactorQuery } from "@/lib/queries/auth";
 import {
   SettingsActions,
   SettingsNotice,
@@ -14,14 +17,51 @@ import {
 } from "../SettingsRows";
 import { TwoFactorSection } from "./TwoFactorSection";
 
-export function AccountForm({
-  email,
-  startTwoFactorSetup = false,
-}: {
+type AccountFormProps = {
   email: string;
   /** Opens two-factor setup right away, as when coming from the sign-in prompt. */
   startTwoFactorSetup?: boolean;
-}) {
+};
+
+export function AccountForm(props: AccountFormProps) {
+  const { t } = useTranslation();
+  const { data: status } = useQuery(twoFactorQuery);
+  const { data: methods } = useQuery(signInMethodsQuery);
+  // An account that signs in through the identity provider has no password
+  // here to change, and nothing for two-factor to guard.
+  if (status?.passwordSignIn === false) {
+    const provider = methods?.sso?.name;
+    return (
+      <SettingsPage>
+        <SettingsPageHeader
+          title={t("account.title")}
+          description={
+            <Trans
+              i18nKey="account.signedInAs"
+              values={{ email: props.email }}
+              components={{ email: <span className="text-foreground" /> }}
+            />
+          }
+        />
+        <SettingsSection
+          title={t("account.sso.title")}
+          description={
+            provider
+              ? t("account.sso.descriptionWithProvider", { provider })
+              : t("account.sso.descriptionDefault")
+          }
+        />
+      </SettingsPage>
+    );
+  }
+  return <PasswordSecurity {...props} />;
+}
+
+function PasswordSecurity({
+  email,
+  startTwoFactorSetup = false,
+}: AccountFormProps) {
+  const { t } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [pwError, setPwError] = useState("");
@@ -40,7 +80,7 @@ export function AccountForm({
     });
     if (error) {
       setPwStatus("idle");
-      setPwError(error.message ?? "Failed to change password");
+      setPwError(error.message ?? t("account.password.changeFailed"));
       return;
     }
     setPwStatus("ok");
@@ -51,11 +91,13 @@ export function AccountForm({
   return (
     <SettingsPage>
       <SettingsPageHeader
-        title="Security"
+        title={t("account.title")}
         description={
-          <>
-            Signed in as <span className="text-foreground">{email}</span>.
-          </>
+          <Trans
+            i18nKey="account.signedInAs"
+            values={{ email }}
+            components={{ email: <span className="text-foreground" /> }}
+          />
         }
       />
 
@@ -71,11 +113,11 @@ export function AccountForm({
           hidden
         />
         <SettingsSection
-          title="Password"
-          description="Changing your password signs you out of all other sessions."
+          title={t("account.password.title")}
+          description={t("account.password.description")}
         >
           <SettingsRow
-            title="Current password"
+            title={t("account.password.currentLabel")}
             htmlFor="current"
             align="center"
             controlAlign="end"
@@ -96,8 +138,8 @@ export function AccountForm({
           </SettingsRow>
 
           <SettingsRow
-            title="New password"
-            description="Use at least 8 characters."
+            title={t("account.password.newLabel")}
+            description={t("account.password.newDescription")}
             htmlFor="new"
             align="center"
             controlAlign="end"
@@ -124,11 +166,13 @@ export function AccountForm({
         <SettingsActions bordered={false}>
           {pwStatus === "ok" && (
             <SettingsNotice tone="success" className="mr-auto">
-              Password updated
+              {t("account.password.updated")}
             </SettingsNotice>
           )}
           <Button type="submit" disabled={pwStatus === "submitting"}>
-            {pwStatus === "submitting" ? "Saving…" : "Change password"}
+            {pwStatus === "submitting"
+              ? t("common.states.saving")
+              : t("account.password.submit")}
           </Button>
         </SettingsActions>
       </form>

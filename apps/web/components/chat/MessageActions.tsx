@@ -1,6 +1,8 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
 import { formatUpdatedAt } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useNow } from "@/lib/useNow";
 import { cn } from "@/lib/utils";
 
@@ -66,23 +68,26 @@ export function MessageTime({
   at: number;
   revealOnHover?: boolean;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const now = useNow(60_000);
   const date = new Date(at);
+  const formattedDate = date.toLocaleString(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
   return (
     <time
       data-slot="message-time"
       dateTime={date.toISOString()}
-      title={date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })}
+      title={formattedDate}
       className={cn(
         "px-1.5 text-xs whitespace-nowrap text-muted-foreground [@media(hover:none)]:hidden",
         revealOnHover &&
           "opacity-0 motion-opacity group-hover:opacity-100 group-focus-within:opacity-100",
       )}
     >
-      {formatUpdatedAt(at, now)}
+      {formatUpdatedAt(at, t, locale, now)}
     </time>
   );
 }

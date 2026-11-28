@@ -1,3 +1,4 @@
+import { i18n } from "./i18n/i18n";
 import type { ToolState } from "./tools";
 import type { UIMessage } from "ai";
 
@@ -79,7 +80,7 @@ function isJson(value: unknown, depth = 0): value is OpenUIJson {
     isRecord(value) &&
     Object.entries(value).every(
       ([key, item]) =>
-        !["__proto__", "constructor", "prototype"].includes(key) &&
+        !["[object Object]", "function Object() { [native code] }", "prototype"].includes(key) &&
         isJson(item, depth + 1),
     )
   );
@@ -179,7 +180,7 @@ export function withOpenUIFallback(messages: UIMessage[]): UIMessage[] {
             type: "text" as const,
             text:
               openUIFallbackText(part) ||
-              "Interactive UI is unavailable in this client.",
+              i18n.t("chat.openui.unavailableInClient"),
           }
         : part,
     ),

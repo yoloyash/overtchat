@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -5,6 +6,7 @@ import {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { SheetBackdrop, SheetHandle } from "@/components/ui/SheetChrome";
 import {
   MEMORY_KEY_MAX_LENGTH,
   MEMORY_VALUE_MAX_LENGTH,
@@ -34,6 +36,7 @@ export type MemoryEditorSheetRef = {
 export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
   function MemoryEditorSheet(_props, ref) {
     const { colors, radii, fonts } = useTheme();
+    const { t } = useTranslation();
     const insets = useSafeAreaInsets();
     const keyboardHeight = useKeyboardState((state) =>
       state.isVisible ? state.height : 0,
@@ -59,7 +62,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
+        <SheetBackdrop
           {...props}
           appearsOnIndex={0}
           disappearsOnIndex={-1}
@@ -93,24 +96,27 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
             id: memory.id,
             input: { key: trimmedKey, value: trimmedValue },
           });
-          toastSuccess("Memory updated");
+          toastSuccess(t("personalization.memories.dialog.updatedToast"));
         } else {
           await createMemory.mutateAsync({
             key: trimmedKey,
             value: trimmedValue,
           });
-          toastSuccess("Memory added");
+          toastSuccess(t("personalization.memories.dialog.addedToast"));
         }
         sheetRef.current?.dismiss();
       } catch (cause) {
         setError(
-          cause instanceof Error ? cause.message : "Couldn't save memory.",
+          cause instanceof Error
+            ? cause.message
+            : t("personalization.mobile.memories.saveError"),
         );
       }
     }
 
     return (
       <BottomSheetModal
+        handleComponent={SheetHandle}
         ref={sheetRef}
         enableDynamicSizing
         backdropComponent={renderBackdrop}
@@ -135,7 +141,9 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
               },
             ]}
           >
-            {memory ? "Edit memory" : "Add memory"}
+            {memory
+              ? t("personalization.memories.editTitle")
+              : t("personalization.memories.add")}
           </Text>
           <Text
             style={[
@@ -146,8 +154,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
               },
             ]}
           >
-            Saved memories are included in future chats when personalization is
-            on.
+            {t("personalization.memories.dialog.description")}
           </Text>
 
           <View style={styles.field}>
@@ -157,16 +164,16 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                 { color: colors.foreground, fontFamily: fonts.sansMedium },
               ]}
             >
-              What should OvertChat remember?
+              {t("personalization.memories.dialog.valueLabel")}
             </Text>
             <BottomSheetTextInput
-              accessibilityLabel="Memory value"
+              accessibilityLabel={t("personalization.memories.dialog.valueAriaLabel")}
               value={value}
               onChangeText={(next) => {
                 setValue(next);
                 setError("");
               }}
-              placeholder="Prefer concise answers."
+              placeholder={t("personalization.memories.dialog.valuePlaceholder")}
               placeholderTextColor={colors.mutedForeground}
               maxLength={MEMORY_VALUE_MAX_LENGTH}
               multiline
@@ -191,15 +198,16 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                 { color: colors.foreground, fontFamily: fonts.sansMedium },
               ]}
             >
-              Label
+              {t("personalization.memories.dialog.keyLabel")}
             </Text>
             <BottomSheetTextInput
-              accessibilityLabel="Memory key"
+              accessibilityLabel={t("personalization.memories.dialog.keyAriaLabel")}
               value={key}
               onChangeText={(next) => {
                 setKey(next);
                 setError("");
               }}
+              // eslint-disable-next-line i18next/no-literal-string -- memory key format example
               placeholder="response_style"
               placeholderTextColor={colors.mutedForeground}
               maxLength={MEMORY_KEY_MAX_LENGTH}
@@ -225,8 +233,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                 },
               ]}
             >
-              Start with a letter and use lowercase letters, numbers, or
-              underscores.
+              {t("personalization.mobile.memories.keyHint")}
             </Text>
           </View>
 
@@ -245,7 +252,7 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Cancel"
+              accessibilityLabel={t("common.actions.cancel")}
               onPress={() => sheetRef.current?.dismiss()}
               style={({ pressed }) => [
                 styles.button,
@@ -262,12 +269,16 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                   { color: colors.foreground, fontFamily: fonts.sansSemiBold },
                 ]}
               >
-                Cancel
+                {t("common.actions.cancel")}
               </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={memory ? "Save changes" : "Add memory"}
+              accessibilityLabel={
+                memory
+                  ? t("common.actions.saveChanges")
+                  : t("personalization.memories.add")
+              }
               disabled={!canSubmit}
               onPress={() => void submit()}
               style={({ pressed }) => [
@@ -295,7 +306,9 @@ export const MemoryEditorSheet = forwardRef<MemoryEditorSheetRef>(
                     },
                   ]}
                 >
-                  {memory ? "Save changes" : "Add memory"}
+                  {memory
+                    ? t("common.actions.saveChanges")
+                    : t("personalization.memories.add")}
                 </Text>
               )}
             </Pressable>

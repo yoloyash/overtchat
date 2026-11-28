@@ -2,6 +2,8 @@
 
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import {
@@ -20,7 +22,6 @@ import { chatErrorMessage } from "@/lib/chat/message";
 import type { InferenceActivity } from "@/lib/chat/inference-activity";
 import type { MessageTimes } from "@/lib/chat/message-times";
 import {
-  contextStatusLabel,
   isManualCompactionMessage,
   isContextStatus,
   canContinueMessage,
@@ -38,6 +39,13 @@ import { ChatFindBar } from "./ChatFindBar";
 import { MessageBubble } from "./MessageBubble";
 import { QuoteSelectionButton } from "./QuoteSelectionButton";
 import { useChatFind } from "./useChatFind";
+
+const CONTEXT_STATUS_KEYS = {
+  compacting: "chat.messages.contextStatus.compacting",
+  "manual-compacting": "chat.messages.contextStatus.manualCompacting",
+  "manual-compacted": "chat.messages.contextStatus.manualCompacted",
+  compacted: "chat.messages.contextStatus.compacted",
+} as const;
 
 export function MessageList({
   messages,
@@ -89,6 +97,7 @@ export function MessageList({
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onReconnect: () => void;
 }) {
+  const { t } = useTranslation();
   const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
   const codeFiles = useMemo(() => codeExecutionFileIndex(messages), [messages]);
   const replacedEmails = useMemo(() => replacedGmailEmailIds(messages), [messages]);
@@ -241,7 +250,7 @@ export function MessageList({
                     visibleContextStatus === "manual-compacting") && (
                     <LoaderCircle className="size-3.5 animate-spin" />
                   )}
-                  {contextStatusLabel(visibleContextStatus)}
+                  {t(CONTEXT_STATUS_KEYS[visibleContextStatus])}
                 </p>
               );
               content = (
@@ -335,7 +344,7 @@ export function MessageList({
               role="status"
             >
               <LoaderCircle className="size-3.5 animate-spin" />
-              Loading earlier messages
+              {t("chat.messages.loadingEarlier")}
             </span>
           ) : (
             <Button
@@ -345,7 +354,7 @@ export function MessageList({
               className="pointer-events-auto rounded-full bg-background/95 shadow-sm backdrop-blur"
               onClick={onLoadOlderMessages}
             >
-              Load earlier messages
+              {t("chat.messages.loadEarlier")}
             </Button>
           )}
         </div>
@@ -359,7 +368,7 @@ export function MessageList({
             size="icon-sm"
             className="pointer-events-auto rounded-full bg-background/95 shadow-md backdrop-blur"
             onClick={() => virtualizer.scrollToEnd({ behavior: "smooth" })}
-            aria-label="Scroll to bottom"
+            aria-label={t("chat.messages.scrollToBottom")}
           >
             <ChevronDown />
           </Button>
@@ -374,6 +383,8 @@ function InferenceActivityIndicator({
 }: {
   activity: InferenceActivity;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const details: string[] = [];
   let label: string;
 
@@ -381,23 +392,41 @@ function InferenceActivityIndicator({
     const cachedTokens = activity.cachedTokens ?? 0;
     label =
       activity.progress === undefined
-        ? "Processing prompt"
-        : `Processing prompt ${Math.round(activity.progress * 100)}%`;
+        ? t("chat.inference.processingPrompt")
+        : t("chat.inference.processingPromptPercent", {
+            percent: Math.round(activity.progress * 100),
+          });
     if (activity.totalTokens !== undefined) {
       details.push(
-        `${formatInteger(activity.completedTokens)} / ${formatInteger(activity.totalTokens)} ${cachedTokens > 0 ? "new" : "tokens"}`,
+        cachedTokens > 0
+          ? t("chat.inference.tokensProgressNew", {
+              completed: formatInteger(activity.completedTokens, locale),
+              total: formatInteger(activity.totalTokens, locale),
+            })
+          : t("chat.inference.tokensProgress", {
+              completed: formatInteger(activity.completedTokens, locale),
+              total: formatInteger(activity.totalTokens, locale),
+            }),
       );
     }
     if (cachedTokens > 0) {
-      details.push(`${formatInteger(cachedTokens)} cached`);
+      details.push(
+        t("chat.inference.cachedTokens", {
+          count: formatInteger(cachedTokens, locale),
+        }),
+      );
     }
   } else {
-    label = "Generating";
-    details.push(`${formatInteger(activity.completedTokens)} tokens`);
+    label = t("chat.inference.generating");
+    details.push(
+      t("chat.inference.generatedTokens", {
+        count: formatInteger(activity.completedTokens, locale),
+      }),
+    );
   }
 
   if (activity.tokensPerSecond !== undefined) {
-    details.push(formatTps(activity.tokensPerSecond));
+    details.push(formatTps(activity.tokensPerSecond, t));
   }
 
   const description = [label, ...details].join(" · ");
@@ -418,11 +447,12 @@ function InferenceActivityIndicator({
 }
 
 function PendingIndicator() {
+  const { t } = useTranslation();
   return (
     <div
       className="flex items-center gap-1.5 py-2"
       role="status"
-      aria-label="Assistant is responding"
+      aria-label={t("chat.messages.assistantResponding")}
     >
       <PendingDots />
     </div>
@@ -446,10 +476,11 @@ function ChatErrorBubble({
   error: Error;
   onReconnect: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <ErrorNotice message={chatErrorMessage(error)} actions={
+    <ErrorNotice message={chatErrorMessage(error, t)} actions={
       <Button variant="outline" size="sm" onClick={onReconnect}>
-        <RotateCcw /> Reconnect
+        <RotateCcw /> {t("chat.messages.reconnect")}
       </Button>
     } />
   );

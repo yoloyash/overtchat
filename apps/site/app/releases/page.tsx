@@ -33,22 +33,24 @@ export default async function ReleasesPage() {
             Follow OvertChat as it gets faster, more capable, and easier to run.
             Every stable web, mobile, and desktop release lands here directly from GitHub.
           </p>
-          <Link className="text-link" href="/downloads/">
-            Choose a download for your device
-          </Link>
-          <a
-            className="text-link"
-            href="https://github.com/yoloyash/overtchat/releases"
-          >
-            <GitHubIcon aria-hidden="true" />
-            View releases on GitHub
-          </a>
-          <a
-            className="text-link"
-            href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#desktop"
-          >
-            Desktop installation guide
-          </a>
+          <div className="text-link-row">
+            <Link className="text-link" href="/downloads/">
+              Choose a download for your device
+            </Link>
+            <a
+              className="text-link"
+              href="https://github.com/yoloyash/overtchat/releases"
+            >
+              <GitHubIcon aria-hidden="true" />
+              View releases on GitHub
+            </a>
+            <a
+              className="text-link"
+              href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#desktop"
+            >
+              Desktop installation guide
+            </a>
+          </div>
         </div>
       </section>
 

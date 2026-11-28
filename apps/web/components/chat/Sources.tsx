@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { UIMessage } from "ai";
 import {
   cleanDomain,
@@ -12,6 +13,7 @@ import { buildWebCitationIndex } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
 
 export function Sources({ message }: { message: UIMessage }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const all: WebSearchResult[] = buildWebCitationIndex(message.parts).sources;
@@ -41,7 +43,9 @@ export function Sources({ message }: { message: UIMessage }) {
             );
           })}
         </div>
-        <span className="font-medium">{all.length} Sources</span>
+        <span className="font-medium">
+          {t("chat.messages.sourcesCount", { count: all.length })}
+        </span>
         <ChevronRight
           className={cn("size-3.5 motion-transform", open && "rotate-90")}
         />

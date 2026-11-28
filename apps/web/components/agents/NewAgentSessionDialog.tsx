@@ -2,6 +2,7 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { Dialog } from "@base-ui/react/dialog";
+import { Trans, useTranslation } from "react-i18next";
 import type {
   AgentProviderId,
   AgentWorkspaceListItem,
@@ -28,6 +29,7 @@ export function NewAgentSessionDialog({
   targets: NewAgentSessionTarget[];
   machineLabel: string;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { closeMobile } = useSidebar();
   const workspace = targets[0]!.workspace;
@@ -57,15 +59,17 @@ export function NewAgentSessionDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Choose an agent
+            {t("agents.newSession.chooseAgent")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            New session in{" "}
-            <span className="font-medium text-foreground">
-              {workspace.name}
-            </span>
-            <span aria-hidden="true"> · </span>
-            {machineLabel}
+            <Trans
+              i18nKey="agents.newSession.dialogDescription"
+              values={{ workspace: workspace.name, machine: machineLabel }}
+              components={{
+                workspace: <span className="font-medium text-foreground" />,
+                sep: <span aria-hidden="true" />,
+              }}
+            />
           </Dialog.Description>
 
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
@@ -75,7 +79,9 @@ export function NewAgentSessionDialog({
                 <button
                   key={target.provider}
                   type="button"
-                  aria-label={`Start ${target.providerLabel} session`}
+                  aria-label={t("agents.newSession.startProviderSession", {
+                    provider: target.providerLabel,
+                  })}
                   onClick={() => selectAgent(target)}
                   className="flex min-h-16 items-center gap-3 rounded-lg border p-3 text-left outline-none motion-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-3 focus-visible:ring-ring/50"
                 >

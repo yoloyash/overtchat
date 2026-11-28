@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, Bell, CheckCircle2, X, XCircle } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -61,12 +62,13 @@ export const toast = {
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   return (
     <ToastPrimitive.Provider toastManager={toastManager} limit={4}>
       {children}
       <ToastPrimitive.Portal>
         {/* Under the header row, clear of its controls and of the composer. */}
-        <ToastPrimitive.Viewport className="fixed top-[calc(3.5rem+env(safe-area-inset-top))] right-4 z-[100] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2 outline-none">
+        <ToastPrimitive.Viewport aria-label={t("common.toastRegionLabel")} className="fixed top-[calc(3.5rem+env(safe-area-inset-top))] right-4 z-[100] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2 outline-none">
           <ToastList />
         </ToastPrimitive.Viewport>
       </ToastPrimitive.Portal>
@@ -75,6 +77,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastList() {
+  const { t } = useTranslation();
   const { toasts } = ToastPrimitive.useToastManager();
 
   return toasts.map((item) => (
@@ -112,7 +115,7 @@ function ToastList() {
         )}
       </ToastPrimitive.Content>
       <ToastPrimitive.Close
-        aria-label="Dismiss notification"
+        aria-label={t("app.ui.toast.dismiss")}
         className={cn(
           "absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full border bg-popover text-muted-foreground shadow-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
           "opacity-0 motion-opacity group-hover/toast:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100",

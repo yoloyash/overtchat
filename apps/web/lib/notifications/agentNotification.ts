@@ -1,3 +1,5 @@
+import { i18n } from "@overtchat/shared/i18n";
+import { clipText } from "@overtchat/shared";
 import type {
   AgentProviderId,
   AgentSessionAttention,
@@ -14,13 +16,23 @@ export type AgentNotificationReason =
   (typeof AGENT_NOTIFICATION_REASONS)[number];
 
 /** The same words the sidebar uses for each state. */
-export const AGENT_NOTIFICATION_LABELS: Record<AgentNotificationReason, string> =
-  {
-    approval: "Needs approval",
-    question: "Has a question",
-    completed: "Finished",
-    failed: "Failed",
-  };
+const AGENT_NOTIFICATION_KEYS = {
+  approval: "agents.sessionState.approval",
+  question: "agents.sessionState.question",
+  completed: "agents.sessionState.unread",
+  failed: "agents.sessionState.failed",
+} as const;
+
+const SERVER_ENGLISH_LABELS: Record<AgentNotificationReason, string> = {
+  approval: "Needs approval",
+  question: "Has a question",
+  completed: "Finished",
+  failed: "Failed",
+};
+
+export function agentNotificationLabel(reason: AgentNotificationReason): string {
+  return i18n.t(AGENT_NOTIFICATION_KEYS[reason]);
+}
 
 /** A pending request or a finished turn, as the tracker reports it. */
 export type AgentAttentionEvent = {
@@ -74,7 +86,7 @@ export function agentNotificationText(
   event: Pick<AgentAttentionEvent, "reason" | "attention" | "turn">,
   session: { title: string; workspaceName: string; hostName: string },
 ): { title: string; body: string } {
-  const title = `${AGENT_NOTIFICATION_LABELS[event.reason]}: ${session.title}`;
+  const title = `${agentNotificationLabel(event.reason)}: ${session.title}`;
   const place = `${session.workspaceName} · ${session.hostName}`;
   let body: string | undefined;
   if (agentNotificationNeedsInput(event.reason)) {
@@ -87,9 +99,10 @@ export function agentNotificationText(
   } else {
     body = event.turn?.error;
   }
-  body = body?.replace(/\s+/g, " ").trim() || place;
-  if (body.length > BODY_LIMIT) body = `${body.slice(0, BODY_LIMIT - 1).trimEnd()}…`;
-  return { title, body };
+  return {
+    title,
+    body: clipText(body ?? "", BODY_LIMIT) || clipText(place, BODY_LIMIT),
+  };
 }
 
 /**
@@ -99,12 +112,17 @@ export function agentNotificationText(
 export function agentNotificationHeading(
   notification: Pick<AgentNotification, "reason" | "title">,
 ): { label: string; session?: string } {
-  const label = AGENT_NOTIFICATION_LABELS[notification.reason];
-  const prefix = `${label}: `;
-  return notification.title.startsWith(prefix) &&
-    notification.title.length > prefix.length
-    ? { label, session: notification.title.slice(prefix.length) }
-    : { label: notification.title };
+  const label = agentNotificationLabel(notification.reason);
+  for (const prefixLabel of [label, SERVER_ENGLISH_LABELS[notification.reason]]) {
+    const prefix = `${prefixLabel}: `;
+    if (
+      notification.title.startsWith(prefix) &&
+      notification.title.length > prefix.length
+    ) {
+      return { label, session: notification.title.slice(prefix.length) };
+    }
+  }
+  return { label: notification.title };
 }
 
 /** How long after its last heartbeat a client still counts as present. */

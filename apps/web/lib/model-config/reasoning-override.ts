@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { z } from "zod";
 import {
   REASONING_EFFORTS,
@@ -28,7 +30,7 @@ export const ReasoningOverrideSchema = z
     requests: z.record(z.string(), RequestFieldsSchema),
   })
   .superRefine((value, context) => {
-    const issue = reasoningOverrideIssue(value);
+    const issue = reasoningOverrideIssue(value, i18n.t);
     if (issue) context.addIssue({ code: "custom", message: issue });
   })
   .transform((value) => value as ReasoningOverride);
@@ -39,30 +41,38 @@ export function readReasoningOverride(value: unknown): ReasoningOverride | null 
   return parsed.success ? parsed.data : null;
 }
 
-export function reasoningOverrideIssue(value: {
-  defaultLevel?: string;
-  requests: Record<string, unknown>;
-}): string | undefined {
+export function reasoningOverrideIssue(
+  value: {
+    defaultLevel?: string;
+    requests: Record<string, unknown>;
+  },
+  t: TFunction,
+): string | undefined {
   const levels = Object.keys(value.requests);
   const unknown = levels.find(
     (level) => !(MODEL_REASONING_LEVELS as readonly string[]).includes(level),
   );
   if (unknown !== undefined) {
-    return `Unknown thinking level "${unknown}". Use ${MODEL_REASONING_LEVELS.join(", ")}.`;
+    return t("models.thinking.unknownLevel", {
+      level: unknown,
+      levels: MODEL_REASONING_LEVELS.join(", "),
+    });
   }
   if (levels.length === 0) return undefined;
   const hasEfforts = levels.some((level) =>
     (REASONING_EFFORTS as readonly string[]).includes(level),
   );
   if (!hasEfforts && !(levels.includes("on") && levels.includes("off"))) {
-    return "Configure both on and off, or at least one effort level.";
+    return t("models.thinking.missingOnOffOrEffort");
   }
-  if (!value.defaultLevel) return "Choose the server's default thinking level.";
+  if (!value.defaultLevel) {
+    return t("models.thinking.missingDefaultLevel");
+  }
   if (!levels.includes(value.defaultLevel)) {
-    return "The default thinking level must be one of the configured levels.";
+    return t("models.thinking.defaultLevelNotConfigured");
   }
   if (hasEfforts && levels.includes("on") && value.defaultLevel !== "on") {
-    return 'With effort levels configured, "on" is only offered as the default level.';
+    return t("models.thinking.onOnlyDefaultWithEfforts");
   }
   return undefined;
 }

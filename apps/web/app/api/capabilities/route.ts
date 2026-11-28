@@ -22,6 +22,7 @@ export async function GET(request: Request) {
       ),
       chatPinning: true,
       chatMarkdownExport: true,
+      scheduledTasks: true,
       images: getImageCapability(),
       voice: getVoiceCapability(),
       codeExecution: await getCodeExecutionCapability(),

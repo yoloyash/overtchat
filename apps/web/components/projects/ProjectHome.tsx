@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
+import { Trans, useTranslation } from "react-i18next";
 import { FolderOpen, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -33,12 +34,13 @@ export function ProjectHome({
   composer: ReactNode;
   onDefaultModelChange: (modelId: string) => void;
 }) {
+  const { t } = useTranslation();
   const { data: project } = useProject(projectId);
 
   if (!project) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Loading…
+        {t("common.states.loading")}
       </div>
     );
   }
@@ -58,7 +60,7 @@ export function ProjectHome({
           </div>
           <div className="min-w-0 [grid-area:composer]">{composer}</div>
           <aside
-            aria-label="Project settings"
+            aria-label={t("projects.settingsLabel")}
             className="flex flex-col gap-3 [grid-area:settings] lg:self-start"
           >
             <ProjectInstructionsCard key={project.id} project={project} />
@@ -78,6 +80,7 @@ export function ProjectHome({
 }
 
 function ProjectTitle({ project }: { project: ProjectListItem }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const updateMut = useUpdateProject(project.id);
   const deleteMut = useDeleteProject();
@@ -100,8 +103,8 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
       {
         onError: (err) => {
           toast.error({
-            title: "Failed to rename project",
-            description: getErrorMessage(err, "The project name was not changed."),
+            title: t("projects.toast.renameError"),
+            description: getErrorMessage(err, t("projects.errors.renameFallback")),
           });
         },
       },
@@ -114,12 +117,12 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
       await deleteMut.mutateAsync(project.id);
       setDeleteOpen(false);
       toast.success({
-        title: "Project deleted",
-        description: "Chats from the project moved to your main list.",
+        title: t("projects.toast.deletedTitle"),
+        description: t("projects.toast.deletedDescription"),
       });
       void navigate({ to: "/" });
     } catch (err) {
-      setDeleteError(getErrorMessage(err, "Failed to delete project."));
+      setDeleteError(getErrorMessage(err, t("projects.errors.deleteFallback")));
     }
   }
 
@@ -132,7 +135,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
         {renaming ? (
           <input
             autoFocus
-            aria-label="Project name"
+            aria-label={t("projects.nameInputLabel")}
             value={name}
             maxLength={120}
             onChange={(e) => setName(e.target.value)}
@@ -155,7 +158,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
             <button
               type="button"
               onClick={startRename}
-              title="Rename project"
+              title={t("projects.renameTitle")}
               className="-ml-1.5 max-w-full truncate rounded-md px-1.5 py-0.5 text-left motion-colors hover:bg-accent"
             >
               {project.name}
@@ -165,7 +168,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
       </div>
       <Menu.Root>
         <Menu.Trigger
-          aria-label="Project actions"
+          aria-label={t("projects.actionsLabel")}
           className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground motion-colors hover:bg-accent hover:text-foreground data-[popup-open]:bg-accent"
         >
           <MoreHorizontal className="size-4" />
@@ -183,7 +186,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
               >
                 <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>Rename</span>
+                <span>{t("common.actions.rename")}</span>
               </Menu.Item>
               <Menu.Item
                 onClick={() => {
@@ -193,7 +196,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
               >
                 <Trash2 className="size-3.5 shrink-0" />
-                <span>Delete project</span>
+                <span>{t("projects.deleteProject")}</span>
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>
@@ -222,13 +225,14 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Delete project?
+              {t("projects.deleteDialog.title")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {project.name}
-              </span>{" "}
-              will be deleted. Chats inside it will move to your main list.
+              <Trans
+                i18nKey="projects.deleteDialog.description"
+                values={{ name: project.name }}
+                components={{ name: <span className="font-medium text-foreground" /> }}
+              />
             </AlertDialog.Description>
             {deleteError && (
               <p className="mt-3 text-xs text-destructive">{deleteError}</p>
@@ -243,7 +247,7 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
                   />
                 }
               >
-                Cancel
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -251,7 +255,9 @@ function ProjectTitle({ project }: { project: ProjectListItem }) {
                 disabled={deleteMut.isPending}
                 onClick={confirmDelete}
               >
-                {deleteMut.isPending ? "Deleting…" : "Delete"}
+                {deleteMut.isPending
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

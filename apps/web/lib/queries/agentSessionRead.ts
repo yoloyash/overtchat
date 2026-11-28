@@ -7,6 +7,7 @@ import type {
   AgentSessionListItem,
 } from "@overtchat/agent-bridge";
 import { apiError } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { agentSessionHasUnseenTurn } from "@/lib/agents/attention";
 import { withAgentSessionReadState } from "@/lib/agents/sidebar";
 import { apiUrl } from "@/lib/api-url";
@@ -25,7 +26,7 @@ async function putAgentSessionRead({ sessionId, read }: ReadChange) {
     throw apiError(
       response.status,
       await response.json().catch(() => null),
-      "The session's read state could not be saved.",
+      i18n.t("agents.errors.readStateSaveFailed"),
     );
   }
 }

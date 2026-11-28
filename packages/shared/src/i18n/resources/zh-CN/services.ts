@@ -1,0 +1,118 @@
+import type { Translation } from "../../catalog";
+
+export const services: Translation["services"] = {
+  page: {
+    title: "服务",
+    description: "管理此服务器的搜索和语音服务商。本地服务可通过 overtchat setup 安装。",
+    loading: "正在加载服务…",
+    loadError: "无法加载服务器服务。",
+  },
+  capabilities: {
+    search: {
+      title: "联网搜索",
+      description: "选择 OvertChat 优先尝试的服务商。",
+      providerLabel: "联网搜索服务商",
+      updatedTitle: "联网搜索已更新",
+      updateErrorTitle: "无法更新联网搜索",
+      providers: {
+        bundled: "内置 SearXNG",
+        brave: "Brave Search API",
+        keenable: "Keenable Search API",
+        searxng: "现有 SearXNG",
+        disabled: "已禁用",
+      },
+    },
+    tts: {
+      title: "文字转语音",
+      description: "选择此服务器上所有人使用的服务商。",
+      providerLabel: "文字转语音服务商",
+      updatedTitle: "文字转语音已更新",
+      updateErrorTitle: "无法更新文字转语音",
+      providers: {
+        bundled: "内置 Kokoro",
+        "openai-compatible": "OpenAI 兼容 API",
+        disabled: "已禁用",
+      },
+    },
+    stt: {
+      title: "语音转文字",
+      description: "选择此服务器上所有人使用的服务商。",
+      providerLabel: "语音转文字服务商",
+      updatedTitle: "语音转文字已更新",
+      updateErrorTitle: "无法更新语音转文字",
+      providers: {
+        bundled: "内置 Parakeet",
+        "openai-compatible": "OpenAI 兼容 API",
+        disabled: "已禁用",
+      },
+    },
+  },
+  fields: {
+    providerTitle: "服务商",
+    bundledMissingDescription: "此服务器未安装 {{provider}}。请运行：overtchat setup",
+    providerOptionNotInstalled: "{{provider}} — 未安装",
+    apiBaseUrlTitle: "API 基础 URL",
+    apiKeyTitle: "API 密钥",
+    apiKeyConfiguredDescription: "已配置密钥。留空以保留现有密钥。",
+    keenableKeyOptionalDescription:
+      "可选。没有 keen_ 密钥时，OvertChat 使用 Keenable 的免密钥接口，该接口有速率限制。",
+    keenableLoggingNotice:
+      "在默认数据政策下，无论是否使用密钥，Keenable 都会记录查询、结果、服务器 IP 和用户代理，且未设定固定的保留期限。",
+    searchOrderTitle: "搜索顺序",
+    searchOrderDescription: "如果首选服务商失败，OvertChat 会尝试免费搜索服务商。",
+    modelTitle: "模型",
+    defaultVoiceTitle: "默认音色",
+  },
+  actions: {
+    testing: "正在测试…",
+    testConnection: "测试连接",
+  },
+  errors: {
+    updateUnchanged: "服务商未更改。",
+    connectFailed: "无法连接到服务商。",
+    loadCapabilitiesFailed: "无法加载服务器功能。",
+    serviceRequestFailed: "无法完成服务请求。",
+  },
+  voice: {
+    title: "实时语音",
+    description: "使用上方的语音服务商和所选对话模型进行可打断的实时语音对话。",
+    statusTitle: "状态",
+    configuredLabel: "已配置",
+    configuredDescription: "此服务器已支持实时语音对话。",
+    notInstalledLabel: "未安装",
+    notInstalledDescription: "请运行 overtchat setup 并启用实时语音对话。",
+    needsSttLabel: "需要语音转文字",
+    needsSttDescription: "请在上方选择一个语音转文字服务商。",
+    needsTtsLabel: "需要文字转语音",
+    needsTtsDescription: "请在上方选择一个文字转语音服务商。",
+    incompleteSetupLabel: "配置不完整",
+    incompleteSetupDescription: "请运行 overtchat setup 以修复实时语音配置。",
+  },
+  mobile: {
+    list: {
+      sectionTitle: "服务器服务",
+      sectionDescription: "这些服务商供此服务器上的所有人使用。",
+    },
+    status: {
+      needsSetup: "需要配置",
+      unavailable: "不可用",
+      disabled: "已禁用",
+    },
+    voice: {
+      rowTitle: "语音对话",
+      readyDetail: "已就绪，可进行实时语音对话。",
+      unavailableDetail: "需要已安装的实时语音和已配置的语音服务商。请在主机上运行 overtchat setup 以安装或修复。",
+    },
+    detail: {
+      fallbackTitle: "服务",
+      notFound: "未找到该服务。",
+      providerDescription: "更改会影响此服务器上的所有人。",
+      notInstalledDetail: "请在服务器上运行 overtchat setup 以安装此服务。",
+      apiKeySavedHint: "已保存密钥。留空以保留现有密钥。",
+      apiKeyEmptyHint: "请输入服务商密钥。",
+      searchFallbackNote: "当首选搜索服务商失败时，OvertChat 会尝试免费搜索服务商。",
+      save: "保存服务",
+      saved: "服务已保存",
+    },
+  },
+};

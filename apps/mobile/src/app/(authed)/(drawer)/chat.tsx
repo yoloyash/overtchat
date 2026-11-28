@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import {
+  hasScheduledTaskChange,
   hasSuccessfulMemoryMutation,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
@@ -8,12 +9,14 @@ import {
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
+import { useTranslation } from "react-i18next";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
-import { useHeaderHeight } from "expo-router/react-navigation";
+import { useHeaderHeight, useIsFocused } from "expo-router/react-navigation";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { router, useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
@@ -24,9 +27,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -64,7 +69,7 @@ import {
   type ModelPickerSheetRef,
 } from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
-import { getAuthClient } from "@/lib/auth/client";
+import { useAuthSession } from "@/lib/auth/client";
 import { useCapabilities } from "@/lib/queries/capabilities";
 import { useChatUsageSummary } from "@/lib/chat/useChatUsageSummary";
 import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
@@ -77,6 +82,7 @@ import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useOptionalProject } from "@/lib/queries/projects";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
+import { useReadScheduledResults } from "@/lib/queries/scheduledTasks";
 import { useSelectedModel } from "@/lib/modelPreferences";
 import {
   setReasoningLevel,
@@ -84,6 +90,7 @@ import {
 } from "@/lib/reasoningPreferences";
 import { useOpenUIEnabled, useWebSearchEnabled } from "@/lib/toolPreferences";
 import { useSpeech } from "@/lib/useSpeech";
+import { useStableEvent } from "@/lib/useStableEvent";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 import {
@@ -92,8 +99,19 @@ import {
   type ContextStatus,
 } from "@overtchat/shared";
 
+function subscribeToAppState(onChange: () => void) {
+  const subscription = AppState.addEventListener("change", onChange);
+  return () => subscription.remove();
+}
+
+// One empty list for every render, so the picker is not handed a new one each time.
+const NO_MODELS: NonNullable<ReturnType<typeof useModelConfigs>["data"]> = [];
+
 export default function ChatScreen() {
   const { activeChatId, isNewChat, activeProjectId } = useChatSession();
+  const focused = useIsFocused();
+  const appState = useSyncExternalStore(subscribeToAppState, () => AppState.currentState);
+  useReadScheduledResults(activeChatId, focused && appState === "active" && !isNewChat);
   return (
     <ChatGate
       key={activeChatId}
@@ -114,6 +132,7 @@ function ChatGate({
   newChatProjectId: string | null;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const {
     data: hydration,
     isPending,
@@ -138,7 +157,7 @@ function ChatGate({
             { color: colors.destructive, fontFamily: fonts.sansRegular },
           ]}
         >
-          {error.message || "Couldn't load chat"}
+          {error.message || t("chat.mobile.loadChatFailed")}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -160,7 +179,7 @@ function ChatGate({
               },
             ]}
           >
-            Try again
+            {t("common.actions.tryAgain")}
           </Text>
         </Pressable>
       </View>
@@ -192,6 +211,7 @@ function ChatSurface({
   projectId: string | null;
 }) {
   const { colors, fonts } = useTheme();
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -199,7 +219,7 @@ function ChatSurface({
   const { startNewChat } = useChatSession();
   const qc = useQueryClient();
   const baseURL = useMemo(() => getApiBase(), []);
-  const session = getAuthClient().useSession();
+  const session = useAuthSession();
   const isAdmin =
     (session.data?.user as { role?: string | null } | undefined)?.role ===
     "admin";
@@ -241,6 +261,7 @@ function ChatSurface({
       },
     [chatList, chatId, projectId],
   );
+  const scheduledTaskName = chatList?.find((c) => c.id === chatId)?.scheduledTaskName;
   const chatActions = useChatActions();
   const { openRename, togglePin, openMove, openDeleteConfirm } = chatActions;
   const [shareOpen, setShareOpen] = useState(false);
@@ -319,6 +340,9 @@ function ChatSurface({
         ),
       );
       setContextStatus(null);
+      if (hasScheduledTaskChange(message)) {
+        void qc.invalidateQueries({ queryKey: queryKeys.scheduledTasksRoot() });
+      }
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: queryKeys.personalization() });
       }
@@ -344,8 +368,12 @@ function ChatSurface({
     onRefresh: setMessages,
     onPersisted: handleGenerationSettled,
   });
+  // Read by a refresh that finishes later. Updated after each render rather
+  // than during it, which the React Compiler requires of a ref.
   const voiceBusyRef = useRef(voice.busy);
-  voiceBusyRef.current = voice.busy;
+  useEffect(() => {
+    voiceBusyRef.current = voice.busy;
+  });
   const generation = useChatGenerationRecovery({
     baseURL,
     chatId,
@@ -375,17 +403,16 @@ function ChatSurface({
     chatQueue.queue.pause();
     void generation
       .cancel()
-      .catch((error) => toastError("Could not stop the response", error));
+      .catch((error) => toastError(i18n.t("chat.errors.stopResponseTitle"), error));
   }, [generation, chatQueue.queue]);
 
   const streaming = status === "streaming" || status === "submitted";
   // Tool call whose document version the viewer shows.
   const [documentTarget, setDocumentTarget] = useState<string | null>(null);
-  const closeDocument = useCallback(() => setDocumentTarget(null), []);
-  const documentViewer = useMemo(
-    () => ({ activeToolCallId: documentTarget, open: setDocumentTarget }),
-    [documentTarget],
-  );
+  // Left to the React Compiler, which memoizes both. It rejects the whole
+  // component when these are wrapped by hand.
+  const closeDocument = () => setDocumentTarget(null);
+  const documentViewer = { activeToolCallId: documentTarget, open: setDocumentTarget };
   const configured = Boolean(selectedId);
   const modelLoading =
     modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
@@ -410,16 +437,16 @@ function ChatSurface({
       : (reasoningControls?.defaultLevel ?? "default");
   const thinkingLevelLabel =
     reasoningOptionsForControls(reasoningControls).length > 1
-      ? reasoningLabel(reasoningLevel)
+      ? reasoningLabel(reasoningLevel, t)
       : undefined;
   const imageAvailable = Boolean(imageCapability?.available && modelSupportsToolCalling(selectedModel));
   const searchAvailable =
     webSearchEnabled && modelSupportsToolCalling(selectedModel);
   const searchUnavailableReason = !webSearchEnabled
-    ? "Web search is disabled in Settings → Tools"
-    : "Unavailable for this model";
+    ? t("chat.composer.unavailable.searchDisabled")
+    : t("chat.mobile.unavailableForModel");
   const openuiAvailable = modelSupportsToolCalling(selectedModel);
-  const openuiUnavailableReason = "Unavailable for this model";
+  const openuiUnavailableReason = t("chat.mobile.unavailableForModel");
   const voiceCapability = capabilitiesData?.capabilities.voice;
   const voiceInstalled = Boolean(voiceCapability?.installed);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -437,18 +464,18 @@ function ChatSurface({
       voiceEligible,
   );
   const voiceUnavailableReason = !voice.available
-    ? "Live voice requires an updated mobile app"
+    ? t("chat.mobile.voice.requiresUpdate")
     : !configured
       ? modelLoading
-        ? "Loading model…"
-        : "Configure a model before starting voice"
+        ? t("chat.composer.loadingModelPlaceholder")
+        : t("chat.composer.unavailable.configureModelBeforeVoice")
       : voiceCapability?.unavailableReason === "stt-unavailable"
-        ? "Speech-to-text is disabled"
+        ? t("chat.composer.unavailable.sttDisabled")
         : voiceCapability?.unavailableReason === "tts-unavailable"
-          ? "Text-to-speech is disabled"
+          ? t("chat.composer.unavailable.ttsDisabled")
           : voiceCapability?.unavailableReason === "not-configured"
-            ? "Voice authentication is not configured"
-            : "Realtime voice is unavailable";
+            ? t("chat.composer.unavailable.voiceAuthNotConfigured")
+            : t("chat.composer.unavailable.voiceUnavailable");
 
   const {
     attachments,
@@ -482,7 +509,7 @@ function ChatSurface({
     addSheetRef.current?.dismiss();
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      toastError("Camera permission required");
+      toastError(i18n.t("chat.mobile.cameraPermissionRequired"));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -497,7 +524,7 @@ function ChatSurface({
     addSheetRef.current?.dismiss();
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      toastError("Photo library permission required");
+      toastError(i18n.t("chat.mobile.photoLibraryPermissionRequired"));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -542,35 +569,71 @@ function ChatSurface({
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: project
-        ? () => (
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel={`Open project ${project.name}`}
-              onPress={() => router.push(`/projects/${project.id}`)}
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.projectChip,
-                { backgroundColor: pressed ? colors.muted : "transparent" },
-              ]}
-            >
-              <Ionicons
-                name="folder-outline"
-                size={15}
-                color={colors.mutedForeground}
-              />
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.projectChipText,
-                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
-                ]}
-              >
-                {project.name}
-              </Text>
-            </Pressable>
-          )
-        : "",
+      headerTitle:
+        project || scheduledTaskName
+          ? () => (
+              <View style={styles.headerChips}>
+                {project && (
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={t("chat.mobile.openProject", { name: project.name })}
+                    onPress={() => router.push(`/projects/${project.id}`)}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.projectChip,
+                      { backgroundColor: pressed ? colors.muted : "transparent" },
+                    ]}
+                  >
+                    <Ionicons
+                      name="folder-outline"
+                      size={15}
+                      color={colors.mutedForeground}
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.projectChipText,
+                        { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                      ]}
+                    >
+                      {project.name}
+                    </Text>
+                  </Pressable>
+                )}
+                {scheduledTaskName && (
+                  // Where the chat came from, and the way back to the task.
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={t("chat.header.scheduledLabel", { name: scheduledTaskName })}
+                    onPress={() => router.push("/scheduled")}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.projectChip,
+                      { backgroundColor: pressed ? colors.muted : "transparent" },
+                    ]}
+                  >
+                    <Ionicons
+                      name="calendar-outline"
+                      size={15}
+                      color={colors.mutedForeground}
+                    />
+                    {/* Beside a project there is room for the mark alone. */}
+                    {!project && (
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.projectChipText,
+                          { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+                        ]}
+                      >
+                        {t("chat.header.scheduled")}
+                      </Text>
+                    )}
+                  </Pressable>
+                )}
+              </View>
+            )
+          : "",
       headerRight: () => (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           {usage && (
@@ -584,7 +647,7 @@ function ChatSurface({
           )}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="New chat"
+            accessibilityLabel={t("sidebar.nav.newChat")}
             onPress={onNewChat}
             hitSlop={10}
             style={styles.headerRight}
@@ -608,6 +671,7 @@ function ChatSurface({
     colors,
     fonts,
     project,
+    scheduledTaskName,
     onNewChat,
     onHeaderAction,
     chatItem,
@@ -617,6 +681,7 @@ function ChatSurface({
     streaming,
     voice.busy,
     usage,
+    t,
   ]);
 
   function requestBody(
@@ -637,6 +702,7 @@ function ChatSurface({
       documentsSupported: true,
       codeExecutionSupported: true,
       gmailComposeSupported: true,
+      scheduledTasksSupported: true,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
@@ -661,7 +727,7 @@ function ChatSurface({
       if (/abort|connection|fetch|network|socket/i.test(error.message)) {
         void generation.reconcile().catch(() => undefined);
       } else {
-        toastError("Chat error", error);
+        toastError(i18n.t("chat.mobile.chatError"), error);
       }
     }
     lastErrorRef.current = error;
@@ -670,7 +736,7 @@ function ChatSurface({
   async function onRefreshMessages() {
     if (isNew || voice.busy) return;
     const res = await refreshMessages();
-    if (res?.error) toastError("Couldn't refresh messages", res.error);
+    if (res?.error) toastError(i18n.t("chat.mobile.refreshMessagesFailed"), res.error);
     else if (res?.data?.messages && !voiceBusyRef.current)
       setMessages(res.data.messages);
   }
@@ -774,6 +840,92 @@ function ChatSurface({
     );
   }
 
+  // Handlers for the message list and the composer. Each keeps one identity, so
+  // an update to the reply being written does not redraw every other message
+  // and the composer along with it.
+  const reconnect = useStableEvent(() => {
+    if (!voice.busy && !streaming) void generation.reconcile().catch(() => undefined);
+  });
+  const playMessage = useStableEvent(async (id: string, text: string) => {
+    if (voice.busy) {
+      toastError(i18n.t("chat.mobile.voice.endBeforePlayback"));
+      return;
+    }
+    await speech.play(id, text);
+  });
+  const { activeId: speechActiveId, status: speechStatus } = speech;
+  const messageSpeech = useMemo(
+    () => ({ activeId: speechActiveId, status: speechStatus, play: playMessage }),
+    [speechActiveId, speechStatus, playMessage],
+  );
+  const refreshNow = useStableEvent(onRefreshMessages);
+  const startEdit = useStableEvent((id: string) => {
+    if (!voice.busy && !streaming) setEditingId(id);
+  });
+  const cancelEdit = useStableEvent(() => setEditingId(null));
+  const saveEdit = useStableEvent(handleSaveEdit);
+  const regenerateMessage = useStableEvent(handleRegenerate);
+  const continueMessage = useStableEvent(handleContinue);
+  const submitOpenUIAction = useStableEvent((action: OpenUIAction) =>
+    handleSubmit(action.message, [], action),
+  );
+  const referenceImage = useStableEvent((file: FileUIPart) => {
+    addReference(file);
+    setImageOptions({ size: "auto", quality: "auto" });
+  });
+  const selectModel = useStableEvent((modelId: string) => {
+    if (voice.busy) {
+      void voice.end().then((ended) => {
+        if (!ended) return;
+        setSearchRequested(false);
+        setImageOptions(undefined);
+        setSelectedId(modelId);
+      });
+      return;
+    }
+    setSearchRequested(false);
+    setOpenuiRequested(false);
+    setImageOptions(undefined);
+    setSelectedId(modelId);
+  });
+  const selectReasoningLevel = useStableEvent((level: Parameters<typeof setReasoningLevel>[1]) => {
+    if (!selectedId) return;
+    if (voice.busy) {
+      void voice.end().then((ended) => {
+        if (ended) setReasoningLevel(selectedId, level);
+      });
+      return;
+    }
+    setReasoningLevel(selectedId, level);
+  });
+  const submit = useStableEvent(handleSubmit);
+  const stopSpeech = useStableEvent(() => speech.stop());
+  const endVoice = useStableEvent(() => {
+    void voice.end();
+  });
+  const startVoice = useStableEvent(() => {
+    if (
+      !selectedId ||
+      streaming ||
+      voice.busy ||
+      attachments.length ||
+      uploading ||
+      chatQueue.messages.length
+    ) {
+      return;
+    }
+    speech.stop();
+    Keyboard.dismiss();
+    void voice.start({
+      chatId,
+      projectId,
+      modelConfigId: selectedId,
+      webSearchEnabled: searchAvailable,
+      reasoningLevel,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+  });
+
   return (
     <DocumentViewerProvider value={documentViewer}>
     <KeyboardAvoidingView
@@ -796,12 +948,12 @@ function ChatSurface({
             ]}
           >
             {modelsError
-              ? "Couldn't load models"
+              ? t("chat.mobile.loadModelsFailed")
               : modelLoading
-                ? "Loading model…"
+                ? t("chat.composer.loadingModelPlaceholder")
                 : configured
-                  ? "What can I help with?"
-                  : "No models configured"}
+                  ? t("chat.empty.title")
+                  : t("chat.mobile.noModelsTitle")}
           </Text>
           {!configured && !modelsError && !modelLoading && (
             <Text
@@ -813,7 +965,7 @@ function ChatSurface({
                 },
               ]}
             >
-              An admin can add one in Settings → Models.
+              {t("chat.mobile.noModelsHint")}
             </Text>
           )}
           {modelsError && (
@@ -834,30 +986,26 @@ function ChatSurface({
           streaming={streaming}
           status={status}
           error={error}
-          onReconnect={() => {
-            if (!voice.busy && !streaming) void generation.reconcile().catch(() => undefined);
-          }}
+          onReconnect={reconnect}
           editingId={editingId}
-          speech={{ ...speech, play: async (id, text) => {
-            if (voice.busy) { toastError("End live voice before playing a message."); return; }
-            await speech.play(id, text);
-          } }}
+          speech={messageSpeech}
           refreshing={refreshingMessages}
-          onRefresh={isNew || voice.busy ? undefined : onRefreshMessages}
-          onStartEdit={(id) => !voice.busy && !streaming && setEditingId(id)}
-          onCancelEdit={() => setEditingId(null)}
-          onSaveEdit={handleSaveEdit}
+          onRefresh={isNew || voice.busy ? undefined : refreshNow}
+          onStartEdit={startEdit}
+          onCancelEdit={cancelEdit}
+          onSaveEdit={saveEdit}
           onOpenUIAction={
             !voice.busy && !streaming && configured && chatQueue.messages.length === 0
-              ? (action) => handleSubmit(action.message, [], action)
+              ? submitOpenUIAction
               : undefined
           }
-          onRegenerate={handleRegenerate}
-          onContinue={handleContinue}
-          onImageReference={!voice.busy && imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
-            addReference(file);
-            setImageOptions({ size: "auto", quality: "auto" });
-          } : undefined}
+          onRegenerate={regenerateMessage}
+          onContinue={continueMessage}
+          onImageReference={
+            !voice.busy && imageAvailable && imageCapability?.supportsEditing !== false
+              ? referenceImage
+              : undefined
+          }
           localAnchorRequestKey={localAnchorRequestKey}
         />
       )}
@@ -894,32 +1042,9 @@ function ChatSurface({
             voiceUnavailableReason={voiceUnavailableReason}
             textInputDisabled={voice.status === "ending"}
             endVoiceDisabled={voice.cleanupPending}
-            onStartVoice={() => {
-              if (
-                !selectedId ||
-                streaming ||
-                voice.busy ||
-                attachments.length ||
-                uploading ||
-                chatQueue.messages.length
-              ) {
-                return;
-              }
-              speech.stop();
-              Keyboard.dismiss();
-              void voice.start({
-                chatId,
-                projectId,
-                modelConfigId: selectedId,
-                webSearchEnabled: searchAvailable,
-                reasoningLevel,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              });
-            }}
-            onEndVoice={() => {
-              void voice.end();
-            }}
-            onBeforeDictate={() => speech.stop()}
+            onStartVoice={startVoice}
+            onEndVoice={endVoice}
+            onBeforeDictate={stopSpeech}
             configured={configured}
             modelLoading={modelLoading}
             streaming={streaming}
@@ -957,44 +1082,21 @@ function ChatSurface({
               void addFiles(uris.map(pastedImageToPickedFile));
             }}
             chatQueue={chatQueue}
-            onSubmit={handleSubmit}
+            onSubmit={submit}
             onStop={handleStop}
           />
       </View>
 
       <ModelPickerSheet
         ref={pickerRef}
-        models={models ?? []}
+        models={models ?? NO_MODELS}
         selectedId={selectedId}
         loading={modelsPending}
         error={modelsError}
         reasoningControls={reasoningControls}
         reasoningLevel={reasoningLevel}
-        onSelect={(modelId) => {
-          if (voice.busy) {
-            void voice.end().then((ended) => {
-              if (!ended) return;
-              setSearchRequested(false);
-              setImageOptions(undefined);
-              setSelectedId(modelId);
-            });
-            return;
-          }
-          setSearchRequested(false);
-          setOpenuiRequested(false);
-          setImageOptions(undefined);
-          setSelectedId(modelId);
-        }}
-        onSelectReasoningLevel={(level) => {
-          if (!selectedId) return;
-          if (voice.busy) {
-            void voice.end().then((ended) => {
-              if (ended) setReasoningLevel(selectedId, level);
-            });
-            return;
-          }
-          setReasoningLevel(selectedId, level);
-        }}
+        onSelect={selectModel}
+        onSelectReasoningLevel={selectReasoningLevel}
       />
 
       <AddToChatSheet
@@ -1008,7 +1110,7 @@ function ChatSurface({
         searchAvailable={searchAvailable && !voice.busy}
         searchUnavailableReason={
           voice.busy
-            ? "End voice to require a web search. Voice can still search automatically."
+            ? t("chat.composer.unavailable.searchVoice")
             : searchUnavailableReason
         }
         searchRequested={searchAvailable && !voice.busy && searchRequested}
@@ -1017,7 +1119,7 @@ function ChatSurface({
         }}
         onPickTool={voice.busy ? undefined : onPickTool}
         openuiAvailable={openuiAvailable && !voice.busy}
-        openuiUnavailableReason={voice.busy ? "End voice to request an interactive UI." : openuiUnavailableReason}
+        openuiUnavailableReason={voice.busy ? t("chat.composer.unavailable.openuiVoice") : openuiUnavailableReason}
         openuiRequested={openuiAvailable && !voice.busy && openuiRequested}
         onToggleOpenUIRequested={(next) => {
           if (!voice.busy) setOpenuiRequested(next);
@@ -1046,6 +1148,7 @@ function ChatSurface({
 }
 
 const styles = StyleSheet.create({
+  headerChips: { flexDirection: "row", alignItems: "center", flexShrink: 1 },
   projectChip: {
     flexDirection: "row",
     alignItems: "center",

@@ -2,6 +2,7 @@
 
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog } from "@base-ui/react/dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
@@ -25,6 +26,7 @@ import { MobileAppDialog } from "@/components/MobileAppDialog";
 import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 import { UpdateActionTooltip } from "@/components/UpdateActionTooltip";
 import { toast } from "@/components/ui/toast";
+import { rememberSignedOut } from "@/lib/auth/signedOut";
 import { authClient } from "@/lib/auth/client";
 import { getApiOrigin } from "@/lib/api-url";
 import { useResetAuthState } from "@/lib/queries/auth";
@@ -44,6 +46,7 @@ const UPDATE_COMMANDS = {
 } as const;
 
 export function AccountMenu() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const resetAuthState = useResetAuthState();
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
@@ -73,18 +76,19 @@ export function AccountMenu() {
       const { error } = await authClient.signOut();
       if (error) {
         toast.error({
-          title: "Failed to log out",
-          description: getErrorMessage(error, "Try again in a moment."),
+          title: t("app.accountMenu.logOutErrorTitle"),
+          description: getErrorMessage(error, t("app.accountMenu.logOutErrorFallback")),
         });
         return;
       }
       if (session?.user.id) clearComposerDraftsForUser(session.user.id);
       resetAuthState();
+      rememberSignedOut();
       await navigate({ to: "/login", replace: true });
     } catch (err) {
       toast.error({
-        title: "Failed to log out",
-        description: getErrorMessage(err, "Try again in a moment."),
+        title: t("app.accountMenu.logOutErrorTitle"),
+        description: getErrorMessage(err, t("app.accountMenu.logOutErrorFallback")),
       });
     }
   }
@@ -116,7 +120,7 @@ export function AccountMenu() {
           <span className="min-w-0 flex-1 text-left">
             {isPending || !session ? (
               <span className="block truncate text-sm font-medium text-muted-foreground">
-                Loading…
+                {t("common.states.loading")}
               </span>
             ) : (
               <span className="block truncate text-sm font-medium">
@@ -127,8 +131,8 @@ export function AccountMenu() {
           <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
         </Menu.Trigger>
         {updateAvailable && (
-          <UpdateActionTooltip content="Server update available">
-            <Button variant="ghost" size="sm" aria-label="Server update available" onClick={() => setUpdateDialogOpen(true)} className="h-8 shrink-0 px-1.5 text-ring hover:bg-sidebar-accent">
+          <UpdateActionTooltip content={t("app.accountMenu.serverUpdateAvailable")}>
+            <Button variant="ghost" size="sm" aria-label={t("app.accountMenu.serverUpdateAvailable")} onClick={() => setUpdateDialogOpen(true)} className="h-8 shrink-0 px-1.5 text-ring hover:bg-sidebar-accent">
               <CloudDownload className="size-3.5" aria-hidden="true" />
             </Button>
           </UpdateActionTooltip>
@@ -158,7 +162,7 @@ export function AccountMenu() {
               )}
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium leading-tight">
-                  {session?.user.name ?? "Loading…"}
+                  {session?.user.name ?? t("common.states.loading")}
                 </span>
                 {session && (
                   <span className="truncate text-xs leading-tight text-muted-foreground">
@@ -175,7 +179,7 @@ export function AccountMenu() {
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <UserRound className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>Profile</span>
+              <span>{t("app.accountMenu.profile")}</span>
             </Menu.Item>
             <Menu.Item
               render={
@@ -184,14 +188,14 @@ export function AccountMenu() {
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Settings className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>Settings</span>
+              <span>{t("app.pages.settings.title")}</span>
             </Menu.Item>
             <Menu.Item
               onClick={() => setMobileAppOrigin(getApiOrigin() || window.location.origin)}
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Smartphone className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>Get the mobile app</span>
+              <span>{t("app.accountMenu.getMobileApp")}</span>
             </Menu.Item>
             {isAdmin && (
               <Menu.Item
@@ -201,7 +205,7 @@ export function AccountMenu() {
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
               >
                 <ServerCog className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>Administration</span>
+                <span>{t("app.accountMenu.administration")}</span>
               </Menu.Item>
             )}
             <Menu.Separator className="mx-1 my-1 h-px bg-border" />
@@ -217,7 +221,7 @@ export function AccountMenu() {
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="flex-1">Release notes</span>
+              <span className="flex-1">{t("app.accountMenu.releaseNotes")}</span>
               <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
             </Menu.Item>
             <Menu.Item
@@ -232,7 +236,7 @@ export function AccountMenu() {
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <ShieldCheck className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="flex-1">Privacy</span>
+              <span className="flex-1">{t("app.accountMenu.privacy")}</span>
               <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
             </Menu.Item>
             <Menu.Separator className="mx-1 my-1 h-px bg-border" />
@@ -241,14 +245,32 @@ export function AccountMenu() {
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <LogOut className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>Log out</span>
+              <span>{t("app.accountMenu.logOut")}</span>
             </Menu.Item>
             <div className="px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
               {isDesktop && desktopUpdate ? (
-                <UpdateActionTooltip content={`Desktop v${desktopUpdate.currentVersion}${serverVersion ? ` · Server v${serverVersion}` : ""}`}>
+                <UpdateActionTooltip
+                  content={
+                    serverVersion
+                      ? t("app.accountMenu.versionTooltipWithServer", {
+                          desktopVersion: desktopUpdate.currentVersion,
+                          serverVersion,
+                        })
+                      : t("app.accountMenu.versionTooltip", {
+                          desktopVersion: desktopUpdate.currentVersion,
+                        })
+                  }
+                >
+                  {/* eslint-disable-next-line i18next/no-literal-string -- product name */}
                   <span tabIndex={0} className="cursor-help">OvertChat v{desktopUpdate.currentVersion}</span>
                 </UpdateActionTooltip>
-              ) : isDesktop ? "OvertChat" : <>OvertChat v{APP_VERSION}</>}
+              ) : isDesktop ? (
+                // eslint-disable-next-line i18next/no-literal-string -- product name
+                "OvertChat"
+              ) : (
+                // eslint-disable-next-line i18next/no-literal-string -- product name
+                <>OvertChat v{APP_VERSION}</>
+              )}
             </div>
           </Menu.Popup>
         </Menu.Positioner>
@@ -277,6 +299,7 @@ function AppUpdateDialog({
   method: keyof typeof UPDATE_COMMANDS;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const command = UPDATE_COMMANDS[method];
 
@@ -291,8 +314,8 @@ function AppUpdateDialog({
       setCopied(true);
     } catch (error) {
       toast.error({
-        title: "Could not copy update command",
-        description: getErrorMessage(error, "Copy the command manually."),
+        title: t("app.accountMenu.updateDialog.copyErrorTitle"),
+        description: getErrorMessage(error, t("app.accountMenu.updateDialog.copyErrorFallback")),
       });
     }
   }
@@ -310,23 +333,17 @@ function AppUpdateDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Server update available
+            {t("app.accountMenu.serverUpdateAvailable")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            {method === "compose" ? (
-              <>
-                Server v{version} is available. If your Compose file pins the
-                app image, change its tag to {version}. Then run this in the
-                Compose directory, using podman compose with Podman.
-              </>
-            ) : (
-              <>Server v{version} is available. Run this on the OvertChat host.</>
-            )}
+            {method === "compose"
+              ? t("app.accountMenu.updateDialog.descriptionCompose", { version })
+              : t("app.accountMenu.updateDialog.descriptionHost", { version })}
           </Dialog.Description>
 
           <div className="mt-4 flex items-center gap-2">
             <code
-              aria-label="OvertChat update command"
+              aria-label={t("app.accountMenu.updateDialog.commandLabel")}
               className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted px-3 py-2 text-sm"
             >
               {command}
@@ -336,9 +353,15 @@ function AppUpdateDialog({
               size="icon"
               onClick={() => void copyUpdateCommand()}
               aria-label={
-                copied ? "Update command copied" : "Copy update command"
+                copied
+                  ? t("app.accountMenu.updateDialog.commandCopied")
+                  : t("app.accountMenu.updateDialog.copyCommand")
               }
-              title={copied ? "Copied" : "Copy update command"}
+              title={
+                copied
+                  ? t("common.states.copied")
+                  : t("app.accountMenu.updateDialog.copyCommand")
+              }
             >
               {copied ? <Check /> : <Clipboard />}
             </Button>
@@ -351,10 +374,10 @@ function AppUpdateDialog({
               rel="noopener noreferrer"
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >
-              View release notes
+              {t("app.accountMenu.updateDialog.viewReleaseNotes")}
               <ExternalLink />
             </a>
-            <Dialog.Close render={<Button size="sm" />}>Close</Dialog.Close>
+            <Dialog.Close render={<Button size="sm" />}>{t("common.actions.close")}</Dialog.Close>
           </div>
         </Dialog.Popup>
       </Dialog.Portal>

@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { AgentTranscriptItem } from "@overtchat/shared/agent-presentation";
 
 function sameValue(a: unknown, b: unknown, depth: number): boolean {
@@ -53,10 +54,20 @@ export function createTranscriptStabilizer() {
   };
 }
 
-export function formatAgentElapsed(milliseconds: number): string {
+export function formatAgentElapsed(
+  milliseconds: number,
+  t: TFunction,
+): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) return t("agents.activity.elapsedSeconds", { seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  if (minutes < 60)
+    return t("agents.activity.elapsedMinutesSeconds", {
+      minutes,
+      seconds: seconds % 60,
+    });
+  return t("agents.activity.elapsedHoursMinutes", {
+    hours: Math.floor(minutes / 60),
+    minutes: minutes % 60,
+  });
 }

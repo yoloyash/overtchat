@@ -1,4 +1,5 @@
 import { getErrorMessage } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import * as Burnt from "burnt";
 
 export function toastSuccess(title: string, message?: string) {
@@ -12,6 +13,6 @@ export function toastError(title: string, error?: unknown) {
       ? undefined
       : typeof error === "string"
         ? error
-        : getErrorMessage(error);
+        : getErrorMessage(error, i18n.t("common.errors.generic"));
   Burnt.toast({ title, message, preset: "error", haptic: "error" });
 }

@@ -1,35 +1,29 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
   ArrowDown,
   ArrowRight,
-  Bot,
   Boxes,
   Braces,
   Check,
   Database,
   Globe2,
-  HardDrive,
-  KeyRound,
-  MemoryStick,
-  MessageSquareText,
-  Mic2,
-  Monitor,
+  Lock,
+  Plug,
   Search,
-  Server,
-  ShieldCheck,
-  Smartphone,
   Users,
-  Volume2,
-  WandSparkles,
+  X,
 } from "lucide-react";
 import Link from "next/link";
-import { InstallCommand } from "@/components/InstallCommand";
+import { AccessDemo } from "@/components/AccessDemo";
+import { BrandIcon, type BrandIconId } from "@/components/BrandIcon";
+import { HomeEffects } from "@/components/HomeEffects";
+import { InstallSwitcher } from "@/components/InstallSwitcher";
 import { GitHubIcon } from "@/components/GitHubIcon";
-import { HeroVignette } from "@/components/HeroVignette";
+import { HeroDemo } from "@/components/HeroDemo";
 import { SectionRail } from "@/components/SectionRail";
+import { VoiceDemo } from "@/components/VoiceDemo";
 import { APP_STORE_URL, GOOGLE_PLAY_URL } from "@/lib/downloads";
 import { HOME_SECTION_IDS } from "@/lib/home-sections";
 import {
@@ -37,6 +31,8 @@ import {
   DEFAULT_SITE_DESCRIPTION,
   DEFAULT_SITE_TITLE,
 } from "@/lib/metadata";
+import { sitePath } from "@/lib/site";
+import "./home.css";
 
 export const metadata: Metadata = createPageMetadata({
   title: DEFAULT_SITE_TITLE,
@@ -67,38 +63,116 @@ const steps: Array<{
   },
 ];
 
+const endpoints: Array<{ name: string; icon?: BrandIconId }> = [
+  { name: "Ollama", icon: "ollama" },
+  { name: "vLLM", icon: "vllm" },
+  { name: "llama.cpp", icon: "llamacpp" },
+  { name: "SGLang", icon: "sglang" },
+  { name: "LM Studio" },
+  { name: "OpenRouter", icon: "openrouter" },
+  { name: "OpenAI", icon: "openai" },
+  { name: "Anthropic", icon: "anthropic" },
+  { name: "Google Gemini", icon: "gemini" },
+  { name: "DeepSeek", icon: "deepseek" },
+  { name: "Amazon Bedrock", icon: "bedrock" },
+  { name: "Any OpenAI-compatible endpoint" },
+];
+
+// Each card opens with a small scene instead of an icon. They are decoration:
+// the title and body carry the meaning.
 const features: Array<{
-  icon: LucideIcon;
+  visual: ReactNode;
   title: string;
   body: string;
 }> = [
   {
-    icon: MessageSquareText,
+    visual: (
+      <div className="scene scene-persist">
+        <span className="scene-chip scene-chip-closed"><X /> Tab closed</span>
+        <div className="scene-lines">
+          <i /><i /><i />
+        </div>
+        <span className="scene-chip"><span className="scene-live" /> Still writing on the server</span>
+      </div>
+    ),
     title: "Leave. The reply won’t.",
     body: "Generations keep running on the server when a tab closes or a phone backgrounds, then reconnect when you return.",
   },
   {
-    icon: Search,
+    visual: (
+      <div className="scene scene-search">
+        <div className="scene-field">
+          <Search />
+          <span>sourdough starter</span>
+        </div>
+        <div className="scene-result"><Globe2 /> <span>The web</span> <small>6 results</small></div>
+        <div className="scene-result"><Database /> <span>Your chats</span> <small>2 matches</small></div>
+      </div>
+    ),
     title: "Useful search",
     body: "Search the web through bundled SearXNG and find old conversations with SQLite FTS5—no vector database required.",
   },
   {
-    icon: HardDrive,
+    visual: (
+      <div className="scene scene-files">
+        {["PDF", "DOCX", "XLSX", "CSV", "PNG", "PY"].map((type) => (
+          <span key={type}>
+            <i /><i /><i />
+            <b>{type}</b>
+          </span>
+        ))}
+      </div>
+    ),
     title: "Files, not just prompts",
     body: "Work with images, PDFs, Word and Excel documents, CSV files, and source code directly in a chat.",
   },
   {
-    icon: MemoryStick,
+    visual: (
+      <div className="scene scene-people">
+        {["Y", "M", "S"].map((initial) => (
+          <div key={initial}>
+            <span>{initial}</span>
+            <i /><i />
+            <Lock />
+          </div>
+        ))}
+      </div>
+    ),
     title: "One server, personal to everyone",
     body: "Private history, projects, saved memories, and preferences make a shared installation feel like each person’s own app.",
   },
   {
-    icon: WandSparkles,
+    visual: (
+      <div className="scene scene-tools">
+        <div className="scene-segments">
+          <span>Low</span>
+          <span>Medium</span>
+          <span>High</span>
+        </div>
+        <div className="scene-chips">
+          <span className="scene-chip"><Plug /> MCP</span>
+          <span className="scene-chip"><Globe2 /> Web search</span>
+        </div>
+      </div>
+    ),
     title: "Tools and reasoning included",
     body: "Connect standard MCP servers, use built-in web search, and expose the reasoning controls supported by each local or hosted model.",
   },
   {
-    icon: Bot,
+    visual: (
+      <div className="scene scene-agents">
+        <div>
+          <span className="scene-live" />
+          <b>Add a reading list</b>
+          <small>Codex · this server</small>
+        </div>
+        <div>
+          <Check />
+          <b>Fix the flaky test</b>
+          <small>Claude Code · ssh</small>
+        </div>
+      </div>
+    ),
     title: "A side door to coding agents",
     body: "When useful, admins can run Codex, Claude Code, OpenCode, Pi, Oh My Pi, and Hermes locally or over SSH without leaving the chat app.",
   },
@@ -116,6 +190,7 @@ const principles = [
 function HomePageShell({ children }: { children: ReactNode }) {
   return (
     <>
+      <HomeEffects />
       <SectionRail />
       <main className="site-main" id="main-content" tabIndex={-1}>
         {children}
@@ -139,6 +214,14 @@ export default function HomePage() {
             </span>
             <span className="hero-headline-punch">
               Actually yours.
+              <svg
+                className="hero-underline"
+                viewBox="0 0 100 10"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <path d="M1 6.5 C 22 1.5, 44 1.5, 62 4.5 S 90 8.5, 99 3.5" pathLength={1} />
+              </svg>
             </span>
           </h1>
           <p className="hero-lede">
@@ -165,7 +248,7 @@ export default function HomePage() {
             <span><AudioLines aria-hidden="true" /> Realtime local voice</span>
           </div>
         </div>
-        <HeroVignette />
+        <HeroDemo modelIcon={<BrandIcon id="qwen" />} />
         <a
           className="hero-scroll-cue"
           href={`#${HOME_SECTION_IDS.sharing}`}
@@ -176,19 +259,25 @@ export default function HomePage() {
       </section>
 
       <section className="trust-strip" aria-label="Supported deployment targets">
-        <div
-          className="site-container trust-strip-inner"
-          role="region"
-          aria-label="Supported model endpoints"
-          tabIndex={0}
-        >
+        <div className="site-container trust-strip-inner">
           <span className="trust-strip-label">Bring your models</span>
-          <span>Ollama</span>
-          <span>vLLM</span>
-          <span>llama.cpp</span>
-          <span>SGLang</span>
-          <span>LM Studio</span>
-          <span>Hosted APIs</span>
+          <div
+            className="trust-strip-track"
+            role="region"
+            aria-label="Supported model endpoints"
+            tabIndex={0}
+          >
+            {[false, true].map((repeat) => (
+              <ul key={String(repeat)} aria-hidden={repeat || undefined}>
+                {endpoints.map((endpoint) => (
+                  <li key={endpoint.name}>
+                    {endpoint.icon && <BrandIcon id={endpoint.icon} />}
+                    {endpoint.name}
+                  </li>
+                ))}
+              </ul>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -196,7 +285,7 @@ export default function HomePage() {
         className="site-section site-container"
         id={HOME_SECTION_IDS.sharing}
       >
-        <div className="section-heading">
+        <div className="section-heading" data-reveal="">
           <div>
             <p className="eyebrow">Built to be used</p>
             <h2 className="section-title">Your models deserve an actual front door.</h2>
@@ -207,38 +296,8 @@ export default function HomePage() {
             account and a private space of their own.
           </p>
         </div>
-        <div
-          className="access-card"
-          role="img"
-          aria-label="A private model server connected through OvertChat to separate user accounts"
-        >
-          <div className="access-node">
-            <span className="access-node-icon"><Server /></span>
-            <div>
-              <strong>Your model server</strong>
-              <small>One private endpoint</small>
-            </div>
-          </div>
-          <span className="access-arrow"><ArrowRight /></span>
-          <div className="access-node access-node-primary">
-            <span className="access-node-icon"><Boxes /></span>
-            <div>
-              <strong>OvertChat</strong>
-              <small>Accounts, chat, voice, files</small>
-            </div>
-          </div>
-          <span className="access-arrow"><ArrowRight /></span>
-          <div className="access-people">
-            <div className="access-person"><span>Y</span><div><strong>You</strong><small>Admin</small></div></div>
-            <div className="access-person"><span>M</span><div><strong>Maya</strong><small>Private history</small></div></div>
-            <div className="access-person"><span>S</span><div><strong>Sam</strong><small>Private history</small></div></div>
-          </div>
-          <div className="access-safety">
-            <span><KeyRound /> Admin-created accounts</span>
-            <span><ShieldCheck /> Public signup closed</span>
-          </div>
-        </div>
-        <div className="steps-grid">
+        <AccessDemo />
+        <div className="steps-grid" data-reveal="stagger">
           {steps.map((step) => (
             <article className="step-card" key={step.number}>
               <span className="step-number">{step.number}</span>
@@ -253,7 +312,7 @@ export default function HomePage() {
         className="site-section site-container"
         id={HOME_SECTION_IDS.voice}
       >
-        <div className="voice-showcase">
+        <div className="voice-showcase" data-reveal="">
           <div className="voice-copy">
             <p className="eyebrow">Beyond the text box</p>
             <h2 className="section-title">Local voice, at conversation speed.</h2>
@@ -273,34 +332,7 @@ export default function HomePage() {
               bigger.
             </p>
           </div>
-          <div
-            className="voice-console"
-            role="img"
-            aria-label="Realtime voice moving from Parakeet speech recognition through the selected language model to Kokoro speech synthesis"
-          >
-            <div className="voice-console-header">
-              <span><span className="voice-live-dot" /> Listening</span>
-              <small>Realtime voice</small>
-            </div>
-            <div className="voice-orb">
-              <Mic2 />
-              <div className="voice-wave" aria-hidden="true">
-                {Array.from({ length: 15 }, (_, index) => <span key={index} />)}
-              </div>
-            </div>
-            <div className="voice-pipeline">
-              <div><AudioLines /><strong>Parakeet</strong><small>Speech to text</small></div>
-              <ArrowRight />
-              <div><Braces /><strong>Your model</strong><small>Local or hosted</small></div>
-              <ArrowRight />
-              <div><Volume2 /><strong>Kokoro</strong><small>Text to speech</small></div>
-            </div>
-            <div className="voice-console-footer">
-              <span>Interruptible</span>
-              <span>Search-aware</span>
-              <span>Transcript saved</span>
-            </div>
-          </div>
+          <VoiceDemo />
         </div>
       </section>
 
@@ -308,7 +340,7 @@ export default function HomePage() {
         className="site-section site-container"
         id={HOME_SECTION_IDS.features}
       >
-        <div className="section-heading">
+        <div className="section-heading" data-reveal="">
           <div>
             <p className="eyebrow">A focused Open WebUI alternative</p>
             <h2 className="section-title">Everything around the model matters too.</h2>
@@ -319,10 +351,10 @@ export default function HomePage() {
             already handled.
           </p>
         </div>
-        <div className="feature-grid">
-          {features.map(({ icon: Icon, title, body }) => (
-            <article className="feature-card" key={title}>
-              <span className="feature-icon"><Icon aria-hidden="true" /></span>
+        <div className="feature-grid" data-reveal="stagger">
+          {features.map(({ visual, title, body }) => (
+            <article className="feature-card" key={title} data-glow="">
+              <div className="feature-visual" aria-hidden="true">{visual}</div>
               <h3>{title}</h3>
               <p>{body}</p>
             </article>
@@ -335,7 +367,7 @@ export default function HomePage() {
         id={HOME_SECTION_IDS.architecture}
       >
         <div className="site-container architecture-grid">
-          <div className="architecture-copy">
+          <div className="architecture-copy" data-reveal="">
             <p className="eyebrow">What “yours” means</p>
             <h2 className="section-title">No mystery cloud in the middle.</h2>
             <p className="section-lede">
@@ -352,7 +384,7 @@ export default function HomePage() {
               Read the deployment guide <ArrowRight aria-hidden="true" />
             </a>
           </div>
-          <div className="architecture-card">
+          <div className="architecture-card" data-reveal="" data-glow="">
             <div className="architecture-diagram" aria-hidden="true">
               <div className="architecture-node architecture-client">
                 <Globe2 />
@@ -380,9 +412,23 @@ export default function HomePage() {
       <section
         className="site-section site-container clients-section"
         id={HOME_SECTION_IDS.clients}
+        data-reveal="stagger"
       >
         <div className="client-card client-card-web">
-          <span className="client-icon"><Monitor aria-hidden="true" /></span>
+          <div className="client-visual">
+            <div className="client-window">
+              <div className="client-window-bar" aria-hidden="true"><i /><i /><i /></div>
+              {/* eslint-disable-next-line @next/next/no-img-element -- static export, no image optimizer */}
+              <img
+                src={sitePath("/media/desktop-chat.webp")}
+                alt="OvertChat on a desktop: a web-search answer with numbered sources, beside projects and recent chats"
+                width={1600}
+                height={1025}
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          </div>
           <div className="client-card-body">
             <p className="eyebrow">At your desk</p>
             <h2>Open it. Pick up where you left off.</h2>
@@ -397,7 +443,19 @@ export default function HomePage() {
           </div>
         </div>
         <div className="client-card client-card-mobile">
-          <span className="client-icon"><Smartphone aria-hidden="true" /></span>
+          <div className="client-visual">
+            <div className="client-phone">
+              {/* eslint-disable-next-line @next/next/no-img-element -- static export, no image optimizer */}
+              <img
+                src={sitePath("/media/android-chat.webp")}
+                alt="OvertChat for Android: a conversation with a local model in dark mode"
+                width={720}
+                height={1584}
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          </div>
           <div className="client-card-body">
             <p className="eyebrow">Away from the desk</p>
             <h2>Same server. Smaller screen.</h2>
@@ -428,7 +486,7 @@ export default function HomePage() {
         className="site-section site-container quick-start-section"
         id={HOME_SECTION_IDS.quickStart}
       >
-        <div className="quick-start-copy">
+        <div className="quick-start-copy" data-reveal="">
           <p className="eyebrow">Set up a server</p>
           <h2 className="section-title">One command between here and yours.</h2>
           <p className="section-lede">
@@ -443,12 +501,13 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
-        <InstallCommand />
+        <InstallSwitcher />
       </section>
 
       <section
         className="site-section site-container release-cta"
         id={HOME_SECTION_IDS.releases}
+        data-reveal=""
       >
         <div>
           <p className="eyebrow">Still becoming yours</p>

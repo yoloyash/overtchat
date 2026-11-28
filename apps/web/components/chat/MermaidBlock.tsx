@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
+import { useTranslation } from "react-i18next";
 import { Dialog } from "@base-ui/react/dialog";
 import { Code, Copy, Download, Expand, Loader2, X } from "lucide-react";
 import { writeText } from "clipboard-polyfill";
@@ -14,20 +15,23 @@ import { DiagramViewport } from "./DiagramViewport";
 type Preview = RenderedDiagram & { url: string; source: string; dark: boolean };
 
 export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
+  const { t } = useTranslation();
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
   const [preview, setPreview] = useState<Preview | null>(null);
   const [failure, setFailure] = useState<{
     source: string;
     dark: boolean;
-    message: string;
+    message: string | null;
   } | null>(null);
   const [showSource, setShowSource] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const expandRef = useRef<HTMLButtonElement>(null);
   const latestUrl = useRef<string | null>(null);
   const error =
-    failure?.source === code && failure.dark === dark ? failure.message : null;
+    failure?.source === code && failure.dark === dark
+      ? (failure.message ?? t("chat.documents.diagramRenderFailed"))
+      : null;
   const ready = preview?.source === code && preview.dark === dark;
 
   useEffect(() => {
@@ -49,10 +53,7 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
           setFailure({
             source: code,
             dark,
-            message:
-              reason instanceof Error
-                ? reason.message
-                : "Unable to render this diagram.",
+            message: reason instanceof Error ? reason.message : null,
           });
       });
     return () => {
@@ -82,19 +83,19 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
         data-streamdown="mermaid-block"
       >
         <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1.5">
-          <span className="pl-1 text-xs text-muted-foreground">Diagram</span>
+          <span className="pl-1 text-xs text-muted-foreground">{t("chat.diagram.title")}</span>
           <div className="flex items-center gap-0.5">
             {!ready && !error && (
               <Loader2
                 className="mr-2 size-3.5 animate-spin motion-reduce:animate-none"
-                aria-label="Rendering diagram"
+                aria-label={t("chat.diagram.rendering")}
               />
             )}
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={showSource ? "Show diagram" : "Show source"}
-              title={showSource ? "Show diagram" : "Show source"}
+              aria-label={showSource ? t("chat.diagram.showDiagram") : t("chat.files.showSource")}
+              title={showSource ? t("chat.diagram.showDiagram") : t("chat.files.showSource")}
               aria-pressed={showSource}
               onClick={() => setShowSource(!showSource)}
             >
@@ -103,12 +104,12 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Copy diagram source"
-              title="Copy diagram source"
+              aria-label={t("chat.diagram.copySource")}
+              title={t("chat.diagram.copySource")}
               onClick={() => {
                 void writeText(code)
-                  .then(() => toast.success("Diagram source copied"))
-                  .catch(() => toast.error("Could not copy diagram source"));
+                  .then(() => toast.success(t("chat.diagram.sourceCopied")))
+                  .catch(() => toast.error(t("chat.diagram.copySourceFailed")));
               }}
             >
               <Copy />
@@ -116,8 +117,8 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Download diagram as SVG"
-              title="Download diagram as SVG"
+              aria-label={t("chat.diagram.downloadSvg")}
+              title={t("chat.diagram.downloadSvg")}
               disabled={!ready || !!error}
               onClick={download}
             >
@@ -129,8 +130,8 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
                   ref={expandRef}
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="View fullscreen"
-                  title="View fullscreen"
+                  aria-label={t("chat.diagram.viewFullscreen")}
+                  title={t("chat.diagram.viewFullscreen")}
                   disabled={!preview || !!error}
                 />
               }
@@ -142,11 +143,11 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
         {error ? (
           <div className="space-y-2 p-3 text-sm">
             <p className="text-destructive" role="status">
-              Mermaid Error: {error}
+              {t("chat.diagram.mermaidError", { error })}
             </p>
             <details open={showSource || undefined}>
               <summary className="cursor-pointer text-muted-foreground">
-                Show Code
+                {t("chat.diagram.showCode")}
               </summary>
               <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap text-xs">
                 {code}
@@ -179,14 +180,14 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
           className="fixed inset-3 z-50 flex flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-xl outline-none sm:inset-6"
         >
           <div className="flex shrink-0 items-center justify-between border-b px-3 py-2">
-            <Dialog.Title className="text-sm font-medium">Diagram</Dialog.Title>
+            <Dialog.Title className="text-sm font-medium">{t("chat.diagram.title")}</Dialog.Title>
             <Dialog.Close
               render={
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Exit fullscreen"
-                  title="Exit fullscreen"
+                  aria-label={t("chat.diagram.exitFullscreen")}
+                  title={t("chat.diagram.exitFullscreen")}
                 />
               }
             >
@@ -194,8 +195,7 @@ export function MermaidBlock({ code, isIncomplete }: CustomRendererProps) {
             </Dialog.Close>
           </div>
           <Dialog.Description className="sr-only">
-            Drag to pan. Scroll or pinch to zoom. Use Fit to show the entire
-            diagram.
+            {t("chat.diagram.fullscreenInstructions")}
           </Dialog.Description>
           {preview && <DiagramViewport image={preview} fullscreen />}
         </Dialog.Popup>

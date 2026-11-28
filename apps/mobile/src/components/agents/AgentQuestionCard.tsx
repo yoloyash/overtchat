@@ -1,5 +1,6 @@
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -36,8 +37,9 @@ export function AgentQuestionCard({
   error?: string;
   onRespond: (response: AgentQuestionResponse) => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
-  const fields = agentQuestionFields(request);
+  const fields = agentQuestionFields(request, t);
   const [values, setValues] = useState(() => initialQuestionValues(fields));
   const [index, setIndex] = useState(0);
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
@@ -88,7 +90,11 @@ export function AgentQuestionCard({
             <Pressable
               key={item.id}
               accessibilityRole="tab"
-              accessibilityLabel={`Question ${at + 1} of ${fields.length}: ${item.label}`}
+              accessibilityLabel={t("agents.questions.tabLabel", {
+                index: at + 1,
+                total: fields.length,
+                label: item.label,
+              })}
               accessibilityState={{ selected: at === index, disabled: pending }}
               disabled={pending}
               onPress={() => setIndex(at)}
@@ -130,19 +136,21 @@ export function AgentQuestionCard({
       >
         {field?.description ||
           field?.label ||
-          "The agent did not provide any answer fields."}
+          t("agents.questions.noFields")}
       </Text>
       {field && (
         <View key={field.id} style={{ gap: 8 }}>
-          {questionOptions(field).length > 0 && (
+          {questionOptions(field, t).length > 0 && (
             <View
               accessibilityRole={
                 field.type === "multiselect" ? undefined : "radiogroup"
               }
-              accessibilityLabel={`Choices for ${field.description || field.label}`}
+              accessibilityLabel={t("agents.questions.choicesFor", {
+                label: field.description || field.label,
+              })}
               style={{ gap: 4 }}
             >
-              {questionOptions(field).map((option) => {
+              {questionOptions(field, t).map((option) => {
                 const selected =
                   field.type === "boolean"
                     ? value === (option.value === "true")
@@ -252,8 +260,8 @@ export function AgentQuestionCard({
               placeholder={
                 field.placeholder ||
                 (field.options.length
-                  ? "Other (type your answer)"
-                  : "Type your answer")
+                  ? t("agents.questions.otherPlaceholder")
+                  : t("agents.questions.answerPlaceholder"))
               }
               placeholderTextColor={colors.mutedForeground}
               editable={!pending}
@@ -282,7 +290,7 @@ export function AgentQuestionCard({
           accessibilityLabel={
             typeof request.dismissLabel === "string"
               ? request.dismissLabel
-              : "Dismiss"
+              : t("common.actions.dismiss")
           }
           accessibilityState={{ disabled: pending }}
           disabled={pending}
@@ -296,12 +304,14 @@ export function AgentQuestionCard({
           <Text style={[typography, { color: colors.mutedForeground }]}>
             {typeof request.dismissLabel === "string"
               ? request.dismissLabel
-              : "Dismiss"}
+              : t("common.actions.dismiss")}
           </Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={last ? "Submit" : "Next"}
+          accessibilityLabel={
+            last ? t("agents.questions.submit") : t("agents.questions.next")
+          }
           accessibilityState={{ disabled, busy: pending }}
           disabled={disabled}
           onPress={primary}
@@ -324,7 +334,7 @@ export function AgentQuestionCard({
             />
           )}
           <Text style={[typography, { color: colors.primaryForeground }]}>
-            {last ? "Submit" : "Next"}
+            {last ? t("agents.questions.submit") : t("agents.questions.next")}
           </Text>
         </Pressable>
       </View>

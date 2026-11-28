@@ -4,6 +4,7 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Pencil, Plus, Server, Trash2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -30,6 +31,7 @@ import {
 import { McpHealthBadge } from "./McpHealthBadge";
 
 export function McpServersPanel() {
+  const { t } = useTranslation();
   const { data: servers = [], isPending, error } = useMcpServers();
   const updateServer = useUpdateMcpServer();
   const deleteServer = useDeleteMcpServer();
@@ -49,8 +51,11 @@ export function McpServersPanel() {
       });
     } catch (error) {
       toast.error({
-        title: "Failed to change MCP server availability",
-        description: getErrorMessage(error, "The server was not changed."),
+        title: t("tools.mcp.manage.availabilityErrorTitle"),
+        description: getErrorMessage(
+          error,
+          t("tools.mcp.manage.availabilityErrorFallback"),
+        ),
       });
     } finally {
       setTogglingId(null);
@@ -63,36 +68,40 @@ export function McpServersPanel() {
     try {
       await deleteServer.mutateAsync(pendingDelete.id);
       toast.success({
-        title: "MCP server deleted",
+        title: t("tools.mcp.manage.deletedTitle"),
         description: pendingDelete.name,
       });
       setPendingDelete(null);
     } catch (error) {
-      setDeleteError(getErrorMessage(error, "Failed to delete MCP server"));
+      setDeleteError(
+        getErrorMessage(error, t("tools.mcp.manage.deleteErrorFallback")),
+      );
     }
   }
 
   return (
     <>
       <SettingsSection
-        title="Manage MCP servers"
-        description="Connect external tool servers and choose who can use them. Commands run inside the OvertChat server environment."
+        title={t("tools.mcp.manage.title")}
+        description={t("tools.mcp.manage.description")}
         action={
           <Button render={<Link to="/settings/tools/mcp/new" />} size="sm">
-            <Plus /> Add server
+            <Plus /> {t("tools.mcp.manage.addServer")}
           </Button>
         }
       >
         {isPending ? (
-          <SettingsNotice className="py-6">Loading MCP servers…</SettingsNotice>
+          <SettingsNotice className="py-6">
+            {t("tools.mcp.loading")}
+          </SettingsNotice>
         ) : error ? (
           <SettingsNotice tone="error" className="py-6">
-            {getErrorMessage(error, "Unable to load MCP servers.")}
+            {getErrorMessage(error, t("tools.mcp.loadError"))}
           </SettingsNotice>
         ) : servers.length === 0 ? (
           <SettingsEmptyState
-            title="No MCP servers available"
-            description="Connect a server to make its tools available in chats."
+            title={t("tools.mcp.emptyTitle")}
+            description={t("tools.mcp.manage.emptyDescription")}
           />
         ) : (
           servers.map((server) => (
@@ -122,14 +131,15 @@ export function McpServersPanel() {
                   <p className="mt-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                     {server.config.transport === "stdio"
                       ? "STDIO"
-                      : "Streamable HTTP"}
+                      : // eslint-disable-next-line i18next/no-literal-string -- MCP transport protocol name
+                        "Streamable HTTP"}
                   </p>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <span className="hidden text-xs text-muted-foreground @2xl:inline">
-                  Available to
+                  {t("tools.mcp.manage.availableTo")}
                 </span>
                 <Select
                   value={server.availability}
@@ -145,20 +155,26 @@ export function McpServersPanel() {
                   <SelectTrigger
                     size="sm"
                     className="w-32"
-                    aria-label={`Available to for ${server.name}`}
+                    aria-label={t("tools.mcp.manage.availableToLabel", {
+                      name: server.name,
+                    })}
                   >
                     <SelectValue>
-                      {server.availability === "everyone"
-                        ? "Everyone"
-                        : server.availability === "admins"
-                          ? "Admins only"
-                          : "Disabled"}
+                      {t(
+                        `tools.mcp.manage.availability.${server.availability}`,
+                      )}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="everyone">Everyone</SelectItem>
-                    <SelectItem value="admins">Admins only</SelectItem>
-                    <SelectItem value="disabled">Disabled</SelectItem>
+                    <SelectItem value="everyone">
+                      {t("tools.mcp.manage.availability.everyone")}
+                    </SelectItem>
+                    <SelectItem value="admins">
+                      {t("tools.mcp.manage.availability.admins")}
+                    </SelectItem>
+                    <SelectItem value="disabled">
+                      {t("tools.mcp.manage.availability.disabled")}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="h-6 w-px bg-border" aria-hidden="true" />
@@ -167,7 +183,7 @@ export function McpServersPanel() {
                   variant="outline"
                   size="sm"
                 >
-                  <Pencil /> Edit
+                  <Pencil /> {t("common.actions.edit")}
                 </Button>
                 <Button
                   type="button"
@@ -179,7 +195,7 @@ export function McpServersPanel() {
                     setPendingDelete(server);
                   }}
                 >
-                  <Trash2 /> Delete
+                  <Trash2 /> {t("common.actions.delete")}
                 </Button>
               </div>
             </div>
@@ -207,13 +223,16 @@ export function McpServersPanel() {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold">
-              Delete MCP server?
+              {t("tools.mcp.manage.deleteDialogTitle")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {pendingDelete?.name}
-              </span>{" "}
-              and its configuration will be removed.
+              <Trans
+                i18nKey="tools.mcp.manage.deleteDialogDescription"
+                values={{ name: pendingDelete?.name ?? "" }}
+                components={{
+                  name: <span className="font-medium text-foreground" />,
+                }}
+              />
             </AlertDialog.Description>
             {deleteError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">
@@ -227,7 +246,7 @@ export function McpServersPanel() {
                 disabled={deleteServer.isPending}
                 onClick={() => setPendingDelete(null)}
               >
-                Cancel
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -235,7 +254,9 @@ export function McpServersPanel() {
                 disabled={deleteServer.isPending}
                 onClick={() => void confirmDelete()}
               >
-                {deleteServer.isPending ? "Deleting…" : "Delete"}
+                {deleteServer.isPending
+                  ? t("common.states.deleting")
+                  : t("common.actions.delete")}
               </Button>
             </div>
           </AlertDialog.Popup>

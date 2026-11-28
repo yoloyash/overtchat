@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
+import { Trans, useTranslation } from "react-i18next";
 import type {
   ChatReasoningLevel,
   ModelReasoningControls,
@@ -51,6 +52,7 @@ export function ModelPicker({
   reasoningLevel,
   onSelectReasoningLevel,
 }: Props) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [searchExpanded, setSearchExpanded] = useState(false);
   const preferences = useModelPreferences();
@@ -66,12 +68,12 @@ export function ModelPicker({
   const thinkingOptions = reasoningOptions(reasoningControls);
 
   const label = loading
-    ? "Loading…"
+    ? t("common.states.loading")
     : selected
       ? selected.label
       : models && models.length > 0
-        ? "Select model"
-        : "No models configured";
+        ? t("app.modelPicker.selectModel")
+        : t("app.modelPicker.noModels");
 
   const filteredModels = useMemo(() => {
     const list = models ?? [];
@@ -104,7 +106,14 @@ export function ModelPicker({
               !selected && "text-muted-foreground",
             )}
             disabled={loading || !models || models.length === 0}
-            aria-label={`${label}${effectiveReasoningLevel ? `, thinking ${effectiveReasoningLevel}` : ""}`}
+            aria-label={
+              effectiveReasoningLevel
+                ? t("app.modelPicker.triggerWithThinking", {
+                    label,
+                    level: t(`app.modelPicker.reasoningLevel.${effectiveReasoningLevel}`),
+                  })
+                : label
+            }
           />
         }
       >
@@ -119,7 +128,7 @@ export function ModelPicker({
               ·
             </span>
             <span className="shrink-0 capitalize">
-              {effectiveReasoningLevel}
+              {t(`app.modelPicker.reasoningLevel.${effectiveReasoningLevel}`)}
             </span>
           </>
         )}
@@ -138,7 +147,7 @@ export function ModelPicker({
               <div className="mb-1 border-b px-1 pb-1.5">
                 <div className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-medium text-muted-foreground">
                   <Brain className="size-3.5" />
-                  Thinking
+                  {t("app.modelPicker.thinking")}
                 </div>
                 <div className="flex flex-wrap gap-1 px-1">
                   {thinkingOptions.map((option) => (
@@ -151,10 +160,11 @@ export function ModelPicker({
                           "bg-accent text-accent-foreground",
                       )}
                     >
-                      {option}
                       {option === reasoningControls?.defaultLevel
-                        ? " (default)"
-                        : ""}
+                        ? t("app.modelPicker.reasoningOptionDefault", {
+                            level: t(`app.modelPicker.reasoningLevel.${option}`),
+                          })
+                        : t(`app.modelPicker.reasoningLevel.${option}`)}
                     </Menu.Item>
                   ))}
                 </div>
@@ -173,13 +183,13 @@ export function ModelPicker({
                     disabled={!preferences.data || setDefault.isPending}
                     aria-label={
                       defaultModelId === selected.id
-                        ? "Clear default"
-                        : "Set as default"
+                        ? t("app.modelPicker.clearDefault")
+                        : t("app.modelPicker.setAsDefault")
                     }
                     title={
                       defaultModelId === selected.id
-                        ? "New chats will use the first available model"
-                        : `Use ${selected.label} for new chats`
+                        ? t("app.modelPicker.clearDefaultTitle")
+                        : t("app.modelPicker.setAsDefaultTitle", { model: selected.label })
                     }
                     onClick={() =>
                       setDefault.mutate(
@@ -208,8 +218,8 @@ export function ModelPicker({
                       />
                     )}
                     {defaultModelId === selected.id
-                      ? "Clear default"
-                      : "Set as default"}
+                      ? t("app.modelPicker.clearDefault")
+                      : t("app.modelPicker.setAsDefault")}
                   </Menu.Item>
                 ) : null
               }
@@ -218,8 +228,13 @@ export function ModelPicker({
             <div>
               {filteredModels.length === 0 ? (
                 <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                  No models match{" "}
-                  <span className="text-foreground">{search.trim()}</span>.
+                  <Trans
+                    i18nKey="app.modelPicker.noMatches"
+                    values={{ query: search.trim() }}
+                    components={{
+                      query: <span className="text-foreground" />,
+                    }}
+                  />
                 </div>
               ) : (
                 filteredModels.map((m) => (
@@ -228,7 +243,7 @@ export function ModelPicker({
                     aria-label={m.label}
                     aria-description={
                       defaultModelId === m.id
-                        ? "Default model for new chats"
+                        ? t("app.modelPicker.defaultModelDescription")
                         : undefined
                     }
                     onClick={() => onSelect(m.id)}
@@ -243,7 +258,7 @@ export function ModelPicker({
                     <span className="min-w-0 flex-1 truncate">{m.label}</span>
                     {defaultModelId === m.id && (
                       <span className="shrink-0 text-[11px] text-muted-foreground">
-                        Default
+                        {t("app.modelPicker.defaultBadge")}
                       </span>
                     )}
                     <span className="flex size-4 shrink-0 items-center justify-center">

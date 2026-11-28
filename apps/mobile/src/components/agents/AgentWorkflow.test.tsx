@@ -1,4 +1,6 @@
 import React, { act, type ReactNode } from "react";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -324,6 +326,10 @@ vi.mock("react-native-svg", () => ({
 vi.mock("expo-secure-store", () => ({
   getItem: (key: string) => mocks.storage.get(key) ?? null,
   setItem: (key: string, value: string) => mocks.storage.set(key, value),
+}));
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "en-US" }],
+  useLocales: () => [{ languageTag: "en-US" }],
 }));
 vi.mock("expo-router", async () => ({
   useFocusEffect: (await import("react")).useEffect,
@@ -653,7 +659,9 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 async function render(element: ReactNode = <AgentSessionScreen />) {
-  await act(async () => root.render(element));
+  await act(async () =>
+    root.render(<I18nextProvider i18n={i18n}>{element}</I18nextProvider>),
+  );
 }
 async function click(label: string) {
   const button = container.querySelector(
@@ -1237,6 +1245,31 @@ describe("native agent screen workflows", () => {
     await click("/compact");
     await click("Queue message");
     expect(mocks.send.mock.lastCall?.[0]).toEqual({ type: "compact" });
+  });
+  it("shows the reported effort, or the model's default when the provider reports none", async () => {
+    const settings = () =>
+      container.querySelector(
+        'button[aria-label="Model, effort, and permissions"]',
+      )?.textContent;
+    const effort = () =>
+      container.querySelector('button[aria-label="Reasoning effort"]')
+        ?.textContent;
+    mocks.snapshot!.models = [{ ...model, defaultThinkingOptionId: "high" }];
+    await render();
+    expect(settings()).toContain("First model  High");
+    await click("Model, effort, and permissions");
+    expect(effort()).toContain("High");
+
+    mocks.snapshot!.state.thinkingLevel = "low";
+    await render();
+    expect(settings()).toContain("First model  Low");
+    expect(effort()).toContain("Low");
+
+    // A level the model does not offer is not shown as its effort.
+    mocks.snapshot!.state.thinkingLevel = "max";
+    await render();
+    expect(settings()).toContain("First model  High");
+    expect(effort()).toContain("High");
   });
   it("changes models and reasoning and requires confirmation for full access", async () => {
     await render();

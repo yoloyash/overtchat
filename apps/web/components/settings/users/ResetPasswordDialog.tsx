@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -19,6 +20,7 @@ export function ResetPasswordDialog({
   target: UserRow;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -29,7 +31,7 @@ export function ResetPasswordDialog({
     event.preventDefault();
     if (submitting) return;
     if (newPassword !== confirmation) {
-      setError("The replacement passwords do not match.");
+      setError(t("users.resetPasswordDialog.mismatchError"));
       return;
     }
     setSubmitting(true);
@@ -40,18 +42,18 @@ export function ResetPasswordDialog({
         body: { userId: target.id, currentPassword, newPassword },
       });
       if (error) {
-        setError(error.message ?? "Failed to reset password.");
+        setError(error.message ?? t("users.resetPasswordDialog.errorFallback"));
         return;
       }
       toast.success({
-        title: "Password reset",
-        description: `${target.email} has been signed out on all devices.`,
+        title: t("users.toast.passwordResetTitle"),
+        description: t("users.toast.passwordResetDescription", {
+          email: target.email,
+        }),
       });
       onClose();
     } catch {
-      setError(
-        "Could not reset the password. Check your connection and try again.",
-      );
+      setError(t("users.resetPasswordDialog.networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -78,17 +80,17 @@ export function ResetPasswordDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Reset password
+            {t("users.resetPasswordDialog.title")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Set a replacement password for {target.email}. They will be signed
-            out on all devices. Share the password privately; they can change it
-            in Security settings.
+            {t("users.resetPasswordDialog.description", {
+              email: target.email,
+            })}
           </Dialog.Description>
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="reset-current-password">
-                Your current password
+                {t("users.resetPasswordDialog.currentPasswordLabel")}
               </Label>
               <PasswordInput
                 id="reset-current-password"
@@ -100,7 +102,9 @@ export function ResetPasswordDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="reset-new-password">Replacement password</Label>
+              <Label htmlFor="reset-new-password">
+                {t("users.resetPasswordDialog.replacementPasswordLabel")}
+              </Label>
               <PasswordInput
                 id="reset-new-password"
                 autoComplete="new-password"
@@ -114,7 +118,7 @@ export function ResetPasswordDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="reset-confirm-password">
-                Confirm replacement password
+                {t("users.resetPasswordDialog.confirmPasswordLabel")}
               </Label>
               <PasswordInput
                 id="reset-confirm-password"
@@ -136,10 +140,12 @@ export function ResetPasswordDialog({
                 disabled={submitting}
                 onClick={onClose}
               >
-                Cancel
+                {t("common.actions.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={submitting}>
-                {submitting ? "Resetting…" : "Reset password"}
+                {submitting
+                  ? t("users.resetPasswordDialog.resetting")
+                  : t("users.resetPasswordDialog.submit")}
               </Button>
             </SettingsActions>
           </form>

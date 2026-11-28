@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { formatUpdatedAt } from "@overtchat/shared";
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import Popover, { PopoverPlacement } from "react-native-popover-view";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFormatLocale } from "@/components/I18nProvider";
 import {
   ProjectInstructionsSheet,
   type ProjectInstructionsSheetRef,
@@ -48,6 +50,8 @@ export default function ProjectScreen() {
 
 function ProjectScreenInner({ projectId }: { projectId: string }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { startNewChat, openChat } = useChatSession();
 
   const { data: project, isPending, error } = useProject(projectId);
@@ -96,8 +100,8 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
     updateMutation.mutate(
       { name: next },
       {
-        onSuccess: () => toastSuccess("Renamed"),
-        onError: (e) => toastError("Couldn't rename project", e),
+        onSuccess: () => toastSuccess(t("projects.mobile.renamedToast")),
+        onError: (e) => toastError(t("projects.mobile.renameError"), e),
       },
     );
   }
@@ -105,7 +109,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
   function selectDefaultModel(defaultModelId: string | null) {
     updateMutation.mutate(
       { defaultModelId },
-      { onError: (e) => toastError("Couldn't change the default model", e) },
+      { onError: (e) => toastError(t("projects.mobile.changeModelError"), e) },
     );
   }
 
@@ -113,10 +117,10 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
     if (!project) return;
     deleteMutation.mutate(project.id, {
       onSuccess: () => {
-        toastSuccess("Project deleted");
+        toastSuccess(t("projects.toast.deletedTitle"));
         router.replace("/chat");
       },
-      onError: (e) => toastError("Couldn't delete project", e),
+      onError: (e) => toastError(t("projects.mobile.deleteError"), e),
     });
   }
 
@@ -156,13 +160,13 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerShadowVisible: false,
-          headerBackTitle: "Back",
+          headerBackTitle: t("common.actions.back"),
           headerRight: () =>
             project ? (
               <Pressable
                 ref={menu.anchorRef}
                 accessibilityRole="button"
-                accessibilityLabel="Project actions"
+                accessibilityLabel={t("projects.actionsLabel")}
                 onPress={menu.open}
                 hitSlop={10}
                 style={styles.headerBtn}
@@ -195,7 +199,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
           <View style={styles.menu}>
             <MenuItem
               icon="pencil-outline"
-              label="Rename"
+              label={t("common.actions.rename")}
               onPress={() => {
                 menu.close();
                 startRename();
@@ -203,7 +207,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
             />
             <MenuItem
               icon="trash-outline"
-              label="Delete project"
+              label={t("projects.deleteProject")}
               destructive
               onPress={() => {
                 menu.close();
@@ -230,7 +234,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                 { color: colors.destructive, fontFamily: fonts.sansRegular },
               ]}
             >
-              {error?.message || "Project not found"}
+              {error?.message || t("projects.mobile.notFound")}
             </Text>
           </View>
         ) : (
@@ -265,7 +269,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                     onSubmitEditing={commitRename}
                     returnKeyType="done"
                     maxLength={120}
-                    accessibilityLabel="Project name"
+                    accessibilityLabel={t("projects.nameInputLabel")}
                     style={[
                       styles.heroName,
                       styles.heroNameInput,
@@ -280,7 +284,9 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                 ) : (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Rename ${project.name}`}
+                    accessibilityLabel={t("projects.mobile.renameProjectLabel", {
+                      name: project.name,
+                    })}
                     onPress={startRename}
                   >
                     <Text
@@ -303,16 +309,16 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                     { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                   ]}
                 >
-                  {projectChats.length === 1
-                    ? "1 chat"
-                    : `${projectChats.length} chats`}
+                  {t("projects.mobile.chatCount", { count: projectChats.length })}
                 </Text>
               </View>
             </View>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`New chat in ${project.name}`}
+              accessibilityLabel={t("projects.actions.newChatIn", {
+                name: project.name,
+              })}
               onPress={handleNewChat}
               style={({ pressed }) => [
                 styles.newChat,
@@ -330,7 +336,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                   { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                 ]}
               >
-                New chat in {project.name}
+                {t("projects.actions.newChatIn", { name: project.name })}
               </Text>
               <View
                 style={[styles.newChatIcon, { backgroundColor: colors.primary }]}
@@ -340,23 +346,27 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
             </Pressable>
 
             <View style={styles.section}>
-              <Text style={sectionLabel}>SETTINGS</Text>
+              <Text style={sectionLabel}>{t("projects.mobile.settingsHeading")}</Text>
               <View style={group}>
                 <SettingsRow
                   icon="document-text-outline"
-                  title="Instructions"
-                  detail={instructions || "Add context the model should always follow"}
+                  title={t("projects.instructions.title")}
+                  detail={instructions || t("projects.mobile.instructionsPlaceholderDetail")}
                   detailLines={2}
                   onPress={() => instructionsSheetRef.current?.present()}
                 />
                 <View style={divider} />
                 <SettingsRow
                   icon="sparkles-outline"
-                  title="Default model"
+                  title={t("projects.model.title")}
                   detail={
                     projectDefault
                       ? projectDefault.label
-                      : `Account default${accountDefault ? ` · ${accountDefault.label}` : ""}`
+                      : accountDefault
+                        ? t("projects.mobile.accountDefaultWithModel", {
+                            model: accountDefault.label,
+                          })
+                        : t("projects.model.accountDefault")
                   }
                   pending={updateMutation.isPending}
                   disabled={!models}
@@ -372,7 +382,11 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
 
             <View style={styles.section}>
               <Text style={sectionLabel}>
-                CHATS{projectChats.length > 0 ? ` · ${projectChats.length}` : ""}
+                {projectChats.length > 0
+                  ? t("projects.mobile.chatsHeadingCount", {
+                      count: projectChats.length,
+                    })
+                  : t("projects.mobile.chatsHeading")}
               </Text>
               {projectChats.length === 0 ? (
                 <View
@@ -392,7 +406,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                       { color: colors.foreground, fontFamily: fonts.sansMedium },
                     ]}
                   >
-                    No chats yet
+                    {t("projects.chats.empty.title")}
                   </Text>
                   <Text
                     style={[
@@ -400,8 +414,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                       { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                     ]}
                   >
-                    Chats here share this project&apos;s instructions, files,
-                    and default model.
+                    {t("projects.mobile.emptyChatsDescription")}
                   </Text>
                 </View>
               ) : (
@@ -425,7 +438,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                             { color: colors.foreground, fontFamily: fonts.sansMedium },
                           ]}
                         >
-                          {c.title?.trim() || "Untitled"}
+                          {c.title?.trim() || t("common.states.untitled")}
                         </Text>
                         <Text
                           style={[
@@ -436,7 +449,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
                             },
                           ]}
                         >
-                          {formatUpdatedAt(c.updatedAt, now)}
+                          {formatUpdatedAt(c.updatedAt, t, locale, now)}
                         </Text>
                       </View>
                       <Ionicons
@@ -470,13 +483,13 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
       )}
       <ConfirmSheet
         ref={deleteSheetRef}
-        title="Delete project?"
+        title={t("projects.deleteDialog.title")}
         message={
           project
-            ? `${project.name} will be deleted. Chats inside it will move to your main list.`
+            ? t("projects.mobile.deleteDialogMessage", { name: project.name })
             : ""
         }
-        confirmLabel="Delete"
+        confirmLabel={t("common.actions.delete")}
         destructive
         onConfirm={confirmDelete}
       />

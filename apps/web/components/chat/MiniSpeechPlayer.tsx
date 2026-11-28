@@ -2,6 +2,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { RotateCcw, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { Button } from "@/components/ui/button";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -25,6 +26,7 @@ export function MiniSpeechPlayer({
   speech: ReturnType<typeof useSpeech>;
   isAdmin?: boolean;
 }) {
+  const { t } = useTranslation();
   const { audioRef, activeId, status, canSeek, error, canRetry, stop, retry } =
     speech;
   const active = activeId !== null;
@@ -41,7 +43,7 @@ export function MiniSpeechPlayer({
             <>
               {canRetry && (
                 <Button variant="outline" size="sm" onClick={retry}>
-                  <RotateCcw /> Retry playback
+                  <RotateCcw /> {t("chat.speech.retryPlayback")}
                 </Button>
               )}
               {isAdmin && (
@@ -49,7 +51,7 @@ export function MiniSpeechPlayer({
                   to="/settings/services"
                   className="text-xs underline underline-offset-4"
                 >
-                  Speech settings
+                  {t("chat.speech.settings")}
                 </Link>
               )}
             </>
@@ -72,7 +74,7 @@ export function MiniSpeechPlayer({
                 aria-live="polite"
                 className="flex-1 px-2 text-xs text-muted-foreground"
               >
-                {loading ? "Loading…" : "Streaming…"}
+                {loading ? t("common.states.loading") : t("chat.speech.streaming")}
               </span>
             )}
             <AudioPlayerTimeDisplay showDuration={canSeek} />
@@ -81,7 +83,7 @@ export function MiniSpeechPlayer({
         <button
           type="button"
           onClick={() => stop()}
-          aria-label="Close player"
+          aria-label={t("chat.speech.closePlayer")}
           className="rounded-md p-2 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
         >
           <X className="size-4" />

@@ -16,6 +16,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { Button } from "@/components/ui/button";
 import { ModelSearch } from "@/components/ModelSearch";
@@ -27,7 +29,6 @@ import type {
 } from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
 import { modelIconForModel } from "@/lib/providers/catalog";
-import { AGENT_MODEL_DEFAULTS_LOADING_MESSAGE } from "@/lib/agents/sessionDraft";
 import { cn } from "@/lib/utils";
 
 export interface AgentComposerControlsProps {
@@ -59,6 +60,7 @@ const choiceItemClassName =
   "flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground";
 
 export function AgentComposerControls(props: AgentComposerControlsProps) {
+  const { t } = useTranslation();
   const hasModelOrEffort =
     props.modelLoading === true ||
     props.models.length > 0 ||
@@ -92,13 +94,13 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
           size="sm"
           className="h-7 px-2"
           aria-pressed={props.fastModeEnabled}
-          aria-label="Fast"
-          title="Fast mode uses priority inference at higher usage"
+          aria-label={t("agents.composer.fast")}
+          title={t("agents.composer.fastModeTitle")}
           disabled={props.disabled}
           onClick={() => props.onToggleFastMode(false)}
         >
           <Zap className="size-3.5" />
-          <span className="hidden @xl:inline">Fast</span>
+          <span className="hidden @xl:inline">{t("agents.composer.fast")}</span>
         </Button>
       )}
     </div>
@@ -106,6 +108,7 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
 }
 
 function ModeControl(props: AgentComposerControlsProps) {
+  const { t } = useTranslation();
   const [pendingMode, setPendingMode] = useState<AgentMode | null>(null);
   const selected =
     props.modes.find((mode) => mode.id === props.modeId) ?? props.modes[0];
@@ -131,7 +134,9 @@ function ModeControl(props: AgentComposerControlsProps) {
               variant={dangerous ? "destructive" : "ghost"}
               size="sm"
               className="h-7 min-w-0 max-w-40 gap-1.5 px-2"
-              aria-label={`Permissions: ${selected.label}`}
+              aria-label={t("agents.composer.permissionsSelected", {
+                mode: selected.label,
+              })}
               data-testid="agent-access-mode-trigger"
               disabled={props.disabled}
             />
@@ -148,7 +153,7 @@ function ModeControl(props: AgentComposerControlsProps) {
         <Menu.Portal>
           <Menu.Positioner side="top" align="start" sideOffset={6}>
             <Menu.Popup
-              aria-label="Permissions"
+              aria-label={t("agents.composer.permissions")}
               className={cn(
                 "z-50 w-80 max-w-[calc(100vw-1rem)] rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
                 motionClasses.popup,
@@ -210,15 +215,19 @@ function ModeControl(props: AgentComposerControlsProps) {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Enable {pendingMode?.label}?
+              {t("agents.composer.enableModeTitle", {
+                mode: pendingMode?.label ?? "",
+              })}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
               {pendingMode?.description ||
-                `${props.providerLabel} will be able to run commands and modify files without sandbox restrictions or approval prompts.`}
+                t("agents.composer.enableModeFallback", {
+                  provider: props.providerLabel,
+                })}
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
               <AlertDialog.Close render={<Button variant="ghost" size="sm" />}>
-                Cancel
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -228,7 +237,9 @@ function ModeControl(props: AgentComposerControlsProps) {
                   setPendingMode(null);
                 }}
               >
-                Enable {pendingMode?.label}
+                {t("agents.composer.enableModeConfirm", {
+                  mode: pendingMode?.label ?? "",
+                })}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -239,6 +250,7 @@ function ModeControl(props: AgentComposerControlsProps) {
 }
 
 function ModelEffortControl(props: AgentComposerControlsProps) {
+  const { t } = useTranslation();
   const [panel, setPanel] = useState<"root" | "model" | "effort">("root");
   const [search, setSearch] = useState("");
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -257,11 +269,14 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
     selectedModel?.label ?? props.currentModel?.id ?? props.providerLabel;
   const effortLabel = props.thinkingLevel
     ? (props.thinkingOptions.find((option) => option.id === props.thinkingLevel)
-        ?.label ?? thinkingLabel(props.thinkingLevel))
+        ?.label ?? thinkingLabel(props.thinkingLevel, t))
     : null;
   const accessibleLabel = effortLabel
-    ? `Model and effort: ${modelLabel}, ${effortLabel}`
-    : `Model: ${modelLabel}`;
+    ? t("agents.composer.modelAndEffortSelected", {
+        model: modelLabel,
+        effort: effortLabel,
+      })
+    : t("agents.composer.modelSelected", { model: modelLabel });
   const showEffort =
     props.thinkingOptions.length > 1 && props.thinkingLevel !== null;
 
@@ -273,13 +288,13 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
         size="sm"
         className="min-w-0 max-w-48 gap-1.5 px-2"
         disabled
-        aria-label={AGENT_MODEL_DEFAULTS_LOADING_MESSAGE}
+        aria-label={t("agents.composer.modelDefaultsLoading")}
         data-testid="agent-model-effort-trigger"
       >
         <Loader2
           className={cn("size-4 text-muted-foreground", motionClasses.spinner)}
         />
-        <span className="truncate">Loading model…</span>
+        <span className="truncate">{t("agents.composer.loadingModel")}</span>
       </Button>
     );
   }
@@ -325,7 +340,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
       <Menu.Portal>
         <Menu.Positioner side="top" align="start" sideOffset={6}>
           <Menu.Popup
-            aria-label="Model and effort"
+            aria-label={t("agents.composer.modelAndEffort")}
             className={cn(
               "z-50 max-h-[min(28rem,calc(100vh-2rem))] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
               panel === "model" ? "w-80" : panel === "effort" ? "w-56" : "w-72",
@@ -344,7 +359,9 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
                       iconId={iconForModel(selectedModel)}
                       className="size-4"
                     />
-                    <span className="font-medium">Model</span>
+                    <span className="font-medium">
+                      {t("agents.composer.model")}
+                    </span>
                     <span className="ml-auto min-w-0 truncate text-muted-foreground">
                       {modelLabel}
                     </span>
@@ -358,7 +375,9 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
                     className={controlRowClassName}
                   >
                     <BrainCircuit className="size-4 text-muted-foreground" />
-                    <span className="font-medium">Effort</span>
+                    <span className="font-medium">
+                      {t("agents.composer.effort")}
+                    </span>
                     <span className="ml-auto text-muted-foreground">
                       {effortLabel}
                     </span>
@@ -377,7 +396,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
                   onExpanded={setSearchExpanded}
                   heading={
                     <BackItem
-                      label="Model"
+                      label={t("agents.composer.model")}
                       onClick={() => {
                         setPanel("root");
                         setSearch("");
@@ -388,7 +407,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
                 />
                 {filteredModels.length === 0 && (
                   <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                    No matching models.
+                    {t("agents.composer.noMatchingModels")}
                   </div>
                 )}
                 {filteredModels.map((model) => {
@@ -424,7 +443,10 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
             )}
             {panel === "effort" && (
               <>
-                <BackItem label="Effort" onClick={() => setPanel("root")} />
+                <BackItem
+                  label={t("agents.composer.effort")}
+                  onClick={() => setPanel("root")}
+                />
                 <Menu.Separator className="mx-1 my-1 h-px bg-border" />
                 {props.thinkingOptions.map((option) => (
                   <Menu.Item
@@ -451,11 +473,12 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
 }
 
 function BackItem({ label, onClick }: { label: string; onClick: () => void }) {
+  const { t } = useTranslation();
   return (
     <Menu.Item
       closeOnClick={false}
       onClick={onClick}
-      aria-label="Back to model and effort"
+      aria-label={t("agents.composer.backToModelAndEffort")}
       className={controlRowClassName}
     >
       <ArrowLeft className="size-4 text-muted-foreground" />
@@ -473,6 +496,7 @@ function PlanModeControl({
   onExit: () => void;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Menu.Root onOpenChange={onOpenChange}>
       <Menu.Trigger
@@ -482,20 +506,20 @@ function PlanModeControl({
             variant="secondary"
             size="sm"
             className="h-7 px-2"
-            aria-label="Plan mode"
+            aria-label={t("agents.composer.planMode")}
             aria-pressed="true"
             disabled={disabled}
           />
         }
       >
         <ListTodo className="size-3.5" />
-        Plan
+        {t("agents.composer.plan")}
         <ChevronDown className="text-muted-foreground" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="top" align="start" sideOffset={6}>
           <Menu.Popup
-            aria-label="Plan mode"
+            aria-label={t("agents.composer.planMode")}
             className={cn(
               "z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
               motionClasses.popup,
@@ -506,7 +530,7 @@ function PlanModeControl({
               className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <X className="size-3.5 text-muted-foreground" />
-              Exit plan mode
+              {t("agents.composer.exitPlanMode")}
             </Menu.Item>
           </Menu.Popup>
         </Menu.Positioner>
@@ -524,12 +548,22 @@ function iconForModel(model: AgentModel | undefined) {
   );
 }
 
-function thinkingLabel(level: string): string {
-  return level === "off"
-    ? "Off"
-    : level === "xhigh"
-      ? "Extra high"
-      : level
-          .replace(/[-_]+/gu, " ")
-          .replace(/\b\w/gu, (letter) => letter.toUpperCase());
+const THINKING_LEVEL_KEYS = {
+  off: "agents.composer.thinking.off",
+  minimal: "agents.composer.thinking.minimal",
+  low: "agents.composer.thinking.low",
+  medium: "agents.composer.thinking.medium",
+  high: "agents.composer.thinking.high",
+  xhigh: "agents.composer.thinking.xhigh",
+  max: "agents.composer.thinking.max",
+  default: "agents.composer.thinking.default",
+} as const;
+
+function thinkingLabel(level: string, t: TFunction): string {
+  if (Object.hasOwn(THINKING_LEVEL_KEYS, level)) {
+    return t(THINKING_LEVEL_KEYS[level as keyof typeof THINKING_LEVEL_KEYS]);
+  }
+  return level
+    .replace(/[-_]+/gu, " ")
+    .replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }

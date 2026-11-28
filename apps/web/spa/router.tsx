@@ -17,6 +17,7 @@ import {
   agentHistoryRoute,
   libraryRoute,
   newAgentSessionRoute,
+  scheduledRoute,
 } from "@/spa/routes/pages";
 import {
   accountSettingsRoute,
@@ -49,6 +50,7 @@ const routeTree = rootRoute.addChildren([
     newAgentSessionRoute,
     agentSessionRoute,
     libraryRoute,
+    scheduledRoute,
     activityRoute.addChildren([activityIndexRoute, activityProfileRoute]),
     settingsRoute.addChildren([
       settingsIndexRoute,

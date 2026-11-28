@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { apiError } from "@overtchat/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -12,7 +13,7 @@ import { queryKeys } from "@/lib/queries/keys";
 
 async function responseError(response: Response): Promise<Error> {
   const body = (await response.json().catch(() => ({}))) as { error?: string };
-  return apiError(response.status, body, "Could not complete the request. Please try again.");
+  return apiError(response.status, body, i18n.t("common.errors.requestFailed"));
 }
 
 export function usePersonalization() {

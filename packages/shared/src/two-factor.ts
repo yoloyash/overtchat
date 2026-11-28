@@ -1,3 +1,5 @@
+import { i18n } from "./i18n/i18n";
+
 /** Two-factor sign-in contract shared by the web, desktop, and mobile clients. */
 
 /**
@@ -15,6 +17,12 @@ export interface TwoFactorStatus {
   enabled: boolean;
   /** The server requires this user, an administrator, to use two-factor. */
   required: boolean;
+  /**
+   * False when the account can't sign in with a password, so there is none to
+   * change or protect: it signs in through the server's identity provider.
+   * Absent on servers before single sign-on, where every account can.
+   */
+  passwordSignIn?: boolean;
 }
 
 /**
@@ -59,31 +67,37 @@ export const SIGN_IN_APPROVAL_ENDED: Record<
   Exclude<SignInApprovalState["status"], "pending" | "approved">,
   string
 > = {
-  denied: "The sign-in was denied on your other device.",
-  mismatch: "The wrong number was picked, so the sign-in was blocked.",
-  expired: "The request expired. Send a new one or use another method.",
+  get denied() {
+    return i18n.t("auth.twoFactor.approval.ended.denied");
+  },
+  get mismatch() {
+    return i18n.t("auth.twoFactor.approval.ended.mismatch");
+  },
+  get expired() {
+    return i18n.t("auth.twoFactor.approval.ended.expired");
+  },
 };
 
-const MESSAGES: Record<string, string> = {
-  NO_SIGN_IN_APPROVERS:
-    "You're not signed in on any other device. Use your authenticator app instead.",
-  TOO_MANY_SIGN_IN_REQUESTS:
-    "Too many sign-in requests. Wait a few minutes or use your authenticator app.",
-  INVALID_CODE: "That code didn't work. Check your authenticator and try again.",
-  INVALID_BACKUP_CODE: "That backup code didn't work or was already used.",
-  INVALID_TWO_FACTOR_COOKIE: "This sign-in expired. Enter your password again.",
-  TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE:
-    "Too many wrong codes. Enter your password again.",
-  ACCOUNT_TEMPORARILY_LOCKED:
-    "Too many wrong codes. Wait 15 minutes, then try again.",
-};
+const MESSAGE_KEYS = {
+  NO_SIGN_IN_APPROVERS: "auth.twoFactor.errors.noApprovers",
+  TOO_MANY_SIGN_IN_REQUESTS: "auth.twoFactor.errors.tooManyRequests",
+  INVALID_CODE: "auth.twoFactor.errors.invalidCode",
+  INVALID_BACKUP_CODE: "auth.twoFactor.errors.invalidBackupCode",
+  INVALID_TWO_FACTOR_COOKIE: "auth.twoFactor.errors.expired",
+  TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE: "auth.twoFactor.errors.tooManyAttempts",
+  ACCOUNT_TEMPORARILY_LOCKED: "auth.twoFactor.errors.temporarilyLocked",
+} as const;
 
 /** A user-facing message for a Better Auth two-factor error. */
 export function twoFactorErrorMessage(
   error: { code?: string; message?: string } | null | undefined,
-  fallback = "Could not verify the code. Try again.",
+  fallback = i18n.t("auth.twoFactor.errors.fallback"),
 ): string {
-  return (error?.code && MESSAGES[error.code]) || error?.message || fallback;
+  const key =
+    error?.code && Object.hasOwn(MESSAGE_KEYS, error.code)
+      ? MESSAGE_KEYS[error.code as keyof typeof MESSAGE_KEYS]
+      : undefined;
+  return (key ? i18n.t(key) : undefined) || error?.message || fallback;
 }
 
 /** Whether a two-factor error means the sign-in has to start over. */

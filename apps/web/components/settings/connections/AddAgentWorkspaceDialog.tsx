@@ -2,6 +2,7 @@
 
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog } from "@base-ui/react/dialog";
 import {
   ArrowUp,
@@ -68,6 +69,7 @@ export function AddAgentWorkspaceDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const createMutation = useCreateAgentWorkspaceGroup();
   const [transport, setTransport] = useState<Transport>("local");
   const [remoteMode, setRemoteMode] = useState<RemoteMode>("detected");
@@ -173,7 +175,8 @@ export function AddAgentWorkspaceDialog({
     });
     if (!parsed.success || parsed.data.transport !== "ssh") {
       setError(
-        parsed.error?.issues[0]?.message ?? "Enter a valid SSH host alias.",
+        parsed.error?.issues[0]?.message ??
+          t("connections.dialog.validation.invalidSshAlias"),
       );
       return;
     }
@@ -184,19 +187,19 @@ export function AddAgentWorkspaceDialog({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!target) {
-      setError("Choose a machine first.");
+      setError(t("connections.dialog.validation.missingMachine"));
       return;
     }
     if (!chosenPath) {
-      setError("Choose a project folder.");
+      setError(t("connections.dialog.validation.missingFolder"));
       return;
     }
     if (!isAbsoluteAgentPath(chosenPath)) {
-      setError("Enter an absolute directory path.");
+      setError(t("connections.dialog.validation.nonAbsolutePath"));
       return;
     }
     if (alreadyAttached) {
-      setError("That directory is already in Agent workspaces.");
+      setError(t("connections.dialog.alreadyAttached"));
       return;
     }
     const installations = [...(discovery.data ?? [])];
@@ -224,13 +227,18 @@ export function AddAgentWorkspaceDialog({
       const providerCount = result.created + result.refreshed;
       if (result.failures.length > 0) {
         toast.warning({
-          title: "Workspace added with some agent errors",
-          description: `${providerCount} agent${providerCount === 1 ? "" : "s"} connected; ${result.failures.length} failed.`,
+          title: t("connections.toast.workspaceAddedWithErrorsTitle"),
+          description: t("connections.toast.workspaceAddedWithErrorsDescription", {
+            count: providerCount,
+            failed: result.failures.length,
+          }),
         });
       } else {
         toast.success({
-          title: "Agent workspace added",
-          description: `${providerCount} agent${providerCount === 1 ? "" : "s"} discovered and synced.`,
+          title: t("connections.toast.workspaceAddedTitle"),
+          description: t("connections.toast.workspaceAddedDescription", {
+            count: providerCount,
+          }),
         });
       }
       reset();
@@ -239,7 +247,7 @@ export function AddAgentWorkspaceDialog({
       setError(
         cause instanceof Error
           ? cause.message
-          : "The agent workspace could not be added.",
+          : t("connections.dialog.validation.addFailed"),
       );
     }
   }
@@ -263,28 +271,35 @@ export function AddAgentWorkspaceDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Add workspace
+            {t("connections.page.addWorkspace")}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Choose a project directory. Available agents and their chats are
-            discovered automatically.
+            {t("connections.dialog.description")}
           </Dialog.Description>
 
           <form onSubmit={submit} className="mt-5 space-y-5">
             <SetupSection
               number="1"
-              title="Machine"
-              description="Where the project is located"
+              title={t("connections.dialog.machineTitle")}
+              description={t("connections.dialog.machineDescription")}
             >
               <RadioGroup
-                aria-label="Workspace machine"
+                aria-label={t("connections.dialog.machineGroupLabel")}
                 value={transport}
                 disabled={pending}
                 onValueChange={(next) => changeTransport(next as Transport)}
                 className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1"
               >
-                <TransportChoice value="local" label="This server" icon={Server} />
-                <TransportChoice value="ssh" label="SSH host" icon={Wifi} />
+                <TransportChoice
+                  value="local"
+                  label={t("connections.hosts.thisServer")}
+                  icon={Server}
+                />
+                <TransportChoice
+                  value="ssh"
+                  label={t("connections.hosts.sshHost")}
+                  icon={Wifi}
+                />
               </RadioGroup>
 
               {selectingSshHost && remoteMode === "detected" && (
@@ -321,11 +336,13 @@ export function AddAgentWorkspaceDialog({
                     disabled={pending}
                     onClick={showSshHosts}
                   >
-                    <ChevronLeft /> SSH config
+                    <ChevronLeft /> {t("connections.dialog.sshConfigBack")}
                   </Button>
                   <div className="flex items-end gap-2">
                     <div className="min-w-0 flex-1 space-y-1.5">
-                      <Label htmlFor="agent-workspace-ssh-alias">SSH alias</Label>
+                      <Label htmlFor="agent-workspace-ssh-alias">
+                        {t("connections.dialog.sshAliasLabel")}
+                      </Label>
                       <Input
                         id="agent-workspace-ssh-alias"
                         value={manualSshAlias}
@@ -333,6 +350,7 @@ export function AddAgentWorkspaceDialog({
                           setManualSshAlias(event.target.value);
                           setError("");
                         }}
+                        // eslint-disable-next-line i18next/no-literal-string -- example SSH host alias
                         placeholder="devbox"
                         className="font-mono"
                         autoComplete="off"
@@ -344,7 +362,7 @@ export function AddAgentWorkspaceDialog({
                       size="sm"
                       onClick={submitManualHost}
                     >
-                      Use host
+                      {t("connections.dialog.useHost")}
                     </Button>
                   </div>
                 </div>
@@ -360,10 +378,10 @@ export function AddAgentWorkspaceDialog({
                     disabled={pending}
                     onClick={showSshHosts}
                   >
-                    <ChevronLeft /> Change host
+                    <ChevronLeft /> {t("connections.dialog.changeHost")}
                   </Button>
                   <code className="truncate text-xs text-muted-foreground">
-                    ssh {target.sshAlias}
+                    {`ssh ${target.sshAlias}`}
                   </code>
                 </div>
               )}
@@ -371,8 +389,8 @@ export function AddAgentWorkspaceDialog({
 
             <SetupSection
               number="2"
-              title="Project folder"
-              description="The workspace shown in the sidebar"
+              title={t("connections.dialog.folderTitle")}
+              description={t("connections.dialog.folderDescription")}
               disabled={!target}
             >
               <DirectoryPicker
@@ -410,13 +428,17 @@ export function AddAgentWorkspaceDialog({
             <div className="rounded-lg border bg-muted/20 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm font-medium">Agents are automatic</p>
+                  <p className="text-sm font-medium">
+                    {t("connections.dialog.agentsAutomaticTitle")}
+                  </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {discovery.isLoading
-                      ? "Detecting supported agents…"
+                      ? t("connections.dialog.detectingAgents")
                       : availableProviders.size > 0
-                        ? `${availableProviders.size} agent${availableProviders.size === 1 ? "" : "s"} will be connected and synced.`
-                        : "No supported agents detected yet."}
+                        ? t("connections.dialog.agentsReady", {
+                            count: availableProviders.size,
+                          })
+                        : t("connections.dialog.noAgentsDetected")}
                   </p>
                 </div>
                 {!customOpen && (
@@ -430,7 +452,7 @@ export function AddAgentWorkspaceDialog({
                       setError("");
                     }}
                   >
-                    <PencilLine /> Configure manually
+                    <PencilLine /> {t("connections.dialog.configureManually")}
                   </Button>
                 )}
               </div>
@@ -453,7 +475,9 @@ export function AddAgentWorkspaceDialog({
                 <div className="mt-3 space-y-4 border-t pt-3">
                   <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
                     <div className="space-y-1.5">
-                      <Label htmlFor="workspace-agent-provider">Agent</Label>
+                      <Label htmlFor="workspace-agent-provider">
+                        {t("connections.dialog.agentLabel")}
+                      </Label>
                       <Select
                         value={customProvider}
                         onValueChange={(next) => {
@@ -479,7 +503,7 @@ export function AddAgentWorkspaceDialog({
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="workspace-agent-executable">
-                        Executable command or path
+                        {t("connections.dialog.executableLabel")}
                       </Label>
                       <Input
                         id="workspace-agent-executable"
@@ -504,7 +528,7 @@ export function AddAgentWorkspaceDialog({
                       setError("");
                     }}
                   >
-                    <ChevronLeft /> Use automatic detection
+                    <ChevronLeft /> {t("connections.dialog.useAutomaticDetection")}
                   </Button>
                 </div>
               )}
@@ -512,14 +536,14 @@ export function AddAgentWorkspaceDialog({
 
             {alreadyAttached && (
               <SettingsNotice>
-                That directory is already in Agent workspaces.
+                {t("connections.dialog.alreadyAttached")}
               </SettingsNotice>
             )}
             {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
 
             <SettingsActions className="items-center justify-between">
               <span className="min-w-0 truncate text-xs text-muted-foreground">
-                {chosenPath || "Choose a project folder"}
+                {chosenPath || t("connections.dialog.chooseFolderPrompt")}
               </span>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
@@ -532,7 +556,7 @@ export function AddAgentWorkspaceDialog({
                     onOpenChange(false);
                   }}
                 >
-                  Cancel
+                  {t("common.actions.cancel")}
                 </Button>
                 <Button
                   type="submit"
@@ -551,7 +575,7 @@ export function AddAgentWorkspaceDialog({
                   ) : (
                     <FolderPlus />
                   )}
-                  Add workspace
+                  {t("connections.page.addWorkspace")}
                 </Button>
               </div>
             </SettingsActions>
@@ -615,13 +639,15 @@ function DirectoryPicker({
   onBrowse: (path: string) => void;
   onToggleManual: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       {manualEntry ? (
         <Input
-          aria-label="Directory path"
+          aria-label={t("connections.directoryPicker.pathLabel")}
           value={manualPath}
           onChange={(event) => onManualPathChange(event.target.value)}
+          // eslint-disable-next-line i18next/no-literal-string -- example file path
           placeholder="/home/user/code/project"
           className="font-mono"
           spellCheck={false}
@@ -636,13 +662,16 @@ function DirectoryPicker({
               size="icon-sm"
               disabled={disabled || !parent || fetching}
               onClick={() => parent && onBrowse(parent)}
-              aria-label="Open parent directory"
-              title="Open parent directory"
+              aria-label={t("connections.directoryPicker.openParent")}
+              title={t("connections.directoryPicker.openParent")}
             >
               <ArrowUp />
             </Button>
             <span className="min-w-0 flex-1 truncate font-mono text-xs" title={browsePath}>
-              {browsePath || (disabled ? "Choose a machine first" : "Loading directory")}
+              {browsePath ||
+                (disabled
+                  ? t("connections.directoryPicker.chooseMachineFirst")
+                  : t("connections.directoryPicker.loading"))}
             </span>
           </div>
           <div className="max-h-52 min-h-32 overflow-y-auto p-1">
@@ -654,11 +683,11 @@ function DirectoryPicker({
               <ErrorNotice className="m-3" message={error} />
             ) : disabled ? (
               <p className="px-3 py-12 text-center text-xs text-muted-foreground">
-                Choose a machine to browse its folders
+                {t("connections.directoryPicker.chooseMachineToBrowse")}
               </p>
             ) : directories.length === 0 ? (
               <p className="px-3 py-12 text-center text-xs text-muted-foreground">
-                No subdirectories
+                {t("connections.directoryPicker.noSubdirectories")}
               </p>
             ) : (
               directories.map((directory) => (
@@ -688,7 +717,9 @@ function DirectoryPicker({
         onClick={onToggleManual}
       >
         {manualEntry ? <FolderInput /> : <PencilLine />}
-        {manualEntry ? "Browse folders" : "Enter path"}
+        {manualEntry
+          ? t("connections.directoryPicker.browseFolders")
+          : t("connections.directoryPicker.enterPath")}
       </Button>
     </div>
   );

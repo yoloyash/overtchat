@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import { formatSize, humanMediaLabel } from "@/lib/chat/attachments";
@@ -28,6 +29,7 @@ export function FileMentionMenu({
   onActiveIndexChange,
   onSelect,
 }: Props) {
+  const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const row = listRef.current?.querySelector<HTMLElement>(
@@ -47,14 +49,14 @@ export function FileMentionMenu({
         ref={listRef}
         id={id}
         role="listbox"
-        aria-label="Project files"
+        aria-label={t("chat.files.projectFiles")}
         className="max-h-72 overflow-y-auto p-1.5"
       >
         <div
           aria-hidden
           className="px-2.5 pt-1.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
         >
-          Attach a project file
+          {t("chat.files.attachProjectFile")}
         </div>
         {files.map((file, index) => (
           <MenuRow
@@ -65,8 +67,8 @@ export function FileMentionMenu({
             disabled={false}
             icon={<CategoryIcon category={file.category} className="size-4" />}
             title={file.filename}
-            description={`${humanMediaLabel(file.mediaType)} · ${formatSize(file.size)}${
-              file.pageCount ? ` · ${file.pageCount} ${file.pageCount === 1 ? "page" : "pages"}` : ""
+            description={`${humanMediaLabel(file.mediaType, t)} · ${formatSize(file.size, t)}${
+              file.pageCount ? ` · ${t("chat.files.pages", { count: file.pageCount })}` : ""
             }`}
             onActivate={() => onSelect(file)}
             onHover={() => onActiveIndexChange(index)}

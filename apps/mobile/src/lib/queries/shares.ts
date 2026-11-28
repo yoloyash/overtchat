@@ -1,3 +1,4 @@
+import { i18n } from "@overtchat/shared/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChatShare, SharedConversation } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
@@ -14,7 +15,7 @@ export async function requestChatShare(
   );
   if (!response.ok)
     throw new Error(
-      (await response.text()) || "Could not change chat sharing.",
+      (await response.text()) || i18n.t("common.mobile.errors.shareChangeFailed"),
     );
   return response.json() as Promise<{ share: ChatShare | null }>;
 }
@@ -38,7 +39,7 @@ export function useSharePreview(chatId: string) {
       );
       if (!response.ok)
         throw new Error(
-          (await response.text()) || "Could not preview this chat.",
+          (await response.text()) || i18n.t("common.mobile.errors.sharePreviewFailed"),
         );
       return response.json();
     },

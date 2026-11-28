@@ -381,20 +381,36 @@ describe("operator two-factor reset", () => {
 
 describe("administrator requirement", () => {
   it("is off unless the server sets it", async () => {
-    expect(await policy(admin)).toEqual({ enabled: false, required: false });
+    expect(await policy(admin)).toEqual({
+      enabled: false,
+      required: false,
+      passwordSignIn: true,
+    });
   });
 
   it("applies to administrators only", async () => {
     vi.stubEnv("OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR", "true");
-    expect(await policy(admin)).toEqual({ enabled: false, required: true });
-    expect(await policy(member)).toEqual({ enabled: false, required: false });
+    expect(await policy(admin)).toEqual({
+      enabled: false,
+      required: true,
+      passwordSignIn: true,
+    });
+    expect(await policy(member)).toEqual({
+      enabled: false,
+      required: false,
+      passwordSignIn: true,
+    });
   });
 
   it("keeps required administrators from turning two-factor off", async () => {
     await enroll(admin);
     await enroll(member);
     vi.stubEnv("OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR", "true");
-    expect(await policy(admin)).toEqual({ enabled: true, required: true });
+    expect(await policy(admin)).toEqual({
+      enabled: true,
+      required: true,
+      passwordSignIn: true,
+    });
     const refused = await request(
       "/two-factor/disable",
       { password },

@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import type { FileUIPart } from "ai";
 import type {
   ImageGenerationOptions,
@@ -199,6 +200,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   draftScope,
   draftEnabled,
 }, ref) {
+  const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -300,8 +302,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const list: SlashCommand[] = [
       {
         name: "search",
-        title: "Web search",
-        description: "Search the web for this message",
+        title: t("chat.commands.items.search.title"),
+        description: t("chat.commands.items.search.description"),
         group: "actions",
         icon: Globe,
         keywords: ["web", "browse"],
@@ -315,8 +317,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
       {
         name: "openui",
-        title: "Interactive UI",
-        description: "Render an interactive OpenUI interface for this message",
+        title: t("chat.commands.items.openui.title"),
+        description: t("chat.commands.items.openui.description"),
         group: "actions",
         icon: LayoutDashboard,
         keywords: ["ui", "chart", "dashboard", "form", "table", "interactive"],
@@ -343,8 +345,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       })),
       {
         name: "attach",
-        title: "Add photos & files",
-        description: "Upload from your device",
+        title: t("chat.commands.items.attach.title"),
+        description: t("chat.commands.items.attach.description"),
         group: "actions",
         icon: Paperclip,
         keywords: ["file", "upload", "image", "photo", "pdf"],
@@ -352,8 +354,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
       {
         name: "dictate",
-        title: "Dictate",
-        description: "Record and transcribe speech",
+        title: t("chat.commands.items.dictate.title"),
+        description: t("chat.commands.items.dictate.description"),
         group: "actions",
         icon: Mic,
         keywords: ["voice", "speak", "microphone", "transcribe"],
@@ -364,8 +366,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (commandActions.temporary) {
       list.push({
         name: "temporary",
-        title: "Temporary chat",
-        description: "Chat without saving to history",
+        title: t("chat.commands.items.temporary.title"),
+        description: t("chat.commands.items.temporary.description"),
         group: "actions",
         icon: Ghost,
         keywords: ["incognito", "private", "unsaved"],
@@ -377,8 +379,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (commandActions.compact) {
       list.push({
         name: "compact",
-        title: "Compact conversation",
-        description: "Summarize older context now",
+        title: t("chat.commands.items.compact.title"),
+        description: t("chat.commands.items.compact.description"),
         group: "actions",
         icon: Shrink,
         keywords: ["summarize", "context"],
@@ -390,8 +392,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     list.push(
       {
         name: "model",
-        title: "Switch model",
-        description: "Choose which model answers",
+        title: t("chat.commands.items.model.title"),
+        description: t("chat.commands.items.model.description"),
         group: "actions",
         icon: Cpu,
         keywords: ["models", "switch"],
@@ -399,8 +401,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
       {
         name: "new",
-        title: "New chat",
-        description: "Start a fresh conversation",
+        title: t("chat.commands.items.new.title"),
+        description: t("chat.commands.items.new.description"),
         group: "navigate",
         icon: Pencil,
         shortcut: ["Ctrl", "Shift", "O"],
@@ -408,8 +410,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
       {
         name: "chats",
-        title: "Search chats",
-        description: "Find an earlier conversation",
+        title: t("chat.commands.items.chats.title"),
+        description: t("chat.commands.items.chats.description"),
         group: "navigate",
         icon: Search,
         keywords: ["history", "find"],
@@ -418,8 +420,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
       {
         name: "settings",
-        title: "Settings",
-        description: "Models, tools, and preferences",
+        title: t("chat.commands.items.settings.title"),
+        description: t("chat.commands.items.settings.description"),
         group: "navigate",
         icon: Settings2,
         keywords: ["preferences", "config"],
@@ -440,6 +442,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onToggleOpenUI,
     connectors,
     onToggleConnector,
+    t,
   ]);
 
   const argumentNames = useMemo(
@@ -726,7 +729,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} configuredSize={imageConfiguredSize} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
           {quotes.length > 0 && (
             <ul
-              aria-label="Quoted text"
+              aria-label={t("chat.composer.quotedText")}
               className="flex max-h-40 flex-col gap-1.5 overflow-y-auto"
             >
               {quotes.map((quote) => (
@@ -736,12 +739,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 >
                   <Reply className="size-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">
-                    “{quote.text}”
+                    {t("chat.composer.quoteFormat", { text: quote.text })}
                   </span>
                   <button
                     type="button"
-                    aria-label="Remove quote"
-                    title="Remove quote"
+                    aria-label={t("chat.composer.removeQuote")}
+                    title={t("chat.composer.removeQuote")}
                     className="shrink-0 rounded-md p-1 motion-colors hover:bg-accent hover:text-foreground"
                     onClick={() => {
                       setQuotes((current) =>
@@ -772,16 +775,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             rows={1}
             placeholder={
               textInputDisabled
-                ? "Resume voice to continue"
+                ? t("chat.composer.resumeVoicePlaceholder")
                 : configured
                   ? quotes.length > 0
-                    ? "Reply…"
+                    ? t("chat.composer.replyPlaceholder")
                     : projectFiles.length > 0
-                      ? "Message… / for commands, # for project files"
-                      : "Message… or / for commands"
+                      ? t("chat.composer.messagePlaceholderWithProject")
+                      : t("chat.composer.messagePlaceholder")
                   : models === null || models.length > 0
-                    ? "Loading model…"
-                    : "No models configured"
+                    ? t("chat.composer.loadingModelPlaceholder")
+                    : t("chat.composer.noModelsPlaceholder")
             }
             className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
             value={input}
@@ -824,7 +827,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       variant="ghost"
                       size="icon-sm"
                       className="rounded-full"
-                      aria-label="Add to message"
+                      aria-label={t("chat.composer.addToMessage")}
                       disabled={!attachmentsEnabled && !searchAvailable && !openuiAvailable}
                     />
                   }
@@ -847,10 +850,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                         <Paperclip className="size-4 shrink-0 text-muted-foreground" />
                         <span className="min-w-0 flex-1">
                           <span className="block font-medium">
-                            Add photos &amp; files
+                            {t("chat.composer.addPhotosAndFiles")}
                           </span>
                           <span className="block text-xs text-muted-foreground">
-                            Upload from your device
+                            {t("chat.composer.uploadFromDevice")}
                           </span>
                         </span>
                       </Menu.Item>
@@ -861,8 +864,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       >
                         <Library className="size-4 shrink-0 text-muted-foreground" />
                         <span className="min-w-0 flex-1">
-                          <span className="block font-medium">Add from library</span>
-                          <span className="block text-xs text-muted-foreground">Reuse files from your chats</span>
+                          <span className="block font-medium">{t("chat.composer.addFromLibrary")}</span>
+                          <span className="block text-xs text-muted-foreground">{t("chat.composer.reuseFilesFromChats")}</span>
                         </span>
                       </Menu.Item>
                       {imageAvailable && <Menu.Item
@@ -871,7 +874,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                         className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
                       >
                         <ImageIcon className="size-4 text-muted-foreground" />
-                        <span><span className="block font-medium">Create image</span><span className="block text-xs text-muted-foreground">{imageModel}</span></span>
+                        <span><span className="block font-medium">{t("chat.composer.createImage")}</span><span className="block text-xs text-muted-foreground">{imageModel}</span></span>
                       </Menu.Item>}
                       <Menu.CheckboxItem
                         checked={searchRequested}
@@ -882,10 +885,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       >
                         <Globe className="size-4 shrink-0 text-muted-foreground" />
                         <span className="min-w-0 flex-1">
-                          <span className="block font-medium">Web search</span>
+                          <span className="block font-medium">{t("chat.composer.webSearch")}</span>
                           <span className="block truncate text-xs text-muted-foreground">
                             {searchAvailable
-                              ? "Always search for this message"
+                              ? t("chat.composer.alwaysSearchForMessage")
                               : searchUnavailableReason}
                           </span>
                         </span>
@@ -902,10 +905,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       >
                         <LayoutDashboard className="size-4 shrink-0 text-muted-foreground" />
                         <span className="min-w-0 flex-1">
-                          <span className="block font-medium">Interactive UI</span>
+                          <span className="block font-medium">{t("chat.composer.interactiveUI")}</span>
                           <span className="block truncate text-xs text-muted-foreground">
                             {openuiAvailable
-                              ? "Render interactive OpenUI components"
+                              ? t("chat.composer.renderInteractiveOpenUI")
                               : openuiUnavailableReason}
                           </span>
                         </span>
@@ -949,10 +952,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   type="button"
                   onClick={onToggleSearch}
                   className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
-                  aria-label="Remove Web search from this message"
+                  aria-label={t("chat.composer.removeWebSearch")}
                 >
                   <Globe className="size-3.5" />
-                  <span className="max-md:hidden">Web search</span>
+                  <span className="max-md:hidden">{t("chat.composer.webSearch")}</span>
                   <X className="size-3 max-md:hidden" />
                 </button>
               )}
@@ -961,10 +964,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   type="button"
                   onClick={onToggleOpenUI}
                   className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
-                  aria-label="Remove Interactive UI from this message"
+                  aria-label={t("chat.composer.removeInteractiveUI")}
                 >
                   <LayoutDashboard className="size-3.5" />
-                  <span className="max-md:hidden">Interactive UI</span>
+                  <span className="max-md:hidden">{t("chat.composer.interactiveUI")}</span>
                   <X className="size-3 max-md:hidden" />
                 </button>
               )}
@@ -972,7 +975,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 !connector.active || connector.ambient ? null : connector.lockedReason ? (
                   <span
                     key={connector.id}
-                    title={`${connector.title} is on for this chat`}
+                    title={t("chat.composer.connectorOn", { connector: connector.title })}
                     className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground max-md:size-10 max-md:justify-center max-md:px-0"
                   >
                     <connector.icon className="size-3.5" />
@@ -984,7 +987,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     type="button"
                     onClick={() => onToggleConnector?.(connector.id)}
                     className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
-                    aria-label={`Remove ${connector.title} from this chat`}
+                    aria-label={t("chat.composer.removeConnector", { connector: connector.title })}
                   >
                     <connector.icon className="size-3.5" />
                     <span className="max-md:hidden">{connector.title}</span>
@@ -1013,7 +1016,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   variant="secondary"
                   className="shrink-0 rounded-full"
                   onClick={onStop}
-                  aria-label="Stop generating"
+                  aria-label={t("chat.composer.stopGenerating")}
                 >
                   <Square className="size-3 fill-current" />
                 </Button>
@@ -1026,7 +1029,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   className="shrink-0 rounded-full"
                   onClick={onEndVoice}
                   disabled={textInputDisabled}
-                  aria-label="End voice session"
+                  aria-label={t("chat.composer.endVoiceSession")}
                 >
                   <X />
                 </Button>
@@ -1042,9 +1045,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   className="shrink-0 rounded-full"
                   onClick={onStartVoice}
                   disabled={!voiceAvailable}
-                  aria-label="Start voice conversation"
+                  aria-label={t("chat.composer.startVoiceConversation")}
                   title={
-                    voiceAvailable ? "Voice conversation" : voiceUnavailableReason
+                    voiceAvailable ? t("chat.composer.voiceConversation") : voiceUnavailableReason
                   }
                 >
                   <AudioLines />
@@ -1059,8 +1062,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       readyParts.length === 0)
                   }
                   onClick={submit}
-                  aria-label={streaming ? "Queue message" : "Send message"}
-                  title={streaming ? "Send after the current response" : "Send message"}
+                  aria-label={streaming ? t("chat.composer.queueMessage") : t("chat.composer.sendMessage")}
+                  title={streaming ? t("chat.composer.sendAfterResponse") : t("chat.composer.sendMessage")}
                 >
                   {uploading ? <Loader2 className={motionClasses.spinner} /> : <ArrowUp />}
                 </Button>
@@ -1098,6 +1101,7 @@ function AttachmentChip({
   attachment: ChatAttachment;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const { status, meta, part } = attachment;
   const label = attachment.filename;
   const isImage =
@@ -1108,7 +1112,7 @@ function AttachmentChip({
     <button
       type="button"
       onClick={onRemove}
-      aria-label={`Remove ${label}`}
+      aria-label={t("chat.composer.removeAttachment", { name: label })}
       className="absolute top-0.5 right-0.5 rounded-full bg-foreground/70 p-0.5 text-background shadow-sm motion-colors hover:bg-foreground max-md:p-1"
     >
       <X className="size-3" />
@@ -1137,11 +1141,11 @@ function AttachmentChip({
 
   const sub =
     status === "error"
-      ? (attachment.error ?? "Upload failed")
+      ? (attachment.error ?? t("chat.composer.uploadFailed"))
       : [
-          meta?.pageCount ? `${meta.pageCount} pages` : null,
-          meta?.size != null ? formatSize(meta.size) : null,
-          meta?.truncated ? "truncated" : null,
+          meta?.pageCount ? t("chat.composer.attachmentPages", { count: meta.pageCount }) : null,
+          meta?.size != null ? formatSize(meta.size, t) : null,
+          meta?.truncated ? t("chat.composer.truncated") : null,
         ]
           .filter(Boolean)
           .join(" · ");

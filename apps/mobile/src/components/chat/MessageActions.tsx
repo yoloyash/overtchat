@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { SpeechStatus } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
@@ -19,6 +20,7 @@ export function MessageActions({
   speechStatus?: SpeechStatus;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <View style={styles.row}>
@@ -26,14 +28,14 @@ export function MessageActions({
         icon={copied ? "check" : "copy"}
         onPress={onCopy}
         color={colors.mutedForeground}
-        accessibilityLabel={copied ? "Copied" : "Copy message"}
+        accessibilityLabel={copied ? t("common.states.copied") : t("chat.mobile.messages.copyMessage")}
       />
       {onRegenerate ? (
         <IconButton
           icon="rotate-ccw"
           onPress={onRegenerate}
           color={colors.mutedForeground}
-          accessibilityLabel="Regenerate response"
+          accessibilityLabel={t("chat.mobile.messages.regenerateResponse")}
         />
       ) : null}
       {onSpeak ? (
@@ -49,10 +51,10 @@ export function MessageActions({
           color={colors.mutedForeground}
           accessibilityLabel={
             speechStatus === "playing" || speechStatus === "paused"
-              ? "Stop reading"
+              ? t("chat.mobile.messages.stopReading")
               : speechStatus === "loading"
-                ? "Loading speech"
-                : "Read aloud"
+                ? t("chat.mobile.messages.loadingSpeech")
+                : t("chat.mobile.messages.readAloud")
           }
         />
       ) : null}
@@ -61,7 +63,7 @@ export function MessageActions({
           icon="play"
           onPress={onContinue}
           color={colors.mutedForeground}
-          accessibilityLabel="Continue response"
+          accessibilityLabel={t("chat.messages.continueResponse")}
         />
       ) : null}
     </View>

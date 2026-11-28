@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AccessibilityInfo,
   Animated,
@@ -38,6 +39,7 @@ export function VoiceControls({
   modelLabel?: string;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const connected =
     voice.status !== "connecting" &&
     voice.status !== "ending" &&
@@ -49,21 +51,27 @@ export function VoiceControls({
     (voice.status === "assistant-speaking" || voice.status === "thinking");
   const statusLabel =
     voice.status === "connecting"
-      ? "Connecting"
+      ? t("chat.voice.status.connecting")
       : voice.status === "user-speaking"
-        ? "Listening to you"
+        ? t("chat.voice.status.userSpeaking")
         : voice.status === "thinking"
-          ? "Thinking"
+          ? t("chat.voice.status.thinking")
           : voice.status === "assistant-speaking"
-            ? "Speaking"
+            ? t("chat.voice.status.assistantSpeaking")
             : voice.status === "ending"
-              ? "Ending"
+              ? t("chat.mobile.voice.ending")
               : voice.status === "closed" || voice.status === "idle"
-                ? "Ended"
-                : "Listening";
+                ? t("chat.voice.status.closed")
+                : t("chat.voice.status.listening");
   const subtitle = voice.error
-    ? "End the session and try again"
-    : `${modelLabel ? `${modelLabel} · ` : ""}${voice.muted ? "Microphone muted" : "Realtime voice"}`;
+    ? t("chat.voice.endAndRetry")
+    : modelLabel
+      ? voice.muted
+        ? t("chat.voice.subtitleMuted", { model: modelLabel })
+        : t("chat.voice.subtitleActive", { model: modelLabel })
+      : voice.muted
+        ? t("chat.mobile.voice.subtitleMutedNoModel")
+        : t("chat.mobile.voice.subtitleActiveNoModel");
 
   return (
     <View
@@ -97,7 +105,7 @@ export function VoiceControls({
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            Sending…
+            {t("common.states.sending")}
           </Text>
         </View>
       ) : null}
@@ -145,7 +153,7 @@ export function VoiceControls({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
-              voice.muted ? "Unmute microphone" : "Mute microphone"
+              voice.muted ? t("chat.voice.unmuteMicrophone") : t("chat.voice.muteMicrophone")
             }
             accessibilityState={{ disabled: !connected }}
             disabled={!connected}
@@ -177,7 +185,7 @@ export function VoiceControls({
           {canInterrupt ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Stop assistant"
+              accessibilityLabel={t("chat.voice.stopAssistant")}
               onPress={voice.interrupt}
               style={({ pressed }) => [
                 styles.actionHitTarget,

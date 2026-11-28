@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Popover } from "@base-ui/react/popover";
 import {
@@ -68,6 +69,7 @@ export function ConnectionsPanel({
 }: {
   initialAddOpen?: boolean;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: connections = [], error: listError } = useAgentConnections();
   const { data: connectors = [], error: connectorError } = useHostConnectors();
@@ -95,16 +97,20 @@ export function ConnectionsPanel({
     try {
       const probe = await testMutation.mutateAsync(connection.id);
       toast.success({
-        title: "Connection healthy",
-        description: `${provider.label} ${probe.version} · ${probe.models.length} model${
-          probe.models.length === 1 ? "" : "s"
-        }`,
+        title: t("connections.toast.testSuccessTitle"),
+        description: t("connections.toast.testSuccessDescription", {
+          provider: provider.label,
+          version: probe.version,
+          count: probe.models.length,
+        }),
       });
     } catch (cause) {
       toast.error({
-        title: "Connection test failed",
+        title: t("connections.toast.testErrorTitle"),
         description:
-          cause instanceof Error ? cause.message : "The connection test failed.",
+          cause instanceof Error
+            ? cause.message
+            : t("connections.toast.testErrorFallback"),
       });
     } finally {
       setActionId(null);
@@ -120,18 +126,20 @@ export function ConnectionsPanel({
           pendingDetach.connector.id,
         );
         setPairing(null);
-        toast.success({ title: "Host Connector removed" });
+        toast.success({ title: t("connections.toast.connectorRemoved") });
       } else {
         await deleteWorkspaceGroupMutation.mutateAsync(pendingDetach.group);
         toast.success({
-          title: "Workspace removed",
+          title: t("connections.toast.workspaceRemoved"),
           description: pendingDetach.group.name,
         });
       }
       setPendingDetach(null);
     } catch (cause) {
       setDetachError(
-        cause instanceof Error ? cause.message : "The item could not be detached.",
+        cause instanceof Error
+          ? cause.message
+          : t("connections.toast.detachErrorFallback"),
       );
     }
   }
@@ -149,7 +157,9 @@ export function ConnectionsPanel({
       // The usual cause is a server-side HOST_CONNECTOR_URL problem, which
       // the operator needs to read in full rather than catch in a toast.
       setPairingError(
-        cause instanceof Error ? cause.message : "Could not create a pairing code.",
+        cause instanceof Error
+          ? cause.message
+          : t("connections.host.pairingErrorFallback"),
       );
     }
   }
@@ -187,18 +197,20 @@ export function ConnectionsPanel({
       <SettingsPageHeader
         title={
           <span className="inline-flex items-center gap-2">
-            Agents
+            {t("connections.page.title")}
             <BetaBadge className="text-[10px]" />
           </span>
         }
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
-            <span>Run coding agents in project folders on this server or over SSH.</span>
+            <span>{t("connections.page.description")}</span>
             <span
               className="inline-flex items-center gap-1"
-              aria-label={`Supported agents: ${Object.values(AGENT_PROVIDERS)
-                .map((provider) => provider.label)
-                .join(", ")}.`}
+              aria-label={t("connections.page.supportedAgentsLabel", {
+                providers: Object.values(AGENT_PROVIDERS)
+                  .map((provider) => provider.label)
+                  .join(", "),
+              })}
             >
               {Object.values(AGENT_PROVIDERS).map((provider) => {
                 const visual = AGENT_PROVIDER_VISUALS[provider.id];
@@ -226,25 +238,27 @@ export function ConnectionsPanel({
         action={
           connector?.online && workspaceGroups.length > 0 ? (
             <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus /> Add workspace
+              <Plus /> {t("connections.page.addWorkspace")}
             </Button>
           ) : undefined
         }
       />
 
       <SettingsSection
-        title="Agent host"
+        title={t("connections.host.title")}
         description={
           connector
-            ? `${connector.name} · ${connector.online ? "Online" : "Offline"}`
-            : "Not set up"
+            ? connector.online
+              ? t("connections.host.statusOnline", { name: connector.name })
+              : t("connections.host.statusOffline", { name: connector.name })
+            : t("connections.host.notSetUp")
         }
       >
         {connectorError ? (
           <SettingsNotice tone="error" className="py-6">
             {connectorError instanceof Error
               ? connectorError.message
-              : "Host Connector status could not be loaded."}
+              : t("connections.host.loadError")}
           </SettingsNotice>
         ) : connector ? (
           <div className="flex flex-wrap items-center gap-3 px-4 py-4">
@@ -258,10 +272,11 @@ export function ConnectionsPanel({
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{connector.name}</p>
               <p className="text-xs text-muted-foreground">
-                Local agents and SSH ·{" "}
                 {connector.version
-                  ? `Host Connector ${connector.version}`
-                  : "Host Connector"}
+                  ? t("connections.host.subtitleWithVersion", {
+                      version: connector.version,
+                    })
+                  : t("connections.host.subtitle")}
               </p>
             </div>
             {!connector.online && !connector.managed && (
@@ -276,7 +291,7 @@ export function ConnectionsPanel({
                 ) : (
                   <Link2 />
                 )}
-                Pair again
+                {t("connections.host.pairAgain")}
               </Button>
             )}
             {!connector.managed && (
@@ -288,8 +303,8 @@ export function ConnectionsPanel({
                   setDetachError("");
                   setPendingDetach({ type: "connector", connector });
                 }}
-                aria-label="Remove Host Connector"
-                title="Remove Host Connector"
+                aria-label={t("connections.host.removeConnector")}
+                title={t("connections.host.removeConnector")}
               >
                 <Trash2 />
               </Button>
@@ -303,10 +318,10 @@ export function ConnectionsPanel({
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-medium">
-                  OvertChat host
+                  {t("connections.host.uninstalledTitle")}
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  Not installed. Run overtchat setup on this server, or pair a connector on another computer.
+                  {t("connections.host.uninstalledDescription")}
                 </span>
               </span>
             </div>
@@ -321,7 +336,7 @@ export function ConnectionsPanel({
               ) : (
                 <Link2 />
               )}
-              Pair a connector
+              {t("connections.host.pairConnector")}
             </Button>
           </div>
         )}
@@ -333,15 +348,16 @@ export function ConnectionsPanel({
         {connector?.upgrade && (
           <div className="border-t px-4 py-4">
             <p className="text-sm font-medium">
-              Host Connector {connector.upgrade.version} is available
+              {t("connections.host.upgradeAvailable", {
+                version: connector.upgrade.version,
+              })}
             </p>
             <p className="mb-3 mt-1 text-xs text-muted-foreground">
-              Run this on the connector host. It updates the binary and restarts
-              the service without changing the existing pairing or settings.
+              {t("connections.host.upgradeDescription")}
             </p>
             <div className="flex items-center gap-2">
               <code
-                aria-label="Host Connector upgrade command"
+                aria-label={t("connections.host.upgradeCommandLabel")}
                 className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted px-3 py-2 text-xs"
               >
                 {connector.upgrade.command}
@@ -350,8 +366,8 @@ export function ConnectionsPanel({
                 variant="outline"
                 size="icon"
                 onClick={() => void copyUpgradeCommand()}
-                aria-label="Copy connector upgrade command"
-                title="Copy connector upgrade command"
+                aria-label={t("connections.host.copyUpgradeCommand")}
+                title={t("connections.host.copyUpgradeCommand")}
               >
                 {upgradeCopied ? <Check /> : <Clipboard />}
               </Button>
@@ -361,16 +377,17 @@ export function ConnectionsPanel({
         {pairing && !connector && (
           <div className="border-t px-4 py-4">
             <div className="mb-2 flex items-center gap-1">
-              <p className="text-sm font-medium">Install Host Connector</p>
+              <p className="text-sm font-medium">
+                {t("connections.host.installTitle")}
+              </p>
               <HostConnectorInfo />
             </div>
             <p className="mb-3 text-xs text-muted-foreground">
-              Run this command in a terminal on the computer with your coding agents
-              and projects. It can be a different computer from the server.
+              {t("connections.host.installDescription")}
             </p>
             <div className="flex items-center gap-2">
               <code
-                aria-label="Host Connector install command"
+                aria-label={t("connections.host.installCommandLabel")}
                 className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted px-3 py-2 text-xs"
               >
                 {pairing.command}
@@ -379,15 +396,15 @@ export function ConnectionsPanel({
                 variant="outline"
                 size="icon"
                 onClick={() => void copyPairingCommand()}
-                aria-label="Copy connector command"
-                title="Copy connector command"
+                aria-label={t("connections.host.copyInstallCommand")}
+                title={t("connections.host.copyInstallCommand")}
               >
                 {commandCopied ? <Check /> : <Clipboard />}
               </Button>
             </div>
             <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-              Waiting for connection…
+              {t("connections.host.waitingForConnection")}
             </div>
           </div>
         )}
@@ -395,12 +412,12 @@ export function ConnectionsPanel({
 
       {connector && (
         <SettingsSection
-          title="Agent workspaces"
+          title={t("connections.workspaces.title")}
           description={
             workspaceGroups.length > 0
-              ? `${workspaceGroups.length} workspace${
-                  workspaceGroups.length === 1 ? "" : "s"
-                } available`
+              ? t("connections.workspaces.available", {
+                  count: workspaceGroups.length,
+                })
               : undefined
           }
         >
@@ -408,13 +425,13 @@ export function ConnectionsPanel({
             <SettingsNotice tone="error" className="py-6">
               {listError instanceof Error
                 ? listError.message
-                : "Agents could not be loaded."}
+                : t("connections.workspaces.loadError")}
             </SettingsNotice>
           ) : workspaceGroups.length === 0 ? (
             <div className="px-4 py-10 text-center">
               <Folder className="mx-auto size-5 text-muted-foreground" />
               <p className="mt-3 text-sm text-muted-foreground">
-                No agent workspaces added
+                {t("connections.workspaces.empty")}
               </p>
               {connector.online && (
                 <Button
@@ -422,7 +439,7 @@ export function ConnectionsPanel({
                   className="mt-4"
                   onClick={() => setAddOpen(true)}
                 >
-                  <Plus /> Add workspace
+                  <Plus /> {t("connections.page.addWorkspace")}
                 </Button>
               )}
             </div>
@@ -477,32 +494,32 @@ export function ConnectionsPanel({
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               {pendingDetach?.type === "workspace-group"
                 ? pendingWorktree
-                  ? "Remove worktree?"
-                  : "Remove workspace?"
-                : "Remove Host Connector?"}
+                  ? t("connections.detachDialog.removeWorktreeTitle")
+                  : t("connections.detachDialog.removeWorkspaceTitle")
+                : t("connections.detachDialog.removeConnectorTitle")}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
               {pendingDetach?.type === "connector" ? (
-                <>
-                  <span className="font-medium text-foreground">
-                    {pendingDetach.connector.name}
-                  </span>{" "}
-                  and every agent that uses it will be removed from OvertChat.
-                  Files and native agent sessions remain on their machines.
-                </>
+                <Trans
+                  i18nKey="connections.detachDialog.connectorDescription"
+                  values={{ name: pendingDetach.connector.name }}
+                  components={{
+                    name: <span className="font-medium text-foreground" />,
+                  }}
+                />
               ) : pendingWorktree && pendingDetach?.type === "workspace-group" ? (
                 <AgentWorktreeRemovalDetails
                   workspaceId={pendingWorktree.id}
                   name={pendingDetach.group.name}
                 />
               ) : pendingDetach?.type === "workspace-group" ? (
-                <>
-                  <span className="font-medium text-foreground">
-                    {pendingDetach.group.name}
-                  </span>{" "}
-                  and its agent chats will be removed from OvertChat. Files and
-                  native agent sessions remain on the host.
-                </>
+                <Trans
+                  i18nKey="connections.detachDialog.workspaceDescription"
+                  values={{ name: pendingDetach.group.name }}
+                  components={{
+                    name: <span className="font-medium text-foreground" />,
+                  }}
+                />
               ) : null}
             </AlertDialog.Description>
             {detachError && (
@@ -516,7 +533,7 @@ export function ConnectionsPanel({
                   <Button variant="ghost" size="sm" disabled={detaching} />
                 }
               >
-                Cancel
+                {t("common.actions.cancel")}
               </AlertDialog.Close>
               <Button
                 variant="destructive"
@@ -527,7 +544,7 @@ export function ConnectionsPanel({
                 {detaching && (
                   <Loader2 className="animate-spin motion-reduce:animate-none" />
                 )}
-                Remove
+                {t("common.actions.remove")}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -538,6 +555,7 @@ export function ConnectionsPanel({
 }
 
 function HostConnectorInfo() {
+  const { t } = useTranslation();
   return (
     <Popover.Root>
       <Popover.Trigger
@@ -546,8 +564,8 @@ function HostConnectorInfo() {
             variant="ghost"
             size="icon-sm"
             className="size-7"
-            aria-label="About Host Connector"
-            title="About Host Connector"
+            aria-label={t("connections.host.infoLabel")}
+            title={t("connections.host.infoLabel")}
           />
         }
       >
@@ -568,12 +586,10 @@ function HostConnectorInfo() {
             )}
           >
             <Popover.Title className="font-medium text-foreground">
-              Host Connector
+              {t("connections.host.infoTitle")}
             </Popover.Title>
             <p className="mt-1 text-muted-foreground">
-              Lets OvertChat use the agent binaries, projects, and SSH hosts on
-              the computer where it runs: this server or your own computer. It
-              only makes outbound connections to OvertChat.
+              {t("connections.host.infoDescription")}
             </p>
             <a
               href="https://github.com/yoloyash/overtchat/blob/main/scripts/install-connector.sh"
@@ -581,7 +597,7 @@ function HostConnectorInfo() {
               rel="noopener noreferrer"
               className="mt-2 inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
             >
-              View installer source
+              {t("connections.host.viewInstallerSource")}
               <ExternalLink className="size-3" />
             </a>
           </Popover.Popup>
@@ -602,10 +618,11 @@ function WorkspaceGroupRow({
   onTest: (connection: AgentConnectionListItem) => void;
   onRemoveWorkspace: () => void;
 }) {
+  const { t } = useTranslation();
   const HostIcon = group.host.transport === "local" ? Server : Wifi;
   const hostDetail =
     group.host.transport === "local"
-      ? "This server"
+      ? t("connections.hosts.thisServer")
       : `ssh ${group.host.sshAlias}`;
   const sessionCount = group.sessions.length;
   const providerSnapshot = useAgentProviderSnapshot(
@@ -626,7 +643,9 @@ function WorkspaceGroupRow({
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-sm font-medium">{group.name}</span>
             <span className="text-xs text-muted-foreground">
-              {providers.length} agent{providers.length === 1 ? "" : "s"}
+              {t("connections.workspaces.agentCount", {
+                count: providers.length,
+              })}
             </span>
           </div>
           <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground" title={group.path}>
@@ -637,7 +656,9 @@ function WorkspaceGroupRow({
               <HostIcon className="size-3" /> {hostDetail}
             </span>
             <span>
-              {sessionCount} session{sessionCount === 1 ? "" : "s"}
+              {t("connections.workspaces.sessionCount", {
+                count: sessionCount,
+              })}
             </span>
           </p>
         </div>
@@ -645,8 +666,10 @@ function WorkspaceGroupRow({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label={`Remove workspace ${group.name}`}
-          title="Remove workspace"
+          aria-label={t("connections.workspaces.removeWorkspaceLabel", {
+            name: group.name,
+          })}
+          title={t("connections.workspaces.removeWorkspace")}
           onClick={onRemoveWorkspace}
         >
           <Trash2 />
@@ -684,7 +707,7 @@ function WorkspaceGroupRow({
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <p className="text-sm font-medium">{provider.label}</p>
                   <span className="text-xs text-muted-foreground">
-                    {version ?? "Not tested"}
+                    {version ?? t("connections.workspaces.notTested")}
                   </span>
                 </div>
                 <p className="truncate font-mono text-xs text-muted-foreground" title={executable}>
@@ -692,8 +715,9 @@ function WorkspaceGroupRow({
                 </p>
               </div>
               <span className="text-xs text-muted-foreground">
-                {providerSessionCount} session
-                {providerSessionCount === 1 ? "" : "s"}
+                {t("connections.workspaces.sessionCount", {
+                  count: providerSessionCount,
+                })}
               </span>
               {backing && (
                 <div className="flex items-center gap-1 @xl:justify-end">
@@ -702,8 +726,11 @@ function WorkspaceGroupRow({
                   variant="ghost"
                   size="icon-sm"
                   disabled={actionId !== null}
-                  aria-label={`Test ${provider.label} in ${group.name}`}
-                  title="Test agent"
+                  aria-label={t("connections.workspaces.testAgentLabel", {
+                    provider: provider.label,
+                    workspace: group.name,
+                  })}
+                  title={t("connections.workspaces.testAgent")}
                   onClick={() => onTest(backing.connection)}
                 >
                   <RefreshCw

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { Alert } from "react-native";
 import { Directory, File } from "expo-file-system";
@@ -13,6 +14,7 @@ import {
 import { authFetch, getApiBase } from "@/lib/api";
 import { queryKeys } from "@/lib/queries/keys";
 export default function Data() {
+  const { t } = useTranslation();
   const action = useAction();
   const [result, setResult] = useState("");
   const client = useQueryClient();
@@ -27,13 +29,15 @@ export default function Data() {
     }
     const response = await authFetch(`${getApiBase()}/api/export`);
     if (!response.ok)
-      throw new Error(`Couldn’t export chats (${response.status}).`);
+      throw new Error(
+        t("data.mobile.export.failedWithStatus", { status: response.status }),
+      );
     const file = directory.createFile(
       `overtchat-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
       "application/json",
     );
     file.write(new Uint8Array(await response.arrayBuffer()));
-    setResult("Export saved to the selected folder.");
+    setResult(t("data.mobile.export.saved"));
   }
   async function selectImport() {
     const selection = await DocumentPicker.getDocumentAsync({
@@ -47,14 +51,14 @@ export default function Data() {
     if (selection.canceled) return;
     const selected = selection.assets[0];
     if ((selected.size ?? 0) > 50 * 1024 * 1024)
-      throw new Error("Import files must be 50 MB or smaller.");
+      throw new Error(t("data.mobile.import.tooLarge"));
     Alert.alert(
-      "Import chats?",
-      `Import ${selected.name} into your account? Importing the same file again may create duplicates.`,
+      t("data.mobile.import.confirmTitle"),
+      t("data.mobile.import.confirmMessage", { name: selected.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.actions.cancel"), style: "cancel" },
         {
-          text: "Import",
+          text: t("data.import.title"),
           onPress: () =>
             void action.run(async () => {
               setResult("");
@@ -73,7 +77,7 @@ export default function Data() {
                   importedMemories: number;
                 };
                 if (!response.ok)
-                  throw new Error(data.error ?? "Import failed.");
+                  throw new Error(data.error ?? t("data.import.failed"));
                 await Promise.all([
                   client.invalidateQueries({ queryKey: queryKeys.chats() }),
                   client.invalidateQueries({ queryKey: queryKeys.projects() }),
@@ -82,7 +86,17 @@ export default function Data() {
                   }),
                 ]);
                 setResult(
-                  `Imported ${data.importedChats} chat${data.importedChats === 1 ? "" : "s"}, ${data.importedMessages} message${data.importedMessages === 1 ? "" : "s"}, and ${data.importedMemories} memor${data.importedMemories === 1 ? "y" : "ies"}.`,
+                  t("data.mobile.import.complete", {
+                    chats: t("data.import.chatCount", {
+                      count: data.importedChats,
+                    }),
+                    messages: t("data.mobile.import.messageCount", {
+                      count: data.importedMessages,
+                    }),
+                    memories: t("data.import.memoryCount", {
+                      count: data.importedMemories,
+                    }),
+                  }),
                 );
               } finally {
                 if (file.exists) file.delete();
@@ -93,24 +107,28 @@ export default function Data() {
     );
   }
   return (
-    <SettingsPage title="Data & backups">
+    <SettingsPage title={t("settings.mobile.index.dataAndBackups")}>
       <Section
-        title="Export"
-        description="Save your chats as an OvertChat JSON file for backup or re-import."
+        title={t("data.export.title")}
+        description={t("data.mobile.export.description")}
       >
         <Row
-          title={action.busy ? "Working…" : "Export chats"}
+          title={
+            action.busy
+              ? t("common.states.working")
+              : t("data.mobile.export.action")
+          }
           icon="download-outline"
           disabled={action.busy}
           onPress={() => void action.run(exportData)}
         />
       </Section>
       <Section
-        title="Import"
-        description="ChatGPT, Claude.ai, OpenWebUI, and OvertChat JSON or ZIP exports, up to 50 MB. Visible text and reasoning are preserved; attachments, images, and branches are not imported."
+        title={t("data.import.title")}
+        description={t("data.mobile.import.description")}
       >
         <Row
-          title="Choose import file"
+          title={t("data.mobile.import.chooseFile")}
           icon="push-outline"
           disabled={action.busy}
           onPress={() => void action.run(selectImport)}

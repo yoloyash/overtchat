@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import { compactCount, readFileRangeLabel } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   allocateTokenBudget,
   attachmentTokenBudget,
@@ -306,9 +307,9 @@ describe("read range labels", () => {
 
   it("describes whole and partial reads", () => {
     const base = { file: "a.pdf", uploadId: "a", totalCharacters: 220_114 };
-    expect(readFileRangeLabel({ ...base, offset: 0, end: 220_114 })).toBe("whole file");
+    expect(readFileRangeLabel({ ...base, offset: 0, end: 220_114 }, i18n.t)).toBe("whole file");
     expect(
-      readFileRangeLabel({ ...base, offset: 41_203, end: 102_450, nextOffset: 102_450 }),
+      readFileRangeLabel({ ...base, offset: 41_203, end: 102_450, nextOffset: 102_450 }, i18n.t),
     ).toBe("41k–102k of 220k chars");
   });
 });

@@ -1,5 +1,6 @@
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Alert, View } from "react-native";
 import type {
   AgentProviderId,
@@ -7,6 +8,7 @@ import type {
   AgentModel,
   AgentSelectOption,
 } from "@overtchat/agent-bridge";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   AgentButton,
   AgentInput,
@@ -24,12 +26,15 @@ export function chooseAgentMode(mode: AgentMode, apply: () => void) {
     return;
   }
   Alert.alert(
-    `Enable ${mode.label}?`,
-    mode.description ||
-      "The agent can run commands and modify files without sandbox restrictions or approval prompts.",
+    i18n.t("agents.composer.enableModeTitle", { mode: mode.label }),
+    mode.description || i18n.t("agents.mobile.controls.enableModeFallback"),
     [
-      { text: "Cancel", style: "cancel" },
-      { text: "Enable", style: "destructive", onPress: apply },
+      { text: i18n.t("common.actions.cancel"), style: "cancel" },
+      {
+        text: i18n.t("agents.mobile.controls.enable"),
+        style: "destructive",
+        onPress: apply,
+      },
     ],
   );
 }
@@ -72,6 +77,7 @@ export function AgentControls({
   error?: string;
   notice?: string;
 }) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [panel, setPanel] = useState<AgentSettingsPanel>("settings");
   useEffect(() => {
@@ -90,12 +96,12 @@ export function AgentControls({
     <AgentSheet
       title={
         panel === "models"
-          ? "Choose model"
+          ? t("agents.mobile.controls.chooseModel")
           : panel === "thinking"
-            ? "Reasoning effort"
+            ? t("agents.mobile.controls.reasoningEffort")
             : panel === "permissions"
-              ? "Permissions"
-              : "Agent settings"
+              ? t("agents.composer.permissions")
+              : t("agents.mobile.controls.agentSettings")
       }
       visible={visible}
       onClose={close}
@@ -104,7 +110,7 @@ export function AgentControls({
       {!!notice && <AgentText muted>{notice}</AgentText>}
       {panel !== "settings" && (
         <AgentButton
-          label="Agent settings"
+          label={t("agents.mobile.controls.agentSettings")}
           icon="arrow-back"
           onPress={() => {
             setPanel("settings");
@@ -115,8 +121,8 @@ export function AgentControls({
       {panel === "settings" ? (
         <View style={{ gap: 6 }}>
           <AgentButton
-            label="Model"
-            detail={model?.label ?? (modelId || "Unavailable")}
+            label={t("agents.composer.model")}
+            detail={model?.label ?? (modelId || t("agents.mobile.controls.modelUnavailable"))}
             leading={
               provider ? <AgentProviderIcon provider={provider} /> : undefined
             }
@@ -127,12 +133,12 @@ export function AgentControls({
           />
           {!!model?.thinkingOptions?.length && (
             <AgentButton
-              label="Reasoning effort"
+              label={t("agents.mobile.controls.reasoningEffort")}
               detail={
                 model.thinkingOptions.find((option) => option.id === thinking)
                   ?.label ??
                 thinking ??
-                "Default"
+                t("agents.composer.thinking.default")
               }
               icon="sparkles-outline"
               chevron
@@ -142,9 +148,10 @@ export function AgentControls({
           )}
           {!!modes.length && (
             <AgentButton
-              label="Permissions"
+              label={t("agents.composer.permissions")}
               detail={
-                modes.find((mode) => mode.id === modeId)?.label ?? "Default"
+                modes.find((mode) => mode.id === modeId)?.label ??
+                t("agents.composer.thinking.default")
               }
               icon="shield-checkmark-outline"
               chevron
@@ -154,8 +161,12 @@ export function AgentControls({
           )}
           {onPlan && (
             <AgentButton
-              label="Plan mode"
-              detail={planMode ? "On" : "Off"}
+              label={t("agents.composer.planMode")}
+              detail={
+                planMode
+                  ? t("agents.mobile.controls.planOn")
+                  : t("agents.mobile.controls.planOff")
+              }
               icon="list-outline"
               selected={planMode}
               disabled={disabled}
@@ -166,8 +177,8 @@ export function AgentControls({
       ) : panel === "models" ? (
         <>
           <AgentInput
-            accessibilityLabel="Search models"
-            placeholder="Search models"
+            accessibilityLabel={t("agents.mobile.controls.searchModelsLabel")}
+            placeholder={t("agents.mobile.controls.searchModelsPlaceholder")}
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}
@@ -201,7 +212,7 @@ export function AgentControls({
             `${item.label} ${item.id}`
               .toLowerCase()
               .includes(search.toLowerCase()),
-          ) && <AgentText muted>No matching models.</AgentText>}
+          ) && <AgentText muted>{t("agents.composer.noMatchingModels")}</AgentText>}
         </>
       ) : panel === "thinking" ? (
         <>

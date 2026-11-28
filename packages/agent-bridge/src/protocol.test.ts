@@ -253,6 +253,24 @@ describe("Host Connector protocol compatibility", () => {
     ).toBe(false);
   });
 
+  it("accepts the provider session a live session moved to only as a pair", () => {
+    const metadata = (patch: Record<string, unknown>) =>
+      isHostConnectorEvent({
+        sequence: 1,
+        payload: { type: "session_metadata", sessionId: "session", patch },
+      });
+    expect(
+      metadata({
+        providerSessionId: "continued",
+        providerSessionPath: "/sessions/continued.jsonl",
+      }),
+    ).toBe(true);
+    expect(metadata({ name: "Title" })).toBe(true);
+    expect(metadata({ providerSessionId: "continued" })).toBe(false);
+    expect(metadata({ providerSessionPath: "/sessions/continued.jsonl" })).toBe(false);
+    expect(metadata({ providerSessionId: "", providerSessionPath: "/s.jsonl" })).toBe(false);
+  });
+
   it("accepts attention fields as optional additions to directory entries", () => {
     const attention = {
       kind: "approval",

@@ -21,6 +21,8 @@ interface Settings {
   window: WindowBounds | null;
   zoomLevel: number;
   colorScheme: ColorScheme | null;
+  /** The interface language last reported by the UI, for menus and dialogs. */
+  language: string | null;
 }
 
 const DEFAULTS: Settings = {
@@ -30,6 +32,7 @@ const DEFAULTS: Settings = {
   window: null,
   zoomLevel: 0,
   colorScheme: null,
+  language: null,
 };
 
 let settings: Settings = DEFAULTS;
@@ -154,6 +157,14 @@ export function setZoomLevel(zoomLevel: number): void {
 
 export function getColorScheme(): ColorScheme | null {
   return settings.colorScheme;
+}
+
+export function getLanguage(): string | null {
+  return settings.language;
+}
+
+export function setLanguage(language: string): void {
+  if (settings.language !== language) update({ language });
 }
 
 export function setColorScheme(colorScheme: ColorScheme): void {

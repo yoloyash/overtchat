@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
 import { getErrorMessage } from "@overtchat/shared";
@@ -16,6 +17,7 @@ export function ErrorNotice({
   action?: { label: string; onPress: () => void };
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   return (
     <View
       style={{
@@ -46,7 +48,9 @@ export function ErrorNotice({
             lineHeight: 19,
           }}
         >
-          {typeof message === "string" ? message : getErrorMessage(message, fallback)}
+          {typeof message === "string"
+            ? message
+            : getErrorMessage(message, fallback ?? t("common.errors.generic"))}
         </Text>
         {action && (
           <Pressable
@@ -73,7 +77,7 @@ export function ErrorNotice({
       {onDismiss && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Dismiss error"
+          accessibilityLabel={t("app.ui.errorNotice.dismiss")}
           onPress={onDismiss}
           hitSlop={10}
           style={{ padding: 4 }}

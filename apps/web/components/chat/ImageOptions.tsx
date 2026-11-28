@@ -1,7 +1,7 @@
 "use client";
+import { useTranslation } from "react-i18next";
 import {
   IMAGE_SIZES,
-  IMAGE_SIZE_LABELS,
   IMAGE_QUALITIES,
   type ImageGenerationOptions,
 } from "@overtchat/shared";
@@ -22,20 +22,28 @@ export function ImageOptions({
   onChange: (value: ImageGenerationOptions) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-xs">
       <span className="font-medium">
-        Create image{model ? ` · ${model}` : ""}
+        {model
+          ? t("chat.image.createTitleWithModel", { model })
+          : t("chat.composer.createImage")}
       </span>
       {configuredSize ? (
         <span>
-          Size: {configuredSize === "auto" ? "Backend default" : configuredSize}
+          {t("chat.image.sizeConfigured", {
+            size:
+              configuredSize === "auto"
+                ? t("chat.image.backendDefault")
+                : configuredSize,
+          })}
         </span>
       ) : (
         <label className="flex items-center gap-1">
-          Size
+          {t("chat.image.sizeLabel")}
           <select
-            aria-label="Image size"
+            aria-label={t("chat.image.imageSizeAria")}
             className="rounded border bg-background p-1"
             value={value.size}
             onChange={(event) =>
@@ -47,7 +55,7 @@ export function ImageOptions({
           >
             {IMAGE_SIZES.map((size) => (
               <option key={size} value={size}>
-                {IMAGE_SIZE_LABELS[size]}
+                {t(`chat.image.sizes.${size}`)}
               </option>
             ))}
           </select>
@@ -55,9 +63,9 @@ export function ImageOptions({
       )}
       {supportsQuality && (
         <label className="flex items-center gap-1">
-          Quality
+          {t("chat.image.qualityLabel")}
           <select
-            aria-label="Image quality"
+            aria-label={t("chat.image.imageQualityAria")}
             className="rounded border bg-background p-1"
             value={value.quality}
             onChange={(event) =>
@@ -70,7 +78,7 @@ export function ImageOptions({
           >
             {IMAGE_QUALITIES.map((quality) => (
               <option key={quality} value={quality}>
-                {quality}
+                {t(`chat.image.qualities.${quality}`)}
               </option>
             ))}
           </select>
@@ -79,7 +87,7 @@ export function ImageOptions({
       <button
         type="button"
         onClick={onClose}
-        aria-label="Remove image request"
+        aria-label={t("chat.image.removeRequest")}
         className="ml-auto rounded p-1 hover:bg-accent"
       >
         <X className="size-4" />

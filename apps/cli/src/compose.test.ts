@@ -77,7 +77,7 @@ describe("managed Compose configuration", () => {
   };
   const cloudSecrets = {
     betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox",
-    cloudCredential: "oc_credential",
+    cloudCredential: "oc_credential", oidcClientSecret: "",
   };
 
   it("runs the cloud tunnel only when OvertChat Cloud is the access mode", () => {
@@ -130,7 +130,7 @@ describe("managed Compose configuration", () => {
     selected.tts = { provider: "openai-compatible", bundledInstalled: true, accelerator: "apple", baseUrl: "https://external.example/v1" };
     selected.stt = { provider: "bundled", bundledInstalled: true, accelerator: "cpu" };
     const environment = renderStackEnvironment(selected, {
-      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "", oidcClientSecret: "",
     }, paths);
     expect(environment).toContain('COMPOSE_PROFILES="stt-cpu,voice"');
     expect(environment).toContain('OVERTCHAT_BUNDLED_TTS_URL="http://host.docker.internal:5093"');
@@ -147,7 +147,7 @@ describe("managed Compose configuration", () => {
   ] as const)("coordinates binding and accepted login addresses for %s", (mode, bindAddress, publicUrl) => {
     const selected = { ...config(), access: { mode }, bindAddress, publicUrl };
     const environment = renderStackEnvironment(selected, {
-      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "", oidcClientSecret: "",
     }, paths);
     expect(environment).toContain(`APP_BIND_ADDRESS="${bindAddress}"`);
     expect(environment).toContain(`BETTER_AUTH_URL="${publicUrl}"`);
@@ -155,6 +155,58 @@ describe("managed Compose configuration", () => {
     const compose = renderComposeFile(selected);
     expect(compose).toContain('"${APP_BIND_ADDRESS}:${APP_PORT}:4717"');
     expect(compose).toContain('EXTRA_TRUSTED_ORIGINS: ${EXTRA_TRUSTED_ORIGINS:-}');
+  });
+
+  it("signs in with the operator's identity provider only when one is set up", () => {
+    const secrets = {
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "", oidcClientSecret: "pa$word",
+    };
+    const without = renderStackEnvironment(config(), secrets, paths);
+    expect(without).toContain('OIDC_ISSUER_URL=""');
+    expect(without).toContain('OIDC_CLIENT_ID=""');
+    // A secret left over from a removed provider is not handed to the app.
+    expect(without).toContain('OIDC_CLIENT_SECRET=""');
+    expect(without).toContain('OIDC_DISABLE_PASSWORD_LOGIN="false"');
+
+    const environment = renderStackEnvironment(
+      {
+        ...config(),
+        identityProvider: {
+          issuerUrl: "https://id.example.com/realms/home",
+          clientId: "overtchat",
+          name: "Pocket ID",
+          autoCreateUsers: true,
+          disablePasswordLogin: true,
+        },
+      },
+      secrets,
+      paths,
+    );
+    expect(environment).toContain(
+      'OIDC_ISSUER_URL="https://id.example.com/realms/home"',
+    );
+    expect(environment).toContain('OIDC_CLIENT_ID="overtchat"');
+    // Compose expands "$name" in this file and reads "$$" as one "$".
+    expect(environment).toContain('OIDC_CLIENT_SECRET="pa$$word"');
+    expect(environment).toContain('OIDC_PROVIDER_NAME="Pocket ID"');
+    expect(environment).toContain('OIDC_AUTO_CREATE_USERS="true"');
+    expect(environment).toContain('OIDC_DISABLE_PASSWORD_LOGIN="true"');
+
+    const compose = renderComposeFile(config());
+    for (const name of [
+      "OIDC_ISSUER_URL",
+      "OIDC_CLIENT_ID",
+      "OIDC_CLIENT_SECRET",
+      "OIDC_PROVIDER_NAME",
+    ]) {
+      expect(compose).toContain(`      ${name}: \${${name}:-}\n`);
+    }
+    expect(compose).toContain(
+      "OIDC_AUTO_CREATE_USERS: ${OIDC_AUTO_CREATE_USERS:-false}",
+    );
+    expect(compose).toContain(
+      "OIDC_DISABLE_PASSWORD_LOGIN: ${OIDC_DISABLE_PASSWORD_LOGIN:-false}",
+    );
   });
 
   it("starts installed local services independently from the active provider", () => {
@@ -166,7 +218,7 @@ describe("managed Compose configuration", () => {
         searxngSecret: "search",
         voiceSharedSecret: "voice-secret",
         sandboxToken: "sandbox-token",
-        cloudCredential: "",
+        cloudCredential: "", oidcClientSecret: "",
       },
       paths,
     );
@@ -243,7 +295,7 @@ describe("managed Compose configuration", () => {
     ["full", "sandbox-full", "ghcr.io/yoloyash/overtchat-sandbox-full"],
   ] as const)("runs the %s code sandbox on the internal network only when installed", (tier, profile, image) => {
     const secrets = {
-      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox-token", cloudCredential: "",
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice", sandboxToken: "sandbox-token", cloudCredential: "", oidcClientSecret: "",
     };
     const installed = { ...config(), sandbox: { installed: true, tier } };
     const environment = renderStackEnvironment(installed, secrets, paths);
@@ -291,7 +343,7 @@ describe("managed Compose configuration", () => {
         betterAuthSecret: "auth",
         managementSecret: "management",
         searxngSecret: "search",
-        voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
+        voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "", oidcClientSecret: "",
       },
       paths,
     );
@@ -324,7 +376,7 @@ describe("managed Compose configuration", () => {
         betterAuthSecret: "auth",
         managementSecret: "management",
         searxngSecret: "search",
-        voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "",
+        voiceSharedSecret: "voice", sandboxToken: "sandbox", cloudCredential: "", oidcClientSecret: "",
       },
       paths,
     );

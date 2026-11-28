@@ -24,6 +24,8 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Menu } from "@base-ui/react/menu";
 import { ContextMenu } from "@base-ui/react/context-menu";
 import { readText, writeText } from "clipboard-polyfill";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import { UpdateActionTooltip } from "@/components/UpdateActionTooltip";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
@@ -48,6 +50,13 @@ const menuClass =
   "z-50 min-w-48 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg outline-none";
 const itemClass =
   "flex cursor-default items-center gap-2 rounded-md px-2.5 py-2 text-xs outline-none data-[highlighted]:bg-accent data-[disabled]:opacity-40 [&_svg]:size-3.5";
+type TerminalStatus =
+  | { kind: "connecting" }
+  | { kind: "reconnecting" }
+  | { kind: "connected" }
+  | { kind: "disconnected" }
+  | { kind: "unavailable" }
+  | { kind: "exited"; reason: string | number | null };
 
 export function AgentTerminalPane({
   sessionId,
@@ -68,6 +77,7 @@ export function AgentTerminalPane({
   onAddToChat?: (selection: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const terminalRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -86,7 +96,7 @@ export function AgentTerminalPane({
   const sendRef = useRef<(control: TerminalControl) => void>(() => {});
   const resumeRef = useRef<() => void>(() => {});
   const sizeRef = useRef<AgentTerminalSize>({ cols: 80, rows: 24 });
-  const [status, setStatus] = useState("Connecting…");
+  const [status, setStatus] = useState<TerminalStatus>({ kind: "connecting" });
   const [error, setError] = useState("");
   const [exited, setExited] = useState(false);
 
@@ -133,7 +143,7 @@ export function AgentTerminalPane({
     let snapshotGeneration = 0;
     let attempt = 0;
     let connecting = false;
-    let exitLabel = "";
+    let exitStatus: TerminalStatus | null = null;
     let pendingWrites = 0;
     let restoring = false;
     let restoreBuffer: string[] = [];
@@ -147,7 +157,7 @@ export function AgentTerminalPane({
         socket.bufferedAmount + new TextEncoder().encode(data).byteLength >
         256 * 1024
       ) {
-        setError("Terminal input is congested. Reconnect before typing again.");
+        setError(i18n.t("agents.terminal.inputCongested"));
         ready = false;
         socket.close();
         return;
@@ -221,7 +231,7 @@ export function AgentTerminalPane({
         ) {
           event.preventDefault();
           void writeText(terminal.getSelection()).catch(() =>
-            toast.error("Copy failed. Use your system copy shortcut."),
+            toast.error(i18n.t("agents.terminal.copyFailed")),
           );
           return false;
         }
@@ -252,7 +262,7 @@ export function AgentTerminalPane({
       connecting = true;
       const epoch = ++generation;
       ready = false;
-      setStatus(attempt ? "Reconnecting…" : "Connecting…");
+      setStatus({ kind: attempt ? "reconnecting" : "connecting" });
       fitTerminal();
       request = new AbortController();
       try {
@@ -273,7 +283,10 @@ export function AgentTerminalPane({
           } | null;
           throw Object.assign(
             new Error(
-              value?.error ?? `Terminal unavailable (${response.status}).`,
+              value?.error ??
+                i18n.t("agents.terminal.unavailableStatus", {
+                  status: response.status,
+                }),
             ),
             { retry: response.status >= 500 },
           );
@@ -312,9 +325,15 @@ export function AgentTerminalPane({
             const baseline = ++snapshotGeneration;
             ready = false;
             revision = message.snapshot.revision;
-            exitLabel = message.snapshot.exited
-              ? `Exited (${message.snapshot.exitCode ?? message.snapshot.signal ?? "unknown"})`
-              : "";
+            exitStatus = message.snapshot.exited
+              ? {
+                  kind: "exited",
+                  reason:
+                    message.snapshot.exitCode ??
+                    message.snapshot.signal ??
+                    null,
+                }
+              : null;
             setExited(message.snapshot.exited);
             restoring = true;
             restoreBuffer = [];
@@ -341,7 +360,7 @@ export function AgentTerminalPane({
                 restoring = false;
                 ready = true;
                 attempt = 0;
-                setStatus(exitLabel || "Connected");
+                setStatus(exitStatus ?? { kind: "connected" });
                 setError("");
                 fitTerminal(true);
                 if (
@@ -361,8 +380,11 @@ export function AgentTerminalPane({
           revision = message.revision;
           if (message.type === "exit") {
             setExited(true);
-            exitLabel = `Exited (${message.exitCode ?? message.signal ?? "unknown"})`;
-            setStatus(exitLabel);
+            exitStatus = {
+              kind: "exited",
+              reason: message.exitCode ?? message.signal ?? null,
+            };
+            setStatus(exitStatus);
           } else if (restoring) {
             restoreBytes += new TextEncoder().encode(message.data).byteLength;
             if (restoreBytes > TERMINAL_MAX_BUFFER_BYTES) {
@@ -375,11 +397,9 @@ export function AgentTerminalPane({
         connection.onclose = (event) => {
           if (disposed || socket !== connection) return;
           ready = false;
-          setStatus("Disconnected");
+          setStatus({ kind: "disconnected" });
           if (event.code === 1008) {
-            setError(
-              "Terminal access expired. Reopen the terminal to reconnect.",
-            );
+            setError(i18n.t("agents.terminal.accessExpired"));
             return;
           }
           schedule();
@@ -391,14 +411,14 @@ export function AgentTerminalPane({
           !(cause instanceof Error && "retry" in cause && cause.retry === false)
         )
           schedule();
-        else setStatus("Unavailable");
+        else setStatus({ kind: "unavailable" });
       } finally {
         if (generation === epoch) connecting = false;
       }
     };
     const schedule = () => {
       if (disposed || retry) return;
-      setStatus("Reconnecting…");
+      setStatus({ kind: "reconnecting" });
       retry = setTimeout(
         () => {
           retry = undefined;
@@ -505,7 +525,7 @@ export function AgentTerminalPane({
       await writeText(selection);
       setCopied(true);
     } catch {
-      toast.error("Copy failed. Use your system copy shortcut.");
+      toast.error(t("agents.terminal.copyFailed"));
     }
   }
   async function paste() {
@@ -517,9 +537,7 @@ export function AgentTerminalPane({
         terminal.focus();
       }
     } catch {
-      toast.error(
-        "Clipboard access is unavailable. Use your system paste shortcut.",
-      );
+      toast.error(t("agents.terminal.pasteUnavailable"));
     }
   }
   function addToChat() {
@@ -539,9 +557,15 @@ export function AgentTerminalPane({
       : menuDestinationRef.current === "find"
         ? searchInputRef.current
         : (terminalRef.current?.textarea ?? false);
-  const connected = status === "Connected" && !exited;
-  const busy = status === "Connecting…" || status === "Reconnecting…";
-  const canControl = connected || status.startsWith("Exited");
+  const connected = status.kind === "connected" && !exited;
+  const busy = status.kind === "connecting" || status.kind === "reconnecting";
+  const canControl = connected || status.kind === "exited";
+  const statusText =
+    status.kind === "exited"
+      ? t("agents.terminal.exited", {
+          reason: status.reason ?? t("agents.terminal.unknownExit"),
+        })
+      : t(`agents.terminal.${status.kind}`);
   const actions = (
     <>
       <Menu.Item
@@ -550,20 +574,20 @@ export function AgentTerminalPane({
         onClick={() => void copy()}
       >
         <Copy />
-        Copy selection
+        {t("agents.terminal.copySelection")}
       </Menu.Item>
       <Menu.Item
         className={itemClass}
         disabled={!connected}
         onClick={() => void paste()}
       >
-        Paste
+        {t("agents.terminal.paste")}
       </Menu.Item>
       <Menu.Item
         className={itemClass}
         onClick={() => terminalRef.current?.selectAll()}
       >
-        Select all
+        {t("agents.terminal.selectAll")}
       </Menu.Item>
       <Menu.Item
         className={itemClass}
@@ -571,12 +595,12 @@ export function AgentTerminalPane({
         onClick={addToChat}
       >
         <MessageSquarePlus />
-        Add to chat
+        {t("agents.terminal.addToChat")}
       </Menu.Item>
       <Menu.Separator className="my-1 h-px bg-border" />
       <Menu.Item className={itemClass} onClick={openFind}>
         <Search />
-        Find in terminal
+        {t("agents.terminal.findInTerminal")}
       </Menu.Item>
     </>
   );
@@ -601,11 +625,13 @@ export function AgentTerminalPane({
   return (
     <section
       className="relative flex h-full min-h-0 flex-col bg-background"
-      aria-label="Workspace terminal"
+      aria-label={t("agents.terminal.workspaceTerminal")}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-muted/25 px-3">
         <SquareTerminal className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-xs font-medium">Terminal</span>
+        <span className="text-xs font-medium">
+          {t("agents.terminal.title")}
+        </span>
         <span className="text-muted-foreground/50" aria-hidden="true">
           /
         </span>
@@ -641,13 +667,13 @@ export function AgentTerminalPane({
           )}
           role="status"
         >
-          {status}
+          {statusText}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {copied && (
             <Check
               className="mr-1 size-3.5 text-emerald-600"
-              aria-label="Copied"
+              aria-label={t("common.states.copied")}
             />
           )}
           {exited && (
@@ -659,16 +685,18 @@ export function AgentTerminalPane({
               }
             >
               <RotateCcw className="size-3" />
-              Restart terminal
+              {t("agents.terminal.restart")}
             </Button>
           )}
           {actionButton(
-            "Find in terminal",
+            t("agents.terminal.findInTerminal"),
             <Search className="size-3.5" />,
             openFind,
           )}
           {actionButton(
-            expanded ? "Restore terminal size" : "Expand terminal",
+            expanded
+              ? t("agents.terminal.restoreSize")
+              : t("agents.terminal.expand"),
             expanded ? (
               <Minimize2 className="size-3.5" />
             ) : (
@@ -677,13 +705,13 @@ export function AgentTerminalPane({
             onToggleExpanded,
           )}
           <Menu.Root onOpenChange={menuOpenChanged}>
-            <UpdateActionTooltip content="Terminal actions">
+            <UpdateActionTooltip content={t("agents.terminal.actions")}>
               <Menu.Trigger
                 render={
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Terminal actions"
+                    aria-label={t("agents.terminal.actions")}
                     className="text-muted-foreground"
                   />
                 }
@@ -711,7 +739,7 @@ export function AgentTerminalPane({
                     }
                   >
                     <RotateCcw />
-                    Restart terminal
+                    {t("agents.terminal.restart")}
                   </Menu.Item>
                   <Menu.Item
                     className={cn(itemClass, "text-destructive")}
@@ -719,14 +747,14 @@ export function AgentTerminalPane({
                     onClick={() => sendRef.current({ type: "kill" })}
                   >
                     <Square />
-                    Stop terminal
+                    {t("agents.terminal.stop")}
                   </Menu.Item>
                 </Menu.Popup>
               </Menu.Positioner>
             </Menu.Portal>
           </Menu.Root>
           {actionButton(
-            "Close terminal panel",
+            t("agents.terminal.closePanel"),
             <X className="size-3.5" />,
             onClose,
           )}
@@ -743,7 +771,7 @@ export function AgentTerminalPane({
       {findOpen && (
         <div
           role="search"
-          aria-label="Find terminal output"
+          aria-label={t("agents.terminal.findOutput")}
           className="absolute top-12 right-3 z-30 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-lg border bg-popover px-2 py-1.5 shadow-lg"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
@@ -763,8 +791,8 @@ export function AgentTerminalPane({
           <Search className="mr-1 size-3.5 shrink-0 text-muted-foreground" />
           <Input
             ref={searchInputRef}
-            aria-label="Find terminal output"
-            placeholder="Find in terminal…"
+            aria-label={t("agents.terminal.findOutput")}
+            placeholder={t("agents.terminal.findPlaceholder")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="h-7 min-w-0 max-w-72 text-xs"
@@ -776,23 +804,26 @@ export function AgentTerminalPane({
             {query
               ? matches.resultCount
                 ? `${matches.resultIndex + 1} / ${matches.resultCount}${matches.resultCount >= 1000 ? "+" : ""}`
-                : "No matches"
+                : t("agents.terminal.noMatches")
               : ""}
           </span>
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Match case"
+            aria-label={t("agents.terminal.matchCase")}
             aria-pressed={matchCase}
             onClick={() => setMatchCase(!matchCase)}
             className={cn("text-xs", matchCase && "bg-accent")}
           >
-            Aa
+            {
+              // eslint-disable-next-line i18next/no-literal-string -- Case-sensitivity toggle symbol
+              "Aa"
+            }
           </Button>
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Previous match"
+            aria-label={t("agents.terminal.previousMatch")}
             disabled={!query || !matches.resultCount}
             onClick={() => find("previous")}
           >
@@ -801,7 +832,7 @@ export function AgentTerminalPane({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Next match"
+            aria-label={t("agents.terminal.nextMatch")}
             disabled={!query || !matches.resultCount}
             onClick={() => find("next")}
           >
@@ -810,7 +841,7 @@ export function AgentTerminalPane({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Close terminal search"
+            aria-label={t("agents.terminal.closeSearch")}
             onClick={closeFind}
           >
             <X />

@@ -10,6 +10,7 @@ import {
 } from "@clack/prompts";
 import { commandExists } from "./process.js";
 import { promptAccess, type AccessPromptOptions } from "./access-prompts.js";
+import { promptIdentityProvider } from "./identity-provider-prompts.js";
 import type {
   ExistingInstallation,
   Gpu,
@@ -429,12 +430,17 @@ async function detectedAgents(): Promise<string[]> {
   return detected;
 }
 
+export type SetupPromptOptions = AccessPromptOptions & {
+  /** The identity provider's client secret is already saved. */
+  identityProviderSecretStored?: boolean;
+};
+
 export async function promptInstallationConfig(
   initial: InstallationConfig,
   gpus: Gpu[],
   existing?: ExistingInstallation,
   appleChip?: string | null,
-  options: AccessPromptOptions = {},
+  options: SetupPromptOptions = {},
 ): Promise<InstallationConfig> {
   intro("OvertChat setup");
   if (existing) {
@@ -506,6 +512,16 @@ export async function promptInstallationConfig(
       inactive: "Set up later",
     }),
   );
+  // After access: the provider redirects back to the address chosen there.
+  const identityProvider = await promptIdentityProvider(
+    initial.identityProvider,
+    {
+      publicUrl: configured.publicUrl,
+      secretStored:
+        !!initial.identityProvider &&
+        (options.identityProviderSecretStored ?? false),
+    },
+  );
   note(
     "The app checks overtchat.com for new releases when an administrator opens the account menu. Install updates with overtchat update.",
     "Update notifications",
@@ -530,6 +546,7 @@ export async function promptInstallationConfig(
         : { installed: true, tier: sandbox },
     agents: { installed: installAgents },
     disableUpdateCheck: !checkForUpdates,
+    identityProvider,
   };
 }
 

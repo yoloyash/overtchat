@@ -11,6 +11,8 @@ import {
   Plus,
   Search,
 } from "lucide-react";
+import type { TFunction } from "i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type {
   AgentProviderId,
   AgentWorkspaceGitBranch,
@@ -18,6 +20,7 @@ import type {
   AgentWorkspaceGitSwitchTarget,
 } from "@overtchat/agent-bridge";
 import { formatUpdatedAt } from "@overtchat/shared";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { NewAgentWorktreeDialog } from "@/components/agents/NewAgentWorktreeDialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
@@ -44,15 +47,19 @@ function switchTarget(branch: AgentWorkspaceGitBranch): AgentWorkspaceGitSwitchT
 function switchedDescription(
   result: Extract<AgentWorkspaceGitSwitchResult, { status: "switched" }>,
   previous: string | null,
+  t: TFunction,
 ): string | undefined {
   const notes = [
     result.stashed &&
       (previous
-        ? `Your uncommitted changes on ${previous} were stashed. Switch back to ${previous} to restore them.`
-        : "Your uncommitted changes were stashed."),
-    result.restored && "Restored the uncommitted changes you had on this branch.",
+        ? t("agents.branch.stashedOnBranch", { branch: previous })
+        : t("agents.branch.stashed")),
+    result.restored && t("agents.branch.restored"),
     result.keptStash &&
-      `Changes stashed earlier on ${result.branch} were kept in ${result.keptStash} because the branch has new commits.`,
+      t("agents.branch.keptStash", {
+        branch: result.branch,
+        stash: result.keptStash,
+      }),
   ].filter(Boolean);
   return notes.length ? notes.join(" ") : undefined;
 }
@@ -73,6 +80,8 @@ export function AgentBranchPicker({
   /** The open session has a turn in progress. */
   running: boolean;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const [open, setOpen] = useState(false);
   const [worktreeOpen, setWorktreeOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -84,7 +93,7 @@ export function AgentBranchPicker({
   const branches = useAgentWorkspaceGitBranches(workspaceId, { enabled: open });
   const switchBranch = useSwitchAgentWorkspaceGitBranch(workspaceId);
   const pending = switchBranch.isPending;
-  const branchText = branch ?? "Detached HEAD";
+  const branchText = branch ?? t("agents.branch.detachedHead");
 
   const query = search.trim();
   const listed = branches.data?.branches ?? [];
@@ -125,18 +134,18 @@ export function AgentBranchPicker({
       setStashPrompt(null);
       if (result.status === "agent_running") {
         toast.error({
-          title: "An agent is working in this repository",
-          description: "Switch branches after its turn ends, or stop it first.",
+          title: t("agents.branch.agentRunningTitle"),
+          description: t("agents.branch.agentRunningDescription"),
         });
         return;
       }
       toast.success({
-        title: `Switched to ${result.branch}`,
-        description: switchedDescription(result, branch),
+        title: t("agents.branch.switchedTitle", { branch: result.branch }),
+        description: switchedDescription(result, branch, t),
       });
     } catch (error) {
       toast.error({
-        title: "Could not switch branches",
+        title: t("agents.branch.switchErrorTitle"),
         description: error instanceof Error ? error.message : String(error),
       });
     }
@@ -163,13 +172,13 @@ export function AgentBranchPicker({
               className="block truncate text-[11px] text-muted-foreground"
               title={item.worktreePath}
             >
-              Checked out in {item.worktreePath}
+              {t("agents.branch.checkedOutIn", { path: item.worktreePath })}
             </span>
           )}
         </span>
         {item.committedAt !== null && (
           <span className="shrink-0 text-[11px] text-muted-foreground">
-            {formatUpdatedAt(item.committedAt)}
+            {formatUpdatedAt(item.committedAt, t, locale)}
           </span>
         )}
       </Menu.Item>
@@ -180,7 +189,7 @@ export function AgentBranchPicker({
     <>
       <Menu.Root open={open} onOpenChange={changeOpen}>
         <Menu.Trigger
-          aria-label={`Branch ${branchText}. Switch branch`}
+          aria-label={t("agents.branch.triggerLabel", { branch: branchText })}
           data-testid="agent-branch-picker"
           className="flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 outline-none motion-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground"
         >
@@ -191,7 +200,7 @@ export function AgentBranchPicker({
         <Menu.Portal>
           <Menu.Positioner side="bottom" align="start" sideOffset={6}>
             <Menu.Popup
-              aria-label="Switch branch"
+              aria-label={t("agents.branch.menuLabel")}
               className={cn(
                 "z-50 max-h-[min(28rem,calc(100vh-5rem))] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
                 motionClasses.popup,
@@ -201,12 +210,19 @@ export function AgentBranchPicker({
                 <>
                   <div className="px-2.5 pb-2 pt-1.5">
                     <div className="font-medium">
-                      {stashPrompt.changedFiles} uncommitted{" "}
-                      {stashPrompt.changedFiles === 1 ? "change" : "changes"}
+                      {t("agents.branch.uncommittedChanges", {
+                        count: stashPrompt.changedFiles,
+                      })}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Stash them to switch to {stashPrompt.label}.
-                      {branch && ` Switching back to ${branch} restores them.`}
+                      {branch
+                        ? t("agents.branch.stashPromptDescriptionWithBranch", {
+                            target: stashPrompt.label,
+                            current: branch,
+                          })
+                        : t("agents.branch.stashPromptDescription", {
+                            target: stashPrompt.label,
+                          })}
                     </p>
                   </div>
                   <Menu.Item
@@ -222,7 +238,7 @@ export function AgentBranchPicker({
                     ) : (
                       <GitBranch className="size-3.5 text-muted-foreground" />
                     )}
-                    Stash changes and switch
+                    {t("agents.branch.stashAndSwitch")}
                   </Menu.Item>
                   <Menu.Item
                     closeOnClick={false}
@@ -231,7 +247,7 @@ export function AgentBranchPicker({
                     className={itemClassName}
                   >
                     <span className="size-3.5" />
-                    Cancel
+                    {t("common.actions.cancel")}
                   </Menu.Item>
                 </>
               ) : (
@@ -248,27 +264,27 @@ export function AgentBranchPicker({
                             event.stopPropagation();
                           }
                         }}
-                        placeholder="Search or create a branch"
-                        aria-label="Search branches"
+                        placeholder={t("agents.branch.searchPlaceholder")}
+                        aria-label={t("agents.branch.searchLabel")}
                         className="h-8 pl-7 text-xs md:text-xs"
                       />
                     </div>
                     {running && (
                       <p className="px-2 pt-1.5 text-xs text-muted-foreground">
-                        Switch branches after the agent&apos;s turn ends.
+                        {t("agents.branch.waitForTurn")}
                       </p>
                     )}
                     {pending && (
                       <p className="flex items-center gap-1.5 px-2 pt-1.5 text-xs text-muted-foreground">
                         <Loader2 className={cn("size-3", motionClasses.spinner)} />
-                        Switching branches…
+                        {t("agents.branch.switching")}
                       </p>
                     )}
                   </div>
                   {branches.isPending && (
                     <div className="flex items-center justify-center gap-2 px-2 py-6 text-xs text-muted-foreground">
                       <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
-                      Loading branches…
+                      {t("agents.branch.loading")}
                     </div>
                   )}
                   {branches.error && (
@@ -285,20 +301,27 @@ export function AgentBranchPicker({
                     >
                       <Plus className="size-4 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 truncate">
-                        Create branch{" "}
-                        <span className="font-mono text-xs">{query}</span>
+                        <Trans
+                          i18nKey="agents.branch.createBranch"
+                          values={{ name: query }}
+                          components={{
+                            name: <span className="font-mono text-xs" />,
+                          }}
+                        />
                       </span>
                     </Menu.Item>
                   )}
                   {branches.data && !filtered.length && !canCreate && (
                     <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                      {branches.data.isGit ? "No matching branches." : "Not a Git repository."}
+                      {branches.data.isGit
+                        ? t("agents.branch.noMatches")
+                        : t("agents.branch.notGitRepo")}
                     </div>
                   )}
                   {local.length > 0 && (
                     <Menu.Group>
                       <Menu.GroupLabel className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-                        Local
+                        {t("agents.branch.local")}
                       </Menu.GroupLabel>
                       {local.map(branchItem)}
                     </Menu.Group>
@@ -306,15 +329,16 @@ export function AgentBranchPicker({
                   {remote.length > 0 && (
                     <Menu.Group>
                       <Menu.GroupLabel className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-                        Remote
+                        {t("agents.branch.remote")}
                       </Menu.GroupLabel>
                       {remote.map(branchItem)}
                     </Menu.Group>
                   )}
                   {branches.data?.truncated && (
                     <p className="px-2.5 py-2 text-[11px] text-muted-foreground">
-                      Showing the {branches.data.branches.length} most recently
-                      updated branches.
+                      {t("agents.branch.showingRecent", {
+                        count: branches.data.branches.length,
+                      })}
                     </p>
                   )}
                   {branches.data?.isGit && (
@@ -326,7 +350,7 @@ export function AgentBranchPicker({
                         className={itemClassName}
                       >
                         <GitBranchPlus className="size-4 shrink-0 text-muted-foreground" />
-                        New worktree…
+                        {t("agents.branch.newWorktree")}
                       </Menu.Item>
                     </>
                   )}

@@ -15,6 +15,14 @@ const ORDER: DateBucket[] = [
   "Older",
 ];
 
+export const DATE_BUCKET_KEYS = {
+  Today: "sidebar.dateGroups.today",
+  Yesterday: "sidebar.dateGroups.yesterday",
+  "Last 7 days": "sidebar.dateGroups.last7Days",
+  "Last 30 days": "sidebar.dateGroups.last30Days",
+  Older: "sidebar.dateGroups.older",
+} as const;
+
 function startOfDay(now: number): number {
   const d = new Date(now);
   d.setHours(0, 0, 0, 0);
@@ -32,7 +40,7 @@ function bucketFor(ts: number, startOfToday: number): DateBucket {
 export function groupByDate<T extends { updatedAt: number }>(
   items: T[],
   now: number = Date.now(),
-): { label: DateBucket; items: T[] }[] {
+): { bucket: DateBucket; items: T[] }[] {
   const startOfToday = startOfDay(now);
   const map = new Map<DateBucket, T[]>();
   for (const item of items) {
@@ -41,8 +49,10 @@ export function groupByDate<T extends { updatedAt: number }>(
     list.push(item);
     map.set(b, list);
   }
-  return ORDER.flatMap((label) => {
-    const list = map.get(label);
-    return list && list.length ? [{ label, items: list }] : [];
+  return ORDER.flatMap((bucket) => {
+    const list = map.get(bucket);
+    return list && list.length
+      ? [{ bucket, items: list }]
+      : [];
   });
 }

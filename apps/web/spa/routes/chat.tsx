@@ -145,5 +145,6 @@ function chatAreaProps(
     initialMessageTimes: page.messageTimes,
     initialModelId: page.modelConfigId,
     initialMessageCursor: page.nextCursor,
+    scheduledTaskName: page.scheduledTaskName,
   };
 }

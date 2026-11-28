@@ -11,7 +11,7 @@ function client(
 ): AgentClientPresence {
   return {
     clientId: "tab",
-    at: 100_000,
+    activeAt: 100_000,
     visible: true,
     viewing: null,
     notify: true,
@@ -21,13 +21,15 @@ function client(
 
 describe("planning who hears about a session", () => {
   const now = 100_000;
+  const idle = now - AGENT_PRESENCE_WINDOW_MS - 1;
 
   it("tells the client used most recently and keeps phones quiet", () => {
     expect(
       planAgentNotification(
         [
-          client({ clientId: "old", at: now - 50_000 }),
-          client({ clientId: "new", at: now - 10_000 }),
+          client({ clientId: "old", activeAt: now - 50_000 }),
+          client({ clientId: "new", activeAt: now - 10_000 }),
+          client({ clientId: "idle", activeAt: idle }),
         ],
         "s",
         now,
@@ -35,12 +37,12 @@ describe("planning who hears about a session", () => {
     ).toEqual({ recipient: "new", push: false });
   });
 
-  it("tells nobody while a present client shows the session", () => {
+  it("tells nobody while a client in use shows the session", () => {
     expect(
       planAgentNotification(
         [
-          client({ clientId: "other", at: now }),
-          client({ clientId: "viewer", at: now - 60_000, viewing: "s", notify: false }),
+          client({ clientId: "other", activeAt: now }),
+          client({ clientId: "viewer", activeAt: now - 60_000, viewing: "s", notify: false }),
         ],
         "s",
         now,
@@ -56,7 +58,7 @@ describe("planning who hears about a session", () => {
     ).toBe("tab");
   });
 
-  it("pushes when no present client wants alerts", () => {
+  it("pushes when no client in use wants alerts", () => {
     expect(planAgentNotification([], "s", now)).toEqual({
       recipient: null,
       push: true,
@@ -65,8 +67,10 @@ describe("planning who hears about a session", () => {
       planAgentNotification(
         [
           client({ notify: false }),
-          client({ clientId: "gone", at: now - AGENT_PRESENCE_WINDOW_MS - 1 }),
-          client({ clientId: "gone-viewer", at: now - AGENT_PRESENCE_WINDOW_MS - 1, viewing: "s" }),
+          // Still reporting in, but nobody has touched them for a while.
+          client({ clientId: "background-tab", activeAt: idle, visible: false }),
+          client({ clientId: "left-open", activeAt: idle }),
+          client({ clientId: "left-open-viewer", activeAt: idle, viewing: "s" }),
         ],
         "s",
         now,
@@ -80,7 +84,7 @@ describe("the client registry", () => {
     const registry = new AgentClientRegistry();
     registry.record("u", { clientId: "tab", visible: true, viewing: "s", notify: true }, 1_000);
     expect(registry.clients("u", 2_000)).toEqual([
-      { clientId: "tab", at: 1_000, visible: true, viewing: "s", notify: false },
+      { clientId: "tab", activeAt: 1_000, visible: true, viewing: "s", notify: false },
     ]);
     const sink = vi.fn();
     const stop = registry.subscribe("u", "tab", sink, 2_000);
@@ -98,7 +102,7 @@ describe("the client registry", () => {
     // Without a stream the client cannot be looking at anything.
     stop();
     expect(registry.clients("u", 2_000)).toEqual([
-      { clientId: "tab", at: 1_000, visible: false, viewing: null, notify: false },
+      { clientId: "tab", activeAt: 1_000, visible: false, viewing: null, notify: false },
     ]);
     expect(registry.deliver("u", "tab", notification)).toBe(false);
     expect(registry.deliver("v", "tab", notification)).toBe(false);
@@ -131,6 +135,19 @@ describe("the client registry", () => {
     stopPanel();
     expect(registry.clients("u", 2_000)[0]).toMatchObject({ visible: false, notify: false });
     expect(registry.deliver("u", "page", notification)).toBe(false);
+  });
+
+  it("dates a client's use by how long it says it sat idle", () => {
+    const registry = new AgentClientRegistry();
+    registry.record(
+      "u",
+      { clientId: "tab", visible: true, viewing: null, notify: true, idleMs: 400 },
+      1_000,
+    );
+    expect(registry.clients("u", 1_000)[0]?.activeAt).toBe(600);
+    // A client that predates this counts as used whenever it reports in.
+    registry.record("u", { clientId: "tab", visible: true, viewing: null, notify: true }, 2_000);
+    expect(registry.clients("u", 2_000)[0]?.activeAt).toBe(2_000);
   });
 
   it("forgets clients that stopped reporting in", () => {

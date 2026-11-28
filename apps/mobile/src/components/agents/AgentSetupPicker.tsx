@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
@@ -47,6 +48,7 @@ export function AgentSetupPicker({
   onOpen: (panel: AgentSetupPickerPanel | null) => void;
   onChange: (setup: AgentSetupChange) => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   const setups = lockedProvider
     ? allSetups.filter((setup) => setup.provider === lockedProvider)
@@ -94,7 +96,9 @@ export function AgentSetupPicker({
       {hosts.length > 1 && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Machine: ${current.hostLabel}`}
+          accessibilityLabel={t("agents.mobile.setup.machineLabel", {
+            machine: current.hostLabel,
+          })}
           onPress={() => onOpen("host")}
           style={pill}
         >
@@ -111,7 +115,9 @@ export function AgentSetupPicker({
       )}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Workspace: ${current.workspaceName}`}
+        accessibilityLabel={t("agents.mobile.setup.workspaceLabel", {
+          workspace: current.workspaceName,
+        })}
         onPress={() => onOpen("workspace")}
         style={pill}
       >
@@ -123,7 +129,9 @@ export function AgentSetupPicker({
       {!lockedProvider && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Agent: ${agentProviderMetadata(provider).label}`}
+          accessibilityLabel={t("agents.mobile.setup.agentLabel", {
+            agent: agentProviderMetadata(provider).label,
+          })}
           onPress={() => onOpen("agent")}
           style={pill}
         >
@@ -134,7 +142,8 @@ export function AgentSetupPicker({
         </Pressable>
       )}
       <SelectionSheet
-        title="Machine"
+        title={t("agents.setup.machine")}
+        searchLabel={t("agents.mobile.setup.searchMachine")}
         visible={open === "host"}
         value={current.hostKey}
         options={hosts.map((host) => ({ value: host.hostKey, label: host.hostLabel }))}
@@ -143,7 +152,8 @@ export function AgentSetupPicker({
         onSelect={(hostKey) => pick(agentSetupWorkspaces(setups, hostKey)[0])}
       />
       <SelectionSheet
-        title="Workspace"
+        title={t("agents.setup.workspace")}
+        searchLabel={t("agents.mobile.setup.searchWorkspace")}
         visible={open === "workspace"}
         value={current.workspacePath}
         options={workspaces.map((workspace) => ({
@@ -165,7 +175,8 @@ export function AgentSetupPicker({
         }
       />
       <SelectionSheet
-        title="Agent"
+        title={t("agents.setup.agent")}
+        searchLabel={t("agents.mobile.setup.searchAgent")}
         visible={open === "agent"}
         value={provider}
         options={agents.map((agent) => ({

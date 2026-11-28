@@ -2,6 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import { isPreviewableImage, type CodeExecutionFile } from "@overtchat/shared";
+import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
 import { serverUrl } from "@/lib/api-url";
 import { formatSize, humanMediaLabel } from "@/lib/chat/attachments";
@@ -60,12 +61,13 @@ function FileTrigger({
       </button>
     );
   }
+  const linkProps = download
+    ? { download: file.name }
+    : { target: "_blank", rel: "noopener noreferrer" };
   return (
     <a
       href={serverUrl(file.url)}
-      {...(download
-        ? { download: file.name }
-        : { target: "_blank", rel: "noopener noreferrer" })}
+      {...linkProps}
       className={className}
       {...props}
     >
@@ -118,6 +120,7 @@ function InlineFileLink({ file, children }: { file: CodeExecutionFile; children:
 // Embedded files render inside paragraphs, so they use phrasing elements only.
 
 function CodeFileImage({ file }: { file: CodeExecutionFile }) {
+  const { t } = useTranslation();
   const active = useActive(file);
   return (
     <span
@@ -127,7 +130,7 @@ function CodeFileImage({ file }: { file: CodeExecutionFile }) {
       )}
       data-code-file-image=""
     >
-      <FileTrigger file={file} download={false} aria-label={`Open ${file.name}`} className="block w-full">
+      <FileTrigger file={file} download={false} aria-label={t("chat.files.openNamed", { name: file.name })} className="block w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={serverUrl(file.url)}
@@ -142,7 +145,7 @@ function CodeFileImage({ file }: { file: CodeExecutionFile }) {
           download={file.name}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 no-underline hover:bg-accent hover:text-foreground"
         >
-          <Download className="size-3.5" /> Download
+          <Download className="size-3.5" /> {t("common.actions.download")}
         </a>
       </span>
     </span>
@@ -150,6 +153,7 @@ function CodeFileImage({ file }: { file: CodeExecutionFile }) {
 }
 
 function CodeFileCard({ file }: { file: CodeExecutionFile }) {
+  const { t } = useTranslation();
   const open = usePanelOpener(file);
   const active = useActive(file);
   const details = (
@@ -160,7 +164,7 @@ function CodeFileCard({ file }: { file: CodeExecutionFile }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{file.name}</span>
         <span className="block truncate text-xs text-muted-foreground">
-          {humanMediaLabel(file.mediaType)} · {formatSize(file.size)}
+          {humanMediaLabel(file.mediaType, t)} · {formatSize(file.size, t)}
         </span>
       </span>
     </>
@@ -196,8 +200,8 @@ function CodeFileCard({ file }: { file: CodeExecutionFile }) {
       <a
         href={serverUrl(file.url)}
         download={file.name}
-        aria-label={`Download ${file.name}`}
-        title={`Download ${file.name}`}
+        aria-label={t("chat.files.downloadNamed", { name: file.name })}
+        title={t("chat.files.downloadNamed", { name: file.name })}
         className="flex shrink-0 items-center self-stretch px-3 text-muted-foreground motion-colors hover:bg-muted/60 hover:text-foreground"
       >
         <Download aria-hidden className="size-4" />
@@ -222,6 +226,7 @@ export function CodeRunFiles({ files }: { files: CodeExecutionFile[] }) {
 }
 
 function RunFile({ file }: { file: CodeExecutionFile }) {
+  const { t } = useTranslation();
   const active = useActive(file);
   if (isPreviewableImage(file)) {
     return (
@@ -229,7 +234,7 @@ function RunFile({ file }: { file: CodeExecutionFile }) {
         file={file}
         download={false}
         title={file.name}
-        aria-label={`Open ${file.name}`}
+        aria-label={t("chat.files.openNamed", { name: file.name })}
         data-code-run-file=""
         className={cn(
           "block overflow-hidden rounded-md border bg-muted motion-colors hover:border-foreground/30",
@@ -245,7 +250,7 @@ function RunFile({ file }: { file: CodeExecutionFile }) {
     <FileTrigger
       file={file}
       download
-      title={`${file.name} · ${formatSize(file.size)}`}
+      title={`${file.name} · ${formatSize(file.size, t)}`}
       data-code-run-file=""
       className={cn(
         "flex h-8 max-w-56 items-center gap-1.5 rounded-md border bg-background/40 px-2 text-foreground motion-colors hover:bg-accent/60",

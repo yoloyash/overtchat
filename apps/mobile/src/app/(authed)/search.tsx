@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import type { SearchHit } from "@overtchat/shared";
@@ -28,6 +29,7 @@ function useDebounced<T>(value: T, delayMs: number): T {
 
 export default function SearchScreen() {
   const { colors, radii, fonts } = useTheme();
+  const { t } = useTranslation();
   const { openChat } = useChatSession();
   const [query, setQuery] = useState("");
   const debounced = useDebounced(query, 150);
@@ -56,13 +58,13 @@ export default function SearchScreen() {
                 fontSize: 18,
               }}
             >
-              Search
+              {t("sidebar.mobile.search.title")}
             </Text>
           ),
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerShadowVisible: false,
-          headerBackTitle: "Back",
+          headerBackTitle: t("common.actions.back"),
         }}
       />
       <SafeAreaView
@@ -83,7 +85,7 @@ export default function SearchScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search chats…"
+          placeholder={t("sidebar.searchPalette.placeholder")}
           placeholderTextColor={colors.mutedForeground}
           autoFocus
           autoCorrect={false}
@@ -97,7 +99,7 @@ export default function SearchScreen() {
         {query.length > 0 && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Clear search"
+            accessibilityLabel={t("common.actions.clearSearch")}
             onPress={() => setQuery("")}
             hitSlop={8}
           >
@@ -119,8 +121,8 @@ export default function SearchScreen() {
             ]}
           >
             {tooShort
-              ? "Type a few more characters."
-              : "Search across your chats by content or title."}
+              ? t("sidebar.mobile.search.tooShort")
+              : t("sidebar.mobile.search.prompt")}
           </Text>
         ) : isFetching && hits.length === 0 ? (
           <ActivityIndicator
@@ -134,7 +136,9 @@ export default function SearchScreen() {
               { color: colors.destructive, fontFamily: fonts.sansRegular },
             ]}
           >
-            {error instanceof Error ? error.message : "Search failed"}
+            {error instanceof Error
+              ? error.message
+              : t("sidebar.mobile.search.failed")}
           </Text>
         ) : hits.length === 0 ? (
           <Text
@@ -143,7 +147,7 @@ export default function SearchScreen() {
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            No chats match "{trimmed}".
+            {t("sidebar.mobile.search.noMatches", { query: trimmed })}
           </Text>
         ) : (
           <FlashList<SearchHit>
@@ -171,6 +175,7 @@ function SearchRow({
   onPress: (hit: SearchHit) => void;
 }) {
   const { colors, fonts, radii } = useTheme();
+  const { t } = useTranslation();
   const segments = useMemo(
     () => (hit.snippet ? parseSnippet(hit.snippet) : []),
     [hit.snippet],
@@ -194,7 +199,7 @@ function SearchRow({
           { color: colors.foreground, fontFamily: fonts.sansSemiBold },
         ]}
       >
-        {hit.title?.trim() || "Untitled"}
+        {hit.title?.trim() || t("common.states.untitled")}
       </Text>
       {segments.length > 0 && (
         <Text

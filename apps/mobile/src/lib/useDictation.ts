@@ -5,6 +5,7 @@ import {
   speechErrorMessage,
   type SpeechErrorCode,
 } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -54,7 +55,7 @@ export function useDictation(onResult: (text: string) => void) {
         kind: "other",
         message: getErrorMessage(
           e,
-          "Couldn't start recording. Please try again.",
+          i18n.t("chat.mobile.dictation.startFailed"),
         ),
       });
       setStatus("idle");
@@ -95,7 +96,7 @@ export function useDictation(onResult: (text: string) => void) {
         const failure = apiError(
           res.status,
           await res.text().catch(() => ""),
-          "Couldn't transcribe this recording. Please try again.",
+          i18n.t("chat.dictation.errors.transcribeFailed"),
           "stt",
         );
         setError(
@@ -113,7 +114,7 @@ export function useDictation(onResult: (text: string) => void) {
       if (typeof j?.text !== "string") {
         setError({
           kind: "other",
-          message: speechErrorMessage("stt", "speech_invalid_response"),
+          message: speechErrorMessage("stt", i18n.t, "speech_invalid_response"),
         });
         return;
       }
@@ -125,7 +126,7 @@ export function useDictation(onResult: (text: string) => void) {
         kind: "other",
         message: getErrorMessage(
           e,
-          "Couldn't transcribe this recording. Please try again.",
+          i18n.t("chat.dictation.errors.transcribeFailed"),
         ),
       });
     } finally {

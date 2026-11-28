@@ -1,6 +1,7 @@
 "use client";
 
 import { ApiError, apiError } from "@overtchat/shared";
+import { i18n } from "@overtchat/shared/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { generateId } from "ai";
@@ -49,7 +50,7 @@ async function responseError(response: Response): Promise<Error> {
     error?: string;
   } | null;
   return new AgentSessionHttpError(
-    apiError(response.status, data, "Could not complete the agent request. Please try again.").message,
+    apiError(response.status, data, i18n.t("agents.errors.requestFailed")).message,
     response.status,
   );
 }
@@ -112,12 +113,12 @@ async function fetchAgentSession(
       data.sync.snapshot.sessionId !== id) ||
     (!data.snapshot && !isAgentSessionSync(data.sync))
   ) {
-    throw new Error("The Host Connector opened a different session.");
+    throw new Error(i18n.t("agents.errors.wrongSessionOpened"));
   }
   let sync: AgentSessionSync | undefined;
   if (data.sync !== undefined) {
     if (!isAgentSessionSync(data.sync)) {
-      throw new Error("The Host Connector returned an invalid session sync.");
+      throw new Error(i18n.t("agents.errors.invalidSessionSync"));
     }
     sync = data.sync;
   }
@@ -183,7 +184,7 @@ export function useAgentSession(id: string) {
       if (!response.ok) throw await responseError(response);
       const page: unknown = await response.json();
       if (!isAgentHistoryPage(page) || page.sessionId !== id)
-        throw new Error("Invalid agent history page.");
+        throw new Error(i18n.t("agents.errors.invalidHistoryPage"));
       queryClient.setQueryData<AgentSessionReplica>(
         agentSessionKeys.detail(id),
         (latest) => {
@@ -431,10 +432,9 @@ export function useAgentSessionCommand(id: string) {
         return result;
       } catch (cause) {
         if (generatedClientMessageId && cause instanceof TypeError) {
-          throw new Error(
-            "The connection was lost while sending, so the command outcome is unknown. Inspect the session before retrying; an unchanged retry will reuse the same command identity.",
-            { cause },
-          );
+          throw new Error(i18n.t("agents.errors.connectionLostWhileSending"), {
+            cause,
+          });
         }
         throw cause;
       }
@@ -505,7 +505,7 @@ export function useAgentSessionUsage(id: string) {
         usage?: AgentUsageSnapshot;
       };
       if (!result.usage) {
-        throw new Error("The Host Connector did not return account usage.");
+        throw new Error(i18n.t("agents.errors.noAccountUsage"));
       }
       return result.usage;
     },

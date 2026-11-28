@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -39,6 +40,7 @@ import type {
   AgentRewindMode,
   AgentRuntimeSnapshot,
 } from "@overtchat/agent-bridge";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { MarkdownBody } from "@/components/chat/MarkdownBody";
 import { record, text } from "@/lib/agents/model";
 import { createTranscriptStabilizer } from "@/lib/agents/transcript";
@@ -154,13 +156,15 @@ export function AgentTranscript({
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, fonts } = useTheme();
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(
     new Set(),
   );
   const projectedItems = useMemo(
-    () => projectAgentTranscript(snapshot.messages),
-    [snapshot.messages],
+    () => projectAgentTranscript(snapshot.messages, t, locale),
+    [snapshot.messages, t, locale],
   );
   const unsettled =
     snapshot.status !== "idle" ||
@@ -360,9 +364,9 @@ export function AgentTranscript({
   const liveActivity =
     trailing?.type === "activity" && agentActivityIsLive(trailing.entries);
   const runLabel = compacting
-    ? "Compacting context"
+    ? t("agents.mobile.transcript.compactingContext")
     : active && !liveActivity
-      ? "Thinking"
+      ? t("agents.activity.thinking")
       : null;
   const header = (
     <View style={styles.tail}>
@@ -384,13 +388,17 @@ export function AgentTranscript({
       <View style={styles.history}>
         {history.loading ? (
           <ActivityIndicator
-            accessibilityLabel="Loading older messages"
+            accessibilityLabel={t("agents.mobile.transcript.loadingOlder")}
             color={colors.mutedForeground}
           />
         ) : (
           <>
             <AgentText muted>{history.error}</AgentText>
-            <AgentButton label="Retry" icon="refresh" onPress={history.load} />
+            <AgentButton
+              label={t("common.actions.retry")}
+              icon="refresh"
+              onPress={history.load}
+            />
           </>
         )}
       </View>
@@ -461,7 +469,7 @@ export function AgentTranscript({
             textAlign: "center",
           }}
         >
-          What would you like to work on?
+          {t("agents.mobile.transcript.emptyTitle")}
         </Text>
         <Text
           style={{
@@ -472,7 +480,7 @@ export function AgentTranscript({
             textAlign: "center",
           }}
         >
-          Messages run in this workspace on your connected machine.
+          {t("agents.mobile.transcript.emptyDescription")}
         </Text>
       </View>
     );
@@ -520,7 +528,7 @@ export function AgentTranscript({
         <View pointerEvents="box-none" style={styles.jumpContainer}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Jump to latest"
+            accessibilityLabel={t("agents.mobile.transcript.jumpToLatest")}
             hitSlop={8}
             onPress={() => jumpToLatest()}
             style={({ pressed }) => [
@@ -571,6 +579,7 @@ const TranscriptItem = memo(function TranscriptItem({
   onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
   onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const actions =
     actionText === undefined ? null : (
       <ResponseActions
@@ -588,7 +597,7 @@ const TranscriptItem = memo(function TranscriptItem({
     case "work_summary":
       return (
         <AgentWorkSummary
-          label={agentWorkLabel(item.durationMs)}
+          label={agentWorkLabel(item.durationMs, t)}
           expanded={item.expanded}
           onPress={() => onToggleWork(item.key)}
         />
@@ -719,6 +728,7 @@ function ResponseFooter({
   actions: React.ReactNode;
   durationMs: number | null;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts } = useTheme();
   if (!actions && durationMs === null) return null;
   return (
@@ -734,7 +744,7 @@ function ResponseFooter({
             paddingHorizontal: 4,
           }}
         >
-          {agentWorkLabel(durationMs)}
+          {agentWorkLabel(durationMs, t)}
         </Text>
       )}
     </View>
@@ -748,11 +758,12 @@ function ImplementPlanButton({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const { colors, fonts, radii } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Implement plan"
+      accessibilityLabel={t("agents.messages.implementPlan")}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -775,7 +786,7 @@ function ImplementPlanButton({
           fontSize: 14,
         }}
       >
-        Implement plan
+        {t("agents.messages.implementPlan")}
       </Text>
     </Pressable>
   );

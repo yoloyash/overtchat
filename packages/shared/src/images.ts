@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { ToolState } from "./tools";
 
 export const IMAGE_SIZES = [
@@ -17,12 +18,19 @@ export const DEFAULT_IMAGE_OPTIONS: ImageGenerationOptions = {
   size: "auto",
   quality: "auto",
 };
-export const IMAGE_SIZE_LABELS: Record<ImageSize, string> = {
-  auto: "Auto",
-  "1024x1024": "Square (1:1)",
-  "1536x1024": "Landscape (3:2)",
-  "1024x1536": "Portrait (2:3)",
-};
+const IMAGE_SIZE_KEYS = {
+  auto: "chat.image.sizes.auto",
+  "1024x1024": "chat.image.sizes.1024x1024",
+  "1536x1024": "chat.image.sizes.1536x1024",
+  "1024x1536": "chat.image.sizes.1024x1536",
+} as const;
+
+export function imageSizeLabel(size: ImageSize, t: TFunction): string {
+  const key = Object.hasOwn(IMAGE_SIZE_KEYS, size)
+    ? IMAGE_SIZE_KEYS[size]
+    : "chat.image.sizes.auto";
+  return t(key);
+}
 
 export interface ImageCapability {
   supportsQuality?: boolean;

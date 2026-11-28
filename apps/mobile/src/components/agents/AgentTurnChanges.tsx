@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { AgentTurnChanges } from "@overtchat/agent-bridge";
@@ -9,6 +10,7 @@ import {
   buildAgentTurnChangesTree,
   formatAgentChangeCount,
 } from "@overtchat/shared/agent-turn-changes";
+import { useFormatLocale } from "@/components/I18nProvider";
 import { useTheme } from "@/lib/theme";
 
 function LineCounts({
@@ -20,6 +22,7 @@ function LineCounts({
   deletions: number;
   size?: number;
 }) {
+  const { t } = useTranslation();
   const { fonts, scheme } = useTheme();
   const dark = scheme === "dark";
   const style = {
@@ -30,7 +33,10 @@ function LineCounts({
   return (
     <View
       accessible
-      accessibilityLabel={`${additions} added, ${deletions} removed`}
+      accessibilityLabel={t("agents.messages.lineCounts", {
+        additions,
+        deletions,
+      })}
       style={styles.counts}
     >
       <Text style={[style, { color: dark ? "#6ee7b7" : "#047857" }]}>
@@ -52,6 +58,8 @@ export function AgentTurnChangesCard({
   /** Called before the card changes height. */
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
+  const locale = useFormatLocale();
   const { colors, fonts, radii } = useTheme();
   const tree = useMemo(() => buildAgentTurnChangesTree(changes), [changes]);
   const hasDirectories = useMemo(
@@ -93,7 +101,7 @@ export function AgentTurnChangesCard({
             fontSize: 13,
           }}
         >
-          {agentTurnChangesLabel(changes.total.files)}
+          {agentTurnChangesLabel(changes.total.files, t, locale)}
         </Text>
         {counted && (
           <LineCounts
@@ -106,7 +114,11 @@ export function AgentTurnChangesCard({
         {hasDirectories && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={allOpen ? "Collapse all folders" : "Expand all folders"}
+            accessibilityLabel={
+              allOpen
+                ? t("agents.messages.collapseAllFolders")
+                : t("agents.messages.expandAllFolders")
+            }
             hitSlop={10}
             onPress={() => {
               onToggle();
@@ -208,7 +220,10 @@ export function AgentTurnChangesCard({
             paddingBottom: 10,
           }}
         >
-          and {unlisted.toLocaleString("en-US")} more {unlisted === 1 ? "file" : "files"}
+          {t("agents.messages.andMoreFiles", {
+            count: unlisted,
+            formattedCount: unlisted.toLocaleString(locale),
+          })}
         </Text>
       )}
     </View>

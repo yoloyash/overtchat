@@ -10,7 +10,8 @@ import type { AgentWorkspaceGroup } from "@/lib/agents/workspaces";
 // a session the same way; this module binds it to the web's workspace groups.
 export {
   AGENT_ATTENTION_SECTIONS,
-  AGENT_SESSION_STATE_LABELS,
+  agentAttentionSectionLabel,
+  agentSessionStateLabel,
   agentAttentionCounts,
   agentSessionActivityAt,
   agentSessionCanToggleRead,

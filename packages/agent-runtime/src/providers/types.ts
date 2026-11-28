@@ -137,12 +137,19 @@ export interface AgentProviderAdapter {
     target: HostTarget,
     launch: AgentSessionLaunch,
   ): AgentRuntimeClient;
-  /** Reject a resume before any process starts, such as a session another
-   * provider process still owns. Omitted when the provider cannot tell. */
-  checkResume?(
-    target: HostTarget,
-    launch: AgentSessionLaunch & { resume: NonNullable<AgentSessionLaunch["resume"]> },
-  ): Promise<void>;
+  /**
+   * The provider may carry a resumed session on under a new id and file, as
+   * one that keeps a single writer per session file does when another process
+   * still holds it. The runtime then follows the session the provider reports
+   * instead of refusing it.
+   */
+  followsMovedSessions?: boolean;
+  /**
+   * An event after which the provider may already be on another session. The
+   * runtime then re-reads the session at once rather than when the turn ends,
+   * so nothing acts on the old one in between.
+   */
+  sessionMoveEvent?(event: AgentRuntimeEvent): boolean;
   probeConnection(
     draft: AgentConnectionDraft,
   ): Promise<AgentReadyConnectionProbe>;

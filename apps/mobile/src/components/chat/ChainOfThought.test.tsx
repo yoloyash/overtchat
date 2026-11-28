@@ -2,6 +2,8 @@ import React, { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { i18n } from "@overtchat/shared/i18n";
 import {
   groupMessageParts,
   type CalendarToolPart,
@@ -16,6 +18,15 @@ vi.mock("@expo/vector-icons", () => ({
   Ionicons: ({ name }: { name: string }) => <i data-icon={name} />,
   MaterialCommunityIcons: ({ name }: { name: string }) => <i data-icon={name} />,
 }));
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "en-US" }],
+  useLocales: () => [{ languageTag: "en-US" }],
+}));
+vi.mock("expo-secure-store", () => ({
+  getItem: () => null,
+  setItem: () => {},
+  deleteItemAsync: async () => {},
+}));
 vi.mock("@shopify/flash-list", () => ({ useLayoutState: useState }));
 vi.mock("../GmailLogo", () => ({ GmailLogo: () => <i data-icon="gmail" /> }));
 vi.mock("../CalendarLogo", () => ({
@@ -23,6 +34,10 @@ vi.mock("../CalendarLogo", () => ({
 }));
 vi.mock("@/lib/api", () => ({ getApiBase: () => "https://server.test" }));
 vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => null }));
+const chatPreferences = vi.hoisted(() => ({ expandActivity: false }));
+vi.mock("@/lib/chatPreferences", () => ({
+  useChatPreferences: () => chatPreferences,
+}));
 vi.mock("./MarkdownBody", () => ({
   MarkdownBody: ({ text }: { text: string }) => <p>{text}</p>,
 }));
@@ -105,12 +120,17 @@ beforeEach(() => {
     vi.stubGlobal(key, value);
   }
   container = window.document.getElementById("root") as unknown as HTMLElement;
-  root = createRoot(container);
+  const reactRoot = createRoot(container);
+  root = {
+    render: (node) => reactRoot.render(<I18nextProvider i18n={i18n}>{node}</I18nextProvider>),
+    unmount: () => reactRoot.unmount(),
+  };
 });
 
 afterEach(async () => {
   await act(async () => root.unmount());
   vi.unstubAllGlobals();
+  chatPreferences.expandActivity = false;
 });
 
 const search: SearchFilesPart = {
@@ -469,4 +489,67 @@ it("shows what sorting mail changed and which attachment was read", async () => 
   expect(text).toContain("2 pages");
   expect(text).toContain("Archived, labeled Receipts");
   expect(text).not.toContain("private words");
+});
+
+const thought = {
+  type: "reasoning" as const,
+  text: "**Finding the code**\n\nThe report is long, so search it first.",
+  state: "done",
+};
+
+function buttons() {
+  return [...container.querySelectorAll("button")] as unknown as Array<{
+    textContent: string | null;
+    click(): void;
+  }>;
+}
+
+it("keeps thinking among tool steps to one line until it is opened", async () => {
+  await act(async () => {
+    root.render(<ChainOfThought parts={[thought, search, read]} active={false} />);
+  });
+  await act(async () => buttons()[0].click());
+  const text = container.textContent ?? "";
+  expect(text).toContain("Thought");
+  expect(text).toContain("Finding the code");
+  expect(text).not.toContain("search it first");
+  expect(text).toContain("118k–122k of 122k chars");
+
+  await act(async () => buttons().find((b) => b.textContent?.startsWith("Thought"))!.click());
+  expect(container.textContent).toContain("The report is long, so search it first.");
+});
+
+it("shows thinking inline when the run used no tools", async () => {
+  await act(async () => {
+    root.render(<ChainOfThought parts={[thought]} active={false} />);
+  });
+  await act(async () => buttons()[0].click());
+  expect(container.textContent).toContain("The report is long, so search it first.");
+  expect(buttons()).toHaveLength(1);
+});
+
+it("drops empty thinking from the steps", async () => {
+  await act(async () => {
+    root.render(
+      <ChainOfThought
+        parts={[{ type: "reasoning", text: "  ", state: "done" }, search]}
+        active={false}
+      />,
+    );
+  });
+  await act(async () => buttons()[0].click());
+  expect(container.textContent).not.toContain("Thought");
+});
+
+it("opens every step when the device asks for it", async () => {
+  chatPreferences.expandActivity = true;
+  await act(async () => {
+    root.render(<ChainOfThought parts={[thought, search]} active={false} />);
+  });
+  expect(container.textContent).toContain("The report is long, so search it first.");
+  expect(container.textContent).toContain("zebra protocol");
+
+  // A tap still closes it.
+  await act(async () => buttons()[0].click());
+  expect(container.textContent).not.toContain("zebra protocol");
 });

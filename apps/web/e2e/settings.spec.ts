@@ -253,3 +253,46 @@ test("accent palettes update live, persist, and stay local to a browser", async 
   await expect(accent.getByRole("radio", { name: "Olive", exact: true })).toBeChecked();
   await expect(root).toHaveAttribute("data-accent", "olive");
 });
+
+test("the interface language follows the saved choice", async ({ page }) => {
+  await page.goto("/settings/general");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  const language = page.getByRole("combobox", { name: "Language" });
+  await expect(language.locator('[data-slot="select-value"]')).toHaveText(
+    "System",
+  );
+
+  await language.click();
+  await page.getByRole("option", { name: "简体中文" }).click();
+  await expect(page.getByRole("heading", { name: "外观" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByRole("radio", { name: "深色" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "橄榄绿" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "消息统计", exact: true })).toBeVisible();
+
+  // The choice is applied before the first paint after a reload.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "外观" })).toBeVisible();
+  await expect(page.getByText("Appearance", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("combobox", { name: "语言" }).click();
+  await page.getByRole("option", { name: "English" }).click();
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+test("System follows the browser's language", async ({ page }) => {
+  // Set after the English sign-up above, which finds its fields by English labels.
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["zh-CN", "en"],
+    }),
+  );
+  await page.goto("/settings/general");
+  await expect(page.getByRole("heading", { name: "外观" })).toBeVisible();
+  await expect(
+    page
+      .getByRole("combobox", { name: "语言" })
+      .locator('[data-slot="select-value"]'),
+  ).toHaveText("跟随系统");
+});

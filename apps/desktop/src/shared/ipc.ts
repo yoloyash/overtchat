@@ -12,6 +12,7 @@ export const IPC = {
   toggleMaximize: "desktop:toggle-maximize",
   close: "desktop:close",
   theme: "desktop:theme",
+  language: "desktop:language",
   command: "desktop:command",
   updateState: "desktop:update-state",
   updateStateChanged: "desktop:update-state-changed",
@@ -21,13 +22,32 @@ export const IPC = {
   setBadge: "desktop:set-badge",
   revealWindow: "desktop:reveal-window",
   systemIdle: "desktop:system-idle",
+  signInWithProvider: "desktop:sign-in-with-provider",
 } as const;
 
 export type ColorScheme = "light" | "dark";
 
+/**
+ * Why a server could not be used, as a code the interface can put in the
+ * person's language. The English `message` beside it stays for logs.
+ */
+export interface ConnectFailureReason {
+  code:
+    | "address-required"
+    | "untrusted-certificate"
+    | "timeout"
+    | "no-answer"
+    | "not-overtchat"
+    | "redirected"
+    | "server-outdated"
+    | "app-outdated";
+  host: string;
+  version?: string | null;
+}
+
 /** Why the saved server can't be used right now. */
 export type ServerProblem =
-  | { kind: "unreachable"; message: string }
+  | { kind: "unreachable"; message: string; reason?: ConnectFailureReason }
   /** The server's API level is older than this app's. */
   | { kind: "server-outdated"; version: string | null }
   /** The server's API level is newer than this app's. */
@@ -46,7 +66,9 @@ export interface LocalServer {
   problem: ServerProblem | null;
 }
 
-export type ConnectResult = { ok: true } | { ok: false; message: string };
+export type ConnectResult =
+  | { ok: true }
+  | { ok: false; message: string; reason?: ConnectFailureReason };
 
 export type ShellWindowState = DesktopWindowState;
 
