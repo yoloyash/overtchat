@@ -44,7 +44,12 @@ export async function PUT(
       { status: 409 },
     );
   }
-  const apiKey = parsed.data.apiKey || current.apiKey;
+  // A blank field keeps the saved key, but only for the provider it was saved
+  // with: switching search providers must not send one provider's key to
+  // another (for example a Keenable key to Brave).
+  const keepsSavedKey =
+    parsed.data.id !== "search" || parsed.data.provider === current.provider;
+  const apiKey = parsed.data.apiKey || (keepsSavedKey ? current.apiKey : null);
   if (parsed.data.provider === "brave" && !apiKey) {
     return Response.json(
       { error: "Enter a Brave Search API key." },

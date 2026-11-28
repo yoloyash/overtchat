@@ -17,6 +17,7 @@ export const services: Translation["services"] = {
       providers: {
         bundled: "内置 SearXNG",
         brave: "Brave Search API",
+        keenable: "Keenable Search API",
         searxng: "现有 SearXNG",
         disabled: "已禁用",
       },
@@ -53,6 +54,10 @@ export const services: Translation["services"] = {
     apiBaseUrlTitle: "API 基础 URL",
     apiKeyTitle: "API 密钥",
     apiKeyConfiguredDescription: "已配置密钥。留空以保留现有密钥。",
+    keenableKeyOptionalDescription:
+      "可选。没有 keen_ 密钥时，OvertChat 使用 Keenable 的免密钥接口，该接口有速率限制。",
+    keenableLoggingNotice:
+      "在默认数据政策下，无论是否使用密钥，Keenable 都会记录查询、结果、服务器 IP 和用户代理，且未设定固定的保留期限。",
     searchOrderTitle: "搜索顺序",
     searchOrderDescription: "如果首选服务商失败，OvertChat 会尝试免费搜索服务商。",
     modelTitle: "模型",

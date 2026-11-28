@@ -16,6 +16,7 @@ export const services = {
       providers: {
         bundled: "Bundled SearXNG",
         brave: "Brave Search API",
+        keenable: "Keenable Search API",
         searxng: "Existing SearXNG",
         disabled: "Disabled",
       },
@@ -52,6 +53,10 @@ export const services = {
     apiBaseUrlTitle: "API base URL",
     apiKeyTitle: "API key",
     apiKeyConfiguredDescription: "A key is configured. Leave this blank to keep it.",
+    keenableKeyOptionalDescription:
+      "Optional. Without a keen_ key, OvertChat uses Keenable's keyless endpoint, which is rate limited.",
+    keenableLoggingNotice:
+      "On its default data policy, Keenable logs the query, results, server IP and user agent, with or without a key, and sets no fixed retention period.",
     searchOrderTitle: "Search order",
     searchOrderDescription:
       "If your primary provider fails, OvertChat tries free search providers.",

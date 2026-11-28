@@ -34,7 +34,12 @@ import {
   SettingsSection,
 } from "../SettingsRows";
 
-type SearchProviderValue = "bundled" | "brave" | "searxng" | "disabled";
+type SearchProviderValue =
+  | "bundled"
+  | "brave"
+  | "keenable"
+  | "searxng"
+  | "disabled";
 type SpeechProviderValue = "bundled" | "openai-compatible" | "disabled";
 
 type ProviderOption<V extends string = string> = {
@@ -58,6 +63,7 @@ const PROVIDERS: Record<AdminServerCapability["id"], ProviderOption[]> = {
   search: [
     { value: "bundled", bundled: true },
     { value: "brave" },
+    { value: "keenable" },
     { value: "searxng" },
     { value: "disabled" },
   ] satisfies ProviderOption<SearchProviderValue>[],
@@ -83,6 +89,7 @@ function providerOptionLabel(
       if (
         providerValue === "bundled" ||
         providerValue === "brave" ||
+        providerValue === "keenable" ||
         providerValue === "searxng" ||
         providerValue === "disabled"
       ) {
@@ -166,6 +173,7 @@ function needsBaseUrl(capability: CapabilityDraft): boolean {
 function needsApiKey(capability: CapabilityDraft): boolean {
   return (
     capability.provider === "brave" ||
+    capability.provider === "keenable" ||
     capability.provider === "openai-compatible"
   );
 }
@@ -177,6 +185,9 @@ function CapabilitySection({
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<CapabilityDraft>(capability);
+  // A saved key belongs to the saved provider; the server drops it when the
+  // search provider changes, so the form must not report it as configured.
+  const [saved, setSaved] = useState<CapabilityDraft>(capability);
   const updateCapability = useUpdateServerCapability();
   const testCapability = useTestServerCapability();
   const canTest =
@@ -196,6 +207,7 @@ function CapabilitySection({
         draft as unknown as ServerCapabilityInput,
       );
       setDraft(updated);
+      setSaved(updated);
       toast.success({ title: t(`services.capabilities.${draft.id}.updatedTitle`) });
     } catch (error) {
       toast.error({
@@ -270,6 +282,15 @@ function CapabilitySection({
                       : (current.model ?? "whisper-1"),
                 };
               }
+              if (current.id === "search" && provider !== current.provider) {
+                const keepsSavedKey = provider === saved.provider;
+                return {
+                  ...current,
+                  provider,
+                  apiKey: null,
+                  apiKeySet: keepsSavedKey && saved.apiKeySet,
+                };
+              }
               return { ...current, provider };
             });
           }}
@@ -334,8 +355,12 @@ function CapabilitySection({
           title={t("services.fields.apiKeyTitle")}
           description={
             draft.apiKeySet
-              ? t("services.fields.apiKeyConfiguredDescription")
-              : undefined
+              ? draft.provider === "keenable"
+                ? `${t("services.fields.apiKeyConfiguredDescription")} ${t("services.fields.keenableLoggingNotice")}`
+                : t("services.fields.apiKeyConfiguredDescription")
+              : draft.provider === "keenable"
+                ? `${t("services.fields.keenableKeyOptionalDescription")} ${t("services.fields.keenableLoggingNotice")}`
+                : undefined
           }
           htmlFor={`${draft.id}-api-key`}
         >
@@ -367,8 +392,14 @@ function CapabilitySection({
                   "Brave → SearXNG → Firecrawl → Exa → DuckDuckGo"
                 : // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
                   "Brave → Firecrawl → Exa → DuckDuckGo"
-              : // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
-                "SearXNG → Firecrawl → Exa → DuckDuckGo"}
+              : draft.provider === "keenable"
+                ? draft.bundledInstalled || draft.baseUrl
+                  ? // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                    "Keenable → SearXNG → Firecrawl → Exa → DuckDuckGo"
+                  : // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                    "Keenable → Firecrawl → Exa → DuckDuckGo"
+                : // eslint-disable-next-line i18next/no-literal-string -- search provider brand names
+                  "SearXNG → Firecrawl → Exa → DuckDuckGo"}
           </span>
         </SettingsRow>
       )}

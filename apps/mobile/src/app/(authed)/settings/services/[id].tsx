@@ -64,6 +64,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
   const action = useAction();
   const mutation = useSettingsMutation<{ capability: AdminServerCapability }>();
   const dirty = JSON.stringify(draft) !== saved;
+  const savedCapability = JSON.parse(saved) as AdminServerCapability;
   useUnsavedChanges(dirty);
   function patch(p: Partial<AdminServerCapability>) {
     setDraft((d) => ({ ...d, ...p }));
@@ -84,6 +85,10 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
           {
             value: "brave",
             label: t("services.capabilities.search.providers.brave"),
+          },
+          {
+            value: "keenable",
+            label: t("services.capabilities.search.providers.keenable"),
           },
           {
             value: "searxng",
@@ -117,6 +122,15 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
             patch({
               provider,
               ...(changed ? { apiKey: null } : {}),
+              // The server drops a saved search key when the provider changes,
+              // so only the saved provider still has a configured key.
+              ...(changed && draft.id === "search"
+                ? {
+                    apiKeySet:
+                      provider === savedCapability.provider &&
+                      savedCapability.apiKeySet,
+                  }
+                : {}),
               ...(provider === "bundled" && draft.id === "tts"
                 ? { model: "kokoro", voice: "af_heart" }
                 : {}),
@@ -148,7 +162,7 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
             keyboardType="url"
           />
         )}
-        {["brave", "openai-compatible"].includes(draft.provider) && (
+        {["brave", "keenable", "openai-compatible"].includes(draft.provider) && (
           <Field
             editable={!action.busy}
             label={t("services.fields.apiKeyTitle")}
@@ -157,8 +171,12 @@ function ServiceForm({ capability }: { capability: AdminServerCapability }) {
             secureTextEntry
             hint={
               draft.apiKeySet
-                ? t("services.mobile.detail.apiKeySavedHint")
-                : t("services.mobile.detail.apiKeyEmptyHint")
+                ? draft.provider === "keenable"
+                  ? `${t("services.mobile.detail.apiKeySavedHint")} ${t("services.fields.keenableLoggingNotice")}`
+                  : t("services.mobile.detail.apiKeySavedHint")
+                : draft.provider === "keenable"
+                  ? `${t("services.fields.keenableKeyOptionalDescription")} ${t("services.fields.keenableLoggingNotice")}`
+                  : t("services.mobile.detail.apiKeyEmptyHint")
             }
           />
         )}

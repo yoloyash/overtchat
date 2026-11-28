@@ -20,6 +20,7 @@ export type WebSearchProvider =
   | "duckduckgo"
   | "exa"
   | "firecrawl"
+  | "keenable"
   | "none"
   | "searxng";
 
@@ -31,6 +32,7 @@ const WEB_SEARCH_PROVIDER_LABELS: Record<
   duckduckgo: "DuckDuckGo",
   exa: "Exa",
   firecrawl: "Firecrawl",
+  keenable: "Keenable",
   searxng: "SearXNG",
 };
 

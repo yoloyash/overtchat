@@ -1,4 +1,9 @@
-export type SearchProvider = "bundled" | "brave" | "searxng" | "disabled";
+export type SearchProvider =
+  | "bundled"
+  | "brave"
+  | "keenable"
+  | "searxng"
+  | "disabled";
 export type TtsProvider = "bundled" | "openai-compatible" | "disabled";
 export type SttProvider = "bundled" | "openai-compatible" | "disabled";
 export type SpeechAccelerator = "auto" | "cpu" | "gpu" | "apple";

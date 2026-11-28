@@ -1,7 +1,13 @@
 import "server-only";
 import {
+  createDuckDuckGoSearchProvider,
+  createExaSearchProvider,
+  createFirecrawlSearchProvider,
+  createKeenableSearchProvider,
+  createSearxngSearchProvider,
   createWebBasics,
   fetchUrl,
+  webSearch,
   type FetchImageResult,
   type FetchTextResult,
   type WebBasics,
@@ -14,6 +20,7 @@ export type { FetchedPage, WebSearchOutput, WebSearchResult } from "./web-client
 export { cleanDomain, faviconUrl } from "./web-client";
 
 const BUNDLED_SEARXNG_URL = "http://searxng:8080";
+const KEENABLE_CLIENT_TITLE = "OvertChat";
 const MAX_CONTENT_CHARS = 8_000;
 
 type FetchedWebPage = FetchedPage & { kind: "text" };
@@ -21,6 +28,7 @@ export type FetchedWebResource = FetchedWebPage | FetchImageResult;
 
 type SearchConfiguration = {
   braveApiKey?: string;
+  keenable?: { apiKey?: string };
   searxngUrl?: string;
 };
 
@@ -46,6 +54,15 @@ function configuredSearch(): SearchConfiguration {
       searxngUrl,
     };
   }
+  if (capability.provider === "keenable") {
+    const configuredSearxng = capability.baseUrl || process.env.SEARXNG_URL;
+    return {
+      keenable: { apiKey: keenableApiKey(capability.apiKey) },
+      searxngUrl:
+        configuredSearxng ||
+        (capability.bundledInstalled ? BUNDLED_SEARXNG_URL : undefined),
+    };
+  }
   if (capability.provider === "bundled") {
     return {
       searxngUrl: BUNDLED_SEARXNG_URL,
@@ -67,6 +84,7 @@ function sameSearchConfiguration(
 ): boolean {
   return (
     left.braveApiKey === right.braveApiKey &&
+    left.keenable?.apiKey === right.keenable?.apiKey &&
     left.searxngUrl === right.searxngUrl
   );
 }
@@ -80,6 +98,29 @@ function configuredSearchClient(): WebBasics {
     return activeSearchClient.client;
   }
 
+  if (configuration.keenable) {
+    // Keenable is not part of web-basics `auto`, so the chain is explicit:
+    // Keenable first, then the configured SearXNG and the free fallbacks.
+    const providers = [
+      createKeenableSearchProvider({
+        apiKey: configuration.keenable.apiKey,
+        clientTitle: KEENABLE_CLIENT_TITLE,
+      }),
+      ...(configuration.searxngUrl
+        ? [createSearxngSearchProvider(configuration.searxngUrl)]
+        : []),
+      createFirecrawlSearchProvider(),
+      createExaSearchProvider(),
+      createDuckDuckGoSearchProvider(),
+    ];
+    const client: WebBasics = {
+      webSearch: (input) => webSearch(input, providers),
+      fetchUrl,
+    };
+    activeSearchClient = { configuration, client };
+    return client;
+  }
+
   const options: WebBasicsOptions = {
     searchBackend: "auto",
     allowKeylessFallback: true,
@@ -89,6 +130,17 @@ function configuredSearchClient(): WebBasics {
   const client = createWebBasics(options);
   activeSearchClient = { configuration, client };
   return client;
+}
+
+/**
+ * The capability row keeps one API key, and switching providers can leave a
+ * previous provider's key in place. Only keys in Keenable's `keen_` format are
+ * sent to Keenable, so a stored Brave key never leaves the server; anything
+ * else uses Keenable's keyless endpoint.
+ */
+function keenableApiKey(value: string | null | undefined): string | undefined {
+  const key = value?.trim();
+  return key && key.startsWith("keen_") ? key : undefined;
 }
 
 export async function searchWeb(

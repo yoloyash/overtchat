@@ -6,6 +6,7 @@ export type CapabilityId = (typeof CAPABILITY_IDS)[number];
 export const searchProviderSchema = z.enum([
   "bundled",
   "brave",
+  "keenable",
   "searxng",
   "disabled",
 ]);

@@ -84,6 +84,40 @@ describe("server capability update", () => {
     });
   });
 
+  it("drops the saved key when the search provider changes", async () => {
+    mocks.getCapability.mockReturnValue({
+      id: "search",
+      provider: "keenable",
+      bundledInstalled: false,
+      apiKey: "keen_stored",
+    });
+
+    const response = await PUT(request(searchInput), {
+      params: Promise.resolve({ id: "search" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Enter a Brave Search API key.",
+    });
+    expect(mocks.updateCapability).not.toHaveBeenCalled();
+  });
+
+  it("saves Keenable without a key and without the previous Brave key", async () => {
+    const response = await PUT(
+      request({ ...searchInput, provider: "keenable" }),
+      { params: Promise.resolve({ id: "search" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateCapability).toHaveBeenCalledWith({
+      ...searchInput,
+      provider: "keenable",
+      id: "search",
+      apiKey: null,
+    });
+  });
+
   it("does not activate a bundled service absent from this server", async () => {
     const response = await PUT(
       request({ ...searchInput, provider: "bundled" }),

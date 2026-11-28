@@ -222,6 +222,23 @@ describe("setup provider selection", () => {
     });
   });
 
+  it("selects Keenable search without requiring an API key", async () => {
+    promptAnswers.set("Web search", "keenable");
+    promptAnswers.set("Keenable API key (optional, leave blank for keyless)", "");
+    promptAnswers.set("Text-to-speech", "disabled");
+    promptAnswers.set("Speech-to-text", "disabled");
+    promptAnswers.set("Install realtime voice conversations?", false);
+    promptAnswers.set("Install Agent Connections?", false);
+
+    const selected = await promptInstallationConfig(setupConfig(), []);
+
+    expect(selected.search).toMatchObject({
+      provider: "keenable",
+      bundledInstalled: false,
+    });
+    expect(selected.search.apiKey).toBeUndefined();
+  });
+
   it("removes hidden bundled speech services after external providers are selected", async () => {
     const config = setupConfig();
     promptAnswers.set("Web search", "brave");

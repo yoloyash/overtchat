@@ -672,6 +672,29 @@ Service URLs must be reachable **from the app container**:
 - Existing search or speech: select it in `overtchat setup`.
 - MCP: configure under **Settings → Tools**. STDIO commands run in the container.
 
+### Keenable search (opt-in)
+
+**Privacy first:** Keenable logs requests under its default policy **with or
+without an API key**. Only Enterprise zero data retention (ZDR) differs; see
+[Keenable's data-privacy policy](https://docs.keenable.ai/data-privacy).
+
+In `overtchat setup` or **Settings → Services → Search**, choose **Keenable
+Search API**. The API key is optional: without a `keen_` key, OvertChat calls
+`POST /v1/search/public` with `X-Keenable-Title: OvertChat`; with one it calls
+`POST /v1/search` and sends `X-API-Key`. The keyless endpoint is limited per IP
+([rate limits](https://docs.keenable.ai/rate-limits.md)). A Keenable failure
+uses the existing fallback chain (configured SearXNG, then Firecrawl, Exa and
+DuckDuckGo), built with Web Basics' `createKeenableSearchProvider`. Provider
+labels identify the backend that actually answered. Changing the search
+provider clears the saved key, so a key saved for one provider is never sent to
+another.
+
+Keenable is never selected automatically: bundled SearXNG stays the default,
+and the existing providers' search order is unchanged. Keenable handles search
+only; page reading still uses Web Basics. For a manual deployment, explicitly
+set `WEB_SEARCH_PROVIDER=keenable` and optionally `KEENABLE_API_KEY` in the app
+container's environment, or save the settings in the UI.
+
 Use HTTPS for browser microphone access outside localhost. Reverse proxies
 must support WebSocket upgrades; realtime voice uses the app's existing origin.
 
