@@ -37,7 +37,7 @@ export async function probePiTarget(
   const client = startPi(resolved.target, {
     executable,
     noSession: true,
-    extraArgs: ["--no-extensions", "--no-skills", "--no-prompt-templates", "--no-context-files"],
+    extraArgs: ["--no-skills", "--no-prompt-templates", "--no-context-files"],
   });
   try {
     await client.getState();

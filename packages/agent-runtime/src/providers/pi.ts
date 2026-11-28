@@ -87,7 +87,6 @@ async function fetchCatalog(
     cwd: launch.cwd,
     noSession: true,
     extraArgs: [
-      "--no-extensions",
       "--no-skills",
       "--no-prompt-templates",
       "--no-context-files",
